@@ -1,0 +1,11 @@
+{"id":-16,
+"isLimbo":true,
+"name":"Donor Shop",
+"sbName":"Donor Shop",
+"difficulty":-1,
+"background":0,
+"restrictTp":false,
+"showDisplays":false,
+"portals":[0xff00],
+"maps":["DonorShop.jm"],
+"music":["Vault1"]}

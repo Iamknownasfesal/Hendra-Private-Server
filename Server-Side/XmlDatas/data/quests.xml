@@ -1,0 +1,13 @@
+<QuestsResponse>
+	<AllQuests>
+		<Quests id = "1">
+			<HeadTitle>Kill Quest</HeadTitle>
+			<Description>Kill Oryx the Mad God 2 5 times!</Description>
+			<questAlreadyDone>1</questAlreadyDone>
+			<Contents>{"Items":[{"Item":0xccc,"Count":10}]}</Contents>
+			<Weight>0</Weight>
+			<QuestData>{"QuestType":"KillEnemy","QuestCount":10,"QuestObject":0x0932}</QuestData>
+			<EndDate>05/20/2020 23:59:00 GMT-0800</EndDate>
+		</Quests>
+	</AllQuests>
+</QuestsResponse>

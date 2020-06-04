@@ -1,0 +1,12 @@
+{"id":0,
+"isLimbo":false,
+"name":"Barriel Guy's Ent World",
+"sbName":"Ent World",
+"difficulty":4,
+"background":0,
+"blocking":1,
+"restrictTp":false,
+"showDisplays":false,
+"portals":[0x7113],
+"maps":["entworld2.jm"],
+"music":["weed2"]}

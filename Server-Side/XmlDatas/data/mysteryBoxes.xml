@@ -1,0 +1,10 @@
+<MysteryBoxData version = "1408515972.279192">
+  <MysteryBox id = "33" title = "Donator Box" weight = "-1">
+    <Description>Box only for donators</Description>
+    <Contents>3180,9064,9065,9066,9067,9068,9069,9070,9071,</Contents>
+    <Price amount="50" currency="0"/>
+    <Image>http://i.imgur.com/WnkWTbQ.png</Image>
+    <Icon></Icon>
+    <StartTime>2014-06-06 14:30:16</StartTime>
+  </MysteryBox>
+</MysteryBoxData>
