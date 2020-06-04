@@ -1,0 +1,19 @@
+{
+  "dbInfo": {
+    "host": "127.0.0.1",
+    "port": "6379",
+    "auth": "alphaversionone",
+    "index": "0"
+  },
+  "serverInfo": {
+    "type": "Account",
+    "name": "AppEngine",
+    "bindAddress": "37.123.96.189",
+    "port": "8888"
+  },
+  "serverSettings": {
+    "logFolder": "./logs",
+    "resourceFolder":  "./resources",
+    "sendGridApiKey": ""
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "ExpandedNodes": [
+    "",
+    "\\src",
+    "\\src\\com",
+    "\\src\\com\\company",
+    "\\src\\com\\company\\assembleegameclient",
+    "\\src\\com\\company\\assembleegameclient\\ui",
+    "\\src\\com\\company\\assembleegameclient\\ui\\panels",
+    "\\src\\com\\company\\assembleegameclient\\ui\\panels\\itemgrids",
+    "\\src\\com\\company\\assembleegameclient\\ui\\panels\\itemgrids\\itemtiles",
+    "\\src\\com\\company\\assembleegameclient\\ui\\panels\\mediators",
+    "\\src\\com\\company\\assembleegameclient\\ui\\tooltip",
+    "\\src\\kabam",
+    "\\src\\kabam\\rotmg",
+    "\\src\\kabam\\rotmg\\assets"
+  ],
+  "PreviewInSolutionExplorer": false
+}

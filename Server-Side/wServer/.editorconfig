@@ -1,0 +1,10 @@
+﻿[*.cs]
+
+# CS4014: Bu çağrı beklenmediği için, çağrı tamamlanmadan önce geçerli yöntemin yürütülmesine devam ediliyor
+dotnet_diagnostic.CS4014.severity = none
+
+# CS0436: Tür içe aktarılan türle çakışıyor
+dotnet_diagnostic.CS0436.severity = silent
+
+# IDE0040: Erişilebilirlik değiştiricileri Ekle
+dotnet_style_require_accessibility_modifiers = for_non_interface_members:silent

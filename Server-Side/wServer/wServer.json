@@ -1,0 +1,31 @@
+{
+  "dbInfo": {
+    "host": "127.0.0.1",
+    "port": "6379",
+    "auth": "alphaversionone",
+    "index": "0"
+  },
+  "serverInfo": {
+    "type": "World",
+    "name": "Server",
+    "address": "37.123.96.189",
+    "port": "2050",
+    "coordinates": {
+      "latitude": "0",
+      "longitude": "0"
+    },
+    "adminOnly": "false"
+  },
+  "serverSettings": {
+    "logFolder": "./logs",
+    "resourceFolder": "./resources",
+    "version": "Alpha v01",
+    "tps": "6",
+    "mode": "Single",
+    "key": "B1A5ED",
+    "maxConnections": "512",
+    "maxPlayers": "5",
+    "maxPlayersWithPriority": "180",
+    "enableMarket": "true"
+  }
+}
