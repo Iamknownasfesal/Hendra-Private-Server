@@ -66,7 +66,11 @@ namespace wServer.realm.terrain
         Store_37,
         Store_38,
         Store_39,
-        Store_40
+        Store_40,
+        Biome1,
+        Biome2,
+        Biome3,
+        Biome4
     }
 
     public enum WmapTerrain : byte

@@ -27,6 +27,8 @@ namespace wServer.realm.entities
 
         public WmapTerrain Terrain { get; set; }
 
+        public TileRegion SpawnRegion { get; set; }
+
         Position? pos;
         public Position SpawnPoint { get { return pos ?? new Position() { X = X, Y = Y }; } }
 

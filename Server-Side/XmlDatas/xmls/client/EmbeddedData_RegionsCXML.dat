@@ -127,6 +127,17 @@
    <Region type="0x39" id="Store 40">
       <Color>0x980000</Color>
    </Region>
+   <Region type="0x3a" id="Biome1">
+      <Color>0x980000</Color>
+   </Region>
+   <Region type="0x3b" id="Biome2">
+      <Color>0x980000</Color>
+   </Region>
+   <Region type="0x3c" id="Biome3">
+      <Color>0x980000</Color>
+   <Region type="0x3d" id="Biome4">
+      <Color>0x980000</Color>
+   </Region>
    <Region type="0x09" id="Vault">
       <Color>0x828492</Color>
    </Region>
