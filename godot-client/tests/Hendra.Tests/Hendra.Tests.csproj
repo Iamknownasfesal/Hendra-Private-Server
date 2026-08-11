@@ -39,6 +39,7 @@
     <Compile Include="../../src/Render/ModelLibrary.cs" />
     <Compile Include="../../src/Assets/AssetManifest.cs" />
     <Compile Include="../../src/Account/FameResult.cs" />
+    <Compile Include="../../src/Account/GuildResult.cs" />
     <Compile Include="../../src/World/Movement.cs" />
     <Compile Include="../../src/World/Projectile.cs" />
     <Compile Include="../../src/World/Entity.cs" />

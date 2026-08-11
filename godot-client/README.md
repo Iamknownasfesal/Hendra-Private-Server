@@ -179,13 +179,11 @@ merchants, portals between worlds, chat, trading, a nearby-players list, a minim
 visual effects --
 every `ShowEffect` kind, the spray a struck monster throws off, and the camera shake -- all three
 terrain blend schemes, sound and
-music, the quest arrow, an options panel that remembers itself between sessions, and, when it ends,
-the fame tally from `/char/fame`.
+music, the quest arrow, the guild roll on U, an options panel that remembers itself between
+sessions, and, when it ends, the fame tally from `/char/fame`.
 
 ## What is not done yet
 
-- The guild and party panels. The packets are all implemented and their results reach the chat log;
-  what is missing is the UI to drive them.
 - Pets, the market, the quest *log*, and daily rewards. The objective arrow works; what is missing
   is the panel listing what the quest is.
 - The charging aura on a Rising Fury enemy is emitted around the enemy rather than sampled over its

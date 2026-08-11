@@ -36,6 +36,7 @@ public partial class OptionsView : Control
         ("G", "Magic potion"),
         ("Enter", "Chat"),
         ("Insert", "Nexus"),
+        ("U", "Guild"),
         ("Escape", "These options"),
     };
 

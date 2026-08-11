@@ -26,6 +26,7 @@ public partial class GameScene : Node
     private MinimapView _minimap;
     private TradeView _trade;
     private OptionsView _options;
+    private GuildView _guild;
     private WorldController _controller;
     private GameSession _session;
 
@@ -90,6 +91,9 @@ public partial class GameScene : Node
         _trade = new TradeView();
         ui.AddChild(_trade);
 
+        _guild = new GuildView();
+        ui.AddChild(_guild);
+
         _options = new OptionsView();
         _options.Configure(ServiceLocator.Settings);
         _options.Changed += OnOptionsChanged;
@@ -147,7 +151,14 @@ public partial class GameScene : Node
         _controller.StartingCameraAngle = StartingCameraAngle;
         _controller.CenterOnPlayer = ServiceLocator.Settings?.CenterOnPlayer ?? true;
         _controller.OptionsToggled += () => _options.Toggle();
-        _controller.OptionsAreOpen = () => _options.IsOpen;
+        _controller.GuildToggled += () =>
+        {
+            // Read at the moment it opens: the name arrives as a stat after the panel is built.
+            _guild.AccountName = _controller.Map?.Player?.Name;
+            _guild.Toggle();
+        };
+        _controller.OptionsAreOpen = () => _options.IsOpen || _guild.IsOpen;
+        _guild.Configure(_session, $"http://{_host}:8888", _guid, _password);
         _controller.ScriptedLines = ScriptedLines;
         _trade.Configure(_controller.Trading, ServiceLocator.Assets, ServiceLocator.Data);
         _controller.Trading.Requested += who =>
@@ -262,7 +273,14 @@ public partial class GameScene : Node
         _controller.StartingCameraAngle = StartingCameraAngle;
         _controller.CenterOnPlayer = ServiceLocator.Settings?.CenterOnPlayer ?? true;
         _controller.OptionsToggled += () => _options.Toggle();
-        _controller.OptionsAreOpen = () => _options.IsOpen;
+        _controller.GuildToggled += () =>
+        {
+            // Read at the moment it opens: the name arrives as a stat after the panel is built.
+            _guild.AccountName = _controller.Map?.Player?.Name;
+            _guild.Toggle();
+        };
+        _controller.OptionsAreOpen = () => _options.IsOpen || _guild.IsOpen;
+        _guild.Configure(_session, $"http://{_host}:8888", _guid, _password);
         _controller.ScriptedLines = ScriptedLines;
         _trade.Configure(_controller.Trading, ServiceLocator.Assets, ServiceLocator.Data);
         _controller.Trading.Requested += who =>

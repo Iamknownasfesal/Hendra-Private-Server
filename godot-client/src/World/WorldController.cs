@@ -105,6 +105,9 @@ public partial class WorldController : Node
     /// <summary>Raised when the player asks for the options panel.</summary>
     public event System.Action OptionsToggled;
 
+    /// <summary>Raised when the player asks for the guild panel.</summary>
+    public event System.Action GuildToggled;
+
     /// <summary>Whether the options panel is up, so input can be held back while it is.</summary>
     public System.Func<bool> OptionsAreOpen { private get; set; }
 
@@ -739,6 +742,12 @@ public partial class WorldController : Node
         if (Input.IsActionJustPressed("options"))
         {
             OptionsToggled?.Invoke();
+            return;
+        }
+
+        if (Input.IsActionJustPressed("guild"))
+        {
+            GuildToggled?.Invoke();
             return;
         }
 
