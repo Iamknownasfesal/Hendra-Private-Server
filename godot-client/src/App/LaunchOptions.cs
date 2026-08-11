@@ -35,6 +35,9 @@ public sealed class LaunchOptions
     /// <summary>Hold fire from the moment the world loads, for unattended checks of the combat path.</summary>
     public bool Autofire { get; private set; }
 
+    /// <summary>Use the equipped ability on a loop, for unattended checks of the ability path.</summary>
+    public bool AutoAbility { get; private set; }
+
     /// <summary>
     /// Lines to send once the world is up, in order, a couple of seconds apart.
     /// </summary>
@@ -71,6 +74,7 @@ public sealed class LaunchOptions
                     break;
                 case "--quit-after-screenshot": options.QuitAfterScreenshot = true; break;
                 case "--autofire": options.Autofire = true; break;
+                case "--use-ability": options.AutoAbility = true; break;
                 case "--say":
                 {
                     string line = Next();

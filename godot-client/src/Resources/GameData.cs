@@ -156,7 +156,13 @@ public sealed class GameData
             Soulbound = Has(e, "Soulbound"),
             // Declared in seconds; everything downstream works in milliseconds.
             CooldownMs = (int)(Float(e, "Cooldown", 0f) * 1000f),
+            MultiPhase = Has(e, "MultiPhase"),
         };
+
+        var activates = e.Elements("Activate");
+        desc.Activates = activates.Select(a => a.Value?.Trim() ?? string.Empty).ToArray();
+        desc.ActivatesShoot = desc.Activates.Any(
+            a => string.Equals(a, "Shoot", StringComparison.OrdinalIgnoreCase));
 
         // The XML gives this in degrees. The default of 11.25 is what produces the familiar even
         // fan on a three-shot weapon.

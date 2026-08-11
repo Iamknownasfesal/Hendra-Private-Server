@@ -79,6 +79,7 @@ godot-mono --path . -- --host 127.0.0.1 --guid you@example.com --password pw --c
     --quit-after-screenshot
 ```
 
+`--use-ability` fires the equipped ability on a loop, the same way `--autofire` holds the trigger.
 Repeat `--say` for a script; the lines go out a couple of seconds apart and survive a change of
 world, which some of them need — you cannot die in the Nexus, so checking the death screen takes
 `--say /realm --say "/killPlayer <name>"`.
@@ -133,6 +134,11 @@ Deliberate, and all of them fixes:
   under fire rescanned its own texture several times a second.
 - **Trail particles are shed on a fixed interval**, not one per rendered frame. The original's
   effects were three times denser on a fast machine than a slow one.
+- **An ability aimed too far is pulled back into range** rather than cast into nothing. The server
+  checks the distance *after* taking the magic, so the original's unclamped aim meant a player who
+  clicked across a wide screen paid for a cast that never happened, with no message.
+- **Other players' shots are drawn but inert.** They exist on the server, where their owner's client
+  reports what they hit, so joining in would double the damage reported for them.
 - **Soft-edged sprites keep their soft edges.** The half-alpha test that decides where an outline
   goes was being applied to everything, so shadows and glows were cut off hard at the radius where
   their alpha crossed a half.
@@ -140,15 +146,16 @@ Deliberate, and all of them fixes:
 ## What works
 
 Sign in, create or pick a character, and play: movement with the original's collision rules,
-shooting with server-verified timing, projectiles, damage, loot containers, merchants, portals
-between worlds, chat, trading, a nearby-players list, a minimap, the HUD, the visual effects --
+shooting with server-verified timing, abilities, projectiles, damage, loot containers, the vault,
+merchants, portals between worlds, chat, trading, a nearby-players list, a minimap, the HUD, the
+visual effects --
 every `ShowEffect` kind, the spray a struck monster throws off, and the camera shake -- and, when it
 ends, the fame tally from `/char/fame`.
 
 ## What is not done yet
 
-- The vault, and the guild and party panels. The packets are all implemented and their results
-  reach the chat log; what is missing is the UI to drive them.
+- The guild and party panels. The packets are all implemented and their results reach the chat log;
+  what is missing is the UI to drive them.
 - Pets, the market, quests and daily rewards.
 - The charging aura on a Rising Fury enemy is emitted around the enemy rather than sampled over its
   sprite, which is what the original did. Sampling would mean reading the texture back per frame.

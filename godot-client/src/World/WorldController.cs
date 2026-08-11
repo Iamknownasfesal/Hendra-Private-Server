@@ -63,6 +63,11 @@ public partial class WorldController : Node
     /// <summary>Starts autofire on, for unattended runs. See LaunchOptions.</summary>
     public bool AutofireOnStart { set => _autofire = value; }
 
+    /// <summary>Uses the ability on a loop, for unattended runs. See LaunchOptions.</summary>
+    public bool AutoAbility { get; set; }
+
+    private int _nextAutoAbilityMs;
+
     /// <summary>
     /// Lines to send once the world is up, one at a time. For unattended runs; see LaunchOptions.
     /// </summary>
@@ -141,6 +146,7 @@ public partial class WorldController : Node
         _combat = new Combat(_map, data, session, clock);
         _interaction = new Interaction(_map);
         _inventory = new Inventory(_map, data, session, clock);
+        _inventory.UseCombat(_combat);
         _trading = new Trading(session);
         _party = new Party(_map);
         _particles = new ParticleSystem(_map);
@@ -316,9 +322,7 @@ public partial class WorldController : Node
                 break;
 
             case AllyShootPacket shot:
-                // Cosmetic only: no damage, no acknowledgement, and it spawns from the shooter's
-                // current position rather than one carried on the wire.
-                _map.GetEntity(shot.OwnerId)?.SetAttack(shot.Angle, now);
+                OnAllyShoot(shot, now);
                 break;
 
             case DamagePacket damage:
@@ -412,6 +416,31 @@ public partial class WorldController : Node
 
         _session.Send(new ShootAckPacket { Time = now });
         owner.SetAttack(shot.Angle + shot.AngleInc * (shot.NumShots - 1) / 2f, now);
+    }
+
+    /// <summary>
+    /// Another player fired.
+    /// </summary>
+    /// <remarks>
+    /// Drawn but inert: the projectile exists on the server, where its owner's client is the one
+    /// that reports what it hits, so joining in would double the damage reported for it. There is
+    /// no acknowledgement either. It spawns from the shooter's current position rather than one
+    /// carried on the wire, which the packet does not have room for.
+    /// </remarks>
+    private void OnAllyShoot(AllyShootPacket shot, int now)
+    {
+        var owner = _map.GetEntity(shot.OwnerId);
+        if (owner == null || owner.Dead)
+            return;
+
+        owner.SetAttack(shot.Angle, now);
+
+        var container = _data.GetObject((ushort)shot.ContainerType);
+        if (container?.Projectiles == null || !container.Projectiles.TryGetValue(0, out var desc))
+            return;
+
+        _combat.SpawnCosmetic(desc, (ushort)shot.ContainerType, shot.OwnerId, shot.BulletId,
+            shot.Angle, owner.X, owner.Y, now);
     }
 
     /// <summary>A projectile the server authored, such as an ability shot or a nova.</summary>
@@ -718,25 +747,77 @@ public partial class WorldController : Node
     /// </remarks>
     private void ApplyAttackInput(int now)
     {
-        if (_map.Player == null)
+        var player = _map.Player;
+        if (player == null)
             return;
 
-        if (!_autofire && !Input.IsActionPressed("shoot"))
+        // Chat has the keyboard, so the ability key is a letter being typed. The mouse still works.
+        bool typing = _chat is { IsTyping: true };
+
+        if (AutoAbility && now >= _nextAutoAbilityMs)
+        {
+            _nextAutoAbilityMs = now + 1500;
+
+            // A fixed point a few tiles away rather than the cursor: an unattended run has the
+            // pointer wherever the window opened, which is usually a corner and often outside the
+            // ability's reach.
+            var auto = new Vector2(player.X + 3f, player.Y);
+            _inventory.BeginAbility(now, auto.X, auto.Y);
+            _inventory.EndAbility(now, auto.X, auto.Y);
+        }
+
+        if (!typing && Input.IsActionJustPressed("use_ability"))
+        {
+            var target = AimPoint();
+            _inventory.BeginAbility(now, target.X, target.Y);
+        }
+
+        // Released even while typing: a key-up that arrives after the chat box took focus would
+        // otherwise leave a multi-phase ability charging forever.
+        if (Input.IsActionJustReleased("use_ability"))
+        {
+            var target = AimPoint();
+            _inventory.EndAbility(now, target.X, target.Y);
+        }
+
+        if (typing || (!_autofire && !Input.IsActionPressed("shoot")))
             return;
 
-        var viewport = GetViewport();
-        var centre = viewport.GetVisibleRect().Size / 2f;
-        var offset = viewport.GetMousePosition() - centre;
+        _combat.TryShoot(now, AimAngle());
+    }
 
-        var world = _world.Projection.ScreenToWorldOffset(offset);
+    /// <summary>The direction from the player to the cursor, in world radians.</summary>
+    private float AimAngle()
+    {
+        var world = CursorOffset();
 
         // A cursor sitting exactly on the player gives no direction; fire along the camera's
         // rightward axis rather than doing nothing.
-        float angle = world.LengthSquared() < 0.0001f
+        return world.LengthSquared() < 0.0001f
             ? _cameraAngle
             : Mathf.Atan2(world.Y, world.X);
+    }
 
-        _combat.TryShoot(now, angle);
+    /// <summary>
+    /// Where the cursor is pointing, in tiles.
+    /// </summary>
+    /// <remarks>
+    /// Abilities are aimed at a point rather than along a direction: several of them land where they
+    /// are pointed, and the server refuses any aimed further than its own limit.
+    /// </remarks>
+    private Vector2 AimPoint()
+    {
+        var player = _map.Player;
+        var offset = CursorOffset();
+        return new Vector2(player.X + offset.X, player.Y + offset.Y);
+    }
+
+    /// <summary>The cursor's offset from the player, in tiles.</summary>
+    private Vector2 CursorOffset()
+    {
+        var viewport = GetViewport();
+        var centre = viewport.GetVisibleRect().Size / 2f;
+        return _world.Projection.ScreenToWorldOffset(viewport.GetMousePosition() - centre);
     }
 
     // ------------------------------------------------------------------------------------------

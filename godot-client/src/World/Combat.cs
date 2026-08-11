@@ -101,13 +101,49 @@ public sealed class Combat
 
         _nextAttackAllowedMs = nowMs + (int)player.GetAttackPeriodMs(weapon.RateOfFire);
 
-        int count = Math.Max(1, weapon.NumProjectiles);
-        float totalArc = weapon.ArcGap * (count - 1);
+        FireVolley(weapon, projectileDesc, angle, nowMs, player.GetAttackMultiplier());
+        return true;
+    }
+
+    /// <summary>
+    /// Fires an ability's volley.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Needed because the server does not send a player their own ability shots: it creates the
+    /// projectiles, then broadcasts the AllyShoot to everyone <i>except</i> the shooter. Without
+    /// this the player would fire and see nothing.
+    /// </para>
+    /// <para>
+    /// The PlayerShoot packets this sends are ignored on purpose — the handler checks whether the
+    /// named item is the one in the ability slot and returns without doing anything, because the
+    /// UseItem already did the work. Note that it returns <i>without</i> dropping a random, which is
+    /// the detail that makes this safe: the client draws once per projectile here and the server
+    /// draws once per projectile in the activation, so the two stay in step.
+    /// </para>
+    /// </remarks>
+    public void FireAbility(ObjectDesc ability, float angle, int nowMs)
+    {
+        if (ability?.Projectiles == null || !ability.Projectiles.TryGetValue(0, out var desc))
+            return;
+
+        // No attack multiplier: the server passes isAbility to its damage roll, which makes the
+        // multiplier exactly one however strong the character is.
+        FireVolley(ability, desc, angle, nowMs, multiplier: 1f);
+    }
+
+    /// <summary>
+    /// Spawns a volley, predicts its damage and tells the server about it.
+    /// </summary>
+    /// <param name="multiplier">Applied to each roll. One for abilities, the attack stat otherwise.</param>
+    private void FireVolley(ObjectDesc item, ProjectileDesc projectileDesc, float angle, int nowMs, float multiplier)
+    {
+        var player = _map.Player;
+
+        int count = Math.Max(1, item.NumProjectiles);
+        float totalArc = item.ArcGap * (count - 1);
         float shotAngle = angle - totalArc / 2f;
 
-        // Damage prediction and the volley's identity both depend on this being one value shared by
-        // every shot in the batch.
-        float multiplier = player.GetAttackMultiplier();
         bool stale = _session.MoveRecords.LastClearTime >= 0 &&
                      nowMs > _session.MoveRecords.LastClearTime + StaleTickGuardMs;
 
@@ -127,7 +163,7 @@ public sealed class Combat
 
             Spawn(
                 projectileDesc,
-                weapon.Type,
+                item.Type,
                 player.ObjectId,
                 bulletId,
                 shotAngle,
@@ -141,16 +177,36 @@ public sealed class Combat
             {
                 Time = nowMs,
                 BulletId = bulletId,
-                ContainerType = weapon.Type,
+                ContainerType = item.Type,
                 StartingPos = new WorldPos(player.X, player.Y),
                 Angle = shotAngle,
             });
 
-            shotAngle += weapon.ArcGap;
+            shotAngle += item.ArcGap;
         }
 
         player.SetAttack(angle, nowMs);
-        return true;
+    }
+
+    /// <summary>
+    /// Spawns a projectile that is only there to be looked at: it hits nothing and reports nothing.
+    /// </summary>
+    /// <remarks>
+    /// Someone else's shot. It exists on the server, where its owner's client is responsible for
+    /// reporting what it hits, so joining in would double the damage reported for it.
+    /// </remarks>
+    public void SpawnCosmetic(
+        ProjectileDesc desc,
+        ushort containerType,
+        int ownerId,
+        byte bulletId,
+        float angle,
+        float startX,
+        float startY,
+        int nowMs)
+    {
+        Spawn(desc, containerType, ownerId, bulletId, angle, startX, startY, nowMs,
+            damage: 0, damagesEnemies: false, cosmetic: true);
     }
 
     /// <summary>Spawns a projectile the server told us about, from an enemy or another player.</summary>
@@ -180,7 +236,8 @@ public sealed class Combat
         float startY,
         int nowMs,
         int damage,
-        bool damagesEnemies)
+        bool damagesEnemies,
+        bool cosmetic = false)
     {
         var projectile = new Projectile
         {
@@ -196,7 +253,7 @@ public sealed class Combat
             Angle = angle,
             Damage = damage,
             DamagesEnemies = damagesEnemies,
-            DamagesPlayers = !damagesEnemies,
+            DamagesPlayers = !cosmetic && !damagesEnemies,
             Z = 0.5f,
         };
 

@@ -37,6 +37,9 @@ public partial class GameScene : Node
     /// <summary>Starts with fire held down. Set from the command line for unattended runs.</summary>
     public bool Autofire { get; set; }
 
+    /// <summary>Uses the ability on a loop. Set from the command line for unattended runs.</summary>
+    public bool AutoAbility { get; set; }
+
     /// <summary>
     /// Lines to send once in the world, in order. Set from the command line.
     /// </summary>
@@ -118,6 +121,7 @@ public partial class GameScene : Node
 
         _controller.Begin(_session, ServiceLocator.Data, ServiceLocator.Assets, _world, ServiceLocator.Clock, _overlay, _hud, _chat, _minimap);
         _controller.AutofireOnStart = Autofire;
+        _controller.AutoAbility = AutoAbility;
         _controller.ScriptedLines = ScriptedLines;
         _trade.Configure(_controller.Trading, ServiceLocator.Assets, ServiceLocator.Data);
         _controller.Trading.Requested += who =>
@@ -227,6 +231,7 @@ public partial class GameScene : Node
         Subscribe(_session);
         _controller.Begin(_session, ServiceLocator.Data, ServiceLocator.Assets, _world, ServiceLocator.Clock, _overlay, _hud, _chat, _minimap);
         _controller.AutofireOnStart = Autofire;
+        _controller.AutoAbility = AutoAbility;
         _controller.ScriptedLines = ScriptedLines;
         _trade.Configure(_controller.Trading, ServiceLocator.Assets, ServiceLocator.Data);
         _controller.Trading.Requested += who =>

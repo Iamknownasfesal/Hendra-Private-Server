@@ -202,6 +202,28 @@ public sealed class ObjectDesc
     /// <summary>Ability cooldown in milliseconds. Zero means the default half second.</summary>
     public int CooldownMs;
 
+    /// <summary>
+    /// Whether using this is a press-and-release rather than a single press.
+    /// </summary>
+    /// <remarks>
+    /// A multi-phase ability charges while the key is held and resolves on release, and it costs
+    /// magic at both ends -- <see cref="MpCost"/> to begin and <see cref="MpEndCost"/> to finish.
+    /// </remarks>
+    public bool MultiPhase;
+
+    /// <summary>
+    /// What this item does when used, by name, e.g. <c>Shoot</c> or <c>Heal</c>.
+    /// </summary>
+    /// <remarks>
+    /// Almost all of them are the server's business alone. The client only cares about
+    /// <c>Shoot</c>, which is the one activation whose projectiles the server does not send back to
+    /// the player who fired them.
+    /// </remarks>
+    public string[] Activates = System.Array.Empty<string>();
+
+    /// <summary>Whether using this fires projectiles the client has to author itself.</summary>
+    public bool ActivatesShoot;
+
     public WhileMovingDesc WhileMoving;
     public TextureSpec Texture;
     public TextureSpec TopTexture;

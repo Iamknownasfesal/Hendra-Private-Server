@@ -1,3 +1,4 @@
+using System;
 using Hendra.Core;
 using Hendra.Data;
 using Hendra.Net;
@@ -39,6 +40,9 @@ public sealed class Inventory
     private readonly GameSession _session;
     private readonly GameClock _clock;
 
+    /// <summary>Set after construction; abilities that shoot fire through it.</summary>
+    private Combat _shoot;
+
     public Inventory(GameMap map, GameData data, GameSession session, GameClock clock)
     {
         _map = map;
@@ -46,6 +50,15 @@ public sealed class Inventory
         _session = session;
         _clock = clock;
     }
+
+    /// <summary>
+    /// Gives the inventory somewhere to fire an ability's shots.
+    /// </summary>
+    /// <remarks>
+    /// Set afterwards rather than taken in the constructor: combat needs the session and the map,
+    /// and the two are built alongside each other.
+    /// </remarks>
+    public void UseCombat(Combat combat) => _shoot = combat;
 
     /// <summary>
     /// Does whatever clicking this slot should do: use a consumable, equip a carried item, or
@@ -178,6 +191,164 @@ public sealed class Inventory
             UseType = ItemUseType.Default,
         });
     }
+
+    /// <summary>
+    /// The worn slot the ability lives in.
+    /// </summary>
+    /// <remarks>
+    /// Positional rather than looked up by slot type, because the slot type differs per class — a
+    /// wizard's spell is type 11, a priest's tome type 4 — while the position does not. The server
+    /// hard-codes the same index: its shot handler tests the named item against
+    /// <c>player.Inventory[1]</c> to tell an ability shot from a weapon shot.
+    /// </remarks>
+    public const int AbilitySlot = 1;
+
+    /// <summary>When the ability may next be used. The original's nextAltAttack_.</summary>
+    private int _abilityReadyAtMs;
+
+    /// <summary>Whether a multi-phase ability is part way through, waiting for its release.</summary>
+    private bool _abilityCharging;
+
+    /// <summary>Default cooldown for an ability whose definition names none, in milliseconds.</summary>
+    private const int DefaultAbilityCooldownMs = 500;
+
+    /// <summary>
+    /// How far from the player an ability may be aimed, in tiles.
+    /// </summary>
+    /// <remarks>
+    /// The server's own limit, and it enforces it <i>after</i> taking the magic: an ability aimed
+    /// beyond this is paid for and then does nothing, with no message. So the point is pulled back
+    /// to the limit here rather than sent as aimed. The original did not, and a player who clicked
+    /// across a wide screen lost the cast.
+    ///
+    /// Half a tile inside the server's fourteen, because it compares squared distances in floats
+    /// and a point clamped to exactly the limit lands on the wrong side of the comparison about
+    /// half the time.
+    /// </remarks>
+    private const float MaxAbilityRange = 13.5f;
+
+    /// <summary>The equipped ability, or null if the slot is empty or holds something unusable.</summary>
+    public ObjectDesc EquippedAbility
+    {
+        get
+        {
+            var player = _map.Player;
+            if (player?.Equipment == null || player.Equipment.Length <= AbilitySlot)
+                return null;
+
+            int type = player.Equipment[AbilitySlot];
+            if (type == NoItem)
+                return null;
+
+            var item = _data.GetObject((ushort)type);
+            return item is { Usable: true } ? item : null;
+        }
+    }
+
+    /// <summary>Whether the ability is off cooldown and there is enough magic for it.</summary>
+    public bool CanUseAbility(int nowMs)
+    {
+        var ability = EquippedAbility;
+        return ability != null
+               && nowMs >= _abilityReadyAtMs
+               && _map.Player != null
+               && _map.Player.Mp >= ability.MpCost;
+    }
+
+    /// <summary>
+    /// Begins using the equipped ability, aimed at a point in the world.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Magic, cooldown and the effect itself are all applied server-side; the checks here only stop
+    /// the client sending a use that would be thrown away, since the server answers a refused one
+    /// with a bare InvResult and no explanation.
+    /// </para>
+    /// <para>
+    /// An ability that shoots also fires locally. That is not prediction — it is the only way the
+    /// shots appear at all, because the server broadcasts them to every nearby player <i>except</i>
+    /// the one who fired. See <see cref="Combat.FireAbility"/> for why doing so keeps the shared
+    /// random stream in step rather than breaking it.
+    /// </para>
+    /// </remarks>
+    /// <returns>Whether the use was sent.</returns>
+    public bool BeginAbility(int nowMs, float targetX, float targetY)
+    {
+        var player = _map.Player;
+        var ability = EquippedAbility;
+
+        if (player == null || player.IsPaused || ability == null || _abilityCharging)
+            return false;
+
+        if (nowMs < _abilityReadyAtMs || player.Mp < ability.MpCost)
+            return false;
+
+        (targetX, targetY) = ClampToRange(player, targetX, targetY);
+
+        _abilityReadyAtMs = nowMs +
+            (ability.CooldownMs > 0 ? ability.CooldownMs : DefaultAbilityCooldownMs);
+
+        Send(player, ability, nowMs, targetX, targetY, ItemUseType.StartUse);
+
+        if (ability.MultiPhase)
+        {
+            // Held down: the shot comes on release, once the end cost has been paid too.
+            _abilityCharging = true;
+            return true;
+        }
+
+        if (ability.ActivatesShoot)
+            _shoot?.FireAbility(ability, MathF.Atan2(targetY - player.Y, targetX - player.X), nowMs);
+
+        return true;
+    }
+
+    /// <summary>
+    /// Releases a multi-phase ability. Harmless when none is charging.
+    /// </summary>
+    public void EndAbility(int nowMs, float targetX, float targetY)
+    {
+        if (!_abilityCharging)
+            return;
+
+        _abilityCharging = false;
+
+        var player = _map.Player;
+        var ability = EquippedAbility;
+        if (player == null || ability == null)
+            return;
+
+        (targetX, targetY) = ClampToRange(player, targetX, targetY);
+        Send(player, ability, nowMs, targetX, targetY, ItemUseType.EndUse);
+
+        // The release only fires if the second instalment can be paid, which is checked here as
+        // well as on the server so nothing is drawn that the server will not have created.
+        if (ability.ActivatesShoot && player.Mp >= ability.MpEndCost)
+            _shoot?.FireAbility(ability, MathF.Atan2(targetY - player.Y, targetX - player.X), nowMs);
+    }
+
+    /// <summary>Pulls an aim point back to <see cref="MaxAbilityRange"/> if it is beyond it.</summary>
+    private static (float X, float Y) ClampToRange(LocalPlayer player, float targetX, float targetY)
+    {
+        float dx = targetX - player.X;
+        float dy = targetY - player.Y;
+        float distance = MathF.Sqrt(dx * dx + dy * dy);
+
+        if (distance <= MaxAbilityRange || distance <= 0f)
+            return (targetX, targetY);
+
+        float scale = MaxAbilityRange / distance;
+        return (player.X + dx * scale, player.Y + dy * scale);
+    }
+
+    private void Send(LocalPlayer player, ObjectDesc ability, int nowMs, float targetX, float targetY, ItemUseType useType) =>
+        _session.Send(new UseItemPacket
+        {
+            Time = nowMs,
+            Slot = new SlotObject(player.ObjectId, AbilitySlot, player.Equipment[AbilitySlot]),
+            ItemUsePos = new WorldPos(targetX, targetY),
+            UseType = useType,
+        });
 
     private void Use(int slotIndex, int type)
     {
