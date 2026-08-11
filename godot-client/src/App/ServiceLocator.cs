@@ -1,60 +1,112 @@
+using System;
 using Godot;
+using Hendra.Assets;
 using Hendra.Core;
 using Hendra.Net;
+using Hendra.Resources;
 
 namespace Hendra.App;
 
 /// <summary>
-/// The one global the client has: it owns the process-wide clock and the world-server session, and
-/// drives them once per frame.
+/// The one global the client has: the process-wide clock, the loaded game data, and the current
+/// world-server session.
 /// </summary>
 /// <remarks>
-/// Registered as the <c>Svc</c> autoload. This deliberately replaces the AS3 client's Robotlegs
-/// container and its <c>StaticInjectorContext</c> escape hatch — roughly thirty <c>*Config</c>
-/// classes and a service locator reachable from anywhere, used to wire objects that could simply
-/// have been constructed. Everything else in the client is built and passed explicitly; only the
-/// two things that genuinely are process-global live here.
-///
-/// Ordering within a frame matters and is fixed here rather than left to node order:
-/// the clock snapshot has to be taken before anything reads it, and the session must be polled
-/// after the world has published the player's position, since that is what the outgoing Move
-/// packet reads.
+/// Registered as the <c>Svc</c> autoload. This deliberately replaces the original's Robotlegs
+/// container and its <c>StaticInjectorContext</c> escape hatch — some thirty config classes and a
+/// service locator reachable from anywhere, used to wire objects that could simply have been
+/// constructed. Everything else in the client is built and passed explicitly; only the things that
+/// genuinely are process-global live here.
 /// </remarks>
 public partial class ServiceLocator : Node
 {
     private static ServiceLocator _instance;
 
+    private readonly GameClock _clock = new();
+    private GameSession _session;
+
     /// <summary>The monotonic millisecond clock. Everything that goes on the wire is stamped from it.</summary>
     public static GameClock Clock => _instance._clock;
 
-    /// <summary>The world-server session. Null until a game is entered.</summary>
-    public static GameSession Session => _instance._session;
+    /// <summary>Sprites and animations. Null until <see cref="LoadContent"/> has run.</summary>
+    public static AssetLibrary Assets { get; private set; }
 
-    private readonly GameClock _clock = new();
-    private GameSession _session;
+    /// <summary>Object and terrain definitions. Null until <see cref="LoadContent"/> has run.</summary>
+    public static GameData Data { get; private set; }
+
+    /// <summary>The current session, or null when not in a game.</summary>
+    public static GameSession Session => _instance?._session;
+
+    public static bool ContentLoaded => Assets != null && Data != null;
 
     public override void _EnterTree()
     {
         _instance = this;
         _clock.Reset();
 
-        // Keep ticking while the window is unfocused. The server's keepalive and ack deadlines run
-        // on wall time, so a client that stops processing for twelve seconds gets disconnected.
+        // Keep ticking while the window is unfocused: the server's keepalive and acknowledgement
+        // deadlines run on wall time, so a client that stops processing for twelve seconds is
+        // disconnected.
         ProcessMode = ProcessModeEnum.Always;
     }
 
     public override void _ExitTree()
     {
-        _session?.Dispose();
-        _session = null;
+        EndSession("Client shutting down.");
         if (_instance == this)
             _instance = null;
+    }
+
+    /// <summary>
+    /// Loads the extracted sprites and game data. Slow enough to be worth doing once, at boot.
+    /// </summary>
+    public static void LoadContent()
+    {
+        if (ContentLoaded)
+            return;
+
+        Assets = AssetLibrary.Load();
+
+        var data = new GameData();
+        var manifest = Assets.Manifest;
+
+        foreach (string file in manifest.Xml.Ground)
+            LoadXml(file, data.AddGround);
+
+        // Order matters: the first entries are base definitions and everything after them is a
+        // per-dungeon overlay that replaces the types it mentions.
+        foreach (string file in manifest.Xml.Objects)
+            LoadXml(file, data.AddObjects);
+
+        Data = data;
+        GD.Print($"[content] {Assets.Sheets.Count} sheets, {Data.Objects.Count} objects, {Data.Ground.Count} terrain types.");
+    }
+
+    private static void LoadXml(string fileName, Action<string> merge)
+    {
+        string path = AssetManifest.XmlDirectory + fileName;
+        using var file = FileAccess.Open(path, FileAccess.ModeFlags.Read);
+        if (file == null)
+        {
+            GD.PushError($"[content] missing {path}; run tools/extract_assets.py.");
+            return;
+        }
+
+        try
+        {
+            merge(file.GetAsText());
+        }
+        catch (Exception ex)
+        {
+            // One unreadable file should cost only the content it declares.
+            GD.PushError($"[content] could not parse {fileName}: {ex.Message}");
+        }
     }
 
     /// <summary>Creates a fresh session, discarding any previous one.</summary>
     public static GameSession BeginSession()
     {
-        _instance._session?.Dispose();
+        EndSession("Starting a new session.");
         _instance._session = new GameSession(_instance._clock);
         return _instance._session;
     }
@@ -62,8 +114,9 @@ public partial class ServiceLocator : Node
     /// <summary>Tears down the current session, if any.</summary>
     public static void EndSession(string reason = "Left the game.")
     {
-        if (_instance._session == null)
+        if (_instance?._session == null)
             return;
+
         _instance._session.Close(reason);
         _instance._session.Dispose();
         _instance._session = null;
@@ -71,11 +124,8 @@ public partial class ServiceLocator : Node
 
     public override void _Process(double delta)
     {
+        // Taken before anything else reads it. The session is drained by the game scene instead, at
+        // the point in its own update where the player's position is already current.
         _clock.BeginFrame();
-
-        // The world publishes the player's position during its own _Process, which Godot runs
-        // after this node because the autoload sits at the top of the tree. Polling here would
-        // therefore send a Move built from last frame's position, so draining the socket is left
-        // to the game scene, which calls Session.Poll() at the right point in its own update.
     }
 }
