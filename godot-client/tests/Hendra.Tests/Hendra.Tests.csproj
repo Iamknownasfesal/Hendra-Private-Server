@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>12</LangVersion>
+    <Nullable>disable</Nullable>
+    <IsPackable>false</IsPackable>
+    <!-- The client sources are pulled in file-by-file below, so switch off the default glob. -->
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <!-- Only needed so the server's own wRandom.cs compiles unmodified; see WRandomParityTests. -->
+    <PackageReference Include="log4net" Version="2.0.17" />
+    <!-- Vector3/Basis/Mathf are plain managed structs, so the projection maths can be tested
+         against the real types without booting the engine. -->
+    <PackageReference Include="GodotSharp" Version="4.7.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="*.cs" />
+  </ItemGroup>
+
+  <!--
+    The protocol, data and core layers deliberately have no Godot dependency, so they can be
+    compiled straight into the test assembly. That keeps these tests runnable with plain
+    `dotnet test`, with no engine and no editor.
+  -->
+  <ItemGroup>
+    <Compile Include="../../src/Core/**/*.cs" />
+    <Compile Include="../../src/Net/**/*.cs" />
+    <Compile Include="../../src/Data/**/*.cs" />
+    <Compile Include="../../src/Resources/**/*.cs" />
+    <Compile Include="../../src/Render/WorldProjection.cs" />
+    <Compile Include="../../src/World/Movement.cs" />
+  </ItemGroup>
+
+  <!--
+    Compiled verbatim from the server tree. Testing against a transcription would only prove the
+    transcription is self-consistent; this proves the client agrees with the code the server
+    actually runs.
+  -->
+  <ItemGroup>
+    <Compile Include="../../../Server-Side/wServer/wRandom.cs" Link="Server/wRandom.cs" />
+    <Compile Include="../../../Server-Side/common/NReader.cs" Link="Server/NReader.cs" />
+    <Compile Include="../../../Server-Side/common/NWriter.cs" Link="Server/NWriter.cs" />
+  </ItemGroup>
+
+</Project>

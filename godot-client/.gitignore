@@ -1,0 +1,17 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# .NET
+.mono/
+data_*/
+mono_crash.*.json
+bin/
+obj/
+*.user
+
+# Assets are generated from the AS3 client + server data by tools/extract_assets.py
+assets/sheets/
+assets/xml/
+assets/models/
+assets/manifest.json

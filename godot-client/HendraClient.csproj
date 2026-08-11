@@ -1,0 +1,23 @@
+<Project Sdk="Godot.NET.Sdk/4.7.0">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <RootNamespace>Hendra</RootNamespace>
+    <AssemblyName>HendraClient</AssemblyName>
+    <LangVersion>12</LangVersion>
+    <Nullable>disable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <!-- Godot only ever loads the assembly through its own host; skip the extra apphost. -->
+    <UseAppHost>false</UseAppHost>
+  </PropertyGroup>
+
+  <!--
+    The Godot SDK globs every .cs file under the project directory. The test project lives here too
+    and compiles its own copy of the client sources alongside xunit and a slice of the server tree,
+    so it has to be kept out of the game assembly.
+  -->
+  <ItemGroup>
+    <Compile Remove="tests/**/*.cs" />
+  </ItemGroup>
+</Project>
