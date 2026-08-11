@@ -44,6 +44,9 @@ public partial class WorldOverlay : Control
     private static readonly Color BarLowFill = new(1.0f, 0.15f, 0.0f);
 
     private readonly List<OverlayItem> _items = new(128);
+
+    /// <summary>Where the quest objective is on screen, or null when there is none.</summary>
+    private Vector2? _questTarget;
     private Font _font;
     private int _fontSize = 13;
 
@@ -55,7 +58,17 @@ public partial class WorldOverlay : Control
         _font = ThemeDB.FallbackFont;
     }
 
-    public void Clear() => _items.Clear();
+    public void Clear()
+    {
+        _items.Clear();
+        _questTarget = null;
+    }
+
+    /// <summary>
+    /// Marks the quest objective. Pass null when there is none.
+    /// </summary>
+    /// <param name="screenPosition">Where the objective is, in pixels. May be off screen.</param>
+    public void SetQuestMarker(Vector2? screenPosition) => _questTarget = screenPosition;
 
     public void Add(in OverlayItem item) => _items.Add(item);
 
@@ -79,6 +92,71 @@ public partial class WorldOverlay : Control
             if (!string.IsNullOrEmpty(item.Name))
                 DrawName(item);
         }
+
+        if (_questTarget.HasValue)
+            DrawQuestMarker(_questTarget.Value, bounds);
+    }
+
+    /// <summary>
+    /// Points at the quest objective: a bobbing arrow over it while it is visible, and one pinned
+    /// to the edge of the screen pointing the way while it is not.
+    /// </summary>
+    /// <remarks>
+    /// The two cases are the same drawing at different places, which is why the arrow points down
+    /// when the target is on screen: it is an arrow aimed at the target either way.
+    /// </remarks>
+    private void DrawQuestMarker(Vector2 target, Vector2 bounds)
+    {
+        const float Margin = 40f;
+        const float Size = 11f;
+        const float BobPixels = 4f;
+        const float BobPeriodMs = 900f;
+
+        var colour = new Color(0.99f, 0.83f, 0.2f);
+        var centre = bounds / 2f;
+
+        bool visible = target.X > Margin && target.X < bounds.X - Margin &&
+                       target.Y > Margin && target.Y < bounds.Y - Margin;
+
+        Vector2 tip;
+        float angle;
+
+        if (visible)
+        {
+            // Above the target, pointing down at it, rising and falling so it catches the eye.
+            float bob = Mathf.Sin(Time.GetTicksMsec() / BobPeriodMs * Mathf.Tau) * BobPixels;
+            tip = target + new Vector2(0f, -28f + bob);
+            angle = Mathf.Pi / 2f;
+        }
+        else
+        {
+            var direction = (target - centre).Normalized();
+            if (direction == Vector2.Zero)
+                return;
+
+            // Pushed out to whichever edge it reaches first, so the arrow sits on the rim of the
+            // view rather than in a corner.
+            var half = bounds / 2f - new Vector2(Margin, Margin);
+            float scale = Mathf.Min(
+                Mathf.Abs(direction.X) < 0.0001f ? float.MaxValue : half.X / Mathf.Abs(direction.X),
+                Mathf.Abs(direction.Y) < 0.0001f ? float.MaxValue : half.Y / Mathf.Abs(direction.Y));
+
+            tip = centre + direction * scale;
+            angle = direction.Angle();
+        }
+
+        // A simple triangle, built from the heading so both cases share one shape.
+        var forward = Vector2.FromAngle(angle);
+        var side = new Vector2(-forward.Y, forward.X);
+
+        DrawColoredPolygon(
+            new[]
+            {
+                tip,
+                tip - forward * Size * 1.6f + side * Size * 0.7f,
+                tip - forward * Size * 1.6f - side * Size * 0.7f,
+            },
+            colour);
     }
 
     private void DrawHealthBar(in OverlayItem item)

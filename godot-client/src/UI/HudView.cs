@@ -35,12 +35,19 @@ public partial class HudView : Control
     /// <summary>Carried items, the backpack aside.</summary>
     private const int InventorySlots = 8;
 
+    /// <summary>The extra carried slots a backpack grants, at indices 16 to 23.</summary>
+    private const int BackpackSlots = 8;
+
     /// <summary>Loot bags carry eight; vaults carry more, but eight is what fits the panel.</summary>
     private const int ContainerSlots = 8;
 
     private readonly List<SlotView> _equipment = new();
     private readonly List<SlotView> _inventory = new();
     private readonly List<SlotView> _container = new();
+    private readonly List<SlotView> _backpack = new();
+
+    /// <summary>The backpack section, shown only once the character owns one.</summary>
+    private VBoxContainer _backpackPanel;
 
     /// <summary>Raised with the slot's index in the player's 24-entry equipment array.</summary>
     public event Action<int> SlotActivated;
@@ -127,6 +134,14 @@ public partial class HudView : Control
 
         column.AddChild(new Label { Text = "Inventory" });
         AddSlots(column, _inventory, InventorySlots, firstIndex: 8);
+
+        // Eight more carried slots, and only there for a character that has bought the bag. The
+        // stat that grants them is HasBackpack; until then the slots exist in the data model and
+        // are simply not shown, which is what the server expects -- it refuses a swap into them.
+        _backpackPanel = new VBoxContainer { Visible = false };
+        column.AddChild(_backpackPanel);
+        _backpackPanel.AddChild(new Label { Text = "Backpack" });
+        AddSlots(_backpackPanel, _backpack, BackpackSlots, firstIndex: 16);
 
         // Only present while standing over something that holds items.
         _containerPanel = new VBoxContainer { Visible = false };
@@ -311,6 +326,10 @@ public partial class HudView : Control
         // only the first four as equipment; 8 onward is the carried inventory.
         UpdateSlots(_equipment, player, 0);
         UpdateSlots(_inventory, player, 8);
+
+        _backpackPanel.Visible = player.HasBackpack;
+        if (player.HasBackpack)
+            UpdateSlots(_backpack, player, 16);
     }
 
     private void UpdateSlots(List<SlotView> views, LocalPlayer player, int firstIndex)

@@ -92,6 +92,10 @@ public static class StatApplier
             case StatsType.Breath when player != null: player.Breath = stat.IntValue; break;
             case StatsType.Credits when player != null: player.Credits = stat.IntValue; break;
             case StatsType.CurrentFame when player != null: player.Fame = stat.IntValue; break;
+
+            // Sent as a number rather than a flag, and it is what makes the last eight inventory
+            // slots real -- the server refuses a swap into them for a character without one.
+            case StatsType.HasBackpack when player != null: player.HasBackpack = stat.IntValue != 0; break;
         }
     }
 

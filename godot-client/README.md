@@ -155,14 +155,15 @@ shooting with server-verified timing, abilities, projectiles, damage, loot conta
 merchants, portals between worlds, chat, trading, a nearby-players list, a minimap, the HUD, the
 visual effects --
 every `ShowEffect` kind, the spray a struck monster throws off, and the camera shake -- sound and
-music, an options panel that remembers itself between sessions, and, when it ends, the fame tally
-from `/char/fame`.
+music, the quest arrow, an options panel that remembers itself between sessions, and, when it ends,
+the fame tally from `/char/fame`.
 
 ## What is not done yet
 
 - The guild and party panels. The packets are all implemented and their results reach the chat log;
   what is missing is the UI to drive them.
-- Pets, the market, quests and daily rewards.
+- Pets, the market, the quest *log*, and daily rewards. The objective arrow works; what is missing
+  is the panel listing what the quest is.
 - The charging aura on a Rising Fury enemy is emitted around the enemy rather than sampled over its
   sprite, which is what the original did. Sampling would mean reading the texture back per frame.
 - Edge-mode and composite terrain blending. Those two of the three blend schemes fall back to plain

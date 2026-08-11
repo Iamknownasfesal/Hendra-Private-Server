@@ -52,6 +52,9 @@ public sealed class LocalPlayer : Entity
 
     public int Fame;
 
+    /// <summary>Whether the character owns a backpack, which is what makes slots 16-23 usable.</summary>
+    public bool HasBackpack;
+
     /// <summary>Terrain speed factor, updated whenever the player changes tile.</summary>
     public float MoveMultiplier = 1f;
 

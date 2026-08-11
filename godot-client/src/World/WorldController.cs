@@ -360,6 +360,10 @@ public partial class WorldController : Node
                 _particles.Show(effect, now);
                 break;
 
+            case QuestObjIdPacket quest:
+                _questObjectId = quest.ObjectId;
+                break;
+
             case PlaySoundPacket sound:
                 PlayObjectSound(sound);
                 break;
@@ -1189,12 +1193,16 @@ public partial class WorldController : Node
     /// testing their alpha -- a texture read-back per visible object, every frame, to answer a
     /// question the object's own definition already knew.
     /// </remarks>
+    /// <summary>The entity the server has named as the current objective, or zero for none.</summary>
+    private int _questObjectId;
+
     private void DrawOverlay()
     {
         if (_overlay == null)
             return;
 
         _overlay.Clear();
+        _overlay.SetQuestMarker(QuestMarkerPosition());
 
         foreach (var entity in _map.Entities)
         {
@@ -1233,6 +1241,26 @@ public partial class WorldController : Node
         }
 
         _overlay.Commit();
+    }
+
+    /// <summary>
+    /// Where the quest objective is on screen, or null when there is none to point at.
+    /// </summary>
+    /// <remarks>
+    /// The server names the objective once, by object id, and never withdraws it -- so a target
+    /// that dies or is left behind in another world simply stops being in the map, which is what
+    /// clears the marker here.
+    /// </remarks>
+    private Vector2? QuestMarkerPosition()
+    {
+        if (_questObjectId == 0)
+            return null;
+
+        var target = _map.GetEntity(_questObjectId);
+        if (target == null || target.Dead)
+            return null;
+
+        return _world.Unproject(_world.Projection.ToScene(target.X, target.Y, target.Z));
     }
 
     /// <summary>
