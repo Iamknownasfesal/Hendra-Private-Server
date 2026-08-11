@@ -130,10 +130,19 @@ public sealed class AppEngineClient : IDisposable
     }
 
     /// <summary>Inflates the body if it is compressed, otherwise reads it as UTF-8.</summary>
+    /// <remarks>
+    /// The byte-order mark is stripped. Some of these responses are files served straight off disk
+    /// and were saved with one; UTF8.GetString keeps it as a zero-width character, which is
+    /// invisible in a log and makes a JSON parser reject the document at position zero.
+    /// </remarks>
     private static string Decode(byte[] body)
     {
-        byte[] inflated = Inflate(body);
-        return Encoding.UTF8.GetString(inflated ?? body);
+        byte[] bytes = Inflate(body) ?? body;
+
+        if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
+            return Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3);
+
+        return Encoding.UTF8.GetString(bytes);
     }
 
     /// <summary>

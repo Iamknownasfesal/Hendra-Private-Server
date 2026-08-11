@@ -80,6 +80,10 @@ public partial class Boot : Control
             _login = null;
         }
 
+        // Fired and forgotten: the session does not wait on it, and keys render as themselves
+        // until it lands.
+        _ = ServiceLocator.LoadLanguageAsync($"http://{server.Address}:8888");
+
         _game = new GameScene { Autofire = _options?.Autofire ?? false };
         _game.Ended += OnSessionEnded;
 

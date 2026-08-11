@@ -34,6 +34,7 @@
     <Compile Include="../../src/Net/**/*.cs" />
     <Compile Include="../../src/Data/**/*.cs" />
     <Compile Include="../../src/Resources/**/*.cs" />
+    <Compile Include="../../src/Text/**/*.cs" />
     <Compile Include="../../src/Render/WorldProjection.cs" />
     <Compile Include="../../src/World/Movement.cs" />
     <Compile Include="../../src/World/Projectile.cs" />

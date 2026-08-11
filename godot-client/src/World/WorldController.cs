@@ -47,8 +47,8 @@ public partial class WorldController : Node
     private HudView _hud;
     private ChatView _chat;
 
-    /// <summary>Localised strings. Empty until the language table is fetched.</summary>
-    private readonly StringMap _strings = new();
+    /// <summary>Localised strings, shared with the rest of the client.</summary>
+    private StringMap _strings = new();
 
     private float _cameraAngle = 7f * Mathf.Pi / 4f;
     private Entity _focus;
@@ -84,6 +84,7 @@ public partial class WorldController : Node
         MinimapView minimap = null)
     {
         _minimap = minimap;
+        _strings = App.ServiceLocator.Strings ?? _strings;
         _overlay = overlay;
         _hud = hud;
         _chat = chat;

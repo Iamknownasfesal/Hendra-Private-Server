@@ -4,6 +4,7 @@ using Hendra.Assets;
 using Hendra.Core;
 using Hendra.Net;
 using Hendra.Resources;
+using Hendra.Text;
 
 namespace Hendra.App;
 
@@ -33,6 +34,12 @@ public partial class ServiceLocator : Node
 
     /// <summary>Object and terrain definitions. Null until <see cref="LoadContent"/> has run.</summary>
     public static GameData Data { get; private set; }
+
+    /// <summary>
+    /// Localised text. Empty until <see cref="LoadLanguageAsync"/> completes, which is fine —
+    /// an unresolved key renders as itself rather than as nothing.
+    /// </summary>
+    public static StringMap Strings { get; } = new();
 
     /// <summary>The current session, or null when not in a game.</summary>
     public static GameSession Session => _instance?._session;
@@ -100,6 +107,31 @@ public partial class ServiceLocator : Node
         {
             // One unreadable file should cost only the content it declares.
             GD.PushError($"[content] could not parse {fileName}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Fetches the language table from the app server.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not fatal. The client is perfectly playable with keys showing through instead
+    /// of prose, and refusing to start because a translation file is missing would be worse than
+    /// the missing translations.
+    /// </remarks>
+    public static async System.Threading.Tasks.Task LoadLanguageAsync(string baseUrl, string language = "en")
+    {
+        try
+        {
+            using var client = new Account.AppEngineClient(baseUrl);
+            string json = await client.PostAsync("/app/getLanguageStrings",
+                new System.Collections.Generic.Dictionary<string, string> { ["languageType"] = language });
+
+            Strings.LoadFrom(json);
+            GD.Print($"[content] {Strings.Count} localised strings.");
+        }
+        catch (Exception ex)
+        {
+            GD.PushWarning($"[content] could not load language strings: {ex.Message}");
         }
     }
 
