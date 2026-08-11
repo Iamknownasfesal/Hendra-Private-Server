@@ -43,6 +43,8 @@ public partial class WorldController : Node
     private Inventory _inventory;
     private MinimapView _minimap;
     private TileColors _tileColors;
+    private TileAtlas _tileAtlas;
+    private TileBlender _tileBlender;
     private WorldOverlay _overlay;
     private HudView _hud;
     private ChatView _chat;
@@ -94,6 +96,8 @@ public partial class WorldController : Node
         _assets = assets;
         _textures = new TextureResolver(assets);
         _tileColors = new TileColors(assets);
+        _tileAtlas = new TileAtlas();
+        _tileBlender = new TileBlender(data, assets, _tileAtlas);
         _world = world;
         _clock = clock;
         _map = new GameMap(data);
@@ -536,6 +540,9 @@ public partial class WorldController : Node
         DrawProjectiles(now);
         DrawOverlay();
 
+        // One upload for however many tiles were baked while sweeping the visible area.
+        _tileAtlas.Flush();
+
         _world.Render();
     }
 
@@ -561,15 +568,24 @@ public partial class WorldController : Node
                 if (square is not { IsKnown: true } || square.Desc == null)
                     continue;
 
-                var texture = _textures.Resolve(square.Desc.Texture, x * 31 + y * 17);
-                if (!texture.Still.IsValid)
+                // Blended artwork where the tile borders something that outranks it, and the plain
+                // sheet sprite otherwise.
+                var sprite = _tileBlender.Blend(_map, x, y, square);
+                if (!sprite.IsValid)
+                {
+                    // Random-variant terrain picks by position, so a field of grass is varied but
+                    // each tile is stable.
+                    sprite = _textures.Resolve(square.Desc.Texture, x * 31 + y * 17).Still;
+                }
+
+                if (!sprite.IsValid)
                     continue;
 
                 _world.Ground.Add(new GroundDraw
                 {
                     TileX = x,
                     TileY = y,
-                    Sprite = texture.Still,
+                    Sprite = sprite,
                     UvOffset = AnimationOffset(square.Desc, now),
                     Modulate = Colors.White,
                 });
