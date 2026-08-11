@@ -35,11 +35,18 @@ public partial class HudView : Control
     /// <summary>Carried items, the backpack aside.</summary>
     private const int InventorySlots = 8;
 
+    /// <summary>Loot bags carry eight; vaults carry more, but eight is what fits the panel.</summary>
+    private const int ContainerSlots = 8;
+
     private readonly List<SlotView> _equipment = new();
     private readonly List<SlotView> _inventory = new();
+    private readonly List<SlotView> _container = new();
 
     /// <summary>Raised with the slot's index in the player's 24-entry equipment array.</summary>
     public event Action<int> SlotActivated;
+
+    /// <summary>Raised with the slot's index in the open container.</summary>
+    public event Action<int> ContainerSlotActivated;
 
     private VitalBar _health;
     private VitalBar _mana;
@@ -47,6 +54,7 @@ public partial class HudView : Control
     private Label _level;
     private Label _stats;
     private Label _prompt;
+    private VBoxContainer _containerPanel;
 
     private AssetLibrary _assets;
     private GameData _data;
@@ -112,6 +120,12 @@ public partial class HudView : Control
         column.AddChild(new Label { Text = "Inventory" });
         AddSlots(column, _inventory, InventorySlots, firstIndex: 8);
 
+        // Only present while standing over something that holds items.
+        _containerPanel = new VBoxContainer { Visible = false };
+        column.AddChild(_containerPanel);
+        _containerPanel.AddChild(new Label { Text = "Contents" });
+        AddContainerSlots(_containerPanel, ContainerSlots);
+
         // Sits over the world rather than in the panel, because it refers to something in front of
         // the player rather than to their own state.
         _prompt = new Label
@@ -136,6 +150,51 @@ public partial class HudView : Control
         _prompt.Visible = !string.IsNullOrEmpty(label);
         if (_prompt.Visible)
             _prompt.Text = $"[R] {label}";
+    }
+
+    private void AddContainerSlots(Control parent, int count)
+    {
+        var grid = new GridContainer { Columns = SlotsPerRow };
+        grid.AddThemeConstantOverride("h_separation", 4);
+        grid.AddThemeConstantOverride("v_separation", 4);
+        parent.AddChild(grid);
+
+        for (int i = 0; i < count; i++)
+        {
+            int slotIndex = i;
+            var slot = new SlotView { CustomMinimumSize = new Vector2(SlotSize, SlotSize) };
+            slot.Activated += () => ContainerSlotActivated?.Invoke(slotIndex);
+            grid.AddChild(slot);
+            _container.Add(slot);
+        }
+    }
+
+    /// <summary>Shows a container's contents, or hides the panel when given null.</summary>
+    public void ShowContainer(Entity container)
+    {
+        if (_containerPanel == null)
+            return;
+
+        _containerPanel.Visible = container != null;
+        if (container == null)
+            return;
+
+        for (int i = 0; i < _container.Count; i++)
+        {
+            int type = container.Equipment != null && i < container.Equipment.Length
+                ? container.Equipment[i]
+                : -1;
+
+            if (type < 0)
+            {
+                _container[i].SetItem(default, null);
+                continue;
+            }
+
+            var desc = _data?.GetObject((ushort)type);
+            var resolved = _textures?.Resolve(desc?.Texture) ?? default;
+            _container[i].SetItem(resolved.Still, desc?.DisplayId ?? desc?.Id);
+        }
     }
 
     private void AddSlots(Control parent, List<SlotView> into, int count, int firstIndex)

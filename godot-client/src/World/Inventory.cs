@@ -78,6 +78,90 @@ public sealed class Inventory
             Equip(player, slotIndex, item, type);
     }
 
+    /// <summary>
+    /// Moves an item out of a nearby container and into the first free carried slot.
+    /// </summary>
+    /// <remarks>
+    /// The server requires the two entities to be within one tile of each other and refuses
+    /// otherwise, so this is only ever called for the container the interaction scan found.
+    /// </remarks>
+    public void TakeFrom(Entity container, int containerSlot)
+    {
+        var player = _map.Player;
+        if (player?.Equipment == null || container?.Equipment == null)
+            return;
+
+        if (containerSlot < 0 || containerSlot >= container.Equipment.Length)
+            return;
+
+        int type = container.Equipment[containerSlot];
+        if (type == NoItem)
+            return;
+
+        int destination = FirstFreeCarried(player);
+        if (destination < 0)
+            return;
+
+        _session.Send(new InvSwapPacket
+        {
+            Time = _clock.FrameMs,
+            Position = new WorldPos(player.X, player.Y),
+            Slot1 = new SlotObject(container.ObjectId, (byte)containerSlot, type),
+            Slot2 = new SlotObject(player.ObjectId, (byte)destination, NoItem),
+        });
+
+        container.Equipment[containerSlot] = NoItem;
+        player.Equipment[destination] = type;
+    }
+
+    /// <summary>Moves a carried item into the first free slot of a nearby container.</summary>
+    public void PutInto(Entity container, int playerSlot)
+    {
+        var player = _map.Player;
+        if (player?.Equipment == null || container?.Equipment == null)
+            return;
+
+        if (playerSlot < 0 || playerSlot >= player.Equipment.Length)
+            return;
+
+        int type = player.Equipment[playerSlot];
+        if (type == NoItem)
+            return;
+
+        int destination = -1;
+        for (int i = 0; i < container.Equipment.Length; i++)
+        {
+            if (container.Equipment[i] != NoItem)
+                continue;
+            destination = i;
+            break;
+        }
+
+        if (destination < 0)
+            return;
+
+        _session.Send(new InvSwapPacket
+        {
+            Time = _clock.FrameMs,
+            Position = new WorldPos(player.X, player.Y),
+            Slot1 = new SlotObject(player.ObjectId, (byte)playerSlot, type),
+            Slot2 = new SlotObject(container.ObjectId, (byte)destination, NoItem),
+        });
+
+        player.Equipment[playerSlot] = NoItem;
+        container.Equipment[destination] = type;
+    }
+
+    private static int FirstFreeCarried(LocalPlayer player)
+    {
+        for (int i = CarriedFirst; i <= CarriedLast; i++)
+        {
+            if (player.Equipment[i] == NoItem)
+                return i;
+        }
+        return -1;
+    }
+
     /// <summary>Drinks one of the two stacked potions, which are addressed by slot id, not index.</summary>
     public void UsePotion(bool health)
     {

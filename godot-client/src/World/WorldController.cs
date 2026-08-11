@@ -115,7 +115,10 @@ public partial class WorldController : Node
             _chat.Submitted += OnChatSubmitted;
 
         if (_hud != null)
-            _hud.SlotActivated += _inventory.Activate;
+        {
+            _hud.SlotActivated += OnSlotActivated;
+            _hud.ContainerSlotActivated += OnContainerSlotActivated;
+        }
 
         _session.MapLoaded += OnMapLoaded;
         _session.WorldUpdated += OnWorldUpdated;
@@ -418,6 +421,7 @@ public partial class WorldController : Node
         _combat.Update(now);
         _interaction.Update(now);
         _hud?.ShowPrompt(_interaction.Current.Exists ? _interaction.Current.Label : null);
+        _hud?.ShowContainer(OpenContainer);
 
         // Publish before polling: a NewTick delivered by Poll answers with a Move built from this.
         if (player != null)
@@ -435,6 +439,32 @@ public partial class WorldController : Node
         _minimap?.Refresh(_cameraAngle);
 
         Draw(now);
+    }
+
+    /// <summary>The container in reach, if any. Its panel appears and disappears with proximity.</summary>
+    private Entity OpenContainer =>
+        _interaction.Current is { Kind: InteractionKind.Container, Entity: { } entity } ? entity : null;
+
+    /// <summary>
+    /// A click on one of our own slots: use it, or move it into an open container.
+    /// </summary>
+    private void OnSlotActivated(int slotIndex)
+    {
+        var container = OpenContainer;
+        if (container != null)
+        {
+            _inventory.PutInto(container, slotIndex);
+            return;
+        }
+
+        _inventory.Activate(slotIndex);
+    }
+
+    private void OnContainerSlotActivated(int slotIndex)
+    {
+        var container = OpenContainer;
+        if (container != null)
+            _inventory.TakeFrom(container, slotIndex);
     }
 
     /// <summary>Sends a chat line, or a slash command, exactly as typed.</summary>
@@ -506,8 +536,11 @@ public partial class WorldController : Node
                 break;
 
             case InteractionKind.Container:
+                // The panel is already showing whenever one is in reach, so the key has nothing
+                // left to do.
+                break;
+
             case InteractionKind.Merchant:
-                // Both need a panel to be useful; opening one is not wired up yet.
                 _chat?.AddSystem($"{target.Label} is not implemented yet.");
                 break;
         }
