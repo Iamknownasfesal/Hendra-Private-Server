@@ -179,7 +179,20 @@ public sealed class GameMap : ITileQuery
     {
         _updating = true;
         foreach (var entity in _entities)
+        {
+            float wasX = entity.X;
+            float wasY = entity.Y;
+
             entity.Update(nowMs, deltaMs);
+
+            // An entity that interpolated onto another tile has to be re-attached to it. Without
+            // this its square is whichever one it was standing on when it arrived, so a monster
+            // that walks out of the streamed-in area keeps being drawn, and one that walks into it
+            // stays hidden. The player is exempt: its own movement re-attaches as it goes.
+            if (entity.X != wasX || entity.Y != wasY)
+                MoveEntity(entity, entity.X, entity.Y);
+        }
+
         _updating = false;
 
         if (_pendingRemovals.Count > 0)

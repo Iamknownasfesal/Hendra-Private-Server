@@ -176,8 +176,8 @@ the fame tally from `/char/fame`.
   is the panel listing what the quest is.
 - The charging aura on a Rising Fury enemy is emitted around the enemy rather than sampled over its
   sprite, which is what the original did. Sampling would mean reading the texture back per frame.
-- Edge-mode and composite terrain blending. Those two of the three blend schemes fall back to plain
-  artwork; the common one is implemented.
+- Composite terrain blending, the third of the three blend schemes. Seven ground types use it; they
+  fall back to plain artwork rather than being blended wrongly.
 - Rebinding keys. The options panel lists what the keys do but cannot change them.
 
 ## Out of scope

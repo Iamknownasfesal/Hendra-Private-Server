@@ -108,6 +108,7 @@ public sealed class TileBlender
     private readonly Image[][][] _masks = new Image[4][][];
 
     private readonly Dictionary<ushort, Image> _baseTiles = new();
+    private readonly Dictionary<ushort, EdgeSet> _edgeSets = new();
     private readonly Dictionary<Texture2D, Image> _sheets = new();
     private readonly Dictionary<BlendSignature, Sprite> _baked = new();
 
@@ -213,9 +214,14 @@ public sealed class TileBlender
         if (!IsReady || square?.Desc == null)
             return default;
 
-        // Edge and composite terrain use different schemes that are not implemented; they fall back
-        // to their plain artwork rather than being blended wrongly.
-        if (square.Desc.HasEdge || square.TileType == 253)
+        // Edge terrain draws a border on itself instead of bleeding a neighbour over; a different
+        // scheme entirely, and the more common of the two.
+        if (square.Desc.HasEdge)
+            return BlendEdges(map, tileX, tileY, square);
+
+        // Composite terrain is the third scheme and is not implemented; it falls back to its plain
+        // artwork rather than being blended wrongly.
+        if (square.TileType == CompositeTileType)
             return default;
 
         if (!BuildSignature(map, tileX, tileY, square))
@@ -228,6 +234,207 @@ public sealed class TileBlender
         var sprite = Bake(signature, square.TileType);
         _baked[signature] = sprite;
         return sprite;
+    }
+
+    /// <summary>The tile type that means "composite", which uses a scheme of its own.</summary>
+    private const ushort CompositeTileType = 253;
+
+    /// <summary>The tile type that means "nothing here".</summary>
+    private const ushort EmptyTileType = 0xFF;
+
+    /// <summary>
+    /// The nine images an edge-mode terrain draws its border from: four sides and four corners.
+    /// </summary>
+    /// <remarks>
+    /// Each is one sprite turned in quarters — the artwork ships one edge, one outer corner and one
+    /// inner corner, and the other three of each are that same picture rotated. The original does
+    /// the same thing and keeps the results forever.
+    /// </remarks>
+    private sealed class EdgeSet
+    {
+        public Image[] Sides = new Image[9];
+        public Image[] InnerCorners;
+        public bool HasOuterCorners;
+    }
+
+    /// <summary>
+    /// Draws a border on a tile wherever it meets something it should be edged against.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Unlike the blend scheme, nothing of the neighbour appears: the tile stamps its own edge
+    /// artwork over itself. What counts as "something" depends on the terrain — most edge against
+    /// the void alone, and the ones marked SameTypeEdgeMode edge against anything unlike
+    /// themselves.
+    /// </para>
+    /// <para>
+    /// An unknown neighbour never draws an edge. Terrain streams in as the player moves, and edging
+    /// against what has not arrived yet would draw a border along the leading edge of the visible
+    /// area and then bake it into the cache.
+    /// </para>
+    /// </remarks>
+    private Sprite BlendEdges(GameMap map, int tileX, int tileY, Square square)
+    {
+        var edges = GetEdgeSet(square.TileType, square.Desc);
+        if (edges == null)
+            return default;
+
+        bool sameTypeMode = square.Desc.SameTypeEdgeMode;
+        bool anyDifferent = false;
+
+        int index = 0;
+        for (int dy = -1; dy <= 1; dy++)
+        {
+            for (int dx = -1; dx <= 1; dx++, index++)
+            {
+                if (dx == 0 && dy == 0)
+                {
+                    _signature[index] = square.TileType;
+                    continue;
+                }
+
+                var neighbour = map.GetSquare(tileX + dx, tileY + dy);
+
+                bool same = neighbour is not { IsKnown: true }
+                    || (sameTypeMode
+                        ? neighbour.TileType == square.TileType
+                        : neighbour.TileType != EmptyTileType);
+
+                _signature[index] = same ? (ushort)1 : (ushort)0;
+                anyDifferent |= !same;
+            }
+        }
+
+        if (!anyDifferent)
+            return default;
+
+        var signature = new BlendSignature(_signature);
+        if (_baked.TryGetValue(signature, out var cached))
+            return cached;
+
+        var sprite = BakeEdges(signature, square.TileType, edges);
+        _baked[signature] = sprite;
+        return sprite;
+    }
+
+    private Sprite BakeEdges(BlendSignature signature, ushort baseType, EdgeSet edges)
+    {
+        var baseTile = GetBaseTile(baseType);
+        if (baseTile == null)
+            return default;
+
+        var result = Image.CreateEmpty(TileSize, TileSize, false, Image.Format.Rgba8);
+        result.BlitRect(baseTile, new Rect2I(0, 0, TileSize, TileSize), Vector2I.Zero);
+
+        bool Same(int i) => _signature[i] != 0;
+
+        // The four sides, wherever the neighbour beyond them is something else.
+        for (int side = 1; side < 8; side += 2)
+        {
+            if (!Same(side))
+                Stamp(result, edges.Sides[side]);
+        }
+
+        // An outer corner shows where both neighbouring sides match but the diagonal between them
+        // does not -- the tile turns a corner around the gap.
+        if (edges.HasOuterCorners)
+        {
+            if (Same(3) && Same(1) && !Same(0)) Stamp(result, edges.Sides[0]);
+            if (Same(1) && Same(5) && !Same(2)) Stamp(result, edges.Sides[2]);
+            if (Same(5) && Same(7) && !Same(8)) Stamp(result, edges.Sides[8]);
+            if (Same(3) && Same(7) && !Same(6)) Stamp(result, edges.Sides[6]);
+        }
+
+        // An inner corner shows where both neighbouring sides differ, joining the two side borders
+        // that already meet there.
+        if (edges.InnerCorners != null)
+        {
+            if (!Same(3) && !Same(1)) Stamp(result, edges.InnerCorners[0]);
+            if (!Same(1) && !Same(5)) Stamp(result, edges.InnerCorners[2]);
+            if (!Same(5) && !Same(7)) Stamp(result, edges.InnerCorners[8]);
+            if (!Same(3) && !Same(7)) Stamp(result, edges.InnerCorners[6]);
+        }
+
+        return _atlas.Add(result);
+    }
+
+    /// <summary>Alpha-composites one 8x8 image over another, in place.</summary>
+    private static void Stamp(Image destination, Image source)
+    {
+        if (source == null)
+            return;
+
+        for (int y = 0; y < TileSize; y++)
+        {
+            for (int x = 0; x < TileSize; x++)
+            {
+                var over = source.GetPixel(x, y);
+                if (over.A <= 0f)
+                    continue;
+
+                destination.SetPixel(x, y, over.A >= 1f
+                    ? over
+                    : destination.GetPixel(x, y).Lerp(over, over.A));
+            }
+        }
+    }
+
+    /// <summary>The edge artwork for a terrain type, built and kept on first use.</summary>
+    private EdgeSet GetEdgeSet(ushort type, Resources.GroundDesc desc)
+    {
+        if (_edgeSets.TryGetValue(type, out var cached))
+            return cached;
+
+        var edge = CropSpec(desc.EdgeTexture);
+        EdgeSet set = null;
+
+        if (edge != null)
+        {
+            set = new EdgeSet();
+
+            // West is the shipped orientation; a quarter turn clockwise puts it at the top, and so
+            // on round. The indices are the neighbour layout: 1 north, 3 west, 5 east, 7 south.
+            set.Sides[3] = edge;
+            set.Sides[1] = Rotate(edge, 1);
+            set.Sides[5] = Rotate(edge, 2);
+            set.Sides[7] = Rotate(edge, 3);
+
+            var corner = CropSpec(desc.CornerTexture);
+            if (corner != null)
+            {
+                set.HasOuterCorners = true;
+                set.Sides[0] = corner;
+                set.Sides[2] = Rotate(corner, 1);
+                set.Sides[8] = Rotate(corner, 2);
+                set.Sides[6] = Rotate(corner, 3);
+            }
+
+            var inner = CropSpec(desc.InnerCornerTexture);
+            if (inner != null)
+            {
+                set.InnerCorners = new Image[9];
+                set.InnerCorners[0] = inner;
+                set.InnerCorners[2] = Rotate(inner, 1);
+                set.InnerCorners[8] = Rotate(inner, 2);
+                set.InnerCorners[6] = Rotate(inner, 3);
+            }
+        }
+
+        _edgeSets[type] = set;
+        return set;
+    }
+
+    /// <summary>The artwork a texture spec names, cropped out of its sheet.</summary>
+    private Image CropSpec(Resources.TextureSpec spec)
+    {
+        if (spec is { Kind: Resources.TextureKind.Random, Variants.Count: > 0 })
+            spec = spec.Variants[0];
+
+        if (spec?.File == null)
+            return null;
+
+        var sprite = _assets.GetSprite(spec.File, spec.Index);
+        return sprite.IsValid ? Crop(sprite) : null;
     }
 
     /// <summary>

@@ -993,6 +993,9 @@ public partial class WorldController : Node
                     continue;
                 }
 
+                if (square.Desc.HasEdge && _blankTerrainReported.Add(square.TileType))
+                    GD.Print($"[diag] edge terrain {square.TileType} {square.Desc.Id} sameType={square.Desc.SameTypeEdgeMode} corner={square.Desc.CornerTexture != null} inner={square.Desc.InnerCornerTexture != null}");
+
                 _world.Ground.Add(new GroundDraw
                 {
                     TileX = x,
