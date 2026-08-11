@@ -145,7 +145,22 @@ public sealed class GameData
             // The XML stores this as eighths of a turn.
             AngleCorrection = Float(e, "AngleCorrection", 0f) * (MathF.PI / 4f),
             Rotation = Float(e, "Rotation", 0f),
+
+            SlotType = Int(e, "SlotType", -1),
+            RateOfFire = Float(e, "RateOfFire", 1f),
+            NumProjectiles = Int(e, "NumProjectiles", 1),
+            MpCost = Int(e, "MpCost", 0),
+            MpEndCost = Int(e, "MpEndCost", 0),
+            Consumable = Has(e, "Consumable"),
+            Usable = Has(e, "Usable"),
+            Soulbound = Has(e, "Soulbound"),
+            // Declared in seconds; everything downstream works in milliseconds.
+            CooldownMs = (int)(Float(e, "Cooldown", 0f) * 1000f),
         };
+
+        // The XML gives this in degrees. The default of 11.25 is what produces the familiar even
+        // fan on a three-shot weapon.
+        desc.ArcGap = Float(e, "ArcGap", 11.25f) * (MathF.PI / 180f);
 
         // A single Size collapses the range; otherwise the three fields describe it.
         if (e.Element("Size") != null)

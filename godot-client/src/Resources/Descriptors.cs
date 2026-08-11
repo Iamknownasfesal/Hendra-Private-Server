@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Hendra.Data;
 
@@ -174,6 +175,32 @@ public sealed class ObjectDesc
     public string DeathSound;
 
     public int[] SlotTypes;
+
+    // ---- Item fields. Only meaningful for equipment; harmless defaults otherwise. ----
+
+    /// <summary>Which equipment slot this fits. -1 means it is not equipment.</summary>
+    public int SlotType = -1;
+
+    /// <summary>
+    /// Multiplier on the wielder's attack rate. The server's shot-cooldown check divides by this,
+    /// so a mismatch here means shots are silently rejected.
+    /// </summary>
+    public float RateOfFire = 1f;
+
+    /// <summary>Shots per volley. Every one is sent as its own packet sharing a single timestamp.</summary>
+    public int NumProjectiles = 1;
+
+    /// <summary>Angle between shots in a volley, in radians. Defaults to 11.25 degrees.</summary>
+    public float ArcGap = 11.25f * MathF.PI / 180f;
+
+    public int MpCost;
+    public int MpEndCost;
+    public bool Consumable;
+    public bool Usable;
+    public bool Soulbound;
+
+    /// <summary>Ability cooldown in milliseconds. Zero means the default half second.</summary>
+    public int CooldownMs;
 
     public WhileMovingDesc WhileMoving;
     public TextureSpec Texture;

@@ -36,9 +36,12 @@ public partial class WorldController : Node
     private TextureResolver _textures;
     private WorldRoot _world;
     private GameClock _clock;
+    private Combat _combat;
+    private WorldOverlay _overlay;
 
     private float _cameraAngle = 7f * Mathf.Pi / 4f;
     private Entity _focus;
+    private bool _autofire;
 
     /// <summary>Whether the camera keeps the player centred or offset towards the top.</summary>
     public bool CenterOnPlayer { get; set; } = true;
@@ -50,8 +53,10 @@ public partial class WorldController : Node
         GameData data,
         AssetLibrary assets,
         WorldRoot world,
-        GameClock clock)
+        GameClock clock,
+        WorldOverlay overlay)
     {
+        _overlay = overlay;
         _session = session;
         _data = data;
         _assets = assets;
@@ -59,12 +64,14 @@ public partial class WorldController : Node
         _world = world;
         _clock = clock;
         _map = new GameMap(data);
+        _combat = new Combat(_map, data, session, clock);
 
         _session.MapLoaded += OnMapLoaded;
         _session.WorldUpdated += OnWorldUpdated;
         _session.Ticked += OnTicked;
         _session.Repositioned += OnRepositioned;
         _session.Entered += OnEntered;
+        _session.PacketReceived += OnPacket;
     }
 
     public override void _ExitTree()
@@ -77,6 +84,7 @@ public partial class WorldController : Node
         _session.Ticked -= OnTicked;
         _session.Repositioned -= OnRepositioned;
         _session.Entered -= OnEntered;
+        _session.PacketReceived -= OnPacket;
     }
 
     // ------------------------------------------------------------------------------------------
@@ -86,6 +94,7 @@ public partial class WorldController : Node
     private void OnMapLoaded(MapInfoPacket mapInfo)
     {
         _map.Reset(mapInfo.Width, mapInfo.Height, mapInfo.Name);
+        _combat.Clear();
 
         // Per-map XML overlays replace base definitions for the types they mention.
         foreach (string xml in mapInfo.ClientXml)
@@ -194,6 +203,113 @@ public partial class WorldController : Node
             player.OnMoved();
     }
 
+    /// <summary>Packets the session does not answer itself.</summary>
+    private void OnPacket(ServerPacket packet)
+    {
+        int now = _clock.FrameMs;
+
+        switch (packet)
+        {
+            case EnemyShootPacket shot:
+                OnEnemyShoot(shot, now);
+                break;
+
+            case ServerPlayerShootPacket shot:
+                OnServerPlayerShoot(shot, now);
+                break;
+
+            case AllyShootPacket shot:
+                // Cosmetic only: no damage, no acknowledgement, and it spawns from the shooter's
+                // current position rather than one carried on the wire.
+                _map.GetEntity(shot.OwnerId)?.SetAttack(shot.Angle, now);
+                break;
+
+            case DamagePacket damage:
+                OnDamage(damage);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// An enemy fired. One packet can describe a whole volley.
+    /// </summary>
+    /// <remarks>
+    /// A missing or dead shooter is answered with ShootAck(-1), the "could not spawn this" signal,
+    /// and nothing is created.
+    /// </remarks>
+    private void OnEnemyShoot(EnemyShootPacket shot, int now)
+    {
+        var owner = _map.GetEntity(shot.OwnerId);
+        if (owner?.Desc?.Projectiles == null || owner.Dead ||
+            !owner.Desc.Projectiles.TryGetValue(shot.BulletType, out var desc))
+        {
+            _session.Send(new ShootAckPacket { Time = -1 });
+            return;
+        }
+
+        for (int i = 0; i < Math.Max(1, (int)shot.NumShots); i++)
+        {
+            _combat.SpawnRemote(
+                desc,
+                owner.ObjectType,
+                shot.OwnerId,
+                (byte)((shot.BulletId + i) % 256),
+                shot.Angle + shot.AngleInc * i,
+                shot.StartingPos.X,
+                shot.StartingPos.Y,
+                now,
+                shot.Damage,
+                damagesPlayers: true);
+        }
+
+        _session.Send(new ShootAckPacket { Time = now });
+        owner.SetAttack(shot.Angle + shot.AngleInc * (shot.NumShots - 1) / 2f, now);
+    }
+
+    /// <summary>A projectile the server authored, such as an ability shot or a nova.</summary>
+    private void OnServerPlayerShoot(ServerPlayerShootPacket shot, int now)
+    {
+        var container = _data.GetObject((ushort)shot.ContainerType);
+        if (container?.Projectiles == null || !container.Projectiles.TryGetValue(0, out var desc))
+        {
+            _session.Send(new ShootAckPacket { Time = -1 });
+            return;
+        }
+
+        bool mine = shot.OwnerId == _session.PlayerObjectId;
+        _combat.SpawnRemote(
+            desc,
+            (ushort)shot.ContainerType,
+            shot.OwnerId,
+            shot.BulletId,
+            shot.Angle,
+            shot.StartingPos.X,
+            shot.StartingPos.Y,
+            now,
+            shot.Damage,
+            damagesPlayers: !mine);
+
+        // Only shots we own are acknowledged.
+        if (mine)
+            _session.Send(new ShootAckPacket { Time = now });
+    }
+
+    /// <summary>The server's authoritative word on damage, overriding any local prediction.</summary>
+    private void OnDamage(DamagePacket damage)
+    {
+        var target = _map.GetEntity(damage.TargetId);
+        if (target == null)
+            return;
+
+        target.Hp -= damage.DamageAmount;
+
+        foreach (var effect in damage.Effects)
+            target.Conditions |= effect.ToFlag();
+
+        if (damage.Kill)
+            target.Dead = true;
+    }
+
     // ------------------------------------------------------------------------------------------
     // Frame
     // ------------------------------------------------------------------------------------------
@@ -213,6 +329,8 @@ public partial class WorldController : Node
             player.UpdateMovement(_map, _cameraAngle, deltaMs);
 
         _map.Update(now, deltaMs);
+        ApplyAttackInput(now);
+        _combat.Update(now);
 
         // Publish before polling: a NewTick delivered by Poll answers with a Move built from this.
         if (player != null)
@@ -246,6 +364,35 @@ public partial class WorldController : Node
 
         if (Input.IsActionJustPressed("reset_camera"))
             _cameraAngle = 7f * Mathf.Pi / 4f;
+
+        if (Input.IsActionJustPressed("autofire"))
+            _autofire = !_autofire;
+    }
+
+    /// <summary>
+    /// Fires at the cursor while the button is held, or continuously when autofire is on.
+    /// </summary>
+    /// <remarks>
+    /// The aim angle is the cursor's offset from the screen centre, turned back into world space
+    /// through the camera's rotation -- so aiming stays where the cursor points as the world turns.
+    /// </remarks>
+    private void ApplyAttackInput(int now)
+    {
+        if (_map.Player == null)
+            return;
+
+        if (!_autofire && !Input.IsActionPressed("shoot"))
+            return;
+
+        var viewport = GetViewport();
+        var centre = viewport.GetVisibleRect().Size / 2f;
+        var offset = viewport.GetMousePosition() - centre;
+
+        var world = _world.Projection.ScreenToWorldOffset(offset);
+        if (world.LengthSquared() < 0.0001f)
+            return;
+
+        _combat.TryShoot(now, Mathf.Atan2(world.Y, world.X));
     }
 
     // ------------------------------------------------------------------------------------------
@@ -263,6 +410,8 @@ public partial class WorldController : Node
         float radius = _world.VisibleRadius();
         DrawGround(focus, radius, now);
         DrawEntities(now, _cameraAngle);
+        DrawProjectiles(now);
+        DrawOverlay();
 
         _world.Render();
     }
@@ -369,6 +518,99 @@ public partial class WorldController : Node
             if (entity.Desc.DrawUnder)
                 draw.SortBias -= 1f;
 
+            _world.Sprites.Add(draw);
+        }
+    }
+
+    /// <summary>
+    /// Positions the health bars and name plates over whichever entities warrant them.
+    /// </summary>
+    /// <remarks>
+    /// The original decided this per frame by reading three pixels out of the finished sprite and
+    /// testing their alpha -- a texture read-back per visible object, every frame, to answer a
+    /// question the object's own definition already knew.
+    /// </remarks>
+    private void DrawOverlay()
+    {
+        if (_overlay == null)
+            return;
+
+        _overlay.Clear();
+
+        foreach (var entity in _map.Entities)
+        {
+            var desc = entity.Desc;
+            if (desc == null || entity.Square is not { IsKnown: true } || entity.Dead)
+                continue;
+
+            bool combatant = desc.IsEnemy || desc.IsPlayer;
+            bool named = desc.ShowName && !string.IsNullOrEmpty(entity.Name);
+
+            // Nothing to say about a plain decoration.
+            if (!combatant && !named)
+                continue;
+
+            // An enemy that cannot be hurt should not advertise a health bar, and an invisible one
+            // should not advertise anything at all.
+            bool showBar = combatant
+                           && !entity.IsInvisible
+                           && !entity.IsInvulnerable
+                           && !desc.NoMiniMap
+                           && entity.MaxHp > 0;
+
+            if (!showBar && !named)
+                continue;
+
+            var scene = _world.Projection.ToScene(entity.X, entity.Y, entity.Z);
+            _overlay.Add(new OverlayItem
+            {
+                Anchor = _world.Unproject(scene),
+                Name = named ? entity.Name : null,
+                NameColor = desc.IsPlayer ? new Color(0.99f, 0.87f, 0f) : Colors.White,
+                Hp = entity.Hp,
+                MaxHp = entity.MaxHp,
+                ShowHealthBar = showBar,
+            });
+        }
+
+        _overlay.Commit();
+    }
+
+    /// <summary>
+    /// Draws projectiles in flight.
+    /// </summary>
+    /// <remarks>
+    /// Projectiles carry their own rotation: most sprites are drawn pointing along their direction
+    /// of travel, offset by whatever correction the artwork needs. That rotation is baked into the
+    /// quad rather than the texture, so no sprite has to be redrawn per angle -- which is what the
+    /// original did, caching a bitmap per rotation step.
+    /// </remarks>
+    private void DrawProjectiles(int now)
+    {
+        foreach (var projectile in _combat.Projectiles)
+        {
+            if (projectile.Desc == null)
+                continue;
+
+            var resolved = _textures.Resolve(projectile.Desc.Texture, projectile.ObjectId);
+            if (!resolved.Still.IsValid)
+                continue;
+
+            var draw = new SpriteDraw
+            {
+                TileX = projectile.X,
+                TileY = projectile.Y,
+                Height = projectile.Z,
+                Sprite = resolved.Still,
+                AnchorX = 0.5f,
+                Modulate = Colors.White,
+                Outlined = true,
+                // Slightly above whatever they are flying over, so a bullet is never swallowed by
+                // the sprite it is about to hit.
+                SortBias = 0.5f,
+            };
+
+            SizeQuad(ref draw, projectile, resolved.Still, 1, 1);
             _world.Sprites.Add(draw);
         }
     }

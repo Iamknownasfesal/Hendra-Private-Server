@@ -106,6 +106,17 @@ public partial class WorldRoot : Node3D
         return Mathf.Sqrt(halfWidth * halfWidth + halfHeight * halfHeight) + 1f;
     }
 
+    /// <summary>
+    /// Where a point in the scene lands on screen, in pixels.
+    /// </summary>
+    /// <remarks>
+    /// Used by the overlay for health bars and name plates. Those are drawn as screen-space UI
+    /// rather than world geometry so text stays crisp at any zoom, which is what the original could
+    /// not do -- it rasterised every name into its own bitmap and redrew it whenever the text
+    /// changed.
+    /// </remarks>
+    public Vector2 Unproject(Vector3 scenePosition) => _camera.UnprojectPosition(scenePosition);
+
     /// <summary>Turns the queued terrain and sprites into geometry, then empties the queues.</summary>
     public void Render()
     {

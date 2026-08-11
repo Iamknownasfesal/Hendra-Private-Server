@@ -19,6 +19,7 @@ namespace Hendra.App;
 public partial class GameScene : Node
 {
     private WorldRoot _world;
+    private WorldOverlay _overlay;
     private WorldController _controller;
     private GameSession _session;
 
@@ -35,6 +36,9 @@ public partial class GameScene : Node
     {
         _world = new WorldRoot();
         AddChild(_world);
+
+        _overlay = new WorldOverlay();
+        AddChild(_overlay);
 
         _controller = new WorldController();
         AddChild(_controller);
@@ -74,7 +78,7 @@ public partial class GameScene : Node
         _session.Failed += OnFailed;
         _session.ReconnectRequested += OnReconnectRequested;
 
-        _controller.Begin(_session, ServiceLocator.Data, ServiceLocator.Assets, _world, ServiceLocator.Clock);
+        _controller.Begin(_session, ServiceLocator.Data, ServiceLocator.Assets, _world, ServiceLocator.Clock, _overlay);
 
         try
         {
@@ -143,7 +147,7 @@ public partial class GameScene : Node
         _session.Disconnected += OnDisconnected;
         _session.Failed += OnFailed;
         _session.ReconnectRequested += OnReconnectRequested;
-        _controller.Begin(_session, ServiceLocator.Data, ServiceLocator.Assets, _world, ServiceLocator.Clock);
+        _controller.Begin(_session, ServiceLocator.Data, ServiceLocator.Assets, _world, ServiceLocator.Clock, _overlay);
 
         try
         {
