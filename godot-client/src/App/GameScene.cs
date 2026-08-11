@@ -41,6 +41,9 @@ public partial class GameScene : Node
     /// <summary>Uses the ability on a loop. Set from the command line for unattended runs.</summary>
     public bool AutoAbility { get; set; }
 
+    /// <summary>Walks in a circle. Set from the command line for unattended runs.</summary>
+    public bool AutoWalk { get; set; }
+
     /// <summary>Overrides the starting camera heading, in radians. Set from the command line.</summary>
     public float? StartingCameraAngle { get; set; }
 
@@ -140,6 +143,7 @@ public partial class GameScene : Node
         _controller.Begin(_session, ServiceLocator.Data, ServiceLocator.Assets, _world, ServiceLocator.Clock, _overlay, _hud, _chat, _minimap);
         _controller.AutofireOnStart = Autofire;
         _controller.AutoAbility = AutoAbility;
+        _controller.AutoWalk = AutoWalk;
         _controller.StartingCameraAngle = StartingCameraAngle;
         _controller.CenterOnPlayer = ServiceLocator.Settings?.CenterOnPlayer ?? true;
         _controller.OptionsToggled += () => _options.Toggle();
@@ -254,6 +258,7 @@ public partial class GameScene : Node
         _controller.Begin(_session, ServiceLocator.Data, ServiceLocator.Assets, _world, ServiceLocator.Clock, _overlay, _hud, _chat, _minimap);
         _controller.AutofireOnStart = Autofire;
         _controller.AutoAbility = AutoAbility;
+        _controller.AutoWalk = AutoWalk;
         _controller.StartingCameraAngle = StartingCameraAngle;
         _controller.CenterOnPlayer = ServiceLocator.Settings?.CenterOnPlayer ?? true;
         _controller.OptionsToggled += () => _options.Toggle();

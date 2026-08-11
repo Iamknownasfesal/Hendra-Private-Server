@@ -79,7 +79,10 @@ godot-mono --path . -- --host 127.0.0.1 --guid you@example.com --password pw --c
     --quit-after-screenshot
 ```
 
-`--use-ability` fires the equipped ability on a loop, the same way `--autofire` holds the trigger.
+`--use-ability` fires the equipped ability on a loop, the same way `--autofire` holds the trigger,
+and `--walk` walks in a circle. Two clients, one of them walking, is how remote-entity movement gets
+checked — on a server whose monsters have no behaviours, another player is the only thing in the
+world that ever changes position.
 Repeat `--say` for a script; the lines go out a couple of seconds apart and survive a change of
 world, which some of them need — you cannot die in the Nexus, so checking the death screen takes
 `--say /realm --say "/killPlayer <name>"`.
@@ -92,16 +95,22 @@ Standing up the server locally takes a few steps, none of them obvious:
 2. `wServer.csproj` references 62 files under `logic/db` that are not in the repository — the
    server's own README says behaviours were removed. `BehaviorDb` finds them by reflection, so
    deleting those `<Compile>` entries builds cleanly, just with fewer behaviours.
-3. `xmls/client/EmbeddedData_RegionsCXML.dat` is malformed: the `Biome3` region is missing its
+3. **Monsters will not move.** `wServer/logic/db` is empty and `wServer.csproj` references 62 files
+   from it that are not in the repository. That directory is the behaviour database — every
+   monster's AI — and the server's own README says it was removed because it is tied to the server
+   assets. Nothing in the client can substitute for it: the client moves an entity when a tick says
+   the entity moved, and without behaviours the server keeps sending the same position. See
+   `tests/Hendra.Tests/EntityMotionTests.cs`, which pins that down from this side.
+4. `xmls/client/EmbeddedData_RegionsCXML.dat` is malformed: the `Biome3` region is missing its
    closing tag, and the server throws on startup parsing it.
-4. Both `server.json` and `wServer.json` ship bound to a public address, and expect Redis with
+5. Both `server.json` and `wServer.json` ship bound to a public address, and expect Redis with
    `requirepass alphaversionone`.
-5. A fresh account needs `nameChosen` and `alpha` set before the world server will admit it:
+6. A fresh account needs `nameChosen` and `alpha` set before the world server will admit it:
    `redis-cli hset account.1 nameChosen 1` and likewise `alpha 1`.
-6. The models under `assets/models` are read as raw Wavefront text at runtime rather than through
+7. The models under `assets/models` are read as raw Wavefront text at runtime rather than through
    Godot's importer, so a packaged export needs `*.obj` in its include filter. Running from source,
    as below, needs nothing.
-7. Sound is served, not shipped: the client fetches `/sfx/<name>.mp3` and `/music/<name>.mp3` as
+8. Sound is served, not shipped: the client fetches `/sfx/<name>.mp3` and `/music/<name>.mp3` as
    static files, so `XmlDatas/web/sfx` and `XmlDatas/web/music` have to be present in whatever
    resource folder the app server was pointed at. Both are read into memory at startup, and the
    music alone is 205 MB. The client says how many interface sounds it got — `[audio] 9 of 9` —

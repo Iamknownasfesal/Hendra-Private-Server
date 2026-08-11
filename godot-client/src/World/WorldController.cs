@@ -68,6 +68,9 @@ public partial class WorldController : Node
     /// <summary>Uses the ability on a loop, for unattended runs. See LaunchOptions.</summary>
     public bool AutoAbility { get; set; }
 
+    /// <summary>Walks in a circle, for unattended runs. See LaunchOptions.</summary>
+    public bool AutoWalk { get; set; }
+
     /// <summary>Overrides the starting camera heading, in radians. See LaunchOptions.</summary>
     public float? StartingCameraAngle { set { if (value.HasValue) _cameraAngle = value.Value; } }
 
@@ -756,6 +759,14 @@ public partial class WorldController : Node
         float x = Input.GetActionStrength("move_right") - Input.GetActionStrength("move_left");
         float y = Input.GetActionStrength("move_down") - Input.GetActionStrength("move_up");
         float rotate = Input.GetActionStrength("rotate_right") - Input.GetActionStrength("rotate_left");
+
+        if (AutoWalk)
+        {
+            // A slow circle, so the walker stays near where it started and keeps changing heading.
+            float phase = _clock.FrameMs / 3000f * Mathf.Tau;
+            x = Mathf.Cos(phase);
+            y = Mathf.Sin(phase);
+        }
 
         player.SetInput(x, y, rotate);
 

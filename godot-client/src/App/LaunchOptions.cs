@@ -39,6 +39,15 @@ public sealed class LaunchOptions
     public bool AutoAbility { get; private set; }
 
     /// <summary>
+    /// Walk in a slow circle instead of standing still.
+    /// </summary>
+    /// <remarks>
+    /// For checking that other people's characters move: on a server whose monsters have no
+    /// behaviours, another player is the only thing in the world that ever changes position.
+    /// </remarks>
+    public bool AutoWalk { get; private set; }
+
+    /// <summary>
     /// Starting camera heading in degrees, or null for the usual one.
     /// </summary>
     /// <remarks>
@@ -85,6 +94,7 @@ public sealed class LaunchOptions
                 case "--quit-after-screenshot": options.QuitAfterScreenshot = true; break;
                 case "--autofire": options.Autofire = true; break;
                 case "--use-ability": options.AutoAbility = true; break;
+                case "--walk": options.AutoWalk = true; break;
                 case "--camera-angle": options.CameraAngleDegrees = ParseFloat(Next(), 0f); break;
                 case "--say":
                 {
