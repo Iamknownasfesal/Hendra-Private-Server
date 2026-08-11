@@ -184,8 +184,9 @@ sessions, and, when it ends, the fame tally from `/char/fame`.
 
 ## What is not done yet
 
-- Pets, the market, the quest *log*, and daily rewards. The objective arrow works; what is missing
-  is the panel listing what the quest is.
+- Pets, and the panels for the market, the quest log and daily rewards. All three of those are
+  driven by slash commands that work today and answer in the chat log — `/market`, `/marketall`,
+  `/mymarket` — so what is missing is a nicer way to reach them, not the ability to.
 - The charging aura on a Rising Fury enemy is emitted around the enemy rather than sampled over its
   sprite, which is what the original did. Sampling would mean reading the texture back per frame.
 - Rebinding keys. The options panel lists what the keys do but cannot change them.
