@@ -69,6 +69,7 @@ public partial class Boot : Control
 
         _login = new LoginScreen();
         _login.PlayRequested += StartGame;
+        _login.CreateRequested += CreateCharacter;
         AddChild(_login);
     }
 
@@ -91,6 +92,24 @@ public partial class Boot : Control
         // returns and Play can be called straight away.
         AddChild(_game);
         _game.Play(server, guid, password, characterId);
+    }
+
+    private void CreateCharacter(ServerInfo server, string guid, string password, int characterId, ushort classType)
+    {
+        if (_login != null)
+        {
+            _login.QueueFree();
+            _login = null;
+        }
+
+        _ = ServiceLocator.LoadLanguageAsync($"http://{server.Address}:8888");
+
+        _game = new GameScene { Autofire = _options?.Autofire ?? false };
+        _game.Ended += OnSessionEnded;
+        AddChild(_game);
+
+        // Skin zero is the class's default appearance.
+        _game.CreateAndPlay(server, guid, password, characterId, classType, skinType: 0);
     }
 
     private void OnSessionEnded(string reason)

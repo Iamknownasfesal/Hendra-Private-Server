@@ -106,6 +106,7 @@ public partial class GameScene : Node
         _controller.AutofireOnStart = Autofire;
         _controller.NexusRequested += () =>
             Reconnect(string.Empty, _port, GameIds.Nexus, 0, System.Array.Empty<byte>(), false);
+        _controller.Died += reason => CallDeferred(nameof(ReportDisconnect), reason);
 
         try
         {
@@ -178,6 +179,7 @@ public partial class GameScene : Node
         _controller.AutofireOnStart = Autofire;
         _controller.NexusRequested += () =>
             Reconnect(string.Empty, _port, GameIds.Nexus, 0, System.Array.Empty<byte>(), false);
+        _controller.Died += reason => CallDeferred(nameof(ReportDisconnect), reason);
 
         try
         {

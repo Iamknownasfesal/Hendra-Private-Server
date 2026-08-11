@@ -32,8 +32,11 @@ public partial class LoginScreen : Control
 
     private CharListResult _charList;
 
-    /// <summary>Raised with everything needed to start a session.</summary>
+    /// <summary>Raised with everything needed to load an existing character.</summary>
     public event Action<ServerInfo, string, string, int> PlayRequested;
+
+    /// <summary>Raised with everything needed to create one: server, credentials, id, class.</summary>
+    public event Action<ServerInfo, string, string, int, ushort> CreateRequested;
 
     public override void _Ready()
     {
@@ -163,14 +166,6 @@ public partial class LoginScreen : Control
             : $"Signed in as {(string.IsNullOrEmpty(account.Name) ? "guest" : account.Name)}.";
 
         var living = _charList.Characters.FindAll(c => !c.Dead);
-        if (living.Count == 0)
-        {
-            _characters.AddChild(new Label
-            {
-                Text = "No characters. Creating one from the client is not wired up yet.",
-            });
-            return;
-        }
 
         foreach (var character in living)
         {
@@ -182,18 +177,70 @@ public partial class LoginScreen : Control
             button.Pressed += () => RequestPlay(characterId);
             _characters.AddChild(button);
         }
+
+        if (living.Count < Math.Max(_charList.MaxCharacters, 1))
+            AddClassPicker(living.Count == 0);
+    }
+
+    /// <summary>
+    /// Offers the classes this account may create.
+    /// </summary>
+    /// <remarks>
+    /// Every known class is offered rather than trying to predict which are unlocked: the server
+    /// decides, and answers a refusal with a message saying why.
+    /// </remarks>
+    private void AddClassPicker(bool onlyOption)
+    {
+        var classes = ServiceLocator.Data?.PlayerClasses;
+        if (classes == null || classes.Count == 0)
+            return;
+
+        _characters.AddChild(new Label
+        {
+            Text = onlyOption ? "No characters yet. Create one:" : "Or create a new character:",
+        });
+
+        var grid = new GridContainer { Columns = 3 };
+        _characters.AddChild(grid);
+
+        foreach (var playerClass in classes)
+        {
+            var button = new Button { Text = playerClass.DisplayId ?? playerClass.Id ?? "?" };
+            ushort classType = playerClass.Type;
+            button.Pressed += () => RequestCreate(classType);
+            grid.AddChild(button);
+        }
+    }
+
+    private void RequestCreate(ushort classType)
+    {
+        var server = SelectedServer();
+        if (server == null)
+            return;
+
+        // The id the server told us to use next; it allocates the real one on success.
+        CreateRequested?.Invoke(server, _guid.Text, _password.Text, _charList.NextCharacterId, classType);
     }
 
     private void RequestPlay(int characterId)
     {
+        var server = SelectedServer();
+        if (server == null)
+            return;
+
+        PlayRequested?.Invoke(server, _guid.Text, _password.Text, characterId);
+    }
+
+    private ServerInfo SelectedServer()
+    {
         if (_charList == null || _charList.Servers.Count == 0)
         {
             _status.Text = "No server to connect to.";
-            return;
+            return null;
         }
 
         int index = Mathf.Clamp(_servers.Selected, 0, _charList.Servers.Count - 1);
-        PlayRequested?.Invoke(_charList.Servers[index], _guid.Text, _password.Text, characterId);
+        return _charList.Servers[index];
     }
 
     private void ClearCharacters()

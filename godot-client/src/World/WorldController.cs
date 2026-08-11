@@ -69,6 +69,9 @@ public partial class WorldController : Node
     /// </remarks>
     public event System.Action NexusRequested;
 
+    /// <summary>Raised when our character dies, with something to show the player.</summary>
+    public event System.Action<string> Died;
+
     /// <summary>Whether the camera keeps the player centred or offset towards the top.</summary>
     public bool CenterOnPlayer { get; set; } = true;
 
@@ -280,6 +283,10 @@ public partial class WorldController : Node
                 OnDamage(damage);
                 break;
 
+            case DeathPacket death:
+                OnDeath(death);
+                break;
+
             case TextPacket text:
                 _chat?.Add(text, LineBuilder.Resolve(text.Text, _strings));
                 break;
@@ -356,6 +363,20 @@ public partial class WorldController : Node
         // Only shots we own are acknowledged.
         if (mine)
             _session.Send(new ShootAckPacket { Time = now });
+    }
+
+    /// <summary>
+    /// Our character died.
+    /// </summary>
+    /// <remarks>
+    /// Permanent: the character is gone, and the session ends. A zombie death is different -- the
+    /// server hands back a new object to keep playing as -- but that path is not implemented, so it
+    /// is reported the same way rather than silently doing nothing.
+    /// </remarks>
+    private void OnDeath(DeathPacket death)
+    {
+        string killer = string.IsNullOrEmpty(death.KilledBy) ? "something" : death.KilledBy;
+        Died?.Invoke($"Killed by {killer} at level {_map.Player?.Level ?? 0}.");
     }
 
     /// <summary>The server's authoritative word on damage, overriding any local prediction.</summary>
