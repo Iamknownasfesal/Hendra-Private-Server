@@ -153,6 +153,10 @@ Deliberate, and all of them fixes:
 - **Remote textures are actually fetched.** The reference client has that path commented out and
   substitutes a placeholder box for every object that uses one; here they are downloaded at startup
   and only fall back to the same box when the server has no artwork under the id.
+- **Animated terrain wraps inside its own tile.** The original could slide a texture coordinate
+  freely because every tile was its own bitmap with repeat switched on. Here tiles share a sheet, so
+  a sliding coordinate walks into whatever sprite sits next door; `shaders/ground.gdshader` wraps it
+  explicitly. Fixed and random tile offsets, which need the same wrapping, now work too.
 - **Soft-edged sprites keep their soft edges.** The half-alpha test that decides where an outline
   goes was being applied to everything, so shadows and glows were cut off hard at the radius where
   their alpha crossed a half.

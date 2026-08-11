@@ -1001,7 +1001,7 @@ public partial class WorldController : Node
                     TileX = x,
                     TileY = y,
                     Sprite = sprite,
-                    UvOffset = AnimationOffset(square.Desc, now),
+                    UvOffset = TileOffset(square.Desc, x, y, now),
                     Modulate = Colors.White,
                 });
             }
@@ -1030,22 +1030,52 @@ public partial class WorldController : Node
             "those tiles will be blank.");
     }
 
-    /// <summary>Scroll or ripple offset for an animated tile, in fractions of a tile.</summary>
-    private static Vector2 AnimationOffset(GroundDesc desc, int now)
+    /// <summary>
+    /// How far a tile's artwork is slid within its own rectangle, in fractions of a tile.
+    /// </summary>
+    /// <remarks>
+    /// Three things can move it, and only one of them moves over time. A tile can declare a fixed
+    /// offset; a tile marked RandomOffset takes a whole-texel one that has to be the same every
+    /// frame or the ground crawls; and an animated tile ripples or scrolls on top of that.
+    ///
+    /// The wrapping this depends on lives in the ground shader. Sliding past the edge of the tile's
+    /// rectangle would otherwise sample whatever sprite sits next to it on the sheet.
+    /// </remarks>
+    private static Vector2 TileOffset(GroundDesc desc, int tileX, int tileY, int now)
     {
+        var offset = desc.RandomOffset ? RandomOffset(tileX, tileY) : new Vector2(desc.XOffset, desc.YOffset);
+
         float seconds = now / 1000f;
         return desc.Animation switch
         {
-            GroundAnimation.Wave => new Vector2(
+            GroundAnimation.Wave => offset + new Vector2(
                 Mathf.Sin(desc.AnimationDx * seconds),
                 Mathf.Sin(desc.AnimationDy * seconds)),
 
-            GroundAnimation.Flow => new Vector2(
+            GroundAnimation.Flow => offset + new Vector2(
                 desc.AnimationDx * seconds,
                 desc.AnimationDy * seconds),
 
-            _ => Vector2.Zero,
+            _ => offset,
         };
+    }
+
+    /// <summary>
+    /// A whole-texel offset for a tile that wants its artwork jumbled.
+    /// </summary>
+    /// <remarks>
+    /// Derived from the tile's position rather than drawn at random, so it is the same on every
+    /// frame and after every reconnect. The original rolled it once when the square was built and
+    /// kept it on the square; deriving it needs no storage and survives the square being rebuilt.
+    /// </remarks>
+    private static Vector2 RandomOffset(int tileX, int tileY)
+    {
+        const int Texels = 8;
+
+        int hash = tileX * 73856093 ^ tileY * 19349663;
+        return new Vector2(
+            (hash >>> 3 & (Texels - 1)) / (float)Texels,
+            (hash >>> 11 & (Texels - 1)) / (float)Texels);
     }
 
     private void DrawEntities(int now, float cameraAngle)

@@ -33,13 +33,21 @@ public sealed class GroundDrawList
     /// <summary>Far enough behind that no object, however tall, can sort under the ground.</summary>
     private const float GroundSortBias = -4096f;
 
-    private readonly Dictionary<Texture2D, List<GroundDraw>> _byTexture = new();
-    private readonly List<Texture2D> _order = new();
-    private readonly Dictionary<Texture2D, StandardMaterial3D> _materials = new();
+    /// <summary>
+    /// Surfaces are keyed by rectangle size as well as sheet, so the shader can take the size as a
+    /// uniform. Every ground tile is eight pixels square, so in practice this is one group a sheet.
+    /// </summary>
+    private readonly record struct SurfaceKey(Texture2D Texture, Vector2I RegionSize);
+
+    private readonly Dictionary<SurfaceKey, List<GroundDraw>> _bySurface = new();
+    private readonly List<SurfaceKey> _order = new();
+    private readonly Dictionary<SurfaceKey, ShaderMaterial> _materials = new();
+
+    private static Shader _shader;
 
     public void Clear()
     {
-        foreach (var list in _byTexture.Values)
+        foreach (var list in _bySurface.Values)
             list.Clear();
     }
 
@@ -48,11 +56,12 @@ public sealed class GroundDrawList
         if (!draw.Sprite.IsValid)
             return;
 
-        if (!_byTexture.TryGetValue(draw.Sprite.Sheet, out var list))
+        var key = new SurfaceKey(draw.Sprite.Sheet, draw.Sprite.Region.Size);
+        if (!_bySurface.TryGetValue(key, out var list))
         {
             list = new List<GroundDraw>(1024);
-            _byTexture[draw.Sprite.Sheet] = list;
-            _order.Add(draw.Sprite.Sheet);
+            _bySurface[key] = list;
+            _order.Add(key);
         }
 
         list.Add(draw);
@@ -62,9 +71,9 @@ public sealed class GroundDrawList
     {
         mesh.ClearSurfaces();
 
-        foreach (var texture in _order)
+        foreach (var key in _order)
         {
-            var draws = _byTexture[texture];
+            var draws = _bySurface[key];
             if (draws.Count == 0)
                 continue;
 
@@ -74,7 +83,7 @@ public sealed class GroundDrawList
                 Emit(mesh, draw, projection);
 
             mesh.SurfaceEnd();
-            mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, MaterialFor(texture));
+            mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, MaterialFor(key));
         }
     }
 
@@ -82,8 +91,8 @@ public sealed class GroundDrawList
     {
         var uv = draw.Sprite.Uv;
 
-        // Scrolling wraps within the tile's own region, so a flowing tile does not bleed into its
-        // neighbours on the sheet.
+        // The offset is applied here and wrapped in the shader, which is given the rectangle's
+        // origin through UV2 so it knows what to wrap within.
         float u0 = uv.Position.X + draw.UvOffset.X * uv.Size.X;
         float v0 = uv.Position.Y + draw.UvOffset.Y * uv.Size.Y;
         float u1 = u0 + uv.Size.X;
@@ -95,6 +104,7 @@ public sealed class GroundDrawList
         var bottomLeft = projection.ToScene(draw.TileX, draw.TileY + 1, 0f, GroundSortBias);
 
         mesh.SurfaceSetColor(draw.Modulate);
+        mesh.SurfaceSetUV2(uv.Position);
 
         Vertex(mesh, topLeft, u0, v0);
         Vertex(mesh, topRight, u1, v0);
@@ -111,22 +121,21 @@ public sealed class GroundDrawList
         mesh.SurfaceAddVertex(position);
     }
 
-    private StandardMaterial3D MaterialFor(Texture2D texture)
+    private ShaderMaterial MaterialFor(SurfaceKey key)
     {
-        if (_materials.TryGetValue(texture, out var material))
+        if (_materials.TryGetValue(key, out var material))
             return material;
 
-        material = new StandardMaterial3D
-        {
-            AlbedoTexture = texture,
-            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
-            TextureFilter = BaseMaterial3D.TextureFilterEnum.Nearest,
-            // Terrain is fully opaque, so it needs no alpha handling at all.
-            CullMode = BaseMaterial3D.CullModeEnum.Disabled,
-            VertexColorUseAsAlbedo = true,
-        };
+        _shader ??= ResourceLoader.Load<Shader>("res://shaders/ground.gdshader");
 
-        _materials[texture] = material;
+        material = new ShaderMaterial { Shader = _shader };
+        material.SetShaderParameter("sheet", key.Texture);
+
+        var sheetSize = key.Texture.GetSize();
+        material.SetShaderParameter("region_size",
+            new Vector2(key.RegionSize.X / sheetSize.X, key.RegionSize.Y / sheetSize.Y));
+
+        _materials[key] = material;
         return material;
     }
 }
