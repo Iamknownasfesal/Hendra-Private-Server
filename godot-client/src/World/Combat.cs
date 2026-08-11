@@ -207,6 +207,26 @@ public sealed class Combat
         _projectiles.Add(projectile);
     }
 
+    /// <summary>
+    /// The projectile a Damage packet is talking about, if it is still in flight.
+    /// </summary>
+    /// <remarks>
+    /// Only its bearing and speed are wanted, to throw the hit spray away from the shooter. A miss
+    /// is ordinary — the projectile retires the moment it connects locally, which is usually before
+    /// the server's word on the damage comes back — and callers fall back to a spray in every
+    /// direction.
+    /// </remarks>
+    public Projectile Find(int ownerId, byte bulletId)
+    {
+        foreach (var projectile in _projectiles)
+        {
+            if (projectile.OwnerId == ownerId && projectile.BulletId == bulletId)
+                return projectile;
+        }
+
+        return null;
+    }
+
     /// <summary>Advances every projectile and reports whatever they hit.</summary>
     public void Update(int nowMs)
     {

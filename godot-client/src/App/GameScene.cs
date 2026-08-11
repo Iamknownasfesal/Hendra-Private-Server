@@ -37,6 +37,9 @@ public partial class GameScene : Node
     /// <summary>Starts with fire held down. Set from the command line for unattended runs.</summary>
     public bool Autofire { get; set; }
 
+    /// <summary>A line to send once on entering the world. Set from the command line.</summary>
+    public string SayOnEntry { get; set; }
+
     /// <summary>Raised when the session ends, with a reason to show the player.</summary>
     public event Action<string> Ended;
 
@@ -106,6 +109,7 @@ public partial class GameScene : Node
 
         _controller.Begin(_session, ServiceLocator.Data, ServiceLocator.Assets, _world, ServiceLocator.Clock, _overlay, _hud, _chat, _minimap);
         _controller.AutofireOnStart = Autofire;
+        _controller.SayOnEntry = SayOnEntry;
         _trade.Configure(_controller.Trading, ServiceLocator.Assets, ServiceLocator.Data);
         _controller.Trading.Requested += who =>
             _controller.Chat?.AddSystem($"{who} wants to trade. Type /trade {who} to accept.");
@@ -204,6 +208,7 @@ public partial class GameScene : Node
         Subscribe(_session);
         _controller.Begin(_session, ServiceLocator.Data, ServiceLocator.Assets, _world, ServiceLocator.Clock, _overlay, _hud, _chat, _minimap);
         _controller.AutofireOnStart = Autofire;
+        _controller.SayOnEntry = SayOnEntry;
         _trade.Configure(_controller.Trading, ServiceLocator.Assets, ServiceLocator.Data);
         _controller.Trading.Requested += who =>
             _controller.Chat?.AddSystem($"{who} wants to trade. Type /trade {who} to accept.");

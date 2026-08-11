@@ -80,6 +80,55 @@ public class Entity
     /// <summary>The tile this entity currently stands on. Null while off-map.</summary>
     public Square Square;
 
+    // ---- Flash. A colour pulsed over the sprite for a fixed number of cycles. ----
+
+    private int _flashStartMs;
+    private int _flashColor;
+    private int _flashPeriodMs;
+    private int _flashRepeats;
+
+    /// <summary>
+    /// Starts a colour pulse over this entity's sprite.
+    /// </summary>
+    /// <param name="periodMs">One full pulse, in milliseconds.</param>
+    /// <param name="repeats">How many pulses before it stops.</param>
+    public void StartFlash(int nowMs, int color, int periodMs, int repeats)
+    {
+        if (periodMs <= 0 || repeats <= 0)
+            return;
+
+        _flashStartMs = nowMs;
+        _flashColor = color;
+        _flashPeriodMs = periodMs;
+        _flashRepeats = repeats;
+    }
+
+    /// <summary>
+    /// How strongly the flash colour covers the sprite right now, from zero to a half.
+    /// </summary>
+    /// <remarks>
+    /// The original applied this as a colour transform — <c>rgb·(1-s) + target·s</c> — which meant
+    /// cloning the finished bitmap and transforming it on every frame of the flash. Drawing the
+    /// same sprite a second time at alpha <c>s</c> in the flash colour produces exactly that
+    /// expression through ordinary alpha blending, and costs one more quad.
+    /// </remarks>
+    public float FlashStrength(int nowMs, out int color)
+    {
+        color = _flashColor;
+
+        if (_flashPeriodMs <= 0)
+            return 0f;
+
+        if (nowMs > _flashStartMs + _flashPeriodMs * _flashRepeats)
+        {
+            _flashPeriodMs = 0;
+            return 0f;
+        }
+
+        int phase = (nowMs - _flashStartMs) % _flashPeriodMs;
+        return MathF.Sin(phase / (float)_flashPeriodMs * MathF.PI) * 0.5f;
+    }
+
     // Where the server last said this entity is, and how fast it appeared to be going. The
     // velocity is only used to drive the walk animation; motion itself comes from interpolation.
     protected float TickX;

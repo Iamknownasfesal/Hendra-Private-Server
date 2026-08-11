@@ -43,6 +43,8 @@ public partial class WorldController : Node
     private Inventory _inventory;
     private Trading _trading;
     private Party _party;
+    private ParticleSystem _particles;
+    private SpritePalette _palette;
     private MinimapView _minimap;
     private TileColors _tileColors;
     private TileAtlas _tileAtlas;
@@ -60,6 +62,18 @@ public partial class WorldController : Node
 
     /// <summary>Starts autofire on, for unattended runs. See LaunchOptions.</summary>
     public bool AutofireOnStart { set => _autofire = value; }
+
+    /// <summary>
+    /// A line sent once, a moment after the world is up. For unattended runs; see LaunchOptions.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately delayed rather than sent the instant a player entity appears. The server drops
+    /// chat from a client it does not yet consider fully in the world, and does so silently.
+    /// </remarks>
+    public string SayOnEntry { private get; set; }
+
+    /// <summary>When to send <see cref="SayOnEntry"/>, or zero if there is nothing to send.</summary>
+    private int _sayAtMs;
 
     /// <summary>
     /// Raised when the player asks to return to the Nexus.
@@ -118,6 +132,8 @@ public partial class WorldController : Node
         _inventory = new Inventory(_map, data, session, clock);
         _trading = new Trading(session);
         _party = new Party(_map);
+        _particles = new ParticleSystem(_map);
+        _palette = new SpritePalette();
 
         // Subscribed after construction, not alongside the field assignments above: these forward
         // to objects that do not exist until the map does.
@@ -160,6 +176,7 @@ public partial class WorldController : Node
     {
         _map.Reset(mapInfo.Width, mapInfo.Height, mapInfo.Name);
         _combat.Clear();
+        _particles.Clear();
         _minimap?.Configure(_map, _tileColors);
 
         // Per-map XML overlays replace base definitions for the types they mention.
@@ -295,6 +312,10 @@ public partial class WorldController : Node
 
             case DamagePacket damage:
                 OnDamage(damage);
+                break;
+
+            case ShowEffectPacket effect:
+                _particles.Show(effect, now);
                 break;
 
             case TradeRequestedPacket:
@@ -438,6 +459,51 @@ public partial class WorldController : Node
 
         if (damage.Kill)
             target.Dead = true;
+
+        ThrowDebris(target, damage);
+    }
+
+    /// <summary>
+    /// The spray of a struck object's own colours.
+    /// </summary>
+    /// <remarks>
+    /// Thrown away from the shot when the projectile responsible is still in flight, and in every
+    /// direction otherwise — which covers deaths, ground damage and anything that connected locally
+    /// before the server's word arrived. Both are the original's behaviour, which chose between them
+    /// on whether it had a projectile to hand.
+    /// </remarks>
+    private void ThrowDebris(Entity target, DamagePacket damage)
+    {
+        if (target.Desc == null)
+            return;
+
+        var resolved = _textures.Resolve(target.Desc.Texture, target.ObjectId, target.AltTextureIndex);
+
+        // Any one frame will do: a character's palette is the same whichever way it is facing.
+        var sprite = resolved.Animated != null
+            ? resolved.Animated.Frame(0f, 0f, CharAction.Stand, 0f).Sprite
+            : resolved.Still;
+
+        if (!sprite.IsValid)
+            return;
+
+        var palette = _palette.For(target.ObjectType, sprite, target.Desc.BloodProb, target.Desc.BloodColor);
+
+        if (damage.Kill)
+        {
+            _particles.Explode(target.X, target.Y, palette, target.Size, count: 30);
+            return;
+        }
+
+        var projectile = _combat.Find(damage.ObjectId, damage.BulletId);
+        if (projectile?.ProjectileDesc != null)
+        {
+            _particles.Hit(target.X, target.Y, palette, target.Size, count: 10,
+                projectile.Angle, projectile.ProjectileDesc.Speed);
+            return;
+        }
+
+        _particles.Explode(target.X, target.Y, palette, target.Size, count: 10);
     }
 
     // ------------------------------------------------------------------------------------------
@@ -461,6 +527,7 @@ public partial class WorldController : Node
         _map.Update(now, deltaMs);
         ApplyAttackInput(now);
         _combat.Update(now);
+        _particles.Update(now, deltaMs);
         _interaction.Update(now);
         _party.Update(now);
         _hud?.ShowPrompt(_interaction.Current.Exists ? _interaction.Current.Label : null);
@@ -479,6 +546,7 @@ public partial class WorldController : Node
 
         _session.RecordPosition();
         _session.Poll();
+        SayOnEntryIfDue(player, now);
 
         _hud?.Refresh(_map.Player);
         _minimap?.Refresh(_cameraAngle);
@@ -532,6 +600,27 @@ public partial class WorldController : Node
 
     /// <summary>Sends a chat line, or a slash command, exactly as typed.</summary>
     private void OnChatSubmitted(string line) => _session.Send(new PlayerTextPacket { Text = line });
+
+    /// <summary>Sends the scripted line once the world has settled. See <see cref="SayOnEntry"/>.</summary>
+    private void SayOnEntryIfDue(LocalPlayer player, int now)
+    {
+        const int SettleMs = 2000;
+
+        if (SayOnEntry == null || player == null)
+            return;
+
+        if (_sayAtMs == 0)
+        {
+            _sayAtMs = now + SettleMs;
+            return;
+        }
+
+        if (now < _sayAtMs)
+            return;
+
+        OnChatSubmitted(SayOnEntry);
+        SayOnEntry = null;
+    }
 
     private void ApplyInput(int deltaMs)
     {
@@ -649,12 +738,24 @@ public partial class WorldController : Node
         if (focus == null)
             return;
 
-        _world.Configure(focus.X, focus.Y, _cameraAngle);
+        // An earthquake displaces the camera rather than the world, so everything in it stays
+        // consistent with everything else -- including the health bars and name plates, which are
+        // positioned by unprojecting through this same camera.
+        float shakeX = 0f;
+        float shakeY = 0f;
+        if (_particles.Jitter > 0f)
+        {
+            shakeX = (float)GD.RandRange(-_particles.Jitter, _particles.Jitter);
+            shakeY = (float)GD.RandRange(-_particles.Jitter, _particles.Jitter);
+        }
+
+        _world.Configure(focus.X + shakeX, focus.Y + shakeY, _cameraAngle);
 
         float radius = _world.VisibleRadius();
         DrawGround(focus, radius, now);
         DrawEntities(now, _cameraAngle);
         DrawProjectiles(now);
+        DrawParticles();
         DrawOverlay();
 
         // One upload for however many tiles were baked while sweeping the visible area.
@@ -696,7 +797,10 @@ public partial class WorldController : Node
                 }
 
                 if (!sprite.IsValid)
+                {
+                    ReportBlankTerrain(square);
                     continue;
+                }
 
                 _world.Ground.Add(new GroundDraw
                 {
@@ -708,6 +812,28 @@ public partial class WorldController : Node
                 });
             }
         }
+    }
+
+    /// <summary>Terrain types already complained about, so the warning is one line and not a flood.</summary>
+    private readonly System.Collections.Generic.HashSet<ushort> _blankTerrainReported = new();
+
+    /// <summary>
+    /// Says so, once, when a terrain type has no artwork to draw.
+    /// </summary>
+    /// <remarks>
+    /// Terrain that resolves to nothing leaves a hole the background shows through, which on a dark
+    /// background looks like a deliberate black tile rather than a fault. Worth a line in the log:
+    /// it means the type is missing from the sheets, or its texture entry names something that is
+    /// not there.
+    /// </remarks>
+    private void ReportBlankTerrain(Square square)
+    {
+        if (!_blankTerrainReported.Add(square.TileType))
+            return;
+
+        GD.PushWarning(
+            $"[world] terrain type {square.TileType} ({square.Desc?.Id ?? "unnamed"}) has no artwork; " +
+            "those tiles will be blank.");
     }
 
     /// <summary>Scroll or ripple offset for an animated tile, in fractions of a tile.</summary>
@@ -776,7 +902,35 @@ public partial class WorldController : Node
 
             AddShadow(entity, draw.SortBias);
             _world.Sprites.Add(draw);
+            AddFlash(entity, draw, now);
         }
+    }
+
+    /// <summary>
+    /// Lays the flash colour over an entity that is pulsing.
+    /// </summary>
+    /// <remarks>
+    /// The same quad again, in the flash colour, at the strength the pulse currently calls for.
+    /// Ordinary alpha blending then gives <c>sprite·(1-s) + colour·s</c>, which is exactly the
+    /// colour transform the original computed — except that it did so by cloning the finished
+    /// bitmap and transforming the clone, once per frame for as long as the flash lasted.
+    /// </remarks>
+    private void AddFlash(Entity entity, SpriteDraw draw, int now)
+    {
+        float strength = entity.FlashStrength(now, out int color);
+        if (strength <= 0f)
+            return;
+
+        draw.Modulate = new Color(
+            (color >> 16 & 0xFF) / 255f,
+            (color >> 8 & 0xFF) / 255f,
+            (color & 0xFF) / 255f,
+            strength);
+
+        // No tint under the flash: the flash colour is the whole point of it.
+        draw.Tint = SpriteTint.None;
+        draw.SortBias += 0.5f;
+        _world.Sprites.Add(draw);
     }
 
     /// <summary>
@@ -935,6 +1089,55 @@ public partial class WorldController : Node
 
             SizeQuad(ref draw, projectile, resolved.Still, 1, 1);
             _world.Sprites.Add(draw);
+        }
+    }
+
+    /// <summary>
+    /// Draws every live particle.
+    /// </summary>
+    /// <remarks>
+    /// All of them share one texture and therefore one surface, however many effects are running —
+    /// the colour rides on the vertex tint. The original appended three display-list entries per
+    /// particle per frame and baked a bitmap for every colour and size combination it saw.
+    /// </remarks>
+    private void DrawParticles()
+    {
+        // The original's size unit: a hundred is five screen pixels.
+        const float PixelsPerSizeUnit = 5f / 100f;
+
+        var sprite = ParticleTexture.Sprite;
+
+        foreach (var particle in _particles.Particles)
+        {
+            if (particle.Size <= 0f)
+                continue;
+
+            float tiles = particle.Size * PixelsPerSizeUnit / WorldProjection.PixelsPerTile
+                          * ParticleTexture.QuadToCore;
+
+            _world.Sprites.Add(new SpriteDraw
+            {
+                TileX = particle.X,
+                TileY = particle.Y,
+                Height = particle.Z,
+                Sprite = sprite,
+                WidthTiles = tiles,
+                HeightTiles = tiles,
+
+                // Centred on the point rather than standing on it: a particle is a mote in the air,
+                // not something with its feet on a tile.
+                AnchorX = 0.5f,
+                AnchorY = 0.5f,
+                Modulate = new Color(
+                    (particle.Color >> 16 & 0xFF) / 255f,
+                    (particle.Color >> 8 & 0xFF) / 255f,
+                    (particle.Color & 0xFF) / 255f),
+                Outlined = false,
+
+                // Above whatever they are playing over, so an effect on a monster is not swallowed
+                // by the monster.
+                SortBias = 0.25f,
+            });
         }
     }
 

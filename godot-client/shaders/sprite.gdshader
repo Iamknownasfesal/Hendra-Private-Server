@@ -77,7 +77,15 @@ void fragment() {
 
     vec4 colour = sample_sprite(UV);
 
-    if (colour.a > 0.5) {
+    // The half-alpha test decides where the outline goes, so it only applies when there is one.
+    // Without this second clause anything soft-edged -- a shadow, a particle's glow -- would be cut
+    // off hard at the radius where its alpha crosses a half, since every texel below that would
+    // fall into the outline branch and be discarded for having no solid neighbour.
+    if (colour.a > 0.5 || outline_pixels <= 0.0) {
+        if (colour.a <= 0.0) {
+            discard;
+        }
+
         if (use_dye_mask) {
             vec4 mask = texture(dye_mask, UV);
             colour.rgb = mix(colour.rgb, dye_one.rgb, mask.r * dye_one.a);

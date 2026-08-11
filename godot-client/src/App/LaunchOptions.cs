@@ -35,6 +35,15 @@ public sealed class LaunchOptions
     /// <summary>Hold fire from the moment the world loads, for unattended checks of the combat path.</summary>
     public bool Autofire { get; private set; }
 
+    /// <summary>
+    /// A line to send once, shortly after entering the world.
+    /// </summary>
+    /// <remarks>
+    /// Slash commands go down the same pipe as chat, so this is how an unattended run reaches
+    /// anything the server only does on request — spawning something to shoot at, for one.
+    /// </remarks>
+    public string SayOnEntry { get; private set; }
+
     /// <summary>Whether enough was supplied to connect without the login screen.</summary>
     public bool CanAutoConnect =>
         !string.IsNullOrEmpty(Host) && !string.IsNullOrEmpty(Guid) && CharacterId >= 0;
@@ -61,6 +70,7 @@ public sealed class LaunchOptions
                     break;
                 case "--quit-after-screenshot": options.QuitAfterScreenshot = true; break;
                 case "--autofire": options.Autofire = true; break;
+                case "--say": options.SayOnEntry = Next(); break;
             }
         }
 

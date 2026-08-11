@@ -85,7 +85,7 @@ public partial class Boot : Control
         // until it lands.
         _ = ServiceLocator.LoadLanguageAsync($"http://{server.Address}:8888");
 
-        _game = new GameScene { Autofire = _options?.Autofire ?? false };
+        _game = new GameScene { Autofire = _options?.Autofire ?? false, SayOnEntry = _options?.SayOnEntry };
         _game.Ended += OnSessionEnded;
 
         // AddChild runs the scene's _Ready synchronously, so the world exists by the time this
@@ -104,7 +104,7 @@ public partial class Boot : Control
 
         _ = ServiceLocator.LoadLanguageAsync($"http://{server.Address}:8888");
 
-        _game = new GameScene { Autofire = _options?.Autofire ?? false };
+        _game = new GameScene { Autofire = _options?.Autofire ?? false, SayOnEntry = _options?.SayOnEntry };
         _game.Ended += OnSessionEnded;
         AddChild(_game);
 

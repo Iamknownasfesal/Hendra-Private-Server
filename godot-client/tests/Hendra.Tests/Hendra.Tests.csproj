@@ -43,6 +43,7 @@
     <Compile Include="../../src/World/GameMap.cs" />
     <Compile Include="../../src/World/LocalPlayer.cs" />
     <Compile Include="../../src/World/StatApplier.cs" />
+    <Compile Include="../../src/World/Particles.cs" />
   </ItemGroup>
 
   <!--

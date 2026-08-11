@@ -69,6 +69,16 @@ session code and reports how long it survives:
 dotnet run --project tools/soak -- --seconds 300 --char 1
 ```
 
+The client itself can be driven unattended, which is how the renderer gets checked against a real
+world. `--say` sends one line — and slash commands go down the same pipe as chat, so it reaches
+anything the server only does on request:
+
+```sh
+godot-mono --path . -- --host 127.0.0.1 --guid you@example.com --password pw --char 1 \
+    --autofire --say "/spawn 20 Sheep" --screenshot /tmp/shot.png --screenshot-after 12 \
+    --quit-after-screenshot
+```
+
 Standing up the server locally takes a few steps, none of them obvious:
 
 1. It targets .NET Framework 4.6.1 with old-style project files, so it needs Mono
@@ -112,20 +122,32 @@ Deliberate, and all of them fixes:
   format, not the protocol's — which the original misparsed.
 - The client's local damage formula floors at 15% while the server's floors at 25%. The server is
   authoritative; the client value is treated as display-only prediction.
+- **Camera shake stops.** The original's Jitter effect sets a flag that has no other assignment
+  anywhere in the client, so one earthquake left the camera shaking until the session ended.
+- **A monster's spray colours are sampled once.** The original meant to cache them — there is a
+  dictionary keyed by object type, read on the way in — but nothing ever writes to it, so a monster
+  under fire rescanned its own texture several times a second.
+- **Trail particles are shed on a fixed interval**, not one per rendered frame. The original's
+  effects were three times denser on a fast machine than a slow one.
+- **Soft-edged sprites keep their soft edges.** The half-alpha test that decides where an outline
+  goes was being applied to everything, so shadows and glows were cut off hard at the radius where
+  their alpha crossed a half.
 
 ## What works
 
 Sign in, create or pick a character, and play: movement with the original's collision rules,
-shooting with server-verified timing, projectiles, damage, loot containers, portals between worlds,
-chat, trading, a minimap, and the HUD.
+shooting with server-verified timing, projectiles, damage, loot containers, merchants, portals
+between worlds, chat, trading, a nearby-players list, a minimap, the HUD, and the visual effects --
+every `ShowEffect` kind, the spray a struck monster throws off, and the camera shake.
 
 ## What is not done yet
 
-- Merchants, the vault, guild and party panels. The packets are all implemented and their results
+- The vault, and the guild and party panels. The packets are all implemented and their results
   reach the chat log; what is missing is the UI to drive them.
 - The fame and death summary screens. Death itself is handled and reported.
 - Pets, the market, quests and daily rewards.
-- Particle effects. `ShowEffect` arrives and is decoded but nothing is drawn for it.
+- The charging aura on a Rising Fury enemy is emitted around the enemy rather than sampled over its
+  sprite, which is what the original did. Sampling would mean reading the texture back per frame.
 - Edge-mode and composite terrain blending. Those two of the three blend schemes fall back to plain
   artwork; the common one is implemented.
 - Remote textures, the per-object art fetched from `/app/getTextures`.
