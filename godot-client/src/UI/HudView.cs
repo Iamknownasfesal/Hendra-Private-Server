@@ -62,6 +62,7 @@ public partial class HudView : Control
     private SlotView _merchandise;
     private Label _price;
     private Button _buy;
+    private VBoxContainer _party;
 
     private AssetLibrary _assets;
     private GameData _data;
@@ -152,6 +153,11 @@ public partial class HudView : Control
         _buy.Pressed += () => BuyPressed?.Invoke();
         _merchantPanel.AddChild(_buy);
 
+        column.AddChild(new HSeparator());
+        column.AddChild(new Label { Text = "Nearby" });
+        _party = new VBoxContainer();
+        column.AddChild(_party);
+
         // Sits over the world rather than in the panel, because it refers to something in front of
         // the player rather than to their own state.
         _prompt = new Label
@@ -220,6 +226,27 @@ public partial class HudView : Control
             var desc = _data?.GetObject((ushort)type);
             var resolved = _textures?.Resolve(desc?.Texture) ?? default;
             _container[i].SetItem(resolved.Still, desc?.DisplayId ?? desc?.Id);
+        }
+    }
+
+    /// <summary>Lists the nearby players.</summary>
+    public void ShowParty(IReadOnlyList<PartyMember> members)
+    {
+        if (_party == null)
+            return;
+
+        // Few enough entries, changing seldom enough, that rebuilding the rows is simpler than
+        // pooling them.
+        foreach (var child in _party.GetChildren())
+            child.QueueFree();
+
+        foreach (var member in members)
+        {
+            float fraction = member.MaxHp > 0 ? member.Hp / (float)member.MaxHp : 0f;
+            _party.AddChild(new Label
+            {
+                Text = $"{(member.Starred ? "* " : string.Empty)}{member.Name}  {(int)(fraction * 100)}%",
+            });
         }
     }
 

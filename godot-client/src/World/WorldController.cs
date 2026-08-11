@@ -42,6 +42,7 @@ public partial class WorldController : Node
     private Interaction _interaction;
     private Inventory _inventory;
     private Trading _trading;
+    private Party _party;
     private MinimapView _minimap;
     private TileColors _tileColors;
     private TileAtlas _tileAtlas;
@@ -116,6 +117,7 @@ public partial class WorldController : Node
         _interaction = new Interaction(_map);
         _inventory = new Inventory(_map, data, session, clock);
         _trading = new Trading(session);
+        _party = new Party(_map);
 
         // Subscribed after construction, not alongside the field assignments above: these forward
         // to objects that do not exist until the map does.
@@ -303,6 +305,10 @@ public partial class WorldController : Node
                 _trading.Handle(packet);
                 break;
 
+            case AccountListPacket list when list.ListId == AccountListId.Starred:
+                _party.SetStarred(list.AccountIds);
+                break;
+
             case GuildResultPacket guild:
                 _chat?.AddSystem(LineBuilder.Resolve(guild.LineBuilderJson, _strings));
                 break;
@@ -456,9 +462,11 @@ public partial class WorldController : Node
         ApplyAttackInput(now);
         _combat.Update(now);
         _interaction.Update(now);
+        _party.Update(now);
         _hud?.ShowPrompt(_interaction.Current.Exists ? _interaction.Current.Label : null);
         _hud?.ShowContainer(OpenContainer);
         _hud?.ShowMerchant(NearbyMerchant, _map.Player);
+        _hud?.ShowParty(_party.Members);
 
         // Publish before polling: a NewTick delivered by Poll answers with a Move built from this.
         if (player != null)
