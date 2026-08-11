@@ -177,7 +177,8 @@ shooting with server-verified timing, abilities, projectiles, damage, three-dime
 loot containers, the vault,
 merchants, portals between worlds, chat, trading, a nearby-players list, a minimap, the HUD, the
 visual effects --
-every `ShowEffect` kind, the spray a struck monster throws off, and the camera shake -- sound and
+every `ShowEffect` kind, the spray a struck monster throws off, and the camera shake -- all three
+terrain blend schemes, sound and
 music, the quest arrow, an options panel that remembers itself between sessions, and, when it ends,
 the fame tally from `/char/fame`.
 
@@ -189,8 +190,6 @@ the fame tally from `/char/fame`.
   is the panel listing what the quest is.
 - The charging aura on a Rising Fury enemy is emitted around the enemy rather than sampled over its
   sprite, which is what the original did. Sampling would mean reading the texture back per frame.
-- Composite terrain blending, the third of the three blend schemes. Seven ground types use it; they
-  fall back to plain artwork rather than being blended wrongly.
 - Rebinding keys. The options panel lists what the keys do but cannot change them.
 
 ## Out of scope

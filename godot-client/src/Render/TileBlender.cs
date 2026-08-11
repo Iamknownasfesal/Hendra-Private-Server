@@ -219,10 +219,8 @@ public sealed class TileBlender
         if (square.Desc.HasEdge)
             return BlendEdges(map, tileX, tileY, square);
 
-        // Composite terrain is the third scheme and is not implemented; it falls back to its plain
-        // artwork rather than being blended wrongly.
         if (square.TileType == CompositeTileType)
-            return default;
+            return BlendComposite(map, tileX, tileY);
 
         if (!BuildSignature(map, tileX, tileY, square))
             return default;
@@ -241,6 +239,91 @@ public sealed class TileBlender
 
     /// <summary>The tile type that means "nothing here".</summary>
     private const ushort EmptyTileType = 0xFF;
+
+    /// <summary>
+    /// Builds a tile out of its neighbours, a quarter at a time.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Composite terrain has no artwork of its own — it is the join between other terrains, and it
+    /// exists so that four different grounds can meet at a point without any of them having to
+    /// declare a border against the others. Each quarter takes the matching quarter of whichever
+    /// neighbour wins it.
+    /// </para>
+    /// <para>
+    /// The contest is by composite priority, and only the two neighbours that touch that corner are
+    /// in it: the top-left quarter is between north and west. When neither of those takes part at
+    /// all, the diagonal gets the quarter instead. A quarter no-one claims stays black, which is
+    /// what the original leaves it as.
+    /// </para>
+    /// </remarks>
+    private Sprite BlendComposite(GameMap map, int tileX, int tileY)
+    {
+        var north = map.GetSquare(tileX, tileY - 1);
+        var west = map.GetSquare(tileX - 1, tileY);
+        var east = map.GetSquare(tileX + 1, tileY);
+        var south = map.GetSquare(tileX, tileY + 1);
+
+        _signature[0] = Quarter(north, west, map.GetSquare(tileX - 1, tileY - 1));
+        _signature[1] = Quarter(north, east, map.GetSquare(tileX + 1, tileY - 1));
+        _signature[2] = Quarter(west, south, map.GetSquare(tileX - 1, tileY + 1));
+        _signature[3] = Quarter(east, south, map.GetSquare(tileX + 1, tileY + 1));
+
+        // The remaining slots mark this as a composite key, so it can share the cache with the
+        // other two schemes without a signature of one ever matching a signature of another.
+        for (int i = 4; i < _signature.Length; i++)
+            _signature[i] = CompositeTileType;
+
+        var signature = new BlendSignature(_signature);
+        if (_baked.TryGetValue(signature, out var cached))
+            return cached;
+
+        var sprite = BakeComposite();
+        _baked[signature] = sprite;
+        return sprite;
+    }
+
+    /// <summary>
+    /// Which terrain wins one quarter of a composite tile.
+    /// </summary>
+    /// <param name="first">The neighbour whose priority breaks ties in its own favour.</param>
+    private static ushort Quarter(Square first, Square second, Square diagonal)
+    {
+        int firstPriority = Priority(first);
+        int secondPriority = Priority(second);
+
+        if (firstPriority < 0 && secondPriority < 0)
+            return Priority(diagonal) < 0 ? EmptyTileType : diagonal.TileType;
+
+        return firstPriority < secondPriority ? second.TileType : first.TileType;
+    }
+
+    private static int Priority(Square square) =>
+        square is { IsKnown: true, Desc: not null } ? square.Desc.CompositePriority : -1;
+
+    private Sprite BakeComposite()
+    {
+        var result = Image.CreateEmpty(TileSize, TileSize, false, Image.Format.Rgba8);
+        result.Fill(Colors.Black);
+
+        // Each quarter takes the matching quarter of its source, so the artwork stays where it
+        // would have been had that terrain covered the whole tile.
+        for (int quadrant = 0; quadrant < 4; quadrant++)
+        {
+            ushort type = _signature[quadrant];
+            if (type == EmptyTileType)
+                continue;
+
+            var source = GetBaseTile(type);
+            if (source == null)
+                continue;
+
+            var origin = QuadrantOrigin[quadrant];
+            result.BlitRect(source, new Rect2I(origin, new Vector2I(Half, Half)), origin);
+        }
+
+        return _atlas.Add(result);
+    }
 
     /// <summary>
     /// The nine images an edge-mode terrain draws its border from: four sides and four corners.
