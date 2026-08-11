@@ -26,6 +26,7 @@ public partial class ServiceLocator : Node
     private readonly GameClock _clock = new();
     private GameSession _session;
     private Audio.AudioLibrary _audio;
+    private Settings _settings;
 
     /// <summary>The monotonic millisecond clock. Everything that goes on the wire is stamped from it.</summary>
     public static GameClock Clock => _instance._clock;
@@ -55,6 +56,24 @@ public partial class ServiceLocator : Node
     /// </remarks>
     public static Audio.AudioLibrary Audio => _instance?._audio;
 
+    /// <summary>The player's saved preferences. Loaded once, at startup.</summary>
+    public static Settings Settings => _instance?._settings;
+
+    /// <summary>Pushes the current settings to whatever they govern, and writes them out.</summary>
+    public static void ApplySettings()
+    {
+        if (_instance?._settings == null)
+            return;
+
+        if (_instance._audio != null)
+        {
+            _instance._audio.EffectVolume = _instance._settings.EffectVolume;
+            _instance._audio.MusicVolume = _instance._settings.MusicVolume;
+        }
+
+        _instance._settings.Save();
+    }
+
     public static bool ContentLoaded => Assets != null && Data != null;
 
     public override void _EnterTree()
@@ -62,7 +81,13 @@ public partial class ServiceLocator : Node
         _instance = this;
         _clock.Reset();
 
-        _audio = new Audio.AudioLibrary();
+        _settings = Settings.Load();
+
+        _audio = new Audio.AudioLibrary
+        {
+            EffectVolume = _settings.EffectVolume,
+            MusicVolume = _settings.MusicVolume,
+        };
         AddChild(_audio);
 
         // Keep ticking while the window is unfocused: the server's keepalive and acknowledgement

@@ -25,6 +25,7 @@ public partial class GameScene : Node
     private ChatView _chat;
     private MinimapView _minimap;
     private TradeView _trade;
+    private OptionsView _options;
     private WorldController _controller;
     private GameSession _session;
 
@@ -83,6 +84,11 @@ public partial class GameScene : Node
         _trade = new TradeView();
         ui.AddChild(_trade);
 
+        _options = new OptionsView();
+        _options.Configure(ServiceLocator.Settings);
+        _options.Changed += OnOptionsChanged;
+        ui.AddChild(_options);
+
         _controller = new WorldController();
         AddChild(_controller);
     }
@@ -114,6 +120,15 @@ public partial class GameScene : Node
             _host, _port, _guid, _password, GameIds.Nexus, _characterId, classType, skinType));
     }
 
+    /// <summary>Applies a changed setting immediately and writes it out.</summary>
+    private void OnOptionsChanged()
+    {
+        ServiceLocator.ApplySettings();
+
+        if (_controller != null)
+            _controller.CenterOnPlayer = ServiceLocator.Settings.CenterOnPlayer;
+    }
+
     private async void StartSession(Func<GameSession, System.Threading.Tasks.Task> connect)
     {
         _session = ServiceLocator.BeginSession();
@@ -122,6 +137,9 @@ public partial class GameScene : Node
         _controller.Begin(_session, ServiceLocator.Data, ServiceLocator.Assets, _world, ServiceLocator.Clock, _overlay, _hud, _chat, _minimap);
         _controller.AutofireOnStart = Autofire;
         _controller.AutoAbility = AutoAbility;
+        _controller.CenterOnPlayer = ServiceLocator.Settings?.CenterOnPlayer ?? true;
+        _controller.OptionsToggled += () => _options.Toggle();
+        _controller.OptionsAreOpen = () => _options.IsOpen;
         _controller.ScriptedLines = ScriptedLines;
         _trade.Configure(_controller.Trading, ServiceLocator.Assets, ServiceLocator.Data);
         _controller.Trading.Requested += who =>
@@ -232,6 +250,9 @@ public partial class GameScene : Node
         _controller.Begin(_session, ServiceLocator.Data, ServiceLocator.Assets, _world, ServiceLocator.Clock, _overlay, _hud, _chat, _minimap);
         _controller.AutofireOnStart = Autofire;
         _controller.AutoAbility = AutoAbility;
+        _controller.CenterOnPlayer = ServiceLocator.Settings?.CenterOnPlayer ?? true;
+        _controller.OptionsToggled += () => _options.Toggle();
+        _controller.OptionsAreOpen = () => _options.IsOpen;
         _controller.ScriptedLines = ScriptedLines;
         _trade.Configure(_controller.Trading, ServiceLocator.Assets, ServiceLocator.Data);
         _controller.Trading.Requested += who =>

@@ -155,7 +155,8 @@ shooting with server-verified timing, abilities, projectiles, damage, loot conta
 merchants, portals between worlds, chat, trading, a nearby-players list, a minimap, the HUD, the
 visual effects --
 every `ShowEffect` kind, the spray a struck monster throws off, and the camera shake -- sound and
-music, and, when it ends, the fame tally from `/char/fame`.
+music, an options panel that remembers itself between sessions, and, when it ends, the fame tally
+from `/char/fame`.
 
 ## What is not done yet
 
@@ -167,7 +168,7 @@ music, and, when it ends, the fame tally from `/char/fame`.
 - Edge-mode and composite terrain blending. Those two of the three blend schemes fall back to plain
   artwork; the common one is implemented.
 - Remote textures, the per-object art fetched from `/app/getTextures`.
-- Volume controls. Sound and music play at fixed levels; there is no options screen yet.
+- Rebinding keys. The options panel lists what the keys do but cannot change them.
 
 ## Out of scope
 

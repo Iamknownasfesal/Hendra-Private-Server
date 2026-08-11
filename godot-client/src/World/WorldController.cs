@@ -95,6 +95,12 @@ public partial class WorldController : Node
     /// </remarks>
     public event System.Action NexusRequested;
 
+    /// <summary>Raised when the player asks for the options panel.</summary>
+    public event System.Action OptionsToggled;
+
+    /// <summary>Whether the options panel is up, so input can be held back while it is.</summary>
+    public System.Func<bool> OptionsAreOpen { private get; set; }
+
     /// <summary>
     /// Raised when our character dies, carrying the packet itself.
     /// </summary>
@@ -718,6 +724,20 @@ public partial class WorldController : Node
             return;
         }
 
+        if (Input.IsActionJustPressed("options"))
+        {
+            OptionsToggled?.Invoke();
+            return;
+        }
+
+        // With the panel up the keyboard belongs to it, but movement should stop rather than
+        // continue in whatever direction was last held.
+        if (OptionsAreOpen != null && OptionsAreOpen())
+        {
+            player.SetInput(0f, 0f, 0f);
+            return;
+        }
+
         if (Input.IsActionJustPressed("toggle_chat"))
         {
             _chat?.BeginTyping();
@@ -825,7 +845,10 @@ public partial class WorldController : Node
             _inventory.EndAbility(now, target.X, target.Y);
         }
 
-        if (typing || (!_autofire && !Input.IsActionPressed("shoot")))
+        if (typing || (OptionsAreOpen != null && OptionsAreOpen()))
+            return;
+
+        if (!_autofire && !Input.IsActionPressed("shoot"))
             return;
 
         if (_combat.TryShoot(now, AimAngle()))
