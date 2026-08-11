@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>12</LangVersion>
+    <Nullable>disable</Nullable>
+    <RootNamespace>Hendra.Soak</RootNamespace>
+    <AssemblyName>soak</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+  </ItemGroup>
+
+  <!--
+    The client's engine-free layers, compiled straight in, so this exercises the same session code
+    the game runs rather than a reimplementation of it.
+  -->
+  <ItemGroup>
+    <Compile Include="../../src/Core/**/*.cs" />
+    <Compile Include="../../src/Net/**/*.cs" />
+    <Compile Include="../../src/Data/**/*.cs" />
+  </ItemGroup>
+
+</Project>

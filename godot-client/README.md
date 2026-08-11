@@ -60,9 +60,29 @@ The tests are parity tests where it matters: the test project compiles `wServer/
 agreement with the code the server actually runs rather than with a second copy of somebody's
 reading of it.
 
-To run the real thing you need Redis, then the app server (`:8888`) and the world server (`:2050`),
-both with `resourceFolder` pointing at `../Server-Side/XmlDatas`. Note that `wServer.json` currently
-binds a public address and needs a local override.
+Some things no unit test can reach — acknowledgement conservation, the handshake, the continuous
+RC4 streams — because they only prove themselves against a live server, and getting them wrong
+produces a connection that silently stops rather than an error. `tools/soak` connects with the real
+session code and reports how long it survives:
+
+```sh
+dotnet run --project tools/soak -- --seconds 300 --char 1
+```
+
+Standing up the server locally takes a few steps, none of them obvious:
+
+1. It targets .NET Framework 4.6.1 with old-style project files, so it needs Mono
+   (`brew install mono`) plus `nuget.exe` under Mono to restore. Homebrew's Mono no longer ships
+   `msbuild`, but the bundled `xbuild` builds it.
+2. `wServer.csproj` references 62 files under `logic/db` that are not in the repository — the
+   server's own README says behaviours were removed. `BehaviorDb` finds them by reflection, so
+   deleting those `<Compile>` entries builds cleanly, just with fewer behaviours.
+3. `xmls/client/EmbeddedData_RegionsCXML.dat` is malformed: the `Biome3` region is missing its
+   closing tag, and the server throws on startup parsing it.
+4. Both `server.json` and `wServer.json` ship bound to a public address, and expect Redis with
+   `requirepass alphaversionone`.
+5. A fresh account needs `nameChosen` and `alpha` set before the world server will admit it:
+   `redis-cli hset account.1 nameChosen 1` and likewise `alpha 1`.
 
 ## Notes for anyone reading the code
 
