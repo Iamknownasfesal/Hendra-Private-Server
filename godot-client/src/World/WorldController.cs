@@ -341,6 +341,8 @@ public partial class WorldController : Node
                 Height = entity.Z,
                 AnchorX = 0.5f,
                 Modulate = Modulate(entity),
+                Tint = TintFor(entity),
+                Outlined = true,
                 // Ties between entities on the same tile resolve by object id, matching the
                 // original's secondary sort.
                 SortBias = (entity.ObjectId & 0xFF) * 0.001f,
@@ -427,6 +429,24 @@ public partial class WorldController : Node
         }
 
         return animated.Frame(entity.Facing, cameraAngle, CharAction.Stand, 0f);
+    }
+
+    /// <summary>
+    /// The whole-sprite colour treatment a status effect calls for.
+    /// </summary>
+    /// <remarks>
+    /// Greyscale reads as "this thing is not currently participating", which covers paused, stasis
+    /// and petrified alike. Curse gets its own red wash so it is distinguishable at a glance.
+    /// </remarks>
+    private static SpriteTint TintFor(Entity entity)
+    {
+        if (entity.Has(ConditionEffects.Curse))
+            return SpriteTint.Red;
+
+        if (entity.IsPaused || entity.IsStasis || entity.IsPetrified)
+            return SpriteTint.Greyscale;
+
+        return SpriteTint.None;
     }
 
     private static Color Modulate(Entity entity)

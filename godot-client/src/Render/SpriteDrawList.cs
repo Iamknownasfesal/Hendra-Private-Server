@@ -4,9 +4,19 @@ using Hendra.Assets;
 
 namespace Hendra.Render;
 
-/// <summary>
-/// One screen-aligned quad queued for this frame.
-/// </summary>
+/// <summary>Whole-sprite colour treatments, matching the filters the original applied.</summary>
+public enum SpriteTint
+{
+    None = 0,
+
+    /// <summary>Greyscale. Paused, in stasis, or petrified.</summary>
+    Greyscale = 1,
+
+    /// <summary>Red. Cursed.</summary>
+    Red = 2,
+}
+
+/// <summary>One screen-aligned quad queued for this frame.</summary>
 public struct SpriteDraw
 {
     /// <summary>The object's ground position, in tiles.</summary>
@@ -36,12 +46,18 @@ public struct SpriteDraw
 
     public bool Mirrored;
 
-    /// <summary>Multiplied into the sampled colour. Carries tints, fades and flashes.</summary>
+    /// <summary>Multiplied into the sampled colour. Carries fades and flashes.</summary>
     public Color Modulate;
+
+    /// <summary>Whole-sprite colour treatment.</summary>
+    public SpriteTint Tint;
+
+    /// <summary>Whether this sprite should be outlined. Off for effects and particles.</summary>
+    public bool Outlined;
 }
 
 /// <summary>
-/// Collects the frame's sprites and emits them as screen-aligned quads, grouped by texture.
+/// Collects the frame's sprites and emits them as screen-aligned quads, grouped by material.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -51,20 +67,37 @@ public struct SpriteDraw
 /// screen no matter which way the world is turned.
 /// </para>
 /// <para>
-/// Grouping by texture is the point of the exercise. The original appended a fill, a path and an
-/// end-fill to a flat display list for every sprite, tile face, particle, health bar and name plate,
-/// then walked the whole list again in its GPU path to pull out the entries that had to be drawn in
-/// software. Here each sheet becomes one surface, so a crowded screen is a handful of draws.
+/// Grouping is the point of the exercise. The original appended a fill, a path and an end-fill to a
+/// flat display list for every sprite, tile face, particle, health bar and name plate, then walked
+/// the whole list again in its GPU path to pull out the entries that had to be drawn in software.
+/// Here each sheet-and-treatment pair becomes one surface, so a crowded screen is a handful of
+/// draws.
 /// </para>
 /// </remarks>
 public sealed class SpriteDrawList
 {
-    private readonly Dictionary<Texture2D, List<SpriteDraw>> _byTexture = new();
-    private readonly List<Texture2D> _order = new();
+    /// <summary>
+    /// How far the quad is grown, as a fraction of the sprite's size, to leave room for the
+    /// outline.
+    /// </summary>
+    /// <remarks>
+    /// The outline itself is measured in screen pixels by the shader, so this only has to be
+    /// comfortably larger than the outline can ever be. Anything left over is discarded, and the
+    /// sprite's own content is unaffected because the UV range grows by the same fraction.
+    /// </remarks>
+    private const float OutlinePadding = 0.12f;
+
+    private readonly record struct SurfaceKey(Texture2D Texture, SpriteTint Tint, bool Outlined, Vector2I RegionSize);
+
+    private readonly Dictionary<SurfaceKey, List<SpriteDraw>> _bySurface = new();
+    private readonly List<SurfaceKey> _order = new();
+    private readonly Dictionary<SurfaceKey, ShaderMaterial> _materials = new();
+
+    private static Shader _shader;
 
     public void Clear()
     {
-        foreach (var list in _byTexture.Values)
+        foreach (var list in _bySurface.Values)
             list.Clear();
     }
 
@@ -73,19 +106,18 @@ public sealed class SpriteDrawList
         if (!draw.Sprite.IsValid)
             return;
 
-        if (!_byTexture.TryGetValue(draw.Sprite.Sheet, out var list))
+        var key = new SurfaceKey(draw.Sprite.Sheet, draw.Tint, draw.Outlined, draw.Sprite.Region.Size);
+        if (!_bySurface.TryGetValue(key, out var list))
         {
             list = new List<SpriteDraw>(256);
-            _byTexture[draw.Sprite.Sheet] = list;
-            _order.Add(draw.Sprite.Sheet);
+            _bySurface[key] = list;
+            _order.Add(key);
         }
 
         list.Add(draw);
     }
 
-    /// <summary>
-    /// Writes the queued quads into <paramref name="mesh"/>, one surface per texture.
-    /// </summary>
+    /// <summary>Writes the queued quads into <paramref name="mesh"/>, one surface per material.</summary>
     public void Build(ImmediateMesh mesh, in WorldProjection projection)
     {
         mesh.ClearSurfaces();
@@ -97,9 +129,9 @@ public sealed class SpriteDrawList
         var right = new Vector3(cos, 0f, sin);
         var down = new Vector3(-sin, 0f, cos);
 
-        foreach (var texture in _order)
+        foreach (var key in _order)
         {
-            var draws = _byTexture[texture];
+            var draws = _bySurface[key];
             if (draws.Count == 0)
                 continue;
 
@@ -109,7 +141,7 @@ public sealed class SpriteDrawList
                 Emit(mesh, draw, projection, right, down);
 
             mesh.SurfaceEnd();
-            mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, MaterialFor(texture));
+            mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, MaterialFor(key));
         }
     }
 
@@ -120,27 +152,44 @@ public sealed class SpriteDrawList
         Vector3 right,
         Vector3 down)
     {
-        var uv = draw.Sprite.Uv;
-        float u0 = uv.Position.X;
-        float u1 = uv.Position.X + uv.Size.X;
+        var region = draw.Sprite.Uv;
+
+        // The outline is drawn on transparent texels next to solid ones, so the quad has to reach
+        // beyond the sprite for it to land anywhere. Both the geometry and the UV range grow by the
+        // same fraction, and the shader treats anything outside the region as empty.
+        float pad = draw.Outlined ? OutlinePadding : 0f;
+        float padU = region.Size.X * pad;
+        float padV = region.Size.Y * pad;
+
+        float u0 = region.Position.X - padU;
+        float u1 = region.Position.X + region.Size.X + padU;
         if (draw.Mirrored)
             (u0, u1) = (u1, u0);
 
-        float v0 = uv.Position.Y;
-        float v1 = uv.Position.Y + uv.Size.Y;
+        float v0 = region.Position.Y - padV;
+        float v1 = region.Position.Y + region.Size.Y + padV;
+
+        float padWidth = draw.WidthTiles * pad;
+        float padHeight = draw.HeightTiles * pad;
 
         // The anchor sits on the ground point: horizontally by AnchorX, vertically at the bottom
         // edge, so a sprite stands on its tile rather than straddling it.
         var anchor = projection.ToScene(draw.TileX, draw.TileY, draw.Height, draw.SortBias);
-        float left = -draw.WidthTiles * draw.AnchorX;
-        float rightEdge = left + draw.WidthTiles;
+        float left = -draw.WidthTiles * draw.AnchorX - padWidth;
+        float rightEdge = left + draw.WidthTiles + 2f * padWidth;
+        float top = -draw.HeightTiles - padHeight;
+        float bottom = padHeight;
 
-        var topLeft = anchor + right * left + down * -draw.HeightTiles;
-        var topRight = anchor + right * rightEdge + down * -draw.HeightTiles;
-        var bottomRight = anchor + right * rightEdge;
-        var bottomLeft = anchor + right * left;
+        var topLeft = anchor + right * left + down * top;
+        var topRight = anchor + right * rightEdge + down * top;
+        var bottomRight = anchor + right * rightEdge + down * bottom;
+        var bottomLeft = anchor + right * left + down * bottom;
 
         mesh.SurfaceSetColor(draw.Modulate);
+
+        // The origin of this sprite's rectangle within the sheet; its size comes from a uniform,
+        // since surfaces are grouped by size anyway.
+        mesh.SurfaceSetUV2(region.Position);
 
         Vertex(mesh, topLeft, u0, v0);
         Vertex(mesh, topRight, u1, v0);
@@ -157,26 +206,23 @@ public sealed class SpriteDrawList
         mesh.SurfaceAddVertex(position);
     }
 
-    private readonly Dictionary<Texture2D, StandardMaterial3D> _materials = new();
-
-    private StandardMaterial3D MaterialFor(Texture2D texture)
+    private ShaderMaterial MaterialFor(SurfaceKey key)
     {
-        if (_materials.TryGetValue(texture, out var material))
+        if (_materials.TryGetValue(key, out var material))
             return material;
 
-        material = new StandardMaterial3D
-        {
-            AlbedoTexture = texture,
-            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
-            // The art is 8x8 pixel sprites scaled up; anything but nearest turns them to mush.
-            TextureFilter = BaseMaterial3D.TextureFilterEnum.Nearest,
-            Transparency = BaseMaterial3D.TransparencyEnum.AlphaScissor,
-            AlphaScissorThreshold = 0.5f,
-            CullMode = BaseMaterial3D.CullModeEnum.Disabled,
-            VertexColorUseAsAlbedo = true,
-        };
+        _shader ??= ResourceLoader.Load<Shader>("res://shaders/sprite.gdshader");
 
-        _materials[texture] = material;
+        material = new ShaderMaterial { Shader = _shader };
+        material.SetShaderParameter("sheet", key.Texture);
+
+        var textureSize = key.Texture.GetSize();
+        material.SetShaderParameter("region_size",
+            new Vector2(key.RegionSize.X / textureSize.X, key.RegionSize.Y / textureSize.Y));
+        material.SetShaderParameter("tint_mode", (int)key.Tint);
+        material.SetShaderParameter("outline_pixels", key.Outlined ? 2.0f : 0f);
+
+        _materials[key] = material;
         return material;
     }
 }
