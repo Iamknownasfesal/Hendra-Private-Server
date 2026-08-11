@@ -36,6 +36,12 @@
     <Compile Include="../../src/Resources/**/*.cs" />
     <Compile Include="../../src/Render/WorldProjection.cs" />
     <Compile Include="../../src/World/Movement.cs" />
+    <Compile Include="../../src/World/Projectile.cs" />
+    <Compile Include="../../src/World/Entity.cs" />
+    <Compile Include="../../src/World/Square.cs" />
+    <Compile Include="../../src/World/GameMap.cs" />
+    <Compile Include="../../src/World/LocalPlayer.cs" />
+    <Compile Include="../../src/World/StatApplier.cs" />
   </ItemGroup>
 
   <!--
