@@ -16,6 +16,10 @@ public partial class Boot : Control
     private Label _status;
     private LoginScreen _login;
     private GameScene _game;
+    private LaunchOptions _options;
+
+    private double _elapsed;
+    private bool _screenshotTaken;
 
     public override void _Ready()
     {
@@ -29,6 +33,8 @@ public partial class Boot : Control
         _status.SetAnchorsPreset(LayoutPreset.FullRect);
         AddChild(_status);
 
+        _options = LaunchOptions.Parse();
+
         try
         {
             ServiceLocator.LoadContent();
@@ -41,7 +47,16 @@ public partial class Boot : Control
         }
 
         _status.Visible = false;
-        ShowLogin();
+
+        if (_options.CanAutoConnect)
+        {
+            GD.Print($"[boot] auto-connecting to {_options.Host}:{_options.Port} as character {_options.CharacterId}");
+            StartGame(_options.ToServer(), _options.Guid, _options.Password ?? string.Empty, _options.CharacterId);
+        }
+        else
+        {
+            ShowLogin();
+        }
     }
 
     private void ShowLogin()
@@ -53,14 +68,17 @@ public partial class Boot : Control
         }
 
         _login = new LoginScreen();
-        _login.PlayRequested += OnPlayRequested;
+        _login.PlayRequested += StartGame;
         AddChild(_login);
     }
 
-    private void OnPlayRequested(ServerInfo server, string guid, string password, int characterId)
+    private void StartGame(ServerInfo server, string guid, string password, int characterId)
     {
-        _login.QueueFree();
-        _login = null;
+        if (_login != null)
+        {
+            _login.QueueFree();
+            _login = null;
+        }
 
         _game = new GameScene();
         _game.Ended += OnSessionEnded;
@@ -76,5 +94,36 @@ public partial class Boot : Control
         ShowLogin();
         _status.Visible = true;
         _status.Text = reason;
+    }
+
+    public override void _Process(double delta)
+    {
+        if (_options?.ScreenshotPath == null || _screenshotTaken)
+            return;
+
+        _elapsed += delta;
+        if (_elapsed < _options.ScreenshotDelaySeconds)
+            return;
+
+        _screenshotTaken = true;
+        CaptureScreenshot(_options.ScreenshotPath);
+
+        if (_options.QuitAfterScreenshot)
+            GetTree().Quit();
+    }
+
+    /// <summary>
+    /// Writes what is currently on screen to a file, so the renderer can be inspected without
+    /// anyone watching it.
+    /// </summary>
+    private void CaptureScreenshot(string path)
+    {
+        var image = GetViewport().GetTexture().GetImage();
+        var error = image.SavePng(path);
+
+        if (error != Error.Ok)
+            GD.PushError($"[boot] could not write {path}: {error}");
+        else
+            GD.Print($"[boot] screenshot written to {path}");
     }
 }

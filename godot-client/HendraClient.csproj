@@ -19,5 +19,6 @@
   -->
   <ItemGroup>
     <Compile Remove="tests/**/*.cs" />
+    <Compile Remove="tools/**/*.cs" />
   </ItemGroup>
 </Project>

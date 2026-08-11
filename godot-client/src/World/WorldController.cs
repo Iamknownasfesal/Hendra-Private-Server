@@ -157,6 +157,13 @@ public partial class WorldController : Node
             _map.Player = player;
             _focus = player;
             player.OnMoved();
+
+            // Publish immediately rather than waiting for the next frame. This Update and the first
+            // NewTick can be drained in the same poll, and the Move answering that tick reads these
+            // fields -- so deferring it reports a position we never had.
+            _session.PlayerX = player.X;
+            _session.PlayerY = player.Y;
+            _session.HasPlayerPosition = true;
         }
     }
 
@@ -213,6 +220,7 @@ public partial class WorldController : Node
             _session.PlayerX = player.X;
             _session.PlayerY = player.Y;
             _session.PlayerPaused = player.IsPaused;
+            _session.HasPlayerPosition = true;
         }
 
         _session.RecordPosition();

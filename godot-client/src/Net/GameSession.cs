@@ -96,6 +96,18 @@ public sealed class GameSession : IDisposable
     public float PlayerY;
     public bool PlayerPaused;
 
+    /// <summary>
+    /// Whether <see cref="PlayerX"/> and <see cref="PlayerY"/> have been given a real value yet.
+    /// </summary>
+    /// <remarks>
+    /// Until they have, Move reports (-1, -1), which the server reads as "unchanged" and leaves us
+    /// at our spawn point. Reporting (0, 0) instead would put us on a tile that is almost certainly
+    /// blocked, and the server's no-clip check disconnects for that without logging anything.
+    /// The window is real: Update, which carries our spawn position, and the first NewTick can
+    /// arrive together and be drained in the same poll.
+    /// </remarks>
+    public bool HasPlayerPosition;
+
     public event Action<string> Disconnected;
     public event Action<FailurePacket> Failed;
     public event Action<MapInfoPacket> MapLoaded;
@@ -143,6 +155,7 @@ public sealed class GameSession : IDisposable
 
         PlayerObjectId = -1;
         LastTickId = 0;
+        HasPlayerPosition = false;
         MoveRecords.Reset();
 
         await _connection.ConnectAsync(host, port).ConfigureAwait(false);
@@ -276,7 +289,7 @@ public sealed class GameSession : IDisposable
         _movePacket.ObjectId = PlayerObjectId;
         _movePacket.TickId = tick.TickId;
         _movePacket.Time = _clock.FrameMs;
-        _movePacket.NewPosition = PlayerPaused
+        _movePacket.NewPosition = PlayerPaused || !HasPlayerPosition
             ? new WorldPos(-1f, -1f)
             : new WorldPos(PlayerX, PlayerY);
 
