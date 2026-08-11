@@ -23,6 +23,7 @@ public partial class GameScene : Node
     private WorldOverlay _overlay;
     private HudView _hud;
     private ChatView _chat;
+    private MinimapView _minimap;
     private WorldController _controller;
     private GameSession _session;
 
@@ -59,6 +60,9 @@ public partial class GameScene : Node
 
         _chat = new ChatView();
         ui.AddChild(_chat);
+
+        _minimap = new MinimapView();
+        ui.AddChild(_minimap);
 
         _controller = new WorldController();
         AddChild(_controller);
@@ -98,7 +102,7 @@ public partial class GameScene : Node
         _session.Failed += OnFailed;
         _session.ReconnectRequested += OnReconnectRequested;
 
-        _controller.Begin(_session, ServiceLocator.Data, ServiceLocator.Assets, _world, ServiceLocator.Clock, _overlay, _hud, _chat);
+        _controller.Begin(_session, ServiceLocator.Data, ServiceLocator.Assets, _world, ServiceLocator.Clock, _overlay, _hud, _chat, _minimap);
         _controller.AutofireOnStart = Autofire;
         _controller.NexusRequested += () =>
             Reconnect(string.Empty, _port, GameIds.Nexus, 0, System.Array.Empty<byte>(), false);
@@ -170,7 +174,7 @@ public partial class GameScene : Node
         _session.Disconnected += OnDisconnected;
         _session.Failed += OnFailed;
         _session.ReconnectRequested += OnReconnectRequested;
-        _controller.Begin(_session, ServiceLocator.Data, ServiceLocator.Assets, _world, ServiceLocator.Clock, _overlay, _hud, _chat);
+        _controller.Begin(_session, ServiceLocator.Data, ServiceLocator.Assets, _world, ServiceLocator.Clock, _overlay, _hud, _chat, _minimap);
         _controller.AutofireOnStart = Autofire;
         _controller.NexusRequested += () =>
             Reconnect(string.Empty, _port, GameIds.Nexus, 0, System.Array.Empty<byte>(), false);

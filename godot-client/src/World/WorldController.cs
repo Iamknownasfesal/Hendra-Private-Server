@@ -41,6 +41,8 @@ public partial class WorldController : Node
     private Combat _combat;
     private Interaction _interaction;
     private Inventory _inventory;
+    private MinimapView _minimap;
+    private TileColors _tileColors;
     private WorldOverlay _overlay;
     private HudView _hud;
     private ChatView _chat;
@@ -78,27 +80,34 @@ public partial class WorldController : Node
         GameClock clock,
         WorldOverlay overlay,
         HudView hud = null,
-        ChatView chat = null)
+        ChatView chat = null,
+        MinimapView minimap = null)
     {
+        _minimap = minimap;
         _overlay = overlay;
         _hud = hud;
         _chat = chat;
 
+        _session = session;
+        _data = data;
+        _assets = assets;
+        _textures = new TextureResolver(assets);
+        _tileColors = new TileColors(assets);
+        _world = world;
+        _clock = clock;
+        _map = new GameMap(data);
+        _minimap?.Configure(_map, _tileColors);
+        _combat = new Combat(_map, data, session, clock);
+        _interaction = new Interaction(_map);
+        _inventory = new Inventory(_map, data, session, clock);
+
+        // Subscribed after construction, not alongside the field assignments above: these forward
+        // to objects that do not exist until the map does.
         if (_chat != null)
             _chat.Submitted += OnChatSubmitted;
 
         if (_hud != null)
             _hud.SlotActivated += _inventory.Activate;
-        _session = session;
-        _data = data;
-        _assets = assets;
-        _textures = new TextureResolver(assets);
-        _world = world;
-        _clock = clock;
-        _map = new GameMap(data);
-        _combat = new Combat(_map, data, session, clock);
-        _interaction = new Interaction(_map);
-        _inventory = new Inventory(_map, data, session, clock);
 
         _session.MapLoaded += OnMapLoaded;
         _session.WorldUpdated += OnWorldUpdated;
@@ -129,6 +138,7 @@ public partial class WorldController : Node
     {
         _map.Reset(mapInfo.Width, mapInfo.Height, mapInfo.Name);
         _combat.Clear();
+        _minimap?.Configure(_map, _tileColors);
 
         // Per-map XML overlays replace base definitions for the types they mention.
         foreach (string xml in mapInfo.ClientXml)
@@ -162,7 +172,10 @@ public partial class WorldController : Node
     private void OnWorldUpdated(UpdatePacket update)
     {
         foreach (var tile in update.Tiles)
+        {
             _map.SetTile(tile.X, tile.Y, tile.Type);
+            _minimap?.SetTile(tile.X, tile.Y, _map.GetSquare(tile.X, tile.Y));
+        }
 
         foreach (int objectId in update.Drops)
             _map.Remove(objectId);
@@ -393,6 +406,7 @@ public partial class WorldController : Node
         _session.Poll();
 
         _hud?.Refresh(_map.Player);
+        _minimap?.Refresh(_cameraAngle);
 
         Draw(now);
     }
