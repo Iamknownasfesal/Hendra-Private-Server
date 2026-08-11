@@ -260,7 +260,7 @@ public partial class HudView : Control
 }
 
 /// <summary>A labelled bar for health or mana.</summary>
-internal sealed partial class VitalBar : Control
+public sealed partial class VitalBar : Control
 {
     private const int BarHeight = 18;
 
@@ -304,7 +304,7 @@ internal sealed partial class VitalBar : Control
 }
 
 /// <summary>One inventory or equipment slot.</summary>
-internal sealed partial class SlotView : Control
+public sealed partial class SlotView : Control
 {
     private static readonly Color Background = new(0.10f, 0.10f, 0.10f);
     private static readonly Color Border = new(0.35f, 0.35f, 0.35f);

@@ -41,6 +41,7 @@ public partial class WorldController : Node
     private Combat _combat;
     private Interaction _interaction;
     private Inventory _inventory;
+    private Trading _trading;
     private MinimapView _minimap;
     private TileColors _tileColors;
     private TileAtlas _tileAtlas;
@@ -77,6 +78,12 @@ public partial class WorldController : Node
 
     public GameMap Map => _map;
 
+    /// <summary>The trade in progress, if any. Never null once Begin has run.</summary>
+    public Trading Trading => _trading;
+
+    /// <summary>The chat log, so the scene can report things that happen outside the world.</summary>
+    public UI.ChatView Chat => _chat;
+
     public void Begin(
         GameSession session,
         GameData data,
@@ -108,6 +115,7 @@ public partial class WorldController : Node
         _combat = new Combat(_map, data, session, clock);
         _interaction = new Interaction(_map);
         _inventory = new Inventory(_map, data, session, clock);
+        _trading = new Trading(session);
 
         // Subscribed after construction, not alongside the field assignments above: these forward
         // to objects that do not exist until the map does.
@@ -284,6 +292,33 @@ public partial class WorldController : Node
 
             case DamagePacket damage:
                 OnDamage(damage);
+                break;
+
+            case TradeRequestedPacket:
+            case TradeStartPacket:
+            case TradeChangedPacket:
+            case TradeAcceptedPacket:
+            case TradeDonePacket:
+                _trading.Handle(packet);
+                break;
+
+            case GuildResultPacket guild:
+                _chat?.AddSystem(LineBuilder.Resolve(guild.LineBuilderJson, _strings));
+                break;
+
+            case InvitedToGuildPacket invite:
+                _chat?.AddSystem(
+                    $"{invite.Name} invited you to {invite.GuildName}. Type /join {invite.GuildName} to accept.");
+                break;
+
+            case NameResultPacket name when !name.Success:
+                _chat?.AddSystem(name.ErrorText);
+                break;
+
+            case BuyResultPacket buy:
+                _chat?.AddSystem(buy.Result == BuyResultCode.Unknown
+                    ? buy.ResultString
+                    : LineBuilder.Resolve(buy.ResultString, _strings));
                 break;
 
             case DeathPacket death:

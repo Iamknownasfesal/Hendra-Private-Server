@@ -24,6 +24,7 @@ public partial class GameScene : Node
     private HudView _hud;
     private ChatView _chat;
     private MinimapView _minimap;
+    private TradeView _trade;
     private WorldController _controller;
     private GameSession _session;
 
@@ -63,6 +64,9 @@ public partial class GameScene : Node
 
         _minimap = new MinimapView();
         ui.AddChild(_minimap);
+
+        _trade = new TradeView();
+        ui.AddChild(_trade);
 
         _controller = new WorldController();
         AddChild(_controller);
@@ -104,6 +108,10 @@ public partial class GameScene : Node
 
         _controller.Begin(_session, ServiceLocator.Data, ServiceLocator.Assets, _world, ServiceLocator.Clock, _overlay, _hud, _chat, _minimap);
         _controller.AutofireOnStart = Autofire;
+        _trade.Configure(_controller.Trading, ServiceLocator.Assets, ServiceLocator.Data);
+        _controller.Trading.Requested += who =>
+            _controller.Chat?.AddSystem($"{who} wants to trade. Type /trade {who} to accept.");
+        _controller.Trading.Ended += message => _controller.Chat?.AddSystem(message);
         _controller.NexusRequested += () =>
             Reconnect(string.Empty, _port, GameIds.Nexus, 0, System.Array.Empty<byte>(), false);
         _controller.Died += reason => CallDeferred(nameof(ReportDisconnect), reason);
@@ -177,6 +185,10 @@ public partial class GameScene : Node
         _session.ReconnectRequested += OnReconnectRequested;
         _controller.Begin(_session, ServiceLocator.Data, ServiceLocator.Assets, _world, ServiceLocator.Clock, _overlay, _hud, _chat, _minimap);
         _controller.AutofireOnStart = Autofire;
+        _trade.Configure(_controller.Trading, ServiceLocator.Assets, ServiceLocator.Data);
+        _controller.Trading.Requested += who =>
+            _controller.Chat?.AddSystem($"{who} wants to trade. Type /trade {who} to accept.");
+        _controller.Trading.Ended += message => _controller.Chat?.AddSystem(message);
         _controller.NexusRequested += () =>
             Reconnect(string.Empty, _port, GameIds.Nexus, 0, System.Array.Empty<byte>(), false);
         _controller.Died += reason => CallDeferred(nameof(ReportDisconnect), reason);
