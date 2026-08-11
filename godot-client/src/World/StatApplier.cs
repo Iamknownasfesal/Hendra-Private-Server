@@ -76,6 +76,12 @@ public static class StatApplier
                     entity.SinkLevel = stat.IntValue;
                 break;
 
+            case StatsType.MerchandiseType: entity.MerchandiseType = stat.IntValue; break;
+            case StatsType.MerchandisePrice: entity.MerchandisePrice = stat.IntValue; break;
+            case StatsType.MerchandiseCurrency: entity.MerchandiseCurrency = stat.IntValue; break;
+            case StatsType.MerchandiseCount: entity.MerchandiseCount = stat.IntValue; break;
+            case StatsType.MerchandiseRankReq: entity.MerchandiseRankRequired = stat.IntValue; break;
+
             case StatsType.MaxMp when player != null: player.MaxMp = stat.IntValue; break;
             case StatsType.Mp when player != null: player.Mp = stat.IntValue; break;
             case StatsType.Attack when player != null: player.Attack = stat.IntValue; break;
@@ -84,6 +90,8 @@ public static class StatApplier
             case StatsType.Wisdom when player != null: player.Wisdom = stat.IntValue; break;
             case StatsType.Dexterity when player != null: player.Dexterity = stat.IntValue; break;
             case StatsType.Breath when player != null: player.Breath = stat.IntValue; break;
+            case StatsType.Credits when player != null: player.Credits = stat.IntValue; break;
+            case StatsType.CurrentFame when player != null: player.Fame = stat.IntValue; break;
         }
     }
 

@@ -55,6 +55,22 @@ public class Entity
     /// <summary>Equipment, inventory and backpack in one array: 0-7 worn, 8-15 carried, 16-23 backpack.</summary>
     public int[] Equipment;
 
+    // ---- Vendor state. Only meaningful for merchants and other sellable objects. ----
+
+    /// <summary>What this vendor sells, as an object type. -1 when it sells nothing.</summary>
+    public int MerchandiseType = -1;
+
+    public int MerchandisePrice;
+
+    /// <summary>0 gold, 1 fame, and so on. Matches the server's CurrencyType.</summary>
+    public int MerchandiseCurrency;
+
+    /// <summary>Stock remaining. -1 means unlimited.</summary>
+    public int MerchandiseCount = -1;
+
+    /// <summary>Account rank needed to buy, if any.</summary>
+    public int MerchandiseRankRequired;
+
     /// <summary>Heading in radians, used to pick the animation facing.</summary>
     public float Facing;
 

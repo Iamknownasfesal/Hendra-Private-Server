@@ -48,6 +48,9 @@ public partial class HudView : Control
     /// <summary>Raised with the slot's index in the open container.</summary>
     public event Action<int> ContainerSlotActivated;
 
+    /// <summary>Raised when the buy button is pressed at a vendor.</summary>
+    public event Action BuyPressed;
+
     private VitalBar _health;
     private VitalBar _mana;
     private Label _name;
@@ -55,6 +58,10 @@ public partial class HudView : Control
     private Label _stats;
     private Label _prompt;
     private VBoxContainer _containerPanel;
+    private VBoxContainer _merchantPanel;
+    private SlotView _merchandise;
+    private Label _price;
+    private Button _buy;
 
     private AssetLibrary _assets;
     private GameData _data;
@@ -126,6 +133,25 @@ public partial class HudView : Control
         _containerPanel.AddChild(new Label { Text = "Contents" });
         AddContainerSlots(_containerPanel, ContainerSlots);
 
+        // Only present while standing at a vendor.
+        _merchantPanel = new VBoxContainer { Visible = false };
+        column.AddChild(_merchantPanel);
+        _merchantPanel.AddChild(new Label { Text = "For sale" });
+
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 8);
+        _merchantPanel.AddChild(row);
+
+        _merchandise = new SlotView { CustomMinimumSize = new Vector2(SlotSize, SlotSize) };
+        row.AddChild(_merchandise);
+
+        _price = new Label { VerticalAlignment = VerticalAlignment.Center };
+        row.AddChild(_price);
+
+        _buy = new Button { Text = "Buy" };
+        _buy.Pressed += () => BuyPressed?.Invoke();
+        _merchantPanel.AddChild(_buy);
+
         // Sits over the world rather than in the panel, because it refers to something in front of
         // the player rather than to their own state.
         _prompt = new Label
@@ -195,6 +221,29 @@ public partial class HudView : Control
             var resolved = _textures?.Resolve(desc?.Texture) ?? default;
             _container[i].SetItem(resolved.Still, desc?.DisplayId ?? desc?.Id);
         }
+    }
+
+    /// <summary>Shows what a vendor is selling, or hides the panel when given null.</summary>
+    public void ShowMerchant(Entity merchant, LocalPlayer player)
+    {
+        if (_merchantPanel == null)
+            return;
+
+        _merchantPanel.Visible = merchant is { MerchandiseType: >= 0 };
+        if (!_merchantPanel.Visible)
+            return;
+
+        var desc = _data?.GetObject((ushort)merchant.MerchandiseType);
+        var resolved = _textures?.Resolve(desc?.Texture) ?? default;
+        _merchandise.SetItem(resolved.Still, desc?.DisplayId ?? desc?.Id);
+
+        // Currency zero is gold; anything else is fame on this server build.
+        bool fame = merchant.MerchandiseCurrency != 0;
+        string stock = merchant.MerchandiseCount >= 0 ? $"  ({merchant.MerchandiseCount} left)" : string.Empty;
+        _price.Text = $"{desc?.DisplayId ?? desc?.Id}\n{merchant.MerchandisePrice} {(fame ? "fame" : "gold")}{stock}";
+
+        int purse = player == null ? 0 : fame ? player.Fame : player.Credits;
+        _buy.Disabled = purse < merchant.MerchandisePrice;
     }
 
     private void AddSlots(Control parent, List<SlotView> into, int count, int firstIndex)

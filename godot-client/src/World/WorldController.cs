@@ -126,6 +126,7 @@ public partial class WorldController : Node
         {
             _hud.SlotActivated += OnSlotActivated;
             _hud.ContainerSlotActivated += OnContainerSlotActivated;
+            _hud.BuyPressed += OnBuyPressed;
         }
 
         _session.MapLoaded += OnMapLoaded;
@@ -457,6 +458,7 @@ public partial class WorldController : Node
         _interaction.Update(now);
         _hud?.ShowPrompt(_interaction.Current.Exists ? _interaction.Current.Label : null);
         _hud?.ShowContainer(OpenContainer);
+        _hud?.ShowMerchant(NearbyMerchant, _map.Player);
 
         // Publish before polling: a NewTick delivered by Poll answers with a Move built from this.
         if (player != null)
@@ -479,6 +481,24 @@ public partial class WorldController : Node
     /// <summary>The container in reach, if any. Its panel appears and disappears with proximity.</summary>
     private Entity OpenContainer =>
         _interaction.Current is { Kind: InteractionKind.Container, Entity: { } entity } ? entity : null;
+
+    /// <summary>The vendor in reach, if any.</summary>
+    private Entity NearbyMerchant =>
+        _interaction.Current is { Kind: InteractionKind.Merchant, Entity: { } entity } ? entity : null;
+
+    /// <summary>
+    /// Buys whatever the nearby vendor is selling.
+    /// </summary>
+    /// <remarks>
+    /// The quantity field is parsed and then ignored by the server, so one press buys one item
+    /// whatever is put there. The outcome arrives as a BuyResult and is reported in chat.
+    /// </remarks>
+    private void OnBuyPressed()
+    {
+        var merchant = NearbyMerchant;
+        if (merchant != null)
+            _session.Send(new BuyPacket { ObjectId = merchant.ObjectId, Quantity = 1 });
+    }
 
     /// <summary>
     /// A click on one of our own slots: use it, or move it into an open container.
@@ -576,7 +596,7 @@ public partial class WorldController : Node
                 break;
 
             case InteractionKind.Merchant:
-                _chat?.AddSystem($"{target.Label} is not implemented yet.");
+                // The panel is already showing whenever a vendor is in reach.
                 break;
         }
     }

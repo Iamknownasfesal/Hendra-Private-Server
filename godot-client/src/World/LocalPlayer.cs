@@ -47,6 +47,11 @@ public sealed class LocalPlayer : Entity
     public int MaxMp;
     public int Breath = -1;
 
+    /// <summary>Gold, and the fame the character has banked. Both are spent at vendors.</summary>
+    public int Credits;
+
+    public int Fame;
+
     /// <summary>Terrain speed factor, updated whenever the player changes tile.</summary>
     public float MoveMultiplier = 1f;
 
