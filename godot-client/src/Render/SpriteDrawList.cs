@@ -44,6 +44,12 @@ public struct SpriteDraw
     /// </summary>
     public float AnchorX;
 
+    /// <summary>
+    /// Where the quad's anchor sits vertically, as a fraction of its height measured up from the
+    /// bottom. Zero stands the sprite on its tile; a half centres it, which is what a shadow wants.
+    /// </summary>
+    public float AnchorY;
+
     public bool Mirrored;
 
     /// <summary>Multiplied into the sampled colour. Carries fades and flashes.</summary>
@@ -177,8 +183,8 @@ public sealed class SpriteDrawList
         var anchor = projection.ToScene(draw.TileX, draw.TileY, draw.Height, draw.SortBias);
         float left = -draw.WidthTiles * draw.AnchorX - padWidth;
         float rightEdge = left + draw.WidthTiles + 2f * padWidth;
-        float top = -draw.HeightTiles - padHeight;
-        float bottom = padHeight;
+        float top = -draw.HeightTiles * (1f - draw.AnchorY) - padHeight;
+        float bottom = draw.HeightTiles * draw.AnchorY + padHeight;
 
         var topLeft = anchor + right * left + down * top;
         var topRight = anchor + right * rightEdge + down * top;

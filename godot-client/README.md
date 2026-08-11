@@ -113,6 +113,24 @@ Deliberate, and all of them fixes:
 - The client's local damage formula floors at 15% while the server's floors at 25%. The server is
   authoritative; the client value is treated as display-only prediction.
 
+## What works
+
+Sign in, create or pick a character, and play: movement with the original's collision rules,
+shooting with server-verified timing, projectiles, damage, loot containers, portals between worlds,
+chat, trading, a minimap, and the HUD.
+
+## What is not done yet
+
+- Merchants, the vault, guild and party panels. The packets are all implemented and their results
+  reach the chat log; what is missing is the UI to drive them.
+- The fame and death summary screens. Death itself is handled and reported.
+- Pets, the market, quests and daily rewards.
+- Particle effects. `ShowEffect` arrives and is decoded but nothing is drawn for it.
+- Edge-mode and composite terrain blending. Those two of the three blend schemes fall back to plain
+  artwork; the common one is implemented.
+- Remote textures, the per-object art fetched from `/app/getTextures`.
+- Sound.
+
 ## Out of scope
 
 The in-game map editor, the sprite editor, the tutorial, and the Kongregate/Kabam/Steam account

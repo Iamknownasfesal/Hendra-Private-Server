@@ -746,8 +746,75 @@ public partial class WorldController : Node
             if (entity.Desc.DrawUnder)
                 draw.SortBias -= 1f;
 
+            AddShadow(entity, draw.SortBias);
             _world.Sprites.Add(draw);
         }
+    }
+
+    /// <summary>
+    /// Puts a soft ellipse under an entity so it reads as standing on the ground rather than
+    /// floating above it.
+    /// </summary>
+    /// <remarks>
+    /// Screen-aligned rather than laid flat, which sounds wrong and is not: under this projection
+    /// the ground plane is unforeshortened, so an ellipse on it and an ellipse on the screen are
+    /// the same shape. The original drew exactly that, a 30-by-15 pixel radial gradient.
+    ///
+    /// Anything flying gets one too, and it stays on the ground while the sprite rises, which is
+    /// what conveys the height at all.
+    /// </remarks>
+    private void AddShadow(Entity entity, float sortBias)
+    {
+        if (entity.Desc.ShadowSize <= 0 || entity.Desc.DrawUnder)
+            return;
+
+        var shadow = _shadowTexture ??= BuildShadowTexture();
+
+        // The original scales by both the entity's size and its declared shadow size, so a giant
+        // and its shadow grow together.
+        float scale = entity.Size / 100f * (entity.Desc.ShadowSize / 100f);
+
+        _world.Sprites.Add(new SpriteDraw
+        {
+            TileX = entity.X,
+            TileY = entity.Y,
+            Height = 0f,
+            Sprite = new Sprite(shadow, new Rect2I(0, 0, ShadowTextureSize, ShadowTextureSize)),
+            WidthTiles = 60f / WorldProjection.PixelsPerTile * scale,
+            HeightTiles = 30f / WorldProjection.PixelsPerTile * scale,
+            AnchorX = 0.5f,
+            AnchorY = 0.5f,
+            Modulate = new Color(0f, 0f, 0f, 0.5f),
+            Outlined = false,
+            // Beneath the entity it belongs to, and beneath anything else on the same tile.
+            SortBias = sortBias - 2f,
+        });
+    }
+
+    private const int ShadowTextureSize = 32;
+    private Texture2D _shadowTexture;
+
+    /// <summary>A soft radial blob, generated once rather than shipped as an asset.</summary>
+    private static Texture2D BuildShadowTexture()
+    {
+        var image = Image.CreateEmpty(ShadowTextureSize, ShadowTextureSize, false, Image.Format.Rgba8);
+        float centre = (ShadowTextureSize - 1) / 2f;
+
+        for (int y = 0; y < ShadowTextureSize; y++)
+        {
+            for (int x = 0; x < ShadowTextureSize; x++)
+            {
+                float dx = (x - centre) / centre;
+                float dy = (y - centre) / centre;
+                float distance = Mathf.Sqrt(dx * dx + dy * dy);
+
+                // Squared falloff, which reads as a soft edge rather than a disc with a fringe.
+                float alpha = Mathf.Clamp(1f - distance, 0f, 1f);
+                image.SetPixel(x, y, new Color(1f, 1f, 1f, alpha * alpha));
+            }
+        }
+
+        return ImageTexture.CreateFromImage(image);
     }
 
     /// <summary>

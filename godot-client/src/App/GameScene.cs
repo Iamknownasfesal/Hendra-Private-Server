@@ -102,9 +102,7 @@ public partial class GameScene : Node
     private async void StartSession(Func<GameSession, System.Threading.Tasks.Task> connect)
     {
         _session = ServiceLocator.BeginSession();
-        _session.Disconnected += OnDisconnected;
-        _session.Failed += OnFailed;
-        _session.ReconnectRequested += OnReconnectRequested;
+        Subscribe(_session);
 
         _controller.Begin(_session, ServiceLocator.Data, ServiceLocator.Assets, _world, ServiceLocator.Clock, _overlay, _hud, _chat, _minimap);
         _controller.AutofireOnStart = Autofire;
@@ -124,6 +122,23 @@ public partial class GameScene : Node
         {
             OnDisconnected($"Could not reach {_host}:{_port} — {ex.Message}");
         }
+    }
+
+    private void Subscribe(GameSession session)
+    {
+        session.Disconnected += OnDisconnected;
+        session.Failed += OnFailed;
+        session.ReconnectRequested += OnReconnectRequested;
+    }
+
+    private void Unsubscribe(GameSession session)
+    {
+        if (session == null)
+            return;
+
+        session.Disconnected -= OnDisconnected;
+        session.Failed -= OnFailed;
+        session.ReconnectRequested -= OnReconnectRequested;
     }
 
     private void OnFailed(FailurePacket failure)
@@ -173,6 +188,12 @@ public partial class GameScene : Node
         if (port > 0)
             _port = port;
 
+        // Detach before tearing the old session down. Closing it raises Disconnected, and if that
+        // still reached us it would be reported as the session ending and bounce the player back to
+        // the login screen -- so every portal, every death and every trip to the Nexus would look
+        // like a dropped connection.
+        Unsubscribe(_session);
+
         _controller?.QueueFree();
         ServiceLocator.EndSession("Moving to another world.");
 
@@ -180,9 +201,7 @@ public partial class GameScene : Node
         AddChild(_controller);
 
         _session = ServiceLocator.BeginSession();
-        _session.Disconnected += OnDisconnected;
-        _session.Failed += OnFailed;
-        _session.ReconnectRequested += OnReconnectRequested;
+        Subscribe(_session);
         _controller.Begin(_session, ServiceLocator.Data, ServiceLocator.Assets, _world, ServiceLocator.Clock, _overlay, _hud, _chat, _minimap);
         _controller.AutofireOnStart = Autofire;
         _trade.Configure(_controller.Trading, ServiceLocator.Assets, ServiceLocator.Data);
@@ -204,7 +223,11 @@ public partial class GameScene : Node
         }
     }
 
-    public override void _ExitTree() => ServiceLocator.EndSession("Left the game.");
+    public override void _ExitTree()
+    {
+        Unsubscribe(_session);
+        ServiceLocator.EndSession("Left the game.");
+    }
 }
 
 /// <summary>
