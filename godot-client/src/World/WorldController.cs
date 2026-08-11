@@ -39,6 +39,8 @@ public partial class WorldController : Node
     private WorldRoot _world;
     private GameClock _clock;
     private Combat _combat;
+    private Interaction _interaction;
+    private Inventory _inventory;
     private WorldOverlay _overlay;
     private HudView _hud;
     private ChatView _chat;
@@ -52,6 +54,16 @@ public partial class WorldController : Node
 
     /// <summary>Starts autofire on, for unattended runs. See LaunchOptions.</summary>
     public bool AutofireOnStart { set => _autofire = value; }
+
+    /// <summary>
+    /// Raised when the player asks to return to the Nexus.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not the Escape packet. This fork's server disconnects anyone who sends Escape
+    /// while already in the Nexus, and the original client stopped sending it entirely -- it
+    /// performs a local reconnect to game id -2 instead.
+    /// </remarks>
+    public event System.Action NexusRequested;
 
     /// <summary>Whether the camera keeps the player centred or offset towards the top.</summary>
     public bool CenterOnPlayer { get; set; } = true;
@@ -74,6 +86,9 @@ public partial class WorldController : Node
 
         if (_chat != null)
             _chat.Submitted += OnChatSubmitted;
+
+        if (_hud != null)
+            _hud.SlotActivated += _inventory.Activate;
         _session = session;
         _data = data;
         _assets = assets;
@@ -82,6 +97,8 @@ public partial class WorldController : Node
         _clock = clock;
         _map = new GameMap(data);
         _combat = new Combat(_map, data, session, clock);
+        _interaction = new Interaction(_map);
+        _inventory = new Inventory(_map, data, session, clock);
 
         _session.MapLoaded += OnMapLoaded;
         _session.WorldUpdated += OnWorldUpdated;
@@ -360,6 +377,8 @@ public partial class WorldController : Node
         _map.Update(now, deltaMs);
         ApplyAttackInput(now);
         _combat.Update(now);
+        _interaction.Update(now);
+        _hud?.ShowPrompt(_interaction.Current.Exists ? _interaction.Current.Label : null);
 
         // Publish before polling: a NewTick delivered by Poll answers with a Move built from this.
         if (player != null)
@@ -417,6 +436,41 @@ public partial class WorldController : Node
 
         if (Input.IsActionJustPressed("autofire"))
             _autofire = !_autofire;
+
+        if (Input.IsActionJustPressed("interact"))
+            Interact();
+
+        if (Input.IsActionJustPressed("nexus"))
+            NexusRequested?.Invoke();
+
+        if (Input.IsActionJustPressed("health_potion"))
+            _inventory.UsePotion(health: true);
+
+        if (Input.IsActionJustPressed("magic_potion"))
+            _inventory.UsePotion(health: false);
+    }
+
+    /// <summary>Acts on whatever the player is standing next to.</summary>
+    private void Interact()
+    {
+        var target = _interaction.Current;
+        if (!target.Exists)
+            return;
+
+        switch (target.Kind)
+        {
+            case InteractionKind.Portal:
+                // The answer arrives as a Reconnect, which tears this session down and stands a new
+                // one up against the destination world.
+                _session.Send(new UsePortalPacket { ObjectId = target.Entity.ObjectId });
+                break;
+
+            case InteractionKind.Container:
+            case InteractionKind.Merchant:
+                // Both need a panel to be useful; opening one is not wired up yet.
+                _chat?.AddSystem($"{target.Label} is not implemented yet.");
+                break;
+        }
     }
 
     /// <summary>

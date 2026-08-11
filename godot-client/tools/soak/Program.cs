@@ -7,6 +7,9 @@ using Hendra.Core;
 using Hendra.Data;
 using Hendra.Net;
 using Hendra.Net.Packets;
+using Hendra.Resources;
+using System.IO;
+using System.Text;
 
 namespace Hendra.Soak;
 
@@ -31,11 +34,17 @@ internal static class Program
         bool create = args.Contains("--create");
         int charId = int.Parse(Arg(args, "--char", "0"));
         ushort classType = ushort.Parse(Arg(args, "--class", "782"));
+        bool usePortal = args.Contains("--use-portal");
+
+        // Only needed to recognise a portal among the objects the server streams.
+        GameData data = usePortal ? LoadGameData() : null;
 
         var clock = new GameClock();
         var session = new GameSession(clock);
 
         int updates = 0, ticks = 0, gotos = 0;
+        bool portalUsed = false;
+        bool reconnected = false;
         string ended = null;
         var mapName = "(none)";
 
@@ -75,6 +84,25 @@ internal static class Program
                     $"[{clock.NowMs,7}ms] spawned at ({session.PlayerX:F2}, {session.PlayerY:F2})");
             }
 
+            // Walking into a portal is the one interaction that exercises the whole session
+            // lifecycle, since the answer is a Reconnect rather than a reply.
+            if (usePortal && !portalUsed)
+            {
+                foreach (var definition in update.NewObjects)
+                {
+                    var desc = data.GetObject(definition.ObjectType);
+                    if (desc?.Class is not ("Portal" or "GuildHallPortal"))
+                        continue;
+
+                    portalUsed = true;
+                    Console.WriteLine(
+                        $"[{clock.NowMs,7}ms] entering portal \"{desc.DisplayId ?? desc.Id}\" " +
+                        $"(object {definition.Stats.ObjectId})");
+                    session.Send(new UsePortalPacket { ObjectId = definition.Stats.ObjectId });
+                    break;
+                }
+            }
+
             if (updates <= 3)
             {
                 Console.WriteLine(
@@ -96,6 +124,14 @@ internal static class Program
         };
         session.QueueUpdated += queue =>
             Console.WriteLine($"[{clock.NowMs,7}ms] Queued at {queue.Position}/{queue.Count}");
+
+        session.ReconnectRequested += packet =>
+        {
+            reconnected = true;
+            Console.WriteLine(
+                $"[{clock.NowMs,7}ms] Reconnect to \"{packet.Name}\" game {packet.GameId}, " +
+                $"key {packet.Key.Length} bytes");
+        };
 
         // Our own starting position arrives in the first Update, as a stat block for our object id.
         session.PacketReceived += packet =>
@@ -156,9 +192,35 @@ internal static class Program
         Console.WriteLine($"gotos        : {gotos}  (one GotoAck sent per goto)");
         Console.WriteLine($"final state  : {session.State}");
         Console.WriteLine($"ended        : {outcome ?? "no — still connected"}");
+        if (usePortal)
+            Console.WriteLine($"portal       : {(portalUsed ? "entered" : "none found")}, reconnect {(reconnected ? "received" : "not received")}");
 
         session.Close("Soak finished.");
         return outcome == null ? 0 : 1;
+    }
+
+    /// <summary>
+    /// Loads the extracted object definitions, which is enough to tell a portal from a candelabra.
+    /// </summary>
+    private static GameData LoadGameData()
+    {
+        string root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../assets/xml"));
+        var data = new GameData();
+
+        foreach (string file in Directory.EnumerateFiles(root, "EmbeddedData_*.xml"))
+        {
+            try
+            {
+                // Declared ISO-8859-1, and a few contain bytes that are not valid UTF-8.
+                data.AddObjects(File.ReadAllText(file, Encoding.Latin1));
+            }
+            catch
+            {
+                // Ground and region files live here too and have no Object elements.
+            }
+        }
+
+        return data;
     }
 
     private static string Arg(string[] args, string name, string fallback)

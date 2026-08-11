@@ -22,6 +22,7 @@
     <Compile Include="../../src/Core/**/*.cs" />
     <Compile Include="../../src/Net/**/*.cs" />
     <Compile Include="../../src/Data/**/*.cs" />
+    <Compile Include="../../src/Resources/**/*.cs" />
   </ItemGroup>
 
 </Project>

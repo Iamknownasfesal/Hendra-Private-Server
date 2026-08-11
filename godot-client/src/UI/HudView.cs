@@ -38,11 +38,15 @@ public partial class HudView : Control
     private readonly List<SlotView> _equipment = new();
     private readonly List<SlotView> _inventory = new();
 
+    /// <summary>Raised with the slot's index in the player's 24-entry equipment array.</summary>
+    public event Action<int> SlotActivated;
+
     private VitalBar _health;
     private VitalBar _mana;
     private Label _name;
     private Label _level;
     private Label _stats;
+    private Label _prompt;
 
     private AssetLibrary _assets;
     private GameData _data;
@@ -103,13 +107,38 @@ public partial class HudView : Control
 
         column.AddChild(new HSeparator());
         column.AddChild(new Label { Text = "Equipment" });
-        AddSlots(column, _equipment, EquipmentSlots);
+        AddSlots(column, _equipment, EquipmentSlots, firstIndex: 0);
 
         column.AddChild(new Label { Text = "Inventory" });
-        AddSlots(column, _inventory, InventorySlots);
+        AddSlots(column, _inventory, InventorySlots, firstIndex: 8);
+
+        // Sits over the world rather than in the panel, because it refers to something in front of
+        // the player rather than to their own state.
+        _prompt = new Label
+        {
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Visible = false,
+        };
+        _prompt.SetAnchorsPreset(LayoutPreset.CenterBottom);
+        _prompt.OffsetTop = -96;
+        _prompt.OffsetLeft = -200;
+        _prompt.OffsetRight = 200;
+        _prompt.OffsetBottom = -72;
+        AddChild(_prompt);
     }
 
-    private static void AddSlots(Control parent, List<SlotView> into, int count)
+    /// <summary>Shows what pressing the interact key would do, or hides the prompt when null.</summary>
+    public void ShowPrompt(string label)
+    {
+        if (_prompt == null)
+            return;
+
+        _prompt.Visible = !string.IsNullOrEmpty(label);
+        if (_prompt.Visible)
+            _prompt.Text = $"[R] {label}";
+    }
+
+    private void AddSlots(Control parent, List<SlotView> into, int count, int firstIndex)
     {
         var grid = new GridContainer { Columns = SlotsPerRow };
         grid.AddThemeConstantOverride("h_separation", 4);
@@ -118,7 +147,9 @@ public partial class HudView : Control
 
         for (int i = 0; i < count; i++)
         {
+            int slotIndex = firstIndex + i;
             var slot = new SlotView { CustomMinimumSize = new Vector2(SlotSize, SlotSize) };
+            slot.Activated += () => SlotActivated?.Invoke(slotIndex);
             grid.AddChild(slot);
             into.Add(slot);
         }
@@ -221,7 +252,16 @@ internal sealed partial class SlotView : Control
 
     private Assets.Sprite _sprite;
 
+    /// <summary>Raised on a left click, whether or not the slot holds anything.</summary>
+    public event Action Activated;
+
     public override void _Ready() => MouseFilter = MouseFilterEnum.Stop;
+
+    public override void _GuiInput(InputEvent @event)
+    {
+        if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
+            Activated?.Invoke();
+    }
 
     public void SetItem(Assets.Sprite sprite, string tooltip)
     {

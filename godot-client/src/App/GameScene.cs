@@ -100,6 +100,8 @@ public partial class GameScene : Node
 
         _controller.Begin(_session, ServiceLocator.Data, ServiceLocator.Assets, _world, ServiceLocator.Clock, _overlay, _hud, _chat);
         _controller.AutofireOnStart = Autofire;
+        _controller.NexusRequested += () =>
+            Reconnect(string.Empty, _port, GameIds.Nexus, 0, System.Array.Empty<byte>(), false);
 
         try
         {
@@ -170,6 +172,8 @@ public partial class GameScene : Node
         _session.ReconnectRequested += OnReconnectRequested;
         _controller.Begin(_session, ServiceLocator.Data, ServiceLocator.Assets, _world, ServiceLocator.Clock, _overlay, _hud, _chat);
         _controller.AutofireOnStart = Autofire;
+        _controller.NexusRequested += () =>
+            Reconnect(string.Empty, _port, GameIds.Nexus, 0, System.Array.Empty<byte>(), false);
 
         try
         {
