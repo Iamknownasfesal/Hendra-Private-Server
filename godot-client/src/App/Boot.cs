@@ -99,6 +99,10 @@ public partial class Boot : Control
         _ = ServiceLocator.LoadLanguageAsync(_appServerUrl);
         ServiceLocator.Audio?.Configure(_appServerUrl);
 
+        // Fired and forgotten, like the language table: the objects that use these are rare, and
+        // waiting on a download before showing the world would be a poor trade.
+        _ = Assets.RemoteTextures.LoadAsync(_appServerUrl, ServiceLocator.Assets, ServiceLocator.Data);
+
         _game = new GameScene { Autofire = _options?.Autofire ?? false, AutoAbility = _options?.AutoAbility ?? false, ScriptedLines = new System.Collections.Generic.Queue<string>(_options?.Say ?? new System.Collections.Generic.List<string>()) };
         _game.Ended += OnSessionEnded;
         _game.Died += OnCharacterDied;
@@ -120,6 +124,10 @@ public partial class Boot : Control
         _appServerUrl = $"http://{server.Address}:8888";
         _ = ServiceLocator.LoadLanguageAsync(_appServerUrl);
         ServiceLocator.Audio?.Configure(_appServerUrl);
+
+        // Fired and forgotten, like the language table: the objects that use these are rare, and
+        // waiting on a download before showing the world would be a poor trade.
+        _ = Assets.RemoteTextures.LoadAsync(_appServerUrl, ServiceLocator.Assets, ServiceLocator.Data);
 
         _game = new GameScene { Autofire = _options?.Autofire ?? false, AutoAbility = _options?.AutoAbility ?? false, ScriptedLines = new System.Collections.Generic.Queue<string>(_options?.Say ?? new System.Collections.Generic.List<string>()) };
         _game.Ended += OnSessionEnded;

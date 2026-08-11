@@ -144,6 +144,9 @@ Deliberate, and all of them fixes:
   clicked across a wide screen paid for a cast that never happened, with no message.
 - **Other players' shots are drawn but inert.** They exist on the server, where their owner's client
   reports what they hit, so joining in would double the damage reported for them.
+- **Remote textures are actually fetched.** The reference client has that path commented out and
+  substitutes a placeholder box for every object that uses one; here they are downloaded at startup
+  and only fall back to the same box when the server has no artwork under the id.
 - **Soft-edged sprites keep their soft edges.** The half-alpha test that decides where an outline
   goes was being applied to everything, so shadows and glows were cut off hard at the radius where
   their alpha crossed a half.
@@ -168,7 +171,6 @@ the fame tally from `/char/fame`.
   sprite, which is what the original did. Sampling would mean reading the texture back per frame.
 - Edge-mode and composite terrain blending. Those two of the three blend schemes fall back to plain
   artwork; the common one is implemented.
-- Remote textures, the per-object art fetched from `/app/getTextures`.
 - Rebinding keys. The options panel lists what the keys do but cannot change them.
 
 ## Out of scope

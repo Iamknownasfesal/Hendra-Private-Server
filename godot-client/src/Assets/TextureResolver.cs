@@ -78,11 +78,25 @@ public sealed class TextureResolver
             TextureKind.AnimatedChar => new ResolvedTexture(
                 default, _assets.GetAnimatedChar(spec.File, spec.Index), mask),
 
-            // Remote textures are fetched from the app server and are not wired up yet; falling back
-            // to nothing draws an invisible object rather than crashing the render loop.
-            TextureKind.Remote => default,
+            // Fetched from the app server at startup. When that failed, or the server has no
+            // artwork under this id, the object falls back to the same placeholder box the
+            // reference client shows -- which it shows for every one of them, since it has the
+            // fetch commented out. Better a visible marker than an invisible object.
+            TextureKind.Remote => ResolveRemote(spec, mask),
 
             _ => default,
         };
+    }
+
+    /// <summary>The sprite the reference client substitutes for a remote texture it cannot load.</summary>
+    private const int PlaceholderIndex = 0xFF;
+
+    private ResolvedTexture ResolveRemote(TextureSpec spec, Sprite mask)
+    {
+        var animated = _assets.GetRemoteTexture(spec.RemoteId);
+        if (animated != null)
+            return new ResolvedTexture(default, animated, mask);
+
+        return new ResolvedTexture(_assets.GetSprite("lofiObj3", PlaceholderIndex), null, mask);
     }
 }

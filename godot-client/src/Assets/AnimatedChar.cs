@@ -94,7 +94,8 @@ public readonly struct CharFrame
 /// </remarks>
 public sealed class AnimatedChar
 {
-    private const int CellsPerRow = 7;
+    /// <summary>Frames in one direction's row: stand, two walks, a gap, and three attack cells.</summary>
+    public const int CellsPerRow = 7;
     private const int FramesForTwoRows = 14;
     private const int FramesForThreeRows = 21;
 

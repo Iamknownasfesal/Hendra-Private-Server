@@ -105,6 +105,64 @@ public sealed class AssetLibrary
         _animatedChars[name] = characters;
     }
 
+    /// <summary>
+    /// Registers a character strip fetched from the app server.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A remote texture is a single row of seven frames — one direction's worth — which the game
+    /// data refers to by a numeric id rather than a sheet and index. Its width is therefore seven
+    /// frames and its height one, and <see cref="AnimatedChar.Build"/> fills the other directions in
+    /// by mirroring and falling back.
+    /// </para>
+    /// <para>
+    /// The reference client has this path commented out and falls back to a placeholder sprite for
+    /// all of them, so anything using one shows as the same little box. Fetching them is strictly
+    /// better and costs one request at startup.
+    /// </para>
+    /// </remarks>
+    public void AddRemoteTexture(string id, Texture2D texture, Texture2D mask, bool facesRight)
+    {
+        if (string.IsNullOrEmpty(id) || texture == null)
+            return;
+
+        var size = texture.GetSize();
+        int frameWidth = Mathf.Max(1, (int)size.X / AnimatedChar.CellsPerRow);
+        int frameHeight = Mathf.Max(1, (int)size.Y);
+        var image = texture.GetImage();
+
+        Rect2I CellRect(int cell, int spanCells) =>
+            new(cell * frameWidth, 0, frameWidth * spanCells, frameHeight);
+
+        Sprite Cell(int cell, int spanCells) =>
+            cell < 0 || cell >= AnimatedChar.CellsPerRow ? default : new Sprite(texture, CellRect(cell, spanCells));
+
+        Func<int, int, Sprite> maskCell = mask == null
+            ? null
+            : (cell, spanCells) =>
+                cell < 0 || cell >= AnimatedChar.CellsPerRow ? default : new Sprite(mask, CellRect(cell, spanCells));
+
+        _animatedChars[RemoteKey(id)] = new[]
+        {
+            AnimatedChar.Build(
+                Cell,
+                maskCell,
+                AnimatedChar.CellsPerRow,
+                cell => cell < 0 || cell >= AnimatedChar.CellsPerRow ||
+                        (image != null && IsFullyTransparent(image, CellRect(cell, 1))),
+                facesRight ? CharFacing.Right : CharFacing.Down),
+        };
+    }
+
+    /// <summary>The animated character for a remote texture id, or null if it was never fetched.</summary>
+    public AnimatedChar GetRemoteTexture(string id) =>
+        string.IsNullOrEmpty(id) ? null : GetAnimatedChar(RemoteKey(id), 0);
+
+    /// <summary>
+    /// Namespaced so a numeric remote id can never collide with a sheet name from the manifest.
+    /// </summary>
+    private static string RemoteKey(string id) => "remote:" + id;
+
     private static bool IsFullyTransparent(Image image, Rect2I region)
     {
         int right = Mathf.Min(region.Position.X + region.Size.X, image.GetWidth());
