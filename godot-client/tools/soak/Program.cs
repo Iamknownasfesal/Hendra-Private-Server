@@ -143,6 +143,11 @@ internal static class Program
         }
 
         stopwatch.Stop();
+
+        // Captured before the deliberate close below, which raises Disconnected and would otherwise
+        // make a clean run look like a failure.
+        string outcome = ended;
+
         Console.WriteLine();
         Console.WriteLine($"map          : {mapName}");
         Console.WriteLine($"survived     : {stopwatch.Elapsed.TotalSeconds:F1}s of {seconds}s");
@@ -150,10 +155,10 @@ internal static class Program
         Console.WriteLine($"updates      : {updates}  (one UpdateAck sent per update)");
         Console.WriteLine($"gotos        : {gotos}  (one GotoAck sent per goto)");
         Console.WriteLine($"final state  : {session.State}");
-        Console.WriteLine($"ended        : {ended ?? "no — still connected"}");
+        Console.WriteLine($"ended        : {outcome ?? "no — still connected"}");
 
         session.Close("Soak finished.");
-        return ended == null ? 0 : 1;
+        return outcome == null ? 0 : 1;
     }
 
     private static string Arg(string[] args, string name, string fallback)
