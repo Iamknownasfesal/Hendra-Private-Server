@@ -97,6 +97,7 @@ public partial class Boot : Control
         // until it lands.
         _appServerUrl = $"http://{server.Address}:8888";
         _ = ServiceLocator.LoadLanguageAsync(_appServerUrl);
+        ServiceLocator.Audio?.Configure(_appServerUrl);
 
         _game = new GameScene { Autofire = _options?.Autofire ?? false, AutoAbility = _options?.AutoAbility ?? false, ScriptedLines = new System.Collections.Generic.Queue<string>(_options?.Say ?? new System.Collections.Generic.List<string>()) };
         _game.Ended += OnSessionEnded;
@@ -118,6 +119,7 @@ public partial class Boot : Control
 
         _appServerUrl = $"http://{server.Address}:8888";
         _ = ServiceLocator.LoadLanguageAsync(_appServerUrl);
+        ServiceLocator.Audio?.Configure(_appServerUrl);
 
         _game = new GameScene { Autofire = _options?.Autofire ?? false, AutoAbility = _options?.AutoAbility ?? false, ScriptedLines = new System.Collections.Generic.Queue<string>(_options?.Say ?? new System.Collections.Generic.List<string>()) };
         _game.Ended += OnSessionEnded;

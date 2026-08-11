@@ -25,6 +25,7 @@ public partial class ServiceLocator : Node
 
     private readonly GameClock _clock = new();
     private GameSession _session;
+    private Audio.AudioLibrary _audio;
 
     /// <summary>The monotonic millisecond clock. Everything that goes on the wire is stamped from it.</summary>
     public static GameClock Clock => _instance._clock;
@@ -44,12 +45,25 @@ public partial class ServiceLocator : Node
     /// <summary>The current session, or null when not in a game.</summary>
     public static GameSession Session => _instance?._session;
 
+    /// <summary>
+    /// Sound effects and music.
+    /// </summary>
+    /// <remarks>
+    /// Process-global like the clock, and for the same reason: it holds fetched audio that should
+    /// outlive any one session, so a trip to the Nexus does not silence the game while it downloads
+    /// the same files again.
+    /// </remarks>
+    public static Audio.AudioLibrary Audio => _instance?._audio;
+
     public static bool ContentLoaded => Assets != null && Data != null;
 
     public override void _EnterTree()
     {
         _instance = this;
         _clock.Reset();
+
+        _audio = new Audio.AudioLibrary();
+        AddChild(_audio);
 
         // Keep ticking while the window is unfocused: the server's keepalive and acknowledgement
         // deadlines run on wall time, so a client that stops processing for twelve seconds is

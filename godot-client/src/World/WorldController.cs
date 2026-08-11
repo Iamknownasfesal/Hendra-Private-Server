@@ -44,6 +44,7 @@ public partial class WorldController : Node
     private Trading _trading;
     private Party _party;
     private ParticleSystem _particles;
+    private Audio.AudioLibrary _audio;
     private SpritePalette _palette;
     private MinimapView _minimap;
     private TileColors _tileColors;
@@ -150,6 +151,7 @@ public partial class WorldController : Node
         _trading = new Trading(session);
         _party = new Party(_map);
         _particles = new ParticleSystem(_map);
+        _audio = App.ServiceLocator.Audio;
         _palette = new SpritePalette();
 
         // Subscribed after construction, not alongside the field assignments above: these forward
@@ -191,6 +193,7 @@ public partial class WorldController : Node
 
     private void OnMapLoaded(MapInfoPacket mapInfo)
     {
+        _audio?.PlayMusic(mapInfo.Music);
         _map.Reset(mapInfo.Width, mapInfo.Height, mapInfo.Name);
         _combat.Clear();
         _particles.Clear();
@@ -218,6 +221,19 @@ public partial class WorldController : Node
             // session.
             GD.PushWarning($"[world] could not merge map XML: {ex.Message}");
         }
+    }
+
+    /// <summary>The level we last saw, so a level-up can be noticed rather than announced.</summary>
+    private int _lastLevel = -1;
+
+    /// <summary>Plays the level-up chime when the server raises our level.</summary>
+    private void NoticeLevelUp()
+    {
+        int level = _map.Player?.Level ?? -1;
+        if (level > _lastLevel && _lastLevel > 0)
+            _audio?.PlayEffect("level_up");
+
+        _lastLevel = level;
     }
 
     private void OnEntered(CreateSuccessPacket packet)
@@ -263,6 +279,11 @@ public partial class WorldController : Node
 
         StatApplier.Apply(entity, definition.Stats, isSelf);
         _map.Add(entity, definition.Stats.Position.X, definition.Stats.Position.Y);
+
+        // The chime that says something dropped. Only for bags that appear near enough to be worth
+        // hearing about; the server streams every container in the world as it comes into view.
+        if (desc?.Class == "Container" && _map.Player != null && entity.DistanceTo(_map.Player.X, _map.Player.Y) < 12f)
+            _audio?.PlayEffect("loot_appears");
 
         if (isSelf && entity is LocalPlayer player)
         {
@@ -331,6 +352,14 @@ public partial class WorldController : Node
 
             case ShowEffectPacket effect:
                 _particles.Show(effect, now);
+                break;
+
+            case PlaySoundPacket sound:
+                PlayObjectSound(sound);
+                break;
+
+            case SwitchMusicPacket music:
+            _audio?.PlayMusic(music.Music);
                 break;
 
             case TradeRequestedPacket:
@@ -499,6 +528,16 @@ public partial class WorldController : Node
         if (damage.Kill)
             target.Dead = true;
 
+        // Only things that fight make a noise when they are hit. A struck decoration is silent, and
+        // so is a scratch that did nothing.
+        if (target.Desc is { IsEnemy: true } or { IsPlayer: true })
+        {
+            if (damage.Kill)
+                _audio?.PlayEffect(target.Desc.DeathSound);
+            else if (damage.DamageAmount > 0)
+                _audio?.PlayEffect(target.Desc.HitSound);
+        }
+
         ThrowDebris(target, damage);
     }
 
@@ -587,6 +626,7 @@ public partial class WorldController : Node
         _session.Poll();
         SayOnEntryIfDue(player, now);
 
+        NoticeLevelUp();
         _hud?.Refresh(_map.Player);
         _minimap?.Refresh(_cameraAngle);
 
@@ -769,7 +809,12 @@ public partial class WorldController : Node
         if (!typing && Input.IsActionJustPressed("use_ability"))
         {
             var target = AimPoint();
-            _inventory.BeginAbility(now, target.X, target.Y);
+            var ability = _inventory.EquippedAbility;
+
+            if (_inventory.BeginAbility(now, target.X, target.Y))
+                PlayItemSound(ability);
+            else if (ability != null && player.Mp < ability.MpCost)
+                _audio?.PlayEffect("no_mana");
         }
 
         // Released even while typing: a key-up that arrives after the chat box took focus would
@@ -783,7 +828,29 @@ public partial class WorldController : Node
         if (typing || (!_autofire && !Input.IsActionPressed("shoot")))
             return;
 
-        _combat.TryShoot(now, AimAngle());
+        if (_combat.TryShoot(now, AimAngle()))
+            PlayItemSound(_combat.EquippedWeapon);
+    }
+
+    /// <summary>
+    /// Plays the noise an item makes when it is fired.
+    /// </summary>
+    /// <remarks>
+    /// Quieter than everything else, at three quarters, which is the original's figure — a weapon
+    /// fires several times a second and at full volume it drowns out the things it is shooting at.
+    /// </remarks>
+    private void PlayItemSound(ObjectDesc item)
+    {
+        if (item?.Sounds != null && item.Sounds.TryGetValue(0, out string sound))
+            _audio?.PlayEffect(sound, 0.75f);
+    }
+
+    /// <summary>Plays one of an entity's declared sounds, named by index on the wire.</summary>
+    private void PlayObjectSound(PlaySoundPacket packet)
+    {
+        var owner = _map.GetEntity(packet.OwnerId);
+        if (owner?.Desc?.Sounds != null && owner.Desc.Sounds.TryGetValue(packet.SoundId, out string sound))
+            _audio?.PlayEffect(sound);
     }
 
     /// <summary>The direction from the player to the cursor, in world radians.</summary>

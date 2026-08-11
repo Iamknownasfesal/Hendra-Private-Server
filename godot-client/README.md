@@ -98,6 +98,11 @@ Standing up the server locally takes a few steps, none of them obvious:
    `requirepass alphaversionone`.
 5. A fresh account needs `nameChosen` and `alpha` set before the world server will admit it:
    `redis-cli hset account.1 nameChosen 1` and likewise `alpha 1`.
+6. Sound is served, not shipped: the client fetches `/sfx/<name>.mp3` and `/music/<name>.mp3` as
+   static files, so `XmlDatas/web/sfx` and `XmlDatas/web/music` have to be present in whatever
+   resource folder the app server was pointed at. Both are read into memory at startup, and the
+   music alone is 205 MB. The client says how many interface sounds it got — `[audio] 9 of 9` —
+   which is the quickest way to tell a silent client from a silent server.
 
 ## Notes for anyone reading the code
 
@@ -149,8 +154,8 @@ Sign in, create or pick a character, and play: movement with the original's coll
 shooting with server-verified timing, abilities, projectiles, damage, loot containers, the vault,
 merchants, portals between worlds, chat, trading, a nearby-players list, a minimap, the HUD, the
 visual effects --
-every `ShowEffect` kind, the spray a struck monster throws off, and the camera shake -- and, when it
-ends, the fame tally from `/char/fame`.
+every `ShowEffect` kind, the spray a struck monster throws off, and the camera shake -- sound and
+music, and, when it ends, the fame tally from `/char/fame`.
 
 ## What is not done yet
 
@@ -162,7 +167,7 @@ ends, the fame tally from `/char/fame`.
 - Edge-mode and composite terrain blending. Those two of the three blend schemes fall back to plain
   artwork; the common one is implemented.
 - Remote textures, the per-object art fetched from `/app/getTextures`.
-- Sound.
+- Volume controls. Sound and music play at fixed levels; there is no options screen yet.
 
 ## Out of scope
 

@@ -182,6 +182,8 @@ public sealed class Inventory
         if (player == null)
             return;
 
+        App.ServiceLocator.Audio?.PlayEffect("use_potion");
+
         byte slot = health ? HealthPotionSlot : MagicPotionSlot;
         _session.Send(new UseItemPacket
         {
@@ -407,6 +409,8 @@ public sealed class Inventory
 
     private void Swap(LocalPlayer player, int fromIndex, int toIndex, int fromType, int toType)
     {
+        App.ServiceLocator.Audio?.PlayEffect("inventory_move_item");
+
         _session.Send(new InvSwapPacket
         {
             Time = _clock.FrameMs,

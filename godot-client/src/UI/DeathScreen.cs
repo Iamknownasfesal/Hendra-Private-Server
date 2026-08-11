@@ -46,6 +46,7 @@ public partial class DeathScreen : Control
     public override void _Ready()
     {
         this.FillScreen();
+        App.ServiceLocator.Audio?.PlayEffect("death_screen");
 
         // A dim wash over whatever the world last drew, so the panel reads as sitting on top of the
         // game rather than replacing it.
