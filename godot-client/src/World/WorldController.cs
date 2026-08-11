@@ -7,6 +7,8 @@ using Hendra.Net;
 using Hendra.Net.Packets;
 using Hendra.Render;
 using Hendra.Resources;
+using Hendra.Text;
+using Hendra.UI;
 
 namespace Hendra.World;
 
@@ -38,10 +40,18 @@ public partial class WorldController : Node
     private GameClock _clock;
     private Combat _combat;
     private WorldOverlay _overlay;
+    private HudView _hud;
+    private ChatView _chat;
+
+    /// <summary>Localised strings. Empty until the language table is fetched.</summary>
+    private readonly StringMap _strings = new();
 
     private float _cameraAngle = 7f * Mathf.Pi / 4f;
     private Entity _focus;
     private bool _autofire;
+
+    /// <summary>Starts autofire on, for unattended runs. See LaunchOptions.</summary>
+    public bool AutofireOnStart { set => _autofire = value; }
 
     /// <summary>Whether the camera keeps the player centred or offset towards the top.</summary>
     public bool CenterOnPlayer { get; set; } = true;
@@ -54,9 +64,16 @@ public partial class WorldController : Node
         AssetLibrary assets,
         WorldRoot world,
         GameClock clock,
-        WorldOverlay overlay)
+        WorldOverlay overlay,
+        HudView hud = null,
+        ChatView chat = null)
     {
         _overlay = overlay;
+        _hud = hud;
+        _chat = chat;
+
+        if (_chat != null)
+            _chat.Submitted += OnChatSubmitted;
         _session = session;
         _data = data;
         _assets = assets;
@@ -227,6 +244,18 @@ public partial class WorldController : Node
             case DamagePacket damage:
                 OnDamage(damage);
                 break;
+
+            case TextPacket text:
+                _chat?.Add(text, LineBuilder.Resolve(text.Text, _strings));
+                break;
+
+            case NotificationPacket notification:
+                _chat?.AddSystem(LineBuilder.Resolve(notification.Message, _strings));
+                break;
+
+            case GlobalNotificationPacket announcement:
+                _chat?.AddSystem(LineBuilder.Resolve(announcement.Text, _strings));
+                break;
         }
     }
 
@@ -344,14 +373,35 @@ public partial class WorldController : Node
         _session.RecordPosition();
         _session.Poll();
 
+        _hud?.Refresh(_map.Player);
+
         Draw(now);
     }
+
+    /// <summary>Sends a chat line, or a slash command, exactly as typed.</summary>
+    private void OnChatSubmitted(string line) => _session.Send(new PlayerTextPacket { Text = line });
 
     private void ApplyInput(int deltaMs)
     {
         var player = _map.Player;
         if (player == null)
             return;
+
+        // While the chat box has the keyboard, the movement keys belong to it -- they are letters.
+        if (_chat is { IsTyping: true })
+        {
+            player.SetInput(0f, 0f, 0f);
+
+            if (Input.IsKeyPressed(Key.Escape))
+                _chat.EndTyping();
+            return;
+        }
+
+        if (Input.IsActionJustPressed("toggle_chat"))
+        {
+            _chat?.BeginTyping();
+            return;
+        }
 
         float x = Input.GetActionStrength("move_right") - Input.GetActionStrength("move_left");
         float y = Input.GetActionStrength("move_down") - Input.GetActionStrength("move_up");
@@ -389,10 +439,14 @@ public partial class WorldController : Node
         var offset = viewport.GetMousePosition() - centre;
 
         var world = _world.Projection.ScreenToWorldOffset(offset);
-        if (world.LengthSquared() < 0.0001f)
-            return;
 
-        _combat.TryShoot(now, Mathf.Atan2(world.Y, world.X));
+        // A cursor sitting exactly on the player gives no direction; fire along the camera's
+        // rightward axis rather than doing nothing.
+        float angle = world.LengthSquared() < 0.0001f
+            ? _cameraAngle
+            : Mathf.Atan2(world.Y, world.X);
+
+        _combat.TryShoot(now, angle);
     }
 
     // ------------------------------------------------------------------------------------------

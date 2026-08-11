@@ -80,7 +80,7 @@ public partial class Boot : Control
             _login = null;
         }
 
-        _game = new GameScene();
+        _game = new GameScene { Autofire = _options?.Autofire ?? false };
         _game.Ended += OnSessionEnded;
 
         // AddChild runs the scene's _Ready synchronously, so the world exists by the time this

@@ -4,6 +4,7 @@ using Hendra.Account;
 using Hendra.Net;
 using Hendra.Net.Packets;
 using Hendra.Render;
+using Hendra.UI;
 using Hendra.World;
 
 namespace Hendra.App;
@@ -20,6 +21,8 @@ public partial class GameScene : Node
 {
     private WorldRoot _world;
     private WorldOverlay _overlay;
+    private HudView _hud;
+    private ChatView _chat;
     private WorldController _controller;
     private GameSession _session;
 
@@ -29,6 +32,9 @@ public partial class GameScene : Node
     private string _password;
     private int _characterId;
 
+    /// <summary>Starts with fire held down. Set from the command line for unattended runs.</summary>
+    public bool Autofire { get; set; }
+
     /// <summary>Raised when the session ends, with a reason to show the player.</summary>
     public event Action<string> Ended;
 
@@ -37,8 +43,22 @@ public partial class GameScene : Node
         _world = new WorldRoot();
         AddChild(_world);
 
+        // The interface lives on a CanvasLayer for two reasons. A Control only sizes itself against
+        // the viewport when its parent is a Viewport or a CanvasLayer -- hang one off a plain Node
+        // and it silently stays zero-sized, laying everything out on top of itself. And a layer
+        // above zero draws over the 3D world regardless of node order.
+        var ui = new CanvasLayer { Layer = 1 };
+        AddChild(ui);
+
         _overlay = new WorldOverlay();
-        AddChild(_overlay);
+        ui.AddChild(_overlay);
+
+        _hud = new HudView();
+        _hud.Configure(ServiceLocator.Assets, ServiceLocator.Data);
+        ui.AddChild(_hud);
+
+        _chat = new ChatView();
+        ui.AddChild(_chat);
 
         _controller = new WorldController();
         AddChild(_controller);
@@ -78,7 +98,8 @@ public partial class GameScene : Node
         _session.Failed += OnFailed;
         _session.ReconnectRequested += OnReconnectRequested;
 
-        _controller.Begin(_session, ServiceLocator.Data, ServiceLocator.Assets, _world, ServiceLocator.Clock, _overlay);
+        _controller.Begin(_session, ServiceLocator.Data, ServiceLocator.Assets, _world, ServiceLocator.Clock, _overlay, _hud, _chat);
+        _controller.AutofireOnStart = Autofire;
 
         try
         {
@@ -147,7 +168,8 @@ public partial class GameScene : Node
         _session.Disconnected += OnDisconnected;
         _session.Failed += OnFailed;
         _session.ReconnectRequested += OnReconnectRequested;
-        _controller.Begin(_session, ServiceLocator.Data, ServiceLocator.Assets, _world, ServiceLocator.Clock, _overlay);
+        _controller.Begin(_session, ServiceLocator.Data, ServiceLocator.Assets, _world, ServiceLocator.Clock, _overlay, _hud, _chat);
+        _controller.AutofireOnStart = Autofire;
 
         try
         {

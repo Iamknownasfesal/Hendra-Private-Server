@@ -51,7 +51,7 @@ public partial class WorldOverlay : Control
     {
         // Ignore the mouse entirely: this sits over the world and must not eat clicks meant for it.
         MouseFilter = MouseFilterEnum.Ignore;
-        SetAnchorsPreset(LayoutPreset.FullRect);
+        UI.ScreenFit.FillScreen(this);
         _font = ThemeDB.FallbackFont;
     }
 
