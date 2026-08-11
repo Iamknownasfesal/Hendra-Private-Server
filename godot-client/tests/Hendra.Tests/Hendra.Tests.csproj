@@ -36,6 +36,7 @@
     <Compile Include="../../src/Resources/**/*.cs" />
     <Compile Include="../../src/Text/**/*.cs" />
     <Compile Include="../../src/Render/WorldProjection.cs" />
+    <Compile Include="../../src/Account/FameResult.cs" />
     <Compile Include="../../src/World/Movement.cs" />
     <Compile Include="../../src/World/Projectile.cs" />
     <Compile Include="../../src/World/Entity.cs" />

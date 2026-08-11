@@ -37,11 +37,20 @@ public partial class GameScene : Node
     /// <summary>Starts with fire held down. Set from the command line for unattended runs.</summary>
     public bool Autofire { get; set; }
 
-    /// <summary>A line to send once on entering the world. Set from the command line.</summary>
-    public string SayOnEntry { get; set; }
+    /// <summary>
+    /// Lines to send once in the world, in order. Set from the command line.
+    /// </summary>
+    /// <remarks>
+    /// One queue for the session, handed to each controller in turn, so a script survives a change
+    /// of world instead of restarting in the new one.
+    /// </remarks>
+    public System.Collections.Generic.Queue<string> ScriptedLines { get; set; }
 
     /// <summary>Raised when the session ends, with a reason to show the player.</summary>
     public event Action<string> Ended;
+
+    /// <summary>Raised when our character dies. Carries the packet and the level it reached.</summary>
+    public event Action<DeathPacket, int> Died;
 
     public override void _Ready()
     {
@@ -109,14 +118,14 @@ public partial class GameScene : Node
 
         _controller.Begin(_session, ServiceLocator.Data, ServiceLocator.Assets, _world, ServiceLocator.Clock, _overlay, _hud, _chat, _minimap);
         _controller.AutofireOnStart = Autofire;
-        _controller.SayOnEntry = SayOnEntry;
+        _controller.ScriptedLines = ScriptedLines;
         _trade.Configure(_controller.Trading, ServiceLocator.Assets, ServiceLocator.Data);
         _controller.Trading.Requested += who =>
             _controller.Chat?.AddSystem($"{who} wants to trade. Type /trade {who} to accept.");
         _controller.Trading.Ended += message => _controller.Chat?.AddSystem(message);
         _controller.NexusRequested += () =>
             Reconnect(string.Empty, _port, GameIds.Nexus, 0, System.Array.Empty<byte>(), false);
-        _controller.Died += reason => CallDeferred(nameof(ReportDisconnect), reason);
+        _controller.Died += OnCharacterDied;
 
         try
         {
@@ -166,6 +175,16 @@ public partial class GameScene : Node
         Ended?.Invoke(message);
     }
 
+    /// <summary>
+    /// Our character died.
+    /// </summary>
+    /// <remarks>
+    /// Permanent: the character is gone and the session is over. A zombie death is different — the
+    /// server hands back a new object to keep playing as — but that path is not implemented, so it
+    /// is reported the same way rather than silently doing nothing.
+    /// </remarks>
+    private void OnCharacterDied(DeathPacket death) => Died?.Invoke(death, _controller.PlayerLevel);
+
     private void OnDisconnected(string reason) =>
         CallDeferred(nameof(ReportDisconnect), reason ?? "Connection lost.");
 
@@ -208,14 +227,14 @@ public partial class GameScene : Node
         Subscribe(_session);
         _controller.Begin(_session, ServiceLocator.Data, ServiceLocator.Assets, _world, ServiceLocator.Clock, _overlay, _hud, _chat, _minimap);
         _controller.AutofireOnStart = Autofire;
-        _controller.SayOnEntry = SayOnEntry;
+        _controller.ScriptedLines = ScriptedLines;
         _trade.Configure(_controller.Trading, ServiceLocator.Assets, ServiceLocator.Data);
         _controller.Trading.Requested += who =>
             _controller.Chat?.AddSystem($"{who} wants to trade. Type /trade {who} to accept.");
         _controller.Trading.Ended += message => _controller.Chat?.AddSystem(message);
         _controller.NexusRequested += () =>
             Reconnect(string.Empty, _port, GameIds.Nexus, 0, System.Array.Empty<byte>(), false);
-        _controller.Died += reason => CallDeferred(nameof(ReportDisconnect), reason);
+        _controller.Died += OnCharacterDied;
 
         try
         {

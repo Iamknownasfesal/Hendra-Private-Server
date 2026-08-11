@@ -36,13 +36,14 @@ public sealed class LaunchOptions
     public bool Autofire { get; private set; }
 
     /// <summary>
-    /// A line to send once, shortly after entering the world.
+    /// Lines to send once the world is up, in order, a couple of seconds apart.
     /// </summary>
     /// <remarks>
-    /// Slash commands go down the same pipe as chat, so this is how an unattended run reaches
-    /// anything the server only does on request — spawning something to shoot at, for one.
+    /// Repeat <c>--say</c> for each. Slash commands go down the same pipe as chat, so this is how an
+    /// unattended run reaches anything the server only does on request — and more than one line is
+    /// needed for anything that has to leave the Nexus first, since you cannot die there.
     /// </remarks>
-    public string SayOnEntry { get; private set; }
+    public System.Collections.Generic.List<string> Say { get; } = new();
 
     /// <summary>Whether enough was supplied to connect without the login screen.</summary>
     public bool CanAutoConnect =>
@@ -70,7 +71,13 @@ public sealed class LaunchOptions
                     break;
                 case "--quit-after-screenshot": options.QuitAfterScreenshot = true; break;
                 case "--autofire": options.Autofire = true; break;
-                case "--say": options.SayOnEntry = Next(); break;
+                case "--say":
+                {
+                    string line = Next();
+                    if (!string.IsNullOrEmpty(line))
+                        options.Say.Add(line);
+                    break;
+                }
             }
         }
 

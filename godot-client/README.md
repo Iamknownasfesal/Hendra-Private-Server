@@ -79,6 +79,10 @@ godot-mono --path . -- --host 127.0.0.1 --guid you@example.com --password pw --c
     --quit-after-screenshot
 ```
 
+Repeat `--say` for a script; the lines go out a couple of seconds apart and survive a change of
+world, which some of them need — you cannot die in the Nexus, so checking the death screen takes
+`--say /realm --say "/killPlayer <name>"`.
+
 Standing up the server locally takes a few steps, none of them obvious:
 
 1. It targets .NET Framework 4.6.1 with old-style project files, so it needs Mono
@@ -137,14 +141,14 @@ Deliberate, and all of them fixes:
 
 Sign in, create or pick a character, and play: movement with the original's collision rules,
 shooting with server-verified timing, projectiles, damage, loot containers, merchants, portals
-between worlds, chat, trading, a nearby-players list, a minimap, the HUD, and the visual effects --
-every `ShowEffect` kind, the spray a struck monster throws off, and the camera shake.
+between worlds, chat, trading, a nearby-players list, a minimap, the HUD, the visual effects --
+every `ShowEffect` kind, the spray a struck monster throws off, and the camera shake -- and, when it
+ends, the fame tally from `/char/fame`.
 
 ## What is not done yet
 
 - The vault, and the guild and party panels. The packets are all implemented and their results
   reach the chat log; what is missing is the UI to drive them.
-- The fame and death summary screens. Death itself is handled and reported.
 - Pets, the market, quests and daily rewards.
 - The charging aura on a Rising Fury enemy is emitted around the enemy rather than sampled over its
   sprite, which is what the original did. Sampling would mean reading the texture back per frame.

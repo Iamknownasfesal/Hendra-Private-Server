@@ -64,15 +64,19 @@ public partial class WorldController : Node
     public bool AutofireOnStart { set => _autofire = value; }
 
     /// <summary>
-    /// A line sent once, a moment after the world is up. For unattended runs; see LaunchOptions.
+    /// Lines to send once the world is up, one at a time. For unattended runs; see LaunchOptions.
     /// </summary>
     /// <remarks>
-    /// Deliberately delayed rather than sent the instant a player entity appears. The server drops
-    /// chat from a client it does not yet consider fully in the world, and does so silently.
+    /// The queue is owned by the scene and shared across worlds, so a line is sent once for the
+    /// whole session rather than once per world -- and a script that has to change world partway
+    /// through carries on where it left off after the reconnect.
+    ///
+    /// Delayed rather than sent the instant a player entity appears: the server drops chat from a
+    /// client it does not yet consider fully in the world, and does so silently.
     /// </remarks>
-    public string SayOnEntry { private get; set; }
+    public System.Collections.Generic.Queue<string> ScriptedLines { private get; set; }
 
-    /// <summary>When to send <see cref="SayOnEntry"/>, or zero if there is nothing to send.</summary>
+    /// <summary>When the next scripted line is due, or zero before the clock has been read.</summary>
     private int _sayAtMs;
 
     /// <summary>
@@ -85,8 +89,15 @@ public partial class WorldController : Node
     /// </remarks>
     public event System.Action NexusRequested;
 
-    /// <summary>Raised when our character dies, with something to show the player.</summary>
-    public event System.Action<string> Died;
+    /// <summary>
+    /// Raised when our character dies, carrying the packet itself.
+    /// </summary>
+    /// <remarks>
+    /// The packet rather than a formatted message, because the account and character ids on it are
+    /// what the fame tally is fetched with — and in a session that connected straight to a world
+    /// they are the only place the client learns its own numeric account id.
+    /// </remarks>
+    public event System.Action<DeathPacket> Died;
 
     /// <summary>Whether the camera keeps the player centred or offset towards the top.</summary>
     public bool CenterOnPlayer { get; set; } = true;
@@ -439,11 +450,10 @@ public partial class WorldController : Node
     /// server hands back a new object to keep playing as -- but that path is not implemented, so it
     /// is reported the same way rather than silently doing nothing.
     /// </remarks>
-    private void OnDeath(DeathPacket death)
-    {
-        string killer = string.IsNullOrEmpty(death.KilledBy) ? "something" : death.KilledBy;
-        Died?.Invoke($"Killed by {killer} at level {_map.Player?.Level ?? 0}.");
-    }
+    private void OnDeath(DeathPacket death) => Died?.Invoke(death);
+
+    /// <summary>The level our own character reached, for the death screen.</summary>
+    public int PlayerLevel => _map?.Player?.Level ?? 0;
 
     /// <summary>The server's authoritative word on damage, overriding any local prediction.</summary>
     private void OnDamage(DamagePacket damage)
@@ -601,12 +611,13 @@ public partial class WorldController : Node
     /// <summary>Sends a chat line, or a slash command, exactly as typed.</summary>
     private void OnChatSubmitted(string line) => _session.Send(new PlayerTextPacket { Text = line });
 
-    /// <summary>Sends the scripted line once the world has settled. See <see cref="SayOnEntry"/>.</summary>
+    /// <summary>Sends the next scripted line once the world has settled. See <see cref="ScriptedLines"/>.</summary>
     private void SayOnEntryIfDue(LocalPlayer player, int now)
     {
         const int SettleMs = 2000;
+        const int GapMs = 2000;
 
-        if (SayOnEntry == null || player == null)
+        if (ScriptedLines == null || ScriptedLines.Count == 0 || player == null)
             return;
 
         if (_sayAtMs == 0)
@@ -618,8 +629,8 @@ public partial class WorldController : Node
         if (now < _sayAtMs)
             return;
 
-        OnChatSubmitted(SayOnEntry);
-        SayOnEntry = null;
+        OnChatSubmitted(ScriptedLines.Dequeue());
+        _sayAtMs = now + GapMs;
     }
 
     private void ApplyInput(int deltaMs)
