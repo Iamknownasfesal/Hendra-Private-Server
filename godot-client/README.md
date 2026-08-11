@@ -98,7 +98,10 @@ Standing up the server locally takes a few steps, none of them obvious:
    `requirepass alphaversionone`.
 5. A fresh account needs `nameChosen` and `alpha` set before the world server will admit it:
    `redis-cli hset account.1 nameChosen 1` and likewise `alpha 1`.
-6. Sound is served, not shipped: the client fetches `/sfx/<name>.mp3` and `/music/<name>.mp3` as
+6. The models under `assets/models` are read as raw Wavefront text at runtime rather than through
+   Godot's importer, so a packaged export needs `*.obj` in its include filter. Running from source,
+   as below, needs nothing.
+7. Sound is served, not shipped: the client fetches `/sfx/<name>.mp3` and `/music/<name>.mp3` as
    static files, so `XmlDatas/web/sfx` and `XmlDatas/web/music` have to be present in whatever
    resource folder the app server was pointed at. Both are read into memory at startup, and the
    music alone is 205 MB. The client says how many interface sounds it got — `[audio] 9 of 9` —
@@ -120,7 +123,10 @@ anything:
 - **Damage prediction depends on a shared PRNG** seeded from `MapInfo`, stepped in the same order on
   both sides.
 - **The camera is an oblique projection, not a perspective one.** The ground plane is not
-  foreshortened. See `src/Render/WorldProjection.cs`.
+  foreshortened. See `src/Render/WorldProjection.cs`. One consequence: the models in
+  `src/Render/ModelDrawList.cs` are rebuilt every frame, because the projection folds height into
+  the ground plane along the camera's up vector — a mesh built once shears the wrong way as soon as
+  the camera turns. `--camera-angle` exists to check exactly that.
 
 ## Known divergences from the AS3 client
 
@@ -154,7 +160,8 @@ Deliberate, and all of them fixes:
 ## What works
 
 Sign in, create or pick a character, and play: movement with the original's collision rules,
-shooting with server-verified timing, abilities, projectiles, damage, loot containers, the vault,
+shooting with server-verified timing, abilities, projectiles, damage, three-dimensional scenery,
+loot containers, the vault,
 merchants, portals between worlds, chat, trading, a nearby-players list, a minimap, the HUD, the
 visual effects --
 every `ShowEffect` kind, the spray a struck monster throws off, and the camera shake -- sound and

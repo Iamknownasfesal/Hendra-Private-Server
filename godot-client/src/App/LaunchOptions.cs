@@ -39,6 +39,16 @@ public sealed class LaunchOptions
     public bool AutoAbility { get; private set; }
 
     /// <summary>
+    /// Starting camera heading in degrees, or null for the usual one.
+    /// </summary>
+    /// <remarks>
+    /// The projection folds height into the ground plane along the camera's up vector, so a great
+    /// deal of the renderer only looks right at one heading by accident. Being able to start at
+    /// another is how that gets checked without a person holding a key down.
+    /// </remarks>
+    public float? CameraAngleDegrees { get; private set; }
+
+    /// <summary>
     /// Lines to send once the world is up, in order, a couple of seconds apart.
     /// </summary>
     /// <remarks>
@@ -75,6 +85,7 @@ public sealed class LaunchOptions
                 case "--quit-after-screenshot": options.QuitAfterScreenshot = true; break;
                 case "--autofire": options.Autofire = true; break;
                 case "--use-ability": options.AutoAbility = true; break;
+                case "--camera-angle": options.CameraAngleDegrees = ParseFloat(Next(), 0f); break;
                 case "--say":
                 {
                     string line = Next();

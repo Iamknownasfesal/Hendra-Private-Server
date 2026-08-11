@@ -144,7 +144,9 @@ public sealed class GameData
             DeathSound = Text(e, "DeathSound") ?? "monster/default_death",
             // The XML stores this as eighths of a turn.
             AngleCorrection = Float(e, "AngleCorrection", 0f) * (MathF.PI / 4f),
-            Rotation = Float(e, "Rotation", 0f),
+            // Degrees here, unlike AngleCorrection just above, which is in eighths of a turn. The
+            // original passes this value straight to a matrix rotation, which takes degrees.
+            Rotation = Float(e, "Rotation", 0f) * (MathF.PI / 180f),
 
             SlotType = Int(e, "SlotType", -1),
             RateOfFire = Float(e, "RateOfFire", 1f),

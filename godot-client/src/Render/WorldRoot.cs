@@ -32,12 +32,17 @@ public partial class WorldRoot : Node3D
     private MeshInstance3D _spriteInstance;
     private ImmediateMesh _groundMesh;
     private ImmediateMesh _spriteMesh;
+    private MeshInstance3D _modelInstance;
+    private ImmediateMesh _modelMesh;
 
     /// <summary>Queue terrain here before calling <see cref="Render"/>.</summary>
     public GroundDrawList Ground { get; } = new();
 
     /// <summary>Queue sprites here before calling <see cref="Render"/>.</summary>
     public SpriteDrawList Sprites { get; } = new();
+
+    /// <summary>Queue three-dimensional objects here before calling <see cref="Render"/>.</summary>
+    public ModelDrawList Models { get; } = new();
 
     /// <summary>The current projection, rebuilt whenever the camera angle changes.</summary>
     public WorldProjection Projection { get; private set; } = new(0f);
@@ -63,6 +68,14 @@ public partial class WorldRoot : Node3D
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
         };
         AddChild(_groundInstance);
+
+        _modelMesh = new ImmediateMesh();
+        _modelInstance = new MeshInstance3D
+        {
+            Mesh = _modelMesh,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+        };
+        AddChild(_modelInstance);
 
         _spriteMesh = new ImmediateMesh();
         _spriteInstance = new MeshInstance3D
@@ -122,9 +135,11 @@ public partial class WorldRoot : Node3D
     {
         var projection = Projection;
         Ground.Build(_groundMesh, projection);
+        Models.Build(_modelMesh, projection);
         Sprites.Build(_spriteMesh, projection);
 
         Ground.Clear();
+        Models.Clear();
         Sprites.Clear();
     }
 }

@@ -160,6 +160,7 @@ public sealed class ObjectDesc
     public float AngleCorrection;
 
     /// <summary>Milliseconds for a full turn. Zero means the sprite does not spin.</summary>
+    /// <summary>How far a model is turned about the vertical, in radians. Declared in degrees.</summary>
     public float Rotation;
 
     public float BloodProb;

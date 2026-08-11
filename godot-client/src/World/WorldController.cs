@@ -50,6 +50,7 @@ public partial class WorldController : Node
     private TileColors _tileColors;
     private TileAtlas _tileAtlas;
     private TileBlender _tileBlender;
+    private ModelLibrary _models;
     private WorldOverlay _overlay;
     private HudView _hud;
     private ChatView _chat;
@@ -66,6 +67,9 @@ public partial class WorldController : Node
 
     /// <summary>Uses the ability on a loop, for unattended runs. See LaunchOptions.</summary>
     public bool AutoAbility { get; set; }
+
+    /// <summary>Overrides the starting camera heading, in radians. See LaunchOptions.</summary>
+    public float? StartingCameraAngle { set { if (value.HasValue) _cameraAngle = value.Value; } }
 
     private int _nextAutoAbilityMs;
 
@@ -146,6 +150,7 @@ public partial class WorldController : Node
         _tileColors = new TileColors(assets);
         _tileAtlas = new TileAtlas();
         _tileBlender = new TileBlender(data, assets, _tileAtlas);
+        _models = new ModelLibrary(assets.Manifest);
         _world = world;
         _clock = clock;
         _map = new GameMap(data);
@@ -1086,6 +1091,11 @@ public partial class WorldController : Node
             if (entity.Desc.DrawUnder)
                 draw.SortBias -= 1f;
 
+            // A few objects are real geometry rather than a picture of it. Those are drawn as
+            // geometry and their sprite becomes the texture on it, so the flat quad is skipped.
+            if (AddModel(entity, draw))
+                continue;
+
             AddShadow(entity, draw.SortBias);
             _world.Sprites.Add(draw);
             AddFlash(entity, draw, now);
@@ -1117,6 +1127,43 @@ public partial class WorldController : Node
         draw.Tint = SpriteTint.None;
         draw.SortBias += 0.5f;
         _world.Sprites.Add(draw);
+    }
+
+    /// <summary>
+    /// Draws an entity as real geometry, if its definition names a model.
+    /// </summary>
+    /// <remarks>
+    /// The object's own sprite becomes the texture on it, which is how a brick pillar is a pillar
+    /// made of that brick. Its declared rotation is in eighths of a turn like every other angle in
+    /// the game data.
+    /// </remarks>
+    /// <returns>Whether the entity was drawn as a model, in which case it needs no quad.</returns>
+    private bool AddModel(Entity entity, in SpriteDraw draw)
+    {
+        if (string.IsNullOrEmpty(entity.Desc.Model))
+            return false;
+
+        var model = _models.Get(entity.Desc.Model);
+        if (model == null)
+            return false;
+
+        var colour = entity.Desc.Color;
+
+        _world.Models.Add(new ModelDraw
+        {
+            Model = model,
+            TileX = entity.X,
+            TileY = entity.Y,
+            Rotation = entity.Desc.Rotation,
+            Sprite = draw.Sprite,
+            SolidColor = new Color(
+                (colour >> 16 & 0xFF) / 255f,
+                (colour >> 8 & 0xFF) / 255f,
+                (colour & 0xFF) / 255f),
+            SortBias = draw.SortBias,
+        });
+
+        return true;
     }
 
     /// <summary>
