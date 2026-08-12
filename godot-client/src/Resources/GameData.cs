@@ -221,10 +221,19 @@ public sealed class GameData
 
         foreach (var sound in e.Elements("Sound"))
         {
+            // The id is optional and almost always absent: 915 of the 922 Sound elements in this
+            // data are a bare <Sound>, which is a weapon's firing sound and is sound zero. Only the
+            // handful that carry several number them, for the PlaySound packet to pick between.
+            // Requiring the attribute threw away every weapon sound in the game.
             if (!TryParseInt(sound.Attribute("id")?.Value, out int soundId))
+                soundId = 0;
+
+            string name = sound.Value.Trim();
+            if (name.Length == 0)
                 continue;
+
             desc.Sounds ??= new Dictionary<int, string>();
-            desc.Sounds[soundId] = sound.Value.Trim();
+            desc.Sounds[soundId] = name;
         }
 
         return desc;

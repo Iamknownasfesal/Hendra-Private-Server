@@ -44,6 +44,7 @@
     <Compile Include="../../src/UI/ItemTooltip.cs" />
     <Compile Include="../../src/UI/Fame.cs" />
     <Compile Include="../../src/Resources/Descriptors.cs" />
+    <Compile Include="../../src/Resources/GameData.cs" />
     <Compile Include="../../src/World/Movement.cs" />
     <Compile Include="../../src/World/Projectile.cs" />
     <Compile Include="../../src/World/Entity.cs" />
