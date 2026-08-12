@@ -42,41 +42,158 @@ public partial class LoginScreen : Control
     {
         SetAnchorsPreset(LayoutPreset.FullRect);
 
-        var margin = new MarginContainer();
-        margin.SetAnchorsPreset(LayoutPreset.FullRect);
-        margin.AddThemeConstantOverride("margin_left", 48);
-        margin.AddThemeConstantOverride("margin_top", 48);
-        margin.AddThemeConstantOverride("margin_right", 48);
-        margin.AddThemeConstantOverride("margin_bottom", 48);
-        AddChild(margin);
+        // Without this the node has no size, so the centre of it is the top-left corner and every
+        // centred child lands in the corner with it.
+        UI.ScreenFit.FillScreen(this);
+
+        // A dark ground behind everything, so the screen reads as a screen rather than as a form
+        // floating on the engine's default grey.
+        var backdrop = new ColorRect { Color = new Color(0.06f, 0.055f, 0.055f) };
+        backdrop.SetAnchorsPreset(LayoutPreset.FullRect);
+        backdrop.MouseFilter = MouseFilterEnum.Ignore;
+        AddChild(backdrop);
+
+        var centre = new CenterContainer();
+        centre.SetAnchorsPreset(LayoutPreset.FullRect);
+        AddChild(centre);
+
+        var stack = new VBoxContainer();
+        stack.AddThemeConstantOverride("separation", 14);
+        centre.AddChild(stack);
+
+        var title = new Label
+        {
+            Text = "Hendra",
+            HorizontalAlignment = HorizontalAlignment.Center,
+        };
+        title.AddThemeFontSizeOverride("font_size", 44);
+        title.AddThemeColorOverride("font_color", new Color(0.93f, 0.85f, 0.55f));
+        stack.AddChild(title);
+
+        // The sign-in form and the character list share the screen's centre, one replacing the
+        // other, the way the original moves from its account screen to its character screen.
+        _signInPanel = NewPanel();
+        stack.AddChild(_signInPanel);
 
         var column = new VBoxContainer();
         column.AddThemeConstantOverride("separation", 10);
-        margin.AddChild(column);
-
-        column.AddChild(new Label { Text = "Hendra" });
+        _signInPanel.AddChild(column);
 
         _host = AddField(column, "Server", "127.0.0.1:8888");
         _guid = AddField(column, "Account", string.Empty);
         _password = AddField(column, "Password", string.Empty);
         _password.Secret = true;
 
-        _signIn = new Button { Text = "Sign in" };
+        _signIn = new Button { Text = "Sign in", CustomMinimumSize = new Vector2(0, 34) };
         _signIn.Pressed += OnSignInPressed;
         column.AddChild(_signIn);
 
-        _status = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
-        column.AddChild(_status);
+        _status = new Label
+        {
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            CustomMinimumSize = new Vector2(CharacterBoxWidth, 0),
+        };
+        _status.AddThemeColorOverride("font_color", new Color(0.9f, 0.7f, 0.5f));
+        stack.AddChild(_status);
+
+        _charactersPanel = NewPanel();
+        _charactersPanel.Visible = false;
+        stack.AddChild(_charactersPanel);
+
+        var characterColumn = new VBoxContainer();
+        characterColumn.AddThemeConstantOverride("separation", 8);
+        _charactersPanel.AddChild(characterColumn);
 
         _servers = new OptionButton { Visible = false };
-        column.AddChild(_servers);
+        characterColumn.AddChild(_servers);
 
         _characters = new VBoxContainer();
-        column.AddChild(_characters);
+        _characters.AddThemeConstantOverride("separation", 6);
+        characterColumn.AddChild(_characters);
 
         // Enter submits from any field, which is how anyone actually uses a login form.
         foreach (var field in new[] { _host, _guid, _password })
             field.TextSubmitted += _ => OnSignInPressed();
+
+        _guid.CallDeferred(Control.MethodName.GrabFocus);
+    }
+
+    /// <summary>
+    /// One character on the list: class and level over its vital and stat lines.
+    /// </summary>
+    /// <remarks>
+    /// A box rather than a line of text on a button, which is what the original shows — the whole
+    /// point of the screen is comparing characters at a glance, and a sentence per character makes
+    /// that a reading exercise.
+    /// </remarks>
+    private static Control NewCharacterBox(string className, Account.CharacterInfo character, Action play)
+    {
+        var box = new Button
+        {
+            CustomMinimumSize = new Vector2(CharacterBoxWidth, 62),
+            TooltipText = "Play this character",
+        };
+
+        box.Pressed += play;
+
+        var margin = new MarginContainer { MouseFilter = MouseFilterEnum.Ignore };
+        margin.SetAnchorsPreset(LayoutPreset.FullRect);
+        foreach (string side in new[] { "margin_left", "margin_top", "margin_right", "margin_bottom" })
+            margin.AddThemeConstantOverride(side, 8);
+        box.AddChild(margin);
+
+        var rows = new VBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
+        rows.AddThemeConstantOverride("separation", 2);
+        margin.AddChild(rows);
+
+        var heading = new Label
+        {
+            Text = $"{className}   Level {character.Level}",
+            MouseFilter = MouseFilterEnum.Ignore,
+        };
+        heading.AddThemeFontSizeOverride("font_size", 17);
+        rows.AddChild(heading);
+
+        var vitals = new Label
+        {
+            Text = $"{character.HitPoints}/{character.MaxHitPoints} HP    " +
+                   $"{character.MagicPoints}/{character.MaxMagicPoints} MP    " +
+                   $"{character.CurrentFame:N0} fame",
+            MouseFilter = MouseFilterEnum.Ignore,
+        };
+        vitals.AddThemeColorOverride("font_color", new Color(0.72f, 0.72f, 0.72f));
+        rows.AddChild(vitals);
+
+        var stats = new Label
+        {
+            Text = $"ATT {character.Attack}  DEF {character.Defense}  SPD {character.Speed}  " +
+                   $"DEX {character.Dexterity}  VIT {character.Vitality}  WIS {character.Wisdom}",
+            MouseFilter = MouseFilterEnum.Ignore,
+        };
+        stats.AddThemeColorOverride("font_color", new Color(0.62f, 0.62f, 0.62f));
+        rows.AddChild(stats);
+
+        return box;
+    }
+
+    /// <summary>Width of a character entry, wide enough for a class name and its stats.</summary>
+    private const int CharacterBoxWidth = 420;
+
+    private UI.CutEdgePanel _signInPanel;
+    private UI.CutEdgePanel _charactersPanel;
+
+    /// <summary>A panel in the game's own shape, so the menu belongs to the same game as the HUD.</summary>
+    private static UI.CutEdgePanel NewPanel()
+    {
+        var panel = new UI.CutEdgePanel
+        {
+            Background = UI.CutEdgePanel.PanelBackground,
+            Border = new Color(0.42f, 0.42f, 0.42f),
+        };
+
+        panel.Padded(18);
+        return panel;
     }
 
     private static LineEdit AddField(Control parent, string label, string initial)
@@ -87,7 +204,12 @@ public partial class LoginScreen : Control
 
         row.AddChild(new Label { Text = label, CustomMinimumSize = new Vector2(90, 0) });
 
-        var edit = new LineEdit { Text = initial, CustomMinimumSize = new Vector2(280, 0) };
+        var edit = new LineEdit
+        {
+            Text = initial,
+            CustomMinimumSize = new Vector2(280, 30),
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+        };
         row.AddChild(edit);
         return edit;
     }
@@ -152,6 +274,8 @@ public partial class LoginScreen : Control
             _servers.AddItem($"{server.Name} — {load}");
         }
 
+        _signInPanel.Visible = false;
+        _charactersPanel.Visible = true;
         _servers.Visible = _charList.Servers.Count > 0;
         if (_servers.Visible)
         {
@@ -172,10 +296,8 @@ public partial class LoginScreen : Control
             var desc = ServiceLocator.Data?.GetObject(character.ObjectType);
             string name = desc?.DisplayId ?? desc?.Id ?? $"Type {character.ObjectType}";
 
-            var button = new Button { Text = $"{name} — level {character.Level}, {character.CurrentFame} fame" };
             int characterId = character.CharacterId;
-            button.Pressed += () => RequestPlay(characterId);
-            _characters.AddChild(button);
+            _characters.AddChild(NewCharacterBox(name, character, () => RequestPlay(characterId)));
         }
 
         if (living.Count < Math.Max(_charList.MaxCharacters, 1))

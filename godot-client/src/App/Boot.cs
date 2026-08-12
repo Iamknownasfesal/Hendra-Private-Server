@@ -15,6 +15,7 @@ public partial class Boot : Control
 {
     private Label _status;
     private LoginScreen _login;
+    private UI.TitleScreen _title;
     private GameScene _game;
     private UI.DeathScreen _death;
     private CanvasLayer _deathLayer;
@@ -60,24 +61,43 @@ public partial class Boot : Control
         }
         else
         {
-            ShowLogin();
+            ShowTitle();
         }
+    }
+
+    /// <summary>
+    /// The title screen, which is where the original starts and where Play leads on from.
+    /// </summary>
+    private void ShowTitle()
+    {
+        CloseScreens();
+
+        _title = new UI.TitleScreen();
+        _title.PlayPressed += ShowLogin;
+
+        // Servers and the account panel both live on the sign-in screen here: it already shows the
+        // server list, and the account is the thing being signed into.
+        _title.ServersPressed += ShowLogin;
+        _title.AccountPressed += ShowLogin;
+        AddChild(_title);
+    }
+
+    /// <summary>Tears down whichever menu or session is on screen.</summary>
+    private void CloseScreens()
+    {
+        foreach (Node screen in new Node[] { _title, _login, _deathLayer, _game })
+            screen?.QueueFree();
+
+        _title = null;
+        _login = null;
+        _deathLayer = null;
+        _death = null;
+        _game = null;
     }
 
     private void ShowLogin()
     {
-        if (_deathLayer != null)
-        {
-            _deathLayer.QueueFree();
-            _deathLayer = null;
-            _death = null;
-        }
-
-        if (_game != null)
-        {
-            _game.QueueFree();
-            _game = null;
-        }
+        CloseScreens();
 
         _login = new LoginScreen();
         _login.PlayRequested += StartGame;

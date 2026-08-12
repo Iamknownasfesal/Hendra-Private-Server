@@ -96,6 +96,13 @@ class Manifest:
 # AssetLibrary, so they never appear in an addImageSet call and have to be listed explicitly.
 STANDALONE_IMAGES = ("StarburstSpinner", "EvolveBackground", "DarknessBackground")
 
+# Loose interface art that is not embedded through EmbeddedAssets at all: each of these is a PNG
+# sitting next to the class that embeds it, so it is copied by path rather than resolved through
+# the embed table. The title graphic is the whole 800x600 title screen.
+LOOSE_IMAGES = {
+    "TitleScreen": "kabam/rotmg/ui/view/TitleView_TitleScreenGraphic.png",
+}
+
 
 def read(path: Path) -> str:
     if not path.is_file():
@@ -333,6 +340,13 @@ def main() -> int:
     wanted_images |= {entry.mask for entry in animated.values() if entry.mask}
     for filename in sorted(wanted_images):
         copied += copy_if_changed(ASSET_DIR / filename, sheets_out / filename)
+
+    for logical_name, relative in LOOSE_IMAGES.items():
+        source = AS3_SRC / relative
+        if not source.is_file():
+            continue
+        copied += copy_if_changed(source, sheets_out / source.name)
+        manifest.images[logical_name] = source.name
 
     for logical_name in STANDALONE_IMAGES:
         stub_class = embed_vars.get(logical_name)

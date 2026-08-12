@@ -75,8 +75,8 @@ anything the server only does on request:
 
 ```sh
 godot-mono --path . -- --host 127.0.0.1 --guid you@example.com --password pw --char 1 \
-    --autofire --say "/spawn 20 Sheep" --screenshot /tmp/shot.png --screenshot-after 12 \
-    --quit-after-screenshot
+	--autofire --say "/spawn 20 Sheep" --screenshot /tmp/shot.png --screenshot-after 12 \
+	--quit-after-screenshot
 ```
 
 `--use-ability` fires the equipped ability on a loop, the same way `--autofire` holds the trigger,
