@@ -25,7 +25,7 @@ namespace wServer.logic.behaviors
         private readonly int dist; // leave as 0 for all players
         private readonly int scaleAfter;
 
-        public ScaleHP(int amountPerPlayer, int maxAdditional, bool healAfterMax = false, int dist = 0, int scaleAfter = 0)
+        public ScaleHP(int amountPerPlayer, int maxAdditional = 0, bool healAfterMax = false, int dist = 0, int scaleAfter = 0)
         {
             this.amountPerPlayer = amountPerPlayer;
             this.maxAdditional = maxAdditional;
@@ -99,8 +99,11 @@ namespace wServer.logic.behaviors
                     if ((host as Enemy).HP > (host as Enemy).MaximumHP)
                         (host as Enemy).HP = (host as Enemy).MaximumHP;
 
-                    // DEBUG
-                    Console.WriteLine("Increasing HP by: " + amountInc + ", New HP: " + (host as Enemy).HP + ", Player Count: " + host.Owner.Players.Count);
+                    // Left as a log rather than a console write: with a room full of enemies that
+                    // scale, this fires once per enemy per player and drowns the console it was
+                    // printing to. Debug level, so it is there when it is wanted and silent when not.
+                    Log.Debug($"{host.ObjectType:x4} scaled by {amountInc} to {(host as Enemy).HP} " +
+                              $"for {host.Owner.Players.Count} player(s)");
                 }
             }
             else
