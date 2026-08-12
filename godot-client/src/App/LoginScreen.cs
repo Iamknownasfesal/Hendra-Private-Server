@@ -116,6 +116,31 @@ public partial class LoginScreen : Control
         _status.AddThemeColorOverride("font_color", new Color(0.9f, 0.7f, 0.5f));
         stack.AddChild(_status);
 
+        // A fresh account has no name until it picks one, and the world server refuses to let it
+        // in until it has. The original puts this on its character screen too.
+        _namePanel = NewPanel();
+        _namePanel.Visible = false;
+        stack.AddChild(_namePanel);
+
+        var nameColumn = new VBoxContainer();
+        nameColumn.AddThemeConstantOverride("separation", 8);
+        _namePanel.AddChild(nameColumn);
+
+        nameColumn.AddChild(new Label
+        {
+            Text = "Choose the name other players will see.\nThis is separate from your account, and you only get one.",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            CustomMinimumSize = new Vector2(CharacterBoxWidth, 0),
+        });
+
+        _name = AddField(nameColumn, "Name", string.Empty);
+
+        _setName = new Button { Text = "Take this name", CustomMinimumSize = new Vector2(0, 32) };
+        _setName.Pressed += OnSetNamePressed;
+        nameColumn.AddChild(_setName);
+
+        _name.TextSubmitted += _ => OnSetNamePressed();
+
         _charactersPanel = NewPanel();
         _charactersPanel.Visible = false;
         stack.AddChild(_charactersPanel);
@@ -250,6 +275,9 @@ public partial class LoginScreen : Control
     private const int CharacterBoxWidth = 420;
 
     private Button _register;
+    private UI.CutEdgePanel _namePanel;
+    private LineEdit _name;
+    private Button _setName;
 
     /// <summary>Raised when the player wants to go back to the title screen.</summary>
     public event Action BackPressed;
@@ -287,6 +315,40 @@ public partial class LoginScreen : Control
         };
         row.AddChild(edit);
         return edit;
+    }
+
+    /// <summary>
+    /// Claims a display name, then reloads the character list.
+    /// </summary>
+    /// <remarks>
+    /// The server refuses duplicates and anything it considers invalid, and says which in the
+    /// response, so its words are shown rather than a guess at what went wrong.
+    /// </remarks>
+    private async void OnSetNamePressed()
+    {
+        _setName.Disabled = true;
+        _status.Text = "Claiming the name...";
+
+        try
+        {
+            using var client = new AppEngineClient(ServerConfig.AppServer);
+            await client.PostAsync("/account/setName", new Dictionary<string, string>
+            {
+                ["guid"] = _guid.Text,
+                ["password"] = _password.Text,
+                ["name"] = _name.Text,
+            });
+
+            OnSignInPressed();
+        }
+        catch (Exception ex)
+        {
+            _status.Text = ex.Message;
+        }
+        finally
+        {
+            _setName.Disabled = false;
+        }
     }
 
     /// <summary>
@@ -378,8 +440,20 @@ public partial class LoginScreen : Control
         }
 
         _signInPanel.Visible = false;
-        _charactersPanel.Visible = true;
-        _heading.Text = "Choose a character";
+
+        // Nothing else on this screen matters until the account has a name.
+        bool needsName = !_charList.Account.NameChosen;
+        _namePanel.Visible = needsName;
+        _charactersPanel.Visible = !needsName;
+        _heading.Text = needsName ? "Choose your name" : "Choose a character";
+
+        if (needsName)
+        {
+            _status.Text = string.Empty;
+            _name.CallDeferred(Control.MethodName.GrabFocus);
+            return;
+        }
+
         _servers.Visible = _charList.Servers.Count > 0;
         if (_servers.Visible)
         {
