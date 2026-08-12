@@ -440,34 +440,83 @@ public partial class HudView : Control
     /// The six stats, two to a row, the way the original's StatsView lays them out.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Attack, Defense, Speed, Dexterity, Vitality, Wisdom -- in that order, which is the original's
     /// order and not alphabetical or the order they arrive in. MaxHP and MaxMP are left out because
     /// their bars are already above; the original does the same.
+    /// </para>
+    /// <para>
+    /// Labelled with the abbreviation rather than the name. That is what the original shows -- its
+    /// StatView takes a short form for the label and keeps the full name and the description for
+    /// the tooltip -- and it is also the only thing that fits: two columns inside a column this
+    /// narrow leaves under a hundred pixels for a name, a value and a boost.
+    /// </para>
     /// </remarks>
     private void BuildStatsPage(Control parent)
     {
-        (string Name, string Explains)[] stats =
-        {
-            ("Attack", "How hard your shots hit."),
-            ("Defense", "How much of each hit you shrug off."),
-            ("Speed", "How fast you move."),
-            ("Dexterity", "How fast you shoot."),
-            ("Vitality", "How fast you recover health."),
-            ("Wisdom", "How fast you recover mana, and how much your abilities do."),
-        };
-
         var grid = new GridContainer { Columns = 2 };
-        grid.AddThemeConstantOverride("h_separation", 10);
+        grid.AddThemeConstantOverride("h_separation", 8);
         grid.AddThemeConstantOverride("v_separation", 3);
         parent.AddChild(grid);
 
-        _statRows = new StatRow[stats.Length];
-        for (int i = 0; i < stats.Length; i++)
+        _statRows = new StatRow[StatKeys.Length];
+        for (int i = 0; i < StatKeys.Length; i++)
         {
-            _statRows[i] = new StatRow(stats[i].Name, stats[i].Explains);
+            _statRows[i] = new StatRow(StatKeys[i].Abbreviation, StatKeys[i].Name);
             grid.AddChild(_statRows[i]);
         }
     }
+
+    /// <summary>
+    /// The six stats, with the keys their words come from and the words to use until they arrive.
+    /// </summary>
+    /// <remarks>
+    /// The language table is fetched over HTTP once the world starts, so it is usually absent when
+    /// the page is first built and always absent offline. The English it would supply is the
+    /// fallback, so the page reads correctly either way and simply gets more precise once the table
+    /// lands.
+    /// </remarks>
+    private static readonly (string Key, string Abbreviation, string Name)[] StatKeys =
+    {
+        ("attack", "ATT", "Attack"),
+        ("defense", "DEF", "Defense"),
+        ("speed", "SPD", "Speed"),
+        ("dexterity", "DEX", "Dexterity"),
+        ("vitality", "VIT", "Vitality"),
+        ("wisdom", "WIS", "Wisdom"),
+    };
+
+    private bool _statsLocalised;
+
+    /// <summary>
+    /// Replaces the stat labels with the language table's words, once it has one.
+    /// </summary>
+    /// <remarks>
+    /// Done once rather than every frame. StringMap answers an unknown key with the key itself, so
+    /// every lookup is guarded -- an unguarded one would put "StatModel.attack.long" in a tooltip.
+    /// </remarks>
+    private void LocaliseStats()
+    {
+        var strings = App.ServiceLocator.Strings;
+        if (_statsLocalised || _statRows == null || strings.Count == 0)
+            return;
+
+        _statsLocalised = true;
+
+        for (int i = 0; i < _statRows.Length && i < StatKeys.Length; i++)
+        {
+            string key = StatKeys[i].Key;
+            string name = Localised(strings, $"StatModel.{key}.long") ?? StatKeys[i].Name;
+            string description = Localised(strings, $"StatModel.{key}.description");
+
+            _statRows[i].Relabel(
+                Localised(strings, $"StatModel.{key}.short") ?? StatKeys[i].Abbreviation,
+                description == null ? name : $"{name}\n{description}");
+        }
+    }
+
+    private static string Localised(Text.StringMap strings, string key) =>
+        strings.Has(key) ? strings.Get(key) : null;
 
     private void AddSlots(Control parent, List<SlotView> into, int count, int firstIndex)
     {
@@ -543,6 +592,8 @@ public partial class HudView : Control
     {
         if (_statRows == null)
             return;
+
+        LocaliseStats();
 
         // The order the page is built in: Attack, Defense, Speed, Dexterity, Vitality, Wisdom.
         // The boosts and maxima are indexed with MaxHP and MaxMP first, so they run two ahead.
@@ -697,7 +748,7 @@ public sealed partial class StatRow : HBoxContainer
     private static readonly Color Maxed = new("ffd76e");
     private static readonly Color Boosted = new("6fdc6f");
 
-    private readonly string _name;
+    private string _name;
     private Label _label;
     private Label _value;
     private Label _boost;
@@ -708,20 +759,39 @@ public sealed partial class StatRow : HBoxContainer
         TooltipText = explains;
         MouseFilter = MouseFilterEnum.Stop;
         AddThemeConstantOverride("separation", 4);
+
+        // Half the column each. Without this the row is as wide as its contents, two of them side
+        // by side are wider than the panel, and the boost falls off the edge of the screen.
+        SizeFlagsHorizontal = SizeFlags.ExpandFill;
     }
 
     public override void _Ready()
     {
-        _label = new Label { Text = _name, SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        _label = new Label { Text = _name };
         _label.AddThemeColorOverride("font_color", new Color(0.66f, 0.66f, 0.66f));
         AddChild(_label);
 
-        _value = new Label { HorizontalAlignment = HorizontalAlignment.Right };
+        // The value takes the slack, so it sits hard against the boost rather than against the name.
+        _value = new Label
+        {
+            HorizontalAlignment = HorizontalAlignment.Right,
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+        };
         AddChild(_value);
 
         _boost = new Label();
         _boost.AddThemeColorOverride("font_color", Boosted);
         AddChild(_boost);
+    }
+
+    /// <summary>Swaps in the language table's words once they have arrived.</summary>
+    public void Relabel(string name, string explains)
+    {
+        _name = name;
+        TooltipText = explains;
+
+        if (_label != null)
+            _label.Text = name;
     }
 
     /// <param name="value">The total, which already includes the boost.</param>
