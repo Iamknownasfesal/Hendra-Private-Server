@@ -60,6 +60,17 @@ public struct SpriteDraw
 
     /// <summary>Whether this sprite should be outlined. Off for effects and particles.</summary>
     public bool Outlined;
+
+    /// <summary>
+    /// Spins the quad on screen, clockwise, in radians. Zero leaves it upright.
+    /// </summary>
+    /// <remarks>
+    /// Only projectiles use this. A character never turns on screen -- it turns by being drawn from
+    /// a different row of its sheet -- but a bullet is one sprite pointed wherever it is flying.
+    /// The rotation is applied about the anchor and *after* the screen axes are chosen, so a
+    /// spinning bullet keeps spinning at the same rate however the camera is turned.
+    /// </remarks>
+    public float Rotation;
 }
 
 /// <summary>
@@ -185,6 +196,18 @@ public sealed class SpriteDrawList
         float rightEdge = left + draw.WidthTiles + 2f * padWidth;
         float top = -draw.HeightTiles * (1f - draw.AnchorY) - padHeight;
         float bottom = draw.HeightTiles * draw.AnchorY + padHeight;
+
+        // A rotated sprite spins about its anchor, so the corners are turned in the screen plane
+        // before being mapped onto the ground axes.
+        if (draw.Rotation != 0f)
+        {
+            float spin = Mathf.Sin(draw.Rotation);
+            float spun = Mathf.Cos(draw.Rotation);
+            var turnedRight = right * spun + down * spin;
+            var turnedDown = down * spun - right * spin;
+            right = turnedRight;
+            down = turnedDown;
+        }
 
         var topLeft = anchor + right * left + down * top;
         var topRight = anchor + right * rightEdge + down * top;

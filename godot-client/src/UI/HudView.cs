@@ -62,10 +62,23 @@ public partial class HudView : Control
     private CutEdgePanel _inventoryPanel;
     private HBoxContainer _tabs;
     private Button _inventoryTab;
+    private Button _statsTab;
     private Button _backpackTab;
+    private CutEdgePanel _statsPanel;
+    private StatRow[] _statRows;
+
+    /// <summary>
+    /// Which page the strip over the carried grids is showing.
+    /// </summary>
+    /// <remarks>
+    /// The original's TabStripModel names four -- Main Inventory, Stats, Backpack and Pets. Pets
+    /// are not in this fork, so the strip carries the other three.
+    /// </remarks>
+    private enum Page { Inventory, Stats, Backpack }
+
+    private Page _page = Page.Inventory;
 
     /// <summary>Which of the two carried grids the strip is showing.</summary>
-    private bool _showingBackpack;
 
     /// <summary>Raised with the slot's index in the player's 24-entry equipment array.</summary>
     public event Action<int> SlotActivated;
@@ -79,8 +92,7 @@ public partial class HudView : Control
     private VitalBar _health;
     private VitalBar _mana;
     private Label _name;
-    private Label _level;
-    private Label _stats;
+    private VitalBar _level;
     private Label _prompt;
     private VBoxContainer _containerPanel;
     private VBoxContainer _merchantPanel;
@@ -133,17 +145,17 @@ public partial class HudView : Control
         _name = new Label { Text = "—" };
         column.AddChild(_name);
 
-        _level = new Label { Text = string.Empty };
+        // Level is a bar, as it is in the original: progress toward the next level, labelled with
+        // the level itself. At the cap it becomes the fame bar, measured against the next class
+        // quest -- the same swap StatMetersView makes, and the colours are its colours.
+        _level = new VitalBar(new Color(0.35f, 0.50f, 0.14f));
         column.AddChild(_level);
 
-        _health = new VitalBar(new Color(0.13f, 0.75f, 0.13f));
+        _health = new VitalBar(new Color(0.88f, 0.20f, 0.20f));
         column.AddChild(_health);
 
-        _mana = new VitalBar(new Color(0.20f, 0.40f, 0.90f));
+        _mana = new VitalBar(new Color(0.38f, 0.52f, 0.88f));
         column.AddChild(_mana);
-
-        _stats = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
-        column.AddChild(_stats);
 
         // The original sits its grids on their own backgrounds rather than straight on the column:
         // an 186 by 92 cut-corner panel behind each. It is what separates the interface into parts
@@ -159,12 +171,18 @@ public partial class HudView : Control
         _tabs.AddThemeConstantOverride("separation", 4);
         column.AddChild(_tabs);
 
-        _inventoryTab = AddTab("Inventory", showBackpack: false);
-        _backpackTab = AddTab("Backpack", showBackpack: true);
+        _inventoryTab = AddTab("Inventory", Page.Inventory);
+        _statsTab = AddTab("Stats", Page.Stats);
+        _backpackTab = AddTab("Backpack", Page.Backpack);
 
         _inventoryPanel = NewSectionPanel();
         column.AddChild(_inventoryPanel);
         AddSlots(SectionBody(_inventoryPanel), _inventory, InventorySlots, firstIndex: 8);
+
+        _statsPanel = NewSectionPanel();
+        _statsPanel.Visible = false;
+        column.AddChild(_statsPanel);
+        BuildStatsPage(SectionBody(_statsPanel));
 
         _backpackPanel = NewSectionPanel();
         _backpackPanel.Visible = false;
@@ -359,33 +377,96 @@ public partial class HudView : Control
     /// </summary>
     private static readonly Color SectionBackground = new(0.10f, 0.095f, 0.095f);
 
+    /// <summary>The level cap, past which there is no experience left to earn.</summary>
+    private const int MaxLevel = 20;
+
+    /// <summary>The original's bar colours, taken from StatMetersView.</summary>
+    private static readonly Color ExperienceBar = new("5a8025");
+
+    private static readonly Color FameBar = new("e25f00");
+
     /// <summary>One tab in the strip over the carried grids.</summary>
-    private Button AddTab(string text, bool showBackpack)
+    private Button AddTab(string text, Page page)
     {
         var tab = new Button
         {
             Text = text,
             ToggleMode = true,
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            ButtonPressed = !showBackpack,
+            ButtonPressed = page == Page.Inventory,
+
+            // Click only. A focused toggle would swallow Enter, which belongs to the chat box.
+            FocusMode = FocusModeEnum.None,
         };
 
-        tab.Pressed += () => ShowTab(showBackpack);
+        tab.Pressed += () => ShowTab(page);
         _tabs.AddChild(tab);
         return tab;
     }
 
-    /// <summary>Switches which carried grid is showing. Bound to B, as the original bound it.</summary>
-    public void SwitchTab() => ShowTab(!_showingBackpack);
-
-    private void ShowTab(bool showBackpack)
+    /// <summary>
+    /// Steps to the next page. Bound to B, as the original bound it.
+    /// </summary>
+    /// <remarks>
+    /// Skips the backpack for a character without one, so the key never lands on a page that is
+    /// not there.
+    /// </remarks>
+    public void SwitchTab()
     {
-        _showingBackpack = showBackpack;
+        var next = _page switch
+        {
+            Page.Inventory => Page.Stats,
+            Page.Stats => _backpackTab.Visible ? Page.Backpack : Page.Inventory,
+            _ => Page.Inventory,
+        };
 
-        _inventoryPanel.Visible = !showBackpack;
-        _backpackPanel.Visible = showBackpack;
-        _inventoryTab.ButtonPressed = !showBackpack;
-        _backpackTab.ButtonPressed = showBackpack;
+        ShowTab(next);
+    }
+
+    private void ShowTab(Page page)
+    {
+        _page = page;
+
+        _inventoryPanel.Visible = page == Page.Inventory;
+        _statsPanel.Visible = page == Page.Stats;
+        _backpackPanel.Visible = page == Page.Backpack;
+
+        _inventoryTab.ButtonPressed = page == Page.Inventory;
+        _statsTab.ButtonPressed = page == Page.Stats;
+        _backpackTab.ButtonPressed = page == Page.Backpack;
+    }
+
+    /// <summary>
+    /// The six stats, two to a row, the way the original's StatsView lays them out.
+    /// </summary>
+    /// <remarks>
+    /// Attack, Defense, Speed, Dexterity, Vitality, Wisdom -- in that order, which is the original's
+    /// order and not alphabetical or the order they arrive in. MaxHP and MaxMP are left out because
+    /// their bars are already above; the original does the same.
+    /// </remarks>
+    private void BuildStatsPage(Control parent)
+    {
+        (string Name, string Explains)[] stats =
+        {
+            ("Attack", "How hard your shots hit."),
+            ("Defense", "How much of each hit you shrug off."),
+            ("Speed", "How fast you move."),
+            ("Dexterity", "How fast you shoot."),
+            ("Vitality", "How fast you recover health."),
+            ("Wisdom", "How fast you recover mana, and how much your abilities do."),
+        };
+
+        var grid = new GridContainer { Columns = 2 };
+        grid.AddThemeConstantOverride("h_separation", 10);
+        grid.AddThemeConstantOverride("v_separation", 3);
+        parent.AddChild(grid);
+
+        _statRows = new StatRow[stats.Length];
+        for (int i = 0; i < stats.Length; i++)
+        {
+            _statRows[i] = new StatRow(stats[i].Name, stats[i].Explains);
+            grid.AddChild(_statRows[i]);
+        }
     }
 
     private void AddSlots(Control parent, List<SlotView> into, int count, int firstIndex)
@@ -412,15 +493,11 @@ public partial class HudView : Control
             return;
 
         _name.Text = string.IsNullOrEmpty(player.Name) ? "—" : player.Name;
-        _level.Text = player.Level >= 0 ? $"Level {player.Level}" : string.Empty;
 
+        RefreshLevel(player);
         _health.Set(player.Hp, player.MaxHp);
         _mana.Set(player.Mp, player.MaxMp);
-
-        _stats.Text =
-            $"ATT {player.Attack}   DEF {player.Defense}\n" +
-            $"SPD {player.Speed}   DEX {player.Dexterity}\n" +
-            $"VIT {player.Vitality}   WIS {player.Wisdom}";
+        RefreshStats(player);
 
         // Slots 0-3 are worn, 4-7 continue the worn row in the data model but the original shows
         // only the first four as equipment; 8 onward is the carried inventory.
@@ -429,11 +506,54 @@ public partial class HudView : Control
 
         // The tab disappears with the bag, and takes the view back to the inventory with it.
         _backpackTab.Visible = player.HasBackpack;
-        if (!player.HasBackpack && _showingBackpack)
-            ShowTab(showBackpack: false);
+        if (!player.HasBackpack && _page == Page.Backpack)
+            ShowTab(Page.Inventory);
 
         if (player.HasBackpack)
             UpdateSlots(_backpack, player, 16);
+    }
+
+    /// <summary>
+    /// The level bar, or the fame bar once there is no level left to earn.
+    /// </summary>
+    /// <remarks>
+    /// Twenty is the cap. The original swaps the bar there rather than leaving a full one sitting
+    /// at the top of the column, because fame is what the character is working toward from then on.
+    /// </remarks>
+    private void RefreshLevel(LocalPlayer player)
+    {
+        if (player.Level < 0)
+        {
+            _level.Set(0, 0, string.Empty);
+            return;
+        }
+
+        if (player.Level >= MaxLevel)
+        {
+            _level.Fill = FameBar;
+            _level.Set(player.Fame, player.NextClassQuestFame, "Fame");
+            return;
+        }
+
+        _level.Fill = ExperienceBar;
+        _level.Set(player.Experience, player.NextLevelExperience, $"Level {player.Level}");
+    }
+
+    private void RefreshStats(LocalPlayer player)
+    {
+        if (_statRows == null)
+            return;
+
+        // The order the page is built in: Attack, Defense, Speed, Dexterity, Vitality, Wisdom.
+        // The boosts and maxima are indexed with MaxHP and MaxMP first, so they run two ahead.
+        int[] values = { player.Attack, player.Defense, player.Speed, player.Dexterity, player.Vitality, player.Wisdom };
+        var maxima = _data?.GetObject(player.ObjectType)?.StatMaxima;
+
+        for (int i = 0; i < _statRows.Length; i++)
+        {
+            int at = i + 2;
+            _statRows[i].Set(values[i], player.Boosts[at], maxima != null && at < maxima.Length ? maxima[at] : 0);
+        }
     }
 
     private void UpdateSlots(List<SlotView> views, LocalPlayer player, int firstIndex)
@@ -463,9 +583,16 @@ public sealed partial class VitalBar : Control
 {
     private const int BarHeight = 18;
 
-    private readonly Color _fill;
+    private Color _fill;
     private Label _label;
     private float _fraction;
+
+    /// <summary>The bar's colour. Settable because the level bar becomes the fame bar at the cap.</summary>
+    public Color Fill
+    {
+        get => _fill;
+        set { _fill = value; QueueRedraw(); }
+    }
 
     public VitalBar(Color fill)
     {
@@ -490,6 +617,21 @@ public sealed partial class VitalBar : Control
         _fraction = maximum > 0 ? Mathf.Clamp(current / (float)maximum, 0f, 1f) : 0f;
         if (_label != null)
             _label.Text = $"{current} / {maximum}";
+        QueueRedraw();
+    }
+
+    /// <summary>
+    /// Fills the bar but labels it with something other than the numbers.
+    /// </summary>
+    /// <remarks>
+    /// The original labels its experience bar "Level 7" rather than "340 / 800" -- the number that
+    /// matters there is the one you are working toward, not the ratio, and the ratio is the bar.
+    /// </remarks>
+    public void Set(int current, int maximum, string label)
+    {
+        _fraction = maximum > 0 ? Mathf.Clamp(current / (float)maximum, 0f, 1f) : 0f;
+        if (_label != null)
+            _label.Text = label;
         QueueRedraw();
     }
 
@@ -540,5 +682,64 @@ public sealed partial class SlotView : Control
         // Item sprites are tiny and must not be smoothed when blown up to slot size.
         var inset = full.Grow(-4f);
         DrawTextureRectRegion(_sprite.Sheet, inset, _sprite.Region);
+    }
+}
+
+/// <summary>
+/// One stat on the stats page: its name, its value, and what equipment is adding to it.
+/// </summary>
+/// <remarks>
+/// The original's StatView colours a stat that has reached its class ceiling, which is the whole
+/// point of the page -- it is how you tell at a glance which potions are still worth drinking.
+/// </remarks>
+public sealed partial class StatRow : HBoxContainer
+{
+    private static readonly Color Maxed = new("ffd76e");
+    private static readonly Color Boosted = new("6fdc6f");
+
+    private readonly string _name;
+    private Label _label;
+    private Label _value;
+    private Label _boost;
+
+    public StatRow(string name, string explains)
+    {
+        _name = name;
+        TooltipText = explains;
+        MouseFilter = MouseFilterEnum.Stop;
+        AddThemeConstantOverride("separation", 4);
+    }
+
+    public override void _Ready()
+    {
+        _label = new Label { Text = _name, SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        _label.AddThemeColorOverride("font_color", new Color(0.66f, 0.66f, 0.66f));
+        AddChild(_label);
+
+        _value = new Label { HorizontalAlignment = HorizontalAlignment.Right };
+        AddChild(_value);
+
+        _boost = new Label();
+        _boost.AddThemeColorOverride("font_color", Boosted);
+        AddChild(_boost);
+    }
+
+    /// <param name="value">The total, which already includes the boost.</param>
+    /// <param name="boost">How much of the total comes from equipment.</param>
+    /// <param name="maximum">The class ceiling, or zero if it is not known.</param>
+    public void Set(int value, int boost, int maximum)
+    {
+        if (_value == null)
+            return;
+
+        _value.Text = value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+        // Against the ceiling it is the *unboosted* part that counts: equipment does not stop a
+        // potion from working, so a stat that only reaches its maximum while something is equipped
+        // has not actually been maxed.
+        bool atMaximum = maximum > 0 && value - boost >= maximum;
+        _value.AddThemeColorOverride("font_color", atMaximum ? Maxed : Colors.White);
+
+        _boost.Text = boost > 0 ? $"+{boost}" : string.Empty;
     }
 }

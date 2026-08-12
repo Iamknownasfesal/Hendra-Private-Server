@@ -126,6 +126,17 @@ public sealed class ObjectDesc
 
     // Presence flags.
     public bool IsPlayer;
+
+    /// <summary>
+    /// The highest each of the eight stats can be raised to for this class, indexed the way the
+    /// stat manager indexes them: MaxHP, MaxMP, Attack, Defense, Speed, Dexterity, Vitality, Wisdom.
+    /// </summary>
+    /// <remarks>
+    /// The XML names two of them after what they do rather than what they are called on screen --
+    /// HpRegen is Vitality and MpRegen is Wisdom -- which is why the parse maps them by name.
+    /// Null for anything that is not a player class.
+    /// </remarks>
+    public int[] StatMaxima;
     public bool IsEnemy;
     public bool DrawOnGround;
     public bool DrawUnder;
@@ -158,6 +169,15 @@ public sealed class ObjectDesc
 
     /// <summary>Radians, stored as the XML value multiplied by a quarter turn.</summary>
     public float AngleCorrection;
+
+    /// <summary>
+    /// The XML's Rotation, raw.
+    /// </summary>
+    /// <remarks>
+    /// Two meanings share the field. On a model object it is a yaw in degrees. On a projectile it
+    /// is a period: elapsed milliseconds divided by it give the spin in radians, so a larger number
+    /// is a slower spin and zero means none.
+    /// </remarks>
 
     /// <summary>Milliseconds for a full turn. Zero means the sprite does not spin.</summary>
     /// <summary>How far a model is turned about the vertical, in radians. Declared in degrees.</summary>

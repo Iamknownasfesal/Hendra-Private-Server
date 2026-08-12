@@ -109,6 +109,7 @@ public sealed class GameData
             DungeonName = Text(e, "DungeonName"),
 
             IsPlayer = Has(e, "Player"),
+            StatMaxima = Has(e, "Player") ? ParseStatMaxima(e) : null,
             IsEnemy = Has(e, "Enemy"),
             DrawOnGround = Has(e, "DrawOnGround"),
             DrawUnder = Has(e, "DrawUnder"),
@@ -144,9 +145,10 @@ public sealed class GameData
             DeathSound = Text(e, "DeathSound") ?? "monster/default_death",
             // The XML stores this as eighths of a turn.
             AngleCorrection = Float(e, "AngleCorrection", 0f) * (MathF.PI / 4f),
-            // Degrees here, unlike AngleCorrection just above, which is in eighths of a turn. The
-            // original passes this value straight to a matrix rotation, which takes degrees.
-            Rotation = Float(e, "Rotation", 0f) * (MathF.PI / 180f),
+            // Left raw, because two different things read it. A model object takes it as a yaw in
+            // degrees; a projectile divides elapsed milliseconds by it to get a spin in radians, so
+            // it is a period there. Converting here would suit one and corrupt the other.
+            Rotation = Float(e, "Rotation", 0f),
 
             SlotType = Int(e, "SlotType", -1),
             RateOfFire = Float(e, "RateOfFire", 1f),
@@ -432,6 +434,28 @@ public sealed class GameData
     // ------------------------------------------------------------------------------------------
     // Primitives
     // ------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The eight stat ceilings for a player class, in the order the interface shows them.
+    /// </summary>
+    /// <remarks>
+    /// Each stat is an element carrying the starting value with the ceiling on a max attribute:
+    /// <c>&lt;Attack max="75"&gt;12&lt;/Attack&gt;</c>. Two are named after their effect rather than
+    /// their name on screen -- HpRegen is Vitality, MpRegen is Wisdom.
+    /// </remarks>
+    private static int[] ParseStatMaxima(XElement e)
+    {
+        string[] names = { "MaxHitPoints", "MaxMagicPoints", "Attack", "Defense", "Speed", "Dexterity", "HpRegen", "MpRegen" };
+        var maxima = new int[names.Length];
+
+        for (int i = 0; i < names.Length; i++)
+        {
+            var attribute = e.Element(names[i])?.Attribute("max");
+            maxima[i] = attribute != null && int.TryParse(attribute.Value, out int value) ? value : 0;
+        }
+
+        return maxima;
+    }
 
     private static bool Has(XElement e, string name) => e.Element(name) != null;
 

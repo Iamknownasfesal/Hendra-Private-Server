@@ -52,6 +52,30 @@ public sealed class LocalPlayer : Entity
 
     public int Fame;
 
+    /// <summary>Experience toward the next level, and what it takes to reach it.</summary>
+    /// <remarks>
+    /// Both stop being meaningful at level 20, which is the cap: the original swaps the level bar
+    /// for a fame bar there, measured against the next class quest instead.
+    /// </remarks>
+    public int Experience;
+
+    public int NextLevelExperience;
+
+    /// <summary>The fame the next class quest asks for. Only meaningful at the level cap.</summary>
+    public int NextClassQuestFame;
+
+    /// <summary>
+    /// How much of each stat comes from equipment rather than levelling, indexed to match
+    /// <see cref="Resources.ObjectDesc.StatMaxima"/>: MaxHP, MaxMP, Attack, Defense, Speed,
+    /// Dexterity, Vitality, Wisdom.
+    /// </summary>
+    /// <remarks>
+    /// The server sends these separately from the totals, and the stat values it sends already
+    /// include them -- so the interface shows the total with the boosted part called out, rather
+    /// than adding the two together.
+    /// </remarks>
+    public readonly int[] Boosts = new int[8];
+
     /// <summary>Whether the character owns a backpack, which is what makes slots 16-23 usable.</summary>
     public bool HasBackpack;
 

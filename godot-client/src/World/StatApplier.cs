@@ -92,6 +92,18 @@ public static class StatApplier
             case StatsType.Breath when player != null: player.Breath = stat.IntValue; break;
             case StatsType.Credits when player != null: player.Credits = stat.IntValue; break;
             case StatsType.CurrentFame when player != null: player.Fame = stat.IntValue; break;
+            case StatsType.Exp when player != null: player.Experience = stat.IntValue; break;
+
+            case StatsType.MaxHpBoost when player != null: player.Boosts[0] = stat.IntValue; break;
+            case StatsType.MaxMpBoost when player != null: player.Boosts[1] = stat.IntValue; break;
+            case StatsType.AttackBoost when player != null: player.Boosts[2] = stat.IntValue; break;
+            case StatsType.DefenseBoost when player != null: player.Boosts[3] = stat.IntValue; break;
+            case StatsType.SpeedBoost when player != null: player.Boosts[4] = stat.IntValue; break;
+            case StatsType.DexterityBoost when player != null: player.Boosts[5] = stat.IntValue; break;
+            case StatsType.VitalityBoost when player != null: player.Boosts[6] = stat.IntValue; break;
+            case StatsType.WisdomBoost when player != null: player.Boosts[7] = stat.IntValue; break;
+            case StatsType.NextLevelExp when player != null: player.NextLevelExperience = stat.IntValue; break;
+            case StatsType.NextClassQuestFame when player != null: player.NextClassQuestFame = stat.IntValue; break;
 
             // Sent as a number rather than a flag, and it is what makes the last eight inventory
             // slots real -- the server refuses a swap into them for a character without one.

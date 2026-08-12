@@ -1266,7 +1266,8 @@ public partial class WorldController : Node
             Model = model,
             TileX = entity.X,
             TileY = entity.Y,
-            Rotation = entity.Desc.Rotation,
+            // Degrees in the XML for a model object; the draw list wants radians.
+            Rotation = entity.Desc.Rotation * (Mathf.Pi / 180f),
             Sprite = draw.Sprite,
             SolidColor = new Color(
                 (colour >> 16 & 0xFF) / 255f,
@@ -1442,6 +1443,14 @@ public partial class WorldController : Node
             if (!resolved.Still.IsValid)
                 continue;
 
+            // The original's angle: where it is flying, less where the camera is standing, plus
+            // the correction that squares the artwork with it, plus any spin. Bullet art is drawn
+            // pointing up and to the right rather than along the x axis, which is what
+            // AngleCorrection is for -- 219 of the objects in this data set carry one.
+            float spin = projectile.Desc.Rotation == 0f ? 0f : now / projectile.Desc.Rotation;
+            float angle = projectile.Angle - _world.Projection.Angle +
+                          projectile.Desc.AngleCorrection + spin;
+
             var draw = new SpriteDraw
             {
                 TileX = projectile.X,
@@ -1449,6 +1458,8 @@ public partial class WorldController : Node
                 Height = projectile.Z,
                 Sprite = resolved.Still,
                 AnchorX = 0.5f,
+                AnchorY = 0.5f,
+                Rotation = angle,
                 Modulate = Colors.White,
                 Outlined = true,
                 // Slightly above whatever they are flying over, so a bullet is never swallowed by
@@ -1549,15 +1560,25 @@ public partial class WorldController : Node
     private static CharFrame SelectFrame(Entity entity, AnimatedChar animated, int now, float cameraAngle)
     {
         // Attacking wins over walking, and holds the pose for a fixed window after the shot.
+        // Turning to face the shot is a lasting change, not a choice made for this frame: the
+        // original assigns facing_ here, so a character that stops after firing goes on facing
+        // the way it fired.
         if (entity.IsAttacking(now))
         {
+            if (entity.Desc is not { DontFaceAttacks: true })
+                entity.Facing = entity.AttackAngle;
+
             float phase = (now - entity.AttackStartMs) % Entity.AttackPeriodMs / (float)Entity.AttackPeriodMs;
-            float facing = entity.Desc is { DontFaceAttacks: true } ? entity.Facing : entity.AttackAngle;
-            return animated.Frame(facing, cameraAngle, CharAction.Attack, phase);
+            return animated.Frame(entity.Facing, cameraAngle, CharAction.Attack, phase);
         }
 
+        // Which way a character faces is which way it is going. Every character has this, not just
+        // the one being driven from the keyboard -- for everything else the movement comes from the
+        // server, as the step between the last two ticks.
         if (entity.IsMoving)
         {
+            entity.Facing = Mathf.Atan2(entity.MoveVecY, entity.MoveVecX);
+
             // A fixed cadence rather than one tied to speed; the original quantised it to a
             // multiple of 400ms, which amounts to the same thing for every practical speed.
             const float WalkPeriodMs = 400f;
@@ -1565,6 +1586,7 @@ public partial class WorldController : Node
             return animated.Frame(entity.Facing, cameraAngle, CharAction.Walk, phase);
         }
 
+        // Standing keeps whatever it was last facing, rather than snapping back to due east.
         return animated.Frame(entity.Facing, cameraAngle, CharAction.Stand, 0f);
     }
 

@@ -133,8 +133,8 @@ public class Entity
     // velocity is only used to drive the walk animation; motion itself comes from interpolation.
     protected float TickX;
     protected float TickY;
-    protected float MoveVecX;
-    protected float MoveVecY;
+    public float MoveVecX;
+    public float MoveVecY;
 
     public bool IsMoving => MoveVecX != 0f || MoveVecY != 0f;
 
