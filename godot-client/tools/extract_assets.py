@@ -100,7 +100,15 @@ STANDALONE_IMAGES = ("StarburstSpinner", "EvolveBackground", "DarknessBackground
 # sitting next to the class that embeds it, so it is copied by path rather than resolved through
 # the embed table. The title graphic is the whole 800x600 title screen.
 LOOSE_IMAGES = {
-    "TitleScreen": "kabam/rotmg/ui/view/TitleView_TitleScreenGraphic.png",
+    # The original's title art, kept under its own name. The client does not use it -- see
+    # OWN_IMAGES -- but extracting it means the reference is there to compare against.
+    "OriginalTitleScreen": "kabam/rotmg/ui/view/TitleView_TitleScreenGraphic.png",
+}
+
+# Artwork that belongs to this client rather than the AS3 tree. It already lives in assets/sheets
+# and is only listed here so the manifest knows its name; nothing copies over it.
+OWN_IMAGES = {
+    "TitleScreen": "TitleScreenGraphic.png",
 }
 
 
@@ -347,6 +355,10 @@ def main() -> int:
             continue
         copied += copy_if_changed(source, sheets_out / source.name)
         manifest.images[logical_name] = source.name
+
+    for logical_name, filename in OWN_IMAGES.items():
+        if (sheets_out / filename).is_file():
+            manifest.images[logical_name] = filename
 
     for logical_name in STANDALONE_IMAGES:
         stub_class = embed_vars.get(logical_name)

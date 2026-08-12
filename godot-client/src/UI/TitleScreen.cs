@@ -25,9 +25,6 @@ namespace Hendra.UI;
 /// </remarks>
 public partial class TitleScreen : Control
 {
-    /// <summary>The band the original puts its version text on, as a fraction of the art's height.</summary>
-    private const float BottomBand = 589.45f / 600f;
-
     private TextureRect _art;
     private Control _buttons;
 
@@ -53,7 +50,10 @@ public partial class TitleScreen : Control
         {
             Texture = App.ServiceLocator.Assets?.GetImage("TitleScreen"),
             ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            // Covers the window rather than letterboxing inside it: the art is a wash and a
+            // wordmark, so cropping its edges costs nothing and black bars down both sides of a
+            // wide monitor look like a fault.
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCovered,
             MouseFilter = MouseFilterEnum.Ignore,
         };
         _art.SetAnchorsPreset(LayoutPreset.FullRect);
@@ -64,10 +64,16 @@ public partial class TitleScreen : Control
         _buttons = new Control { MouseFilter = MouseFilterEnum.Ignore };
         AddChild(_buttons);
 
+        // A centre container rather than a centre anchor: the anchor puts the bar's corner on the
+        // middle of the screen, which reads as centred only until you look at it.
+        var centre = new CenterContainer();
+        centre.SetAnchorsPreset(LayoutPreset.FullRect);
+        centre.MouseFilter = MouseFilterEnum.Ignore;
+        _buttons.AddChild(centre);
+
         var bar = new HBoxContainer();
         bar.AddThemeConstantOverride("separation", 18);
-        bar.SetAnchorsPreset(LayoutPreset.Center);
-        _buttons.AddChild(bar);
+        centre.AddChild(bar);
 
         // Servers left, Play centre, Account right -- the original's arrangement.
         bar.AddChild(MenuButton("Servers", () => ServersPressed?.Invoke()));
@@ -79,24 +85,25 @@ public partial class TitleScreen : Control
     }
 
     /// <summary>
-    /// Puts the button bar on the artwork's bottom band, wherever the artwork ended up.
+    /// Puts the button bar along the bottom of the window.
     /// </summary>
+    /// <remarks>
+    /// The original pins its bar to a band on an 800 by 600 stage, which works because the stage is
+    /// the window. Here the art covers the window and overflows it, so a position measured from the
+    /// artwork lands off the bottom edge on anything wider than four by three. The window is the
+    /// thing the player can see, so the window is what it is measured from.
+    /// </remarks>
     private void PlaceButtons()
     {
+        const float BarHeight = 60f;
+        const float BottomMargin = 46f;
+
         var window = GetViewportRect().Size;
         if (window.X <= 0f || window.Y <= 0f)
             return;
 
-        // Where the 800x600 art landed once it was fitted to the window.
-        float scale = Mathf.Min(window.X / 800f, window.Y / 600f);
-        var art = new Vector2(800f * scale, 600f * scale);
-        var origin = (window - art) / 2f;
-
-        // The bar sits *above* the band rather than on it: the band is where the original puts its
-        // version text, and a bar centred on it hangs off the bottom of the artwork.
-        const float BarHeight = 88f;
-        _buttons.Position = new Vector2(origin.X, origin.Y + art.Y * BottomBand - BarHeight);
-        _buttons.Size = new Vector2(art.X, BarHeight);
+        _buttons.Position = new Vector2(0f, window.Y - BarHeight - BottomMargin);
+        _buttons.Size = new Vector2(window.X, BarHeight);
     }
 
     private static Button MenuButton(string text, Action pressed, bool primary = false)
