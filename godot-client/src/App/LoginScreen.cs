@@ -445,13 +445,28 @@ public partial class LoginScreen : Control
         try
         {
             using var client = new AppEngineClient(baseUrl);
-            string xml = await client.PostAsync("/char/list", new Dictionary<string, string>
+            var credentials = new Dictionary<string, string>
             {
                 ["guid"] = _guid.Text,
                 ["password"] = _password.Text,
-            });
+            };
 
+            // Verify first, and only then fetch. /char/list is a character fetch that happens to
+            // tolerate strangers: an account it has never heard of gets a *guest* built for it on
+            // the spot -- AccountId 0, a name off a fixed list, no NameChosen -- and answers 200.
+            // Taking that for a successful sign-in is what stranded players on the name page, since
+            // every endpoint that checks credentials properly then answered "Bad Login".
+            // /account/verify passes nothing but LoginStatus.OK.
+            await client.PostAsync("/account/verify", credentials);
+
+            string xml = await client.PostAsync("/char/list", credentials);
             _charList = CharListResult.Parse(xml);
+
+            // Belt and braces: a guest is never persisted, so it can only have come from the path
+            // above. Its character list would look playable right up until the world server refused
+            // the login.
+            if (_charList.Account.AccountId is null or "" or "0")
+                throw new AppEngineException("Bad Login", isFatal: false);
 
             // Saved only once the server has accepted them; storing what was typed would keep a
             // wrong password and quietly fail the auto sign-in every time from then on.
@@ -466,7 +481,12 @@ public partial class LoginScreen : Control
         }
         catch (AppEngineException ex)
         {
-            _status.Text = ex.IsFatal ? $"Sign-in failed: {ex.Message}" : $"{ex.Message}";
+            // The server answers "Bad Login" for a wrong password and for an account that does not
+            // exist alike -- LoginStatus.GetInfo() returns the same string for both -- so the reply
+            // says what to do about it instead of repeating a phrase that rules nothing out.
+            _status.Text = ex.Message.Contains("Bad Login", StringComparison.OrdinalIgnoreCase)
+                ? "That email and password do not match an account. Check them, or press Register to create one."
+                : ex.IsFatal ? $"Sign-in failed: {ex.Message}" : ex.Message;
         }
         catch (Exception ex)
         {
@@ -491,12 +511,7 @@ public partial class LoginScreen : Control
         _signInPanel.Visible = false;
 
         // Nothing else on this screen matters until the account has a name.
-        // The name itself is the authority, not the flag beside it: an account carrying a name has
-        // clearly chosen one, and asking again strands the player on a page whose only button then
-        // fails -- the server charges a thousand credits to *change* a name, and a new account has
-        // none.
-        bool needsName = !_charList.Account.NameChosen &&
-                         string.IsNullOrWhiteSpace(_charList.Account.Name);
+        bool needsName = !_charList.Account.NameChosen;
         _namePanel.Visible = needsName;
         _charactersPanel.Visible = !needsName;
         _heading.Text = needsName ? "Choose your name" : "Choose a character";
