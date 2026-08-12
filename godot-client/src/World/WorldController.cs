@@ -1190,7 +1190,7 @@ public partial class WorldController : Node
 
                 draw.Sprite = frame.Sprite;
                 draw.Mirrored = frame.Mirrored;
-                SizeQuad(ref draw, entity, frame.Sprite, frame.CellsWide, frame.RegionCells);
+                SizeQuad(ref draw, entity, frame.Sprite, frame.RegionCells, frame.RegionCells);
                 draw.AnchorX = AnchorFor(frame);
             }
             else
@@ -1543,18 +1543,29 @@ public partial class WorldController : Node
     /// Where the sprite's anchor sits horizontally.
     /// </summary>
     /// <remarks>
-    /// Normally the middle. The extended attack frame is wider than the character and has an empty
-    /// cell on one side, so the anchor shifts to keep the character over its tile while the weapon
-    /// overhangs — and the empty cell swaps sides when the frame is mirrored.
+    /// <para>
+    /// Normally the middle. The extended attack frame is two cells of artwork — the character and
+    /// the weapon reaching past it — so the anchor moves to the middle of the character's own cell,
+    /// which keeps it standing over its tile while the weapon overhangs. Mirroring flips the pair,
+    /// putting the character in the other cell.
+    /// </para>
+    /// <para>
+    /// The original composites those two cells into a three-cell image with a blank cell on the
+    /// far side, so that the character lands in the middle of it. The blank cell draws nothing, so
+    /// it is left out here and the anchor does the same job — but the quad has to be sized to the
+    /// artwork rather than to the original's three cells, or two cells of picture get stretched
+    /// across three tiles.
+    /// </para>
     /// </remarks>
     private static float AnchorFor(in CharFrame frame)
     {
-        if (frame.CellsWide <= 1)
+        if (frame.RegionCells <= 1)
             return 0.5f;
 
-        // Centre of the cell the character itself occupies, as a fraction of the whole quad.
-        float characterCell = frame.EffectiveContentCell + (frame.Mirrored ? frame.RegionCells - 1f : 0f);
-        return (characterCell + 0.5f) / frame.CellsWide;
+        // Centre of the cell the character occupies. It is the first of the region, or the last
+        // once the quad has been flipped.
+        float characterCell = frame.Mirrored ? frame.RegionCells - 1f : 0f;
+        return (characterCell + 0.5f) / frame.RegionCells;
     }
 
     private static CharFrame SelectFrame(Entity entity, AnimatedChar animated, int now, float cameraAngle)

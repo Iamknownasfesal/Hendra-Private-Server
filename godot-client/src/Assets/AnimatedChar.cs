@@ -42,34 +42,26 @@ public readonly struct CharFrame
     /// <summary>Whether to draw the sprite flipped horizontally.</summary>
     public readonly bool Mirrored;
 
-    /// <summary>Total quad width in cells.</summary>
-    public readonly int CellsWide;
-
-    /// <summary>How many cells the sampled region itself spans.</summary>
+    /// <summary>
+    /// How many cells of artwork the sampled region spans.
+    /// </summary>
+    /// <remarks>
+    /// One for every frame except the extended attack pose, which is two: the character, and the
+    /// weapon reaching past it. The character is always the first of them, or the last once the
+    /// quad is mirrored.
+    /// </remarks>
     public readonly int RegionCells;
 
-    /// <summary>Which cell of the quad the sampled region begins at, before mirroring.</summary>
-    public readonly int ContentCell;
-
-    public CharFrame(Sprite sprite, Sprite mask, bool mirrored, int cellsWide = 1, int regionCells = 1,
-        int contentCell = 0)
+    public CharFrame(Sprite sprite, Sprite mask, bool mirrored, int regionCells = 1)
     {
         Sprite = sprite;
         Mask = mask;
         Mirrored = mirrored;
-        CellsWide = cellsWide;
         RegionCells = regionCells;
-        ContentCell = contentCell;
     }
 
     public bool IsValid => Sprite.IsValid;
 
-    /// <summary>
-    /// Where the region sits within the quad once mirroring is applied. Flipping the quad moves the
-    /// composite's empty cell from the left side to the right.
-    /// </summary>
-    public int EffectiveContentCell =>
-        Mirrored ? CellsWide - ContentCell - RegionCells : ContentCell;
 }
 
 /// <summary>
@@ -177,16 +169,13 @@ public sealed class AnimatedChar
         Func<int, int, Sprite> maskCells,
         Func<int, bool> isEmpty)
     {
-        CharFrame One(int offset, int cellsWide = 1, int contentCell = 0)
+        CharFrame One(int offset, int regionCells = 1)
         {
-            int regionCells = cellsWide - contentCell;
             return new CharFrame(
                 cells(baseCell + offset, regionCells),
                 maskCells?.Invoke(baseCell + offset, regionCells) ?? default,
                 mirrored,
-                cellsWide,
-                regionCells,
-                contentCell);
+                regionCells);
         }
 
         var stand = new[] { One(0) };
@@ -221,9 +210,10 @@ public sealed class AnimatedChar
                 frames.Add(One(4));
             if (hasAttack2)
             {
-                // Cells 5 and 6 together, drawn inside a three-cell quad whose first cell is empty
-                // so the weapon reaches beyond the character.
-                frames.Add(hasExtension ? One(5, cellsWide: 3, contentCell: 1) : One(5));
+                // Cells 5 and 6 together, so the weapon reaches beyond the character. The original
+                // composites them into a three-cell image with a blank cell on the far side; the
+                // blank draws nothing, so the anchor does that job instead.
+                frames.Add(hasExtension ? One(5, regionCells: 2) : One(5));
             }
             attack = frames.ToArray();
         }
