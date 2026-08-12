@@ -145,14 +145,14 @@ public partial class TradeView : Control
         {
             if (i >= items.Length || items[i].Item < 0)
             {
-                views[i].SetItem(default, null);
+                views[i].SetItem(default, null, _data);
                 views[i].Modulate = Colors.White;
                 continue;
             }
 
             var desc = _data?.GetObject((ushort)items[i].Item);
             var resolved = _textures?.Resolve(desc?.Texture) ?? default;
-            views[i].SetItem(resolved.Still, desc?.DisplayId ?? desc?.Id);
+            views[i].SetItem(resolved.Still, desc, _data);
 
             bool onTable = offered != null && i < offered.Length && offered[i];
             bool tradeable = items[i].Tradeable && (!mine || i >= Trading.FirstTradeableSlot);

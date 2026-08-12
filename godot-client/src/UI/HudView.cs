@@ -310,13 +310,13 @@ public partial class HudView : Control
 
             if (type < 0)
             {
-                _container[i].SetItem(default, null);
+                _container[i].SetItem(default, null, _data);
                 continue;
             }
 
             var desc = _data?.GetObject((ushort)type);
             var resolved = _textures?.Resolve(desc?.Texture) ?? default;
-            _container[i].SetItem(resolved.Still, ItemTooltip.Describe(desc));
+            _container[i].SetItem(resolved.Still, desc, _data);
         }
     }
 
@@ -379,7 +379,7 @@ public partial class HudView : Control
 
         var desc = _data?.GetObject((ushort)merchant.MerchandiseType);
         var resolved = _textures?.Resolve(desc?.Texture) ?? default;
-        _merchandise.SetItem(resolved.Still, ItemTooltip.Describe(desc));
+        _merchandise.SetItem(resolved.Still, desc, _data);
 
         // Currency zero is gold; anything else is fame on this server build.
         bool fame = merchant.MerchandiseCurrency != 0;
@@ -669,13 +669,13 @@ public partial class HudView : Control
 
             if (type < 0)
             {
-                views[i].SetItem(default, null);
+                views[i].SetItem(default, null, _data);
                 continue;
             }
 
             var desc = _data?.GetObject((ushort)type);
             var resolved = _textures?.Resolve(desc?.Texture) ?? default;
-            views[i].SetItem(resolved.Still, ItemTooltip.Describe(desc));
+            views[i].SetItem(resolved.Still, desc, _data);
         }
     }
 }
@@ -753,6 +753,8 @@ public sealed partial class SlotView : Control
     private static readonly Color Border = new(0.35f, 0.35f, 0.35f);
 
     private Assets.Sprite _sprite;
+    private Resources.ObjectDesc _desc;
+    private Resources.GameData _data;
 
     /// <summary>Raised on a left click, whether or not the slot holds anything.</summary>
     public event Action Activated;
@@ -765,11 +767,32 @@ public sealed partial class SlotView : Control
             Activated?.Invoke();
     }
 
-    public void SetItem(Assets.Sprite sprite, string tooltip)
+    public void SetItem(Assets.Sprite sprite, Resources.ObjectDesc desc, Resources.GameData data)
     {
         _sprite = sprite;
-        TooltipText = tooltip ?? string.Empty;
+        _desc = desc;
+        _data = data;
+
+        // Godot only asks for a tooltip when this is non-empty, so it stands in for "there is
+        // something here to describe". The text itself is never shown -- _MakeCustomTooltip
+        // replaces it with the panel.
+        TooltipText = desc == null ? string.Empty : " ";
         QueueRedraw();
+    }
+
+    /// <summary>
+    /// Builds the panel the original shows, in place of Godot's own text tooltip.
+    /// </summary>
+    /// <remarks>
+    /// Built fresh each time rather than kept: the engine frees the control when the tooltip
+    /// closes, and an item's description does not change while the pointer is over it.
+    /// </remarks>
+    public override Control _MakeCustomTooltip(string forText)
+    {
+        if (_desc == null)
+            return null;
+
+        return new ItemTooltipPanel(_desc, _sprite, _data, App.ServiceLocator.Strings);
     }
 
     public override void _Draw()

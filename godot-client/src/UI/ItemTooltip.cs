@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using Hendra.Data;
@@ -6,32 +7,33 @@ using Hendra.Resources;
 namespace Hendra.UI;
 
 /// <summary>
-/// The text shown when the pointer rests on an item.
+/// What an item's tooltip says, as lines. <see cref="ItemTooltipPanel"/> decides how they look.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The original draws a panel here rather than a string: a title bar in the tier's colour, the slot
-/// it goes in, a table of what it does, the flavour line, and a footer of who may use it. This is
-/// the same information as text, which Godot's tooltip already knows how to place and size.
+/// Kept apart from the panel so the wording can be exercised without an engine: the panel is a
+/// Control and needs a scene tree, these are strings and need nothing.
 /// </para>
 /// <para>
-/// What it says is decided by what the item is. A weapon is described by its damage and rate of
-/// fire, an ability by what it costs, a piece of armour by what it adds — listing every field for
-/// every item would bury the one line that matters under a dozen that read "0".
+/// The phrasing is the original's, from the same language keys — "Damage: {damage}",
+/// "Range: {range}", "Shots: {numShots}", "MP Cost: {cost}", "On Equip:". Each falls back to the
+/// English the table would have supplied, since it is fetched over HTTP and is not there at once.
 /// </para>
 /// </remarks>
 public static class ItemTooltip
 {
-    /// <summary>The slot numbers, as the XML's SlotType uses them.</summary>
-    private static readonly Dictionary<int, string> SlotNames = new()
+    /// <summary>A line, and whether it is a value or a heading over other lines.</summary>
+    public readonly struct Line
     {
-        [1] = "Sword", [2] = "Dagger", [3] = "Bow", [4] = "Tome", [5] = "Shield",
-        [6] = "Leather armour", [7] = "Heavy armour", [8] = "Wand", [9] = "Ring",
-        [10] = "Potion", [11] = "Spell", [12] = "Seal", [13] = "Cloak", [14] = "Robe",
-        [15] = "Quiver", [16] = "Helm", [17] = "Staff", [18] = "Poison", [19] = "Skull",
-        [20] = "Trap", [21] = "Orb", [22] = "Prism", [23] = "Scepter", [24] = "Katana",
-        [25] = "Shuriken",
-    };
+        public readonly string Text;
+        public readonly bool IsHeading;
+
+        public Line(string text, bool isHeading = false)
+        {
+            Text = text;
+            IsHeading = isHeading;
+        }
+    }
 
     private static readonly Dictionary<int, string> StatNames = new()
     {
@@ -45,71 +47,104 @@ public static class ItemTooltip
         [(int)StatsType.Wisdom] = "Wisdom",
     };
 
-    /// <summary>Describes an item, or returns null if there is nothing to describe.</summary>
-    public static string Describe(ObjectDesc desc)
+    /// <summary>
+    /// Everything the item does, in the order the original lists it.
+    /// </summary>
+    /// <remarks>
+    /// What appears is decided by what the item is — a weapon by its shot, an ability by its cost,
+    /// armour by what it adds. Listing every field for every item would bury the one line that
+    /// matters under a dozen reading "0".
+    /// </remarks>
+    public static List<Line> Effects(ObjectDesc desc, Text.StringMap strings = null)
     {
+        var lines = new List<Line>();
         if (desc == null)
-            return null;
+            return lines;
 
-        var lines = new List<string>();
-
-        string name = desc.DisplayId ?? desc.Id ?? "Unknown item";
-        lines.Add(desc.Tier >= 0 ? $"{name}   T{desc.Tier}" : name);
-
-        string slot = SlotName(desc.SlotType);
-        if (slot != null)
-            lines.Add(slot);
-
-        // A weapon: what it hits for, and how often. Rate of fire is a multiplier on the player's
-        // own, so it is shown as the percentage the original shows rather than the raw number.
         var shot = FirstProjectile(desc);
         if (shot != null)
         {
-            lines.Add(shot.MinDamage == shot.MaxDamage
-                ? $"Damage: {shot.MinDamage}"
-                : $"Damage: {shot.MinDamage}–{shot.MaxDamage}");
+            string damage = shot.MinDamage == shot.MaxDamage
+                ? shot.MinDamage.ToString(CultureInfo.InvariantCulture)
+                : $"{shot.MinDamage} - {shot.MaxDamage}";
 
-            if (desc.NumProjectiles > 1)
-                lines.Add($"Shots: {desc.NumProjectiles}");
+            lines.Add(new Line(Fill(strings, "EquipmentToolTip.damage", "Damage: {damage}", "damage", damage)));
 
-            if (!Near(desc.RateOfFire, 1f))
-                lines.Add($"Rate of fire: {Percent(desc.RateOfFire)}");
+            // The original's own arithmetic: speed times lifetime over ten thousand, in tiles.
+            float range = shot.Speed * shot.LifetimeMs / 10000f;
+            lines.Add(new Line(Fill(strings, "EquipmentToolTip.range", "Range: {range}", "range", Round(range))));
 
-            if (shot.Speed > 0 && shot.LifetimeMs > 0)
-                lines.Add($"Range: {Round(shot.Speed / 10f * (shot.LifetimeMs / 1000f))}");
+            if (shot.MultiHit)
+                lines.Add(new Line(Get(strings, "GeneralProjectileComparison.multiHit", "Shots hit multiple targets")));
+
+            if (shot.ArmorPiercing)
+                lines.Add(new Line(Get(strings, "GeneralProjectileComparison.armorPiercing", "Ignores defense of target")));
+
+            if (shot.PassesCover)
+                lines.Add(new Line(Get(strings, "GeneralProjectileComparison.passesCover", "Shots pass through obstacles")));
         }
 
-        foreach (var (stat, amount) in desc.EquipBonuses)
+        if (desc.NumProjectiles > 1)
         {
-            string statName = StatNames.TryGetValue(stat, out string known) ? known : $"Stat {stat}";
-            lines.Add($"{(amount >= 0 ? "+" : string.Empty)}{amount} {statName}");
+            lines.Add(new Line(Fill(strings, "EquipmentToolTip.shots", "Shots: {numShots}", "numShots",
+                desc.NumProjectiles.ToString(CultureInfo.InvariantCulture))));
+        }
+
+        if (MathF.Abs(desc.RateOfFire - 1f) > 0.005f)
+        {
+            lines.Add(new Line(Fill(strings, "EquipmentToolTip.rateOfFire", "Rate of Fire: {data}", "data",
+                $"{(int)MathF.Round(desc.RateOfFire * 100f)}%")));
         }
 
         if (desc.MpCost > 0)
-            lines.Add($"MP cost: {desc.MpCost}");
+        {
+            lines.Add(new Line(Fill(strings, "EquipmentToolTip.mpCost", "MP Cost: {cost}", "cost",
+                desc.MpCost.ToString(CultureInfo.InvariantCulture))));
+        }
 
-        if (desc.CooldownMs > 0)
-            lines.Add($"Cooldown: {Round(desc.CooldownMs / 1000f)}s");
+        if (desc.EquipBonuses.Length == 0)
+            return lines;
+
+        lines.Add(new Line(Get(strings, "EquipmentToolTip.onEquip", "On Equip:"), isHeading: true));
+
+        foreach (var (stat, amount) in desc.EquipBonuses)
+        {
+            string name = StatNames.TryGetValue(stat, out string known) ? known : $"Stat {stat}";
+            lines.Add(new Line($"  {(amount >= 0 ? "+" : string.Empty)}{amount} {name}"));
+        }
+
+        return lines;
+    }
+
+    /// <summary>What stops you using it: whether it binds, and whether it is spent.</summary>
+    public static List<string> Restrictions(ObjectDesc desc, Text.StringMap strings = null)
+    {
+        var lines = new List<string>();
+        if (desc == null)
+            return lines;
 
         if (desc.Consumable)
-            lines.Add("Consumed on use");
+            lines.Add(Get(strings, "EquipmentToolTip.consumedWithUse", "Consumed with use"));
 
         if (desc.Soulbound)
-            lines.Add("Soulbound");
+            lines.Add(Get(strings, "Item.Soulbound", "Soulbound"));
 
-        if (!string.IsNullOrWhiteSpace(desc.Description))
-        {
-            lines.Add(string.Empty);
-            lines.Add(desc.Description);
-        }
+        return lines;
+    }
 
-        if (desc.FeedPower > 0)
-        {
-            lines.Add(string.Empty);
-            lines.Add($"Feed power: {desc.FeedPower}");
-        }
+    /// <summary>
+    /// The tag at the top right.
+    /// </summary>
+    /// <remarks>
+    /// The original's TierUtil: the tier if the item has one, UT if it has none, and nothing at all
+    /// for consumables, treasure and pet food, which have no notion of quality.
+    /// </remarks>
+    public static string TierTag(ObjectDesc desc)
+    {
+        if (desc == null || desc.Consumable)
+            return null;
 
-        return string.Join("\n", lines);
+        return desc.Tier >= 0 ? $"T{desc.Tier}" : "UT";
     }
 
     /// <summary>
@@ -119,9 +154,9 @@ public static class ItemTooltip
     /// Items are keyed by bullet type because a few fire more than one kind, but every weapon in
     /// this data set has exactly one and the first is the one to describe.
     /// </remarks>
-    private static ProjectileDesc FirstProjectile(ObjectDesc desc)
+    public static ProjectileDesc FirstProjectile(ObjectDesc desc)
     {
-        if (desc.Projectiles == null)
+        if (desc?.Projectiles == null)
             return null;
 
         foreach (var shot in desc.Projectiles.Values)
@@ -130,14 +165,11 @@ public static class ItemTooltip
         return null;
     }
 
-    private static string SlotName(int slotType) =>
-        SlotNames.TryGetValue(slotType, out string name) ? name : null;
+    private static string Fill(Text.StringMap strings, string key, string fallback, string token, string value) =>
+        Get(strings, key, fallback).Replace("{" + token + "}", value);
 
-    private static bool Near(float value, float target) => System.MathF.Abs(value - target) < 0.005f;
+    private static string Get(Text.StringMap strings, string key, string fallback) =>
+        strings != null && strings.Has(key) ? strings.Get(key) : fallback;
 
-    private static string Percent(float multiplier) =>
-        $"{Godot.Mathf.RoundToInt(multiplier * 100f).ToString(CultureInfo.InvariantCulture)}%";
-
-    private static string Round(float value) =>
-        value.ToString("0.#", CultureInfo.InvariantCulture);
+    private static string Round(float value) => value.ToString("0.#", CultureInfo.InvariantCulture);
 }
