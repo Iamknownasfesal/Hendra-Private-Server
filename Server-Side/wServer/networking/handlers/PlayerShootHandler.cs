@@ -35,6 +35,14 @@ namespace wServer.networking.handlers
                 return;
             }
 
+            // Where the shot came from and which way it went were both taken on trust, and both are
+            // worth having: a bullet born on top of its target needs no aim, and a volley whose
+            // shots are aimed one at a time is a multi-shot weapon turned into several guns.
+            if (!player.ValidateShotGeometry(item, packet)) {
+                player.DropNextRandom();
+                return;
+            }
+
             // create projectile and show other players
             var prjDesc = item.Projectiles[0]; //Assume only one
 

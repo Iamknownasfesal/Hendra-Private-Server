@@ -526,6 +526,11 @@ namespace wServer.realm.entities
                 y = sRegion.Key.Y;
             }
             Move(x + 0.5f, y + 0.5f);
+
+            // Arriving in a world is a jump from wherever the last one left off, and the trail that
+            // would explain it belongs to a map this player is no longer standing on.
+            GrantMoveGrace();
+
             tiles = new byte[owner.Map.Width, owner.Map.Height];
             
             FameCounter = new FameCounter(this);
@@ -565,9 +570,10 @@ namespace wServer.realm.entities
                 TickActivateEffects(time);
                 FameCounter.Tick(time);
 
-                // TODO, server side ground damage
-                //if (HandleGround(time))
-                //    return; // death resulted
+                // Both of these are the server's second opinion, not its first: they apply only what
+                // the client was given a chance to report and did not. See Player.Verify.
+                ApplyDeferredHits(time);
+                CheckGroundDamage(time);
             }
 
             base.Tick(time);
@@ -670,6 +676,10 @@ namespace wServer.realm.entities
             }
             
             HandleQuest(time, true, position);
+
+            // A Goto does not move the player here -- it asks the client to move and waits to be
+            // told it did -- so the jump arrives as an ordinary Move that no speed explains.
+            GrantMoveGrace();
 
             var id = (IsControlling) ? SpectateTarget.Id : Id;
             var tpPkts = new Packet[]

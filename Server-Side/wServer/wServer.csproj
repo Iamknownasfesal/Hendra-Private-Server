@@ -120,6 +120,35 @@
     <Compile Include="logic\behaviors\ScaleHP.cs" />
     <Compile Include="logic\behaviors\SetNoXP.cs" />
     <Compile Include="logic\db\BehaviorDb.Abyss.cs" />
+    <Compile Include="logic\db\BehaviorDb.Shatters.cs" />
+    <Compile Include="logic\db\BehaviorDb.CrawlingDepths.cs" />
+    <Compile Include="logic\transitions\PortedTransitions.cs" />
+    <Compile Include="logic\db\BehaviorDb.Oryx.cs" />
+    <Compile Include="logic\db\BehaviorDb.Draconis.cs" />
+    <Compile Include="logic\db\BehaviorDb.Woodland.cs" />
+    <Compile Include="logic\db\BehaviorDb.IceCave.cs" />
+    <Compile Include="logic\db\BehaviorDb.Tutorial.cs" />
+    <Compile Include="logic\db\BehaviorDb.Janus.cs" />
+    <Compile Include="logic\db\BehaviorDb.Catacombs.cs" />
+    <Compile Include="logic\db\BehaviorDb.Highland.cs" />
+    <Compile Include="logic\db\BehaviorDb.HauntedCeme.cs" />
+    <Compile Include="logic\db\BehaviorDb.Puppet.cs" />
+    <Compile Include="logic\db\BehaviorDb.DavyJones.cs" />
+    <Compile Include="logic\db\BehaviorDb.PirateCave.cs" />
+    <Compile Include="logic\db\BehaviorDb.RockDragon.cs" />
+    <Compile Include="logic\db\BehaviorDb.OryxCastle.cs" />
+    <Compile Include="logic\db\BehaviorDb.Encore.cs" />
+    <Compile Include="logic\db\BehaviorDb.DeadwaterDocks.cs" />
+    <Compile Include="logic\db\BehaviorDb.Manor.cs" />
+    <Compile Include="logic\db\BehaviorDb.Jungle.cs" />
+    <Compile Include="logic\db\BehaviorDb.Avatar.cs" />
+    <Compile Include="logic\db\BehaviorDb.Forest.cs" />
+    <Compile Include="logic\db\BehaviorDb.Belladonna.cs" />
+    <Compile Include="logic\db\BehaviorDb.GarnetJade.cs" />
+    <Compile Include="logic\db\BehaviorDb.OryxChicken.cs" />
+    <Compile Include="logic\db\BehaviorDb.ForbiddenJungle.cs" />
+    <Compile Include="logic\db\BehaviorDb.BeerGod.cs" />
+    <Compile Include="logic\db\BehaviorDb.BeachBum.cs" />
     <Compile Include="logic\db\BehaviorDb.Beachzone.cs" />
     <Compile Include="logic\db\BehaviorDb.Candyland.cs" />
     <Compile Include="logic\db\BehaviorDb.CaveTT.cs" />
@@ -296,6 +325,7 @@
     <Compile Include="logic\behaviors\Protect.cs" />
     <Compile Include="logic\behaviors\Follow.cs" />
     <Compile Include="logic\behaviors\Prioritize.cs" />
+    <Compile Include="logic\behaviors\Ported.cs" />
     <Compile Include="logic\behaviors\Reproduce.cs" />
     <Compile Include="logic\behaviors\SetAltTexture.cs" />
     <Compile Include="logic\BehaviorDb.cs" />
@@ -345,6 +375,7 @@
     <Compile Include="realm\entities\GiftChest.cs" />
     <Compile Include="realm\entities\OneWayContainer.cs" />
     <Compile Include="realm\entities\player\Player.AntiCheat.cs" />
+    <Compile Include="realm\entities\player\Player.Verify.cs" />
     <Compile Include="realm\entities\player\Player.Market.cs" />
     <Compile Include="realm\entities\vendors\ClosedVaultChest.cs" />
     <Compile Include="realm\entities\vendors\PlayerMerchant.cs" />
@@ -390,6 +421,7 @@
     <Compile Include="logic\CycleBehavior.cs" />
     <Compile Include="logic\loot\MobDrops.cs" />
     <Compile Include="logic\loot\Loots.cs" />
+    <Compile Include="logic\loot\LootTemplates.cs" />
     <Compile Include="logic\State.cs" />
     <Compile Include="logic\Transition.cs" />
     <Compile Include="logic\transitions\NoPlayerWithinTransition.cs" />
@@ -428,6 +460,7 @@
     </Compile>
     <Compile Include="realm\entities\player\Player.cs" />
     <Compile Include="realm\entities\Projectile.cs" />
+    <Compile Include="realm\PositionTimeline.cs" />
     <Compile Include="realm\entities\StaticObject.cs" />
     <Compile Include="realm\entities\Trap.cs" />
     <Compile Include="realm\LogicTicker.cs" />

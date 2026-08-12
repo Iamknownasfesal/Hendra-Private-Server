@@ -23,16 +23,16 @@ namespace wServer.networking.handlers
             var newX = packet.NewPosition.X;
             var newY = packet.NewPosition.Y;
 
-            /*if (Math.Abs(MathsUtils.DistSqr(newX, newY, player.X, player.Y))
-                > player.Stats.GetTilesPerSecSqr() * 1.05) {
-                player.Client.Disconnect("Moving too fast");
-                return;
-            }*/
-
             if (newX != -1 && newX != player.X ||
                   newY != -1 && newY != player.Y) {
                 player.Move(newX, newY);
             }
+
+            // Keeps the trail of timestamped positions this packet carries, and holds the move to a
+            // speed the player's stats can reach. Both matter to more than movement: the server
+            // works out for itself whether a bullet passed through someone, and it can only do that
+            // against an account of where they were that they cannot simply write for themselves.
+            player.RecordMove(time, packet);
 
             CheckLabConditions(player, packet);
             player.MoveReceived(time, packet);
