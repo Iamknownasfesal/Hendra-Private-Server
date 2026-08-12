@@ -382,6 +382,7 @@
     <Compile Include="realm\entities\vendors\WorldMerchant.cs" />
     <Compile Include="realm\entities\Wall.cs" />
     <Compile Include="realm\FLLogicTicker.cs" />
+    <Compile Include="realm\TickPhases.cs" />
     <Compile Include="realm\Inventory.cs" />
     <Compile Include="realm\Market.cs" />
     <Compile Include="realm\ConnectManager.cs" />

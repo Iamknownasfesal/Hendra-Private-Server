@@ -615,8 +615,9 @@ namespace wServer.realm.worlds
                         Timers.RemoveAt(i);
                     }
 
-                foreach (var i in Players)
-                    i.Value.Tick(time);
+                using (TickPhases.Measure("players"))
+                    foreach (var i in Players)
+                        i.Value.Tick(time);
                 
                 /*(if (EnemiesCollision != null)
                 {
@@ -632,8 +633,11 @@ namespace wServer.realm.worlds
                     foreach (var i in StaticObjects)
                         i.Value.Tick(time);
                 }*/
-                foreach (var i in Projectiles)
-                    i.Value.Tick(time);
+                // Every enemy bullet is walked against the players it passed here, which is new
+                // and worth being able to see the cost of.
+                using (TickPhases.Measure("bullets"))
+                    foreach (var i in Projectiles)
+                        i.Value.Tick(time);
             }
             catch (Exception e)
             {
@@ -649,19 +653,22 @@ namespace wServer.realm.worlds
                 if (Deleted)
                     return;
 
-                if (EnemiesCollision != null)
+                using (TickPhases.Measure("enemies"))
                 {
-                    foreach (var i in EnemiesCollision.GetActiveChunks(PlayersCollision))
-                        i.Tick(time);
-                    foreach (var i in StaticObjects.Where(x => x.Value is Decoy))
-                        i.Value.Tick(time);
-                }
-                else
-                {
-                    foreach (var i in Enemies)
-                        i.Value.Tick(time);
-                    foreach (var i in StaticObjects)
-                        i.Value.Tick(time);
+                    if (EnemiesCollision != null)
+                    {
+                        foreach (var i in EnemiesCollision.GetActiveChunks(PlayersCollision))
+                            i.Tick(time);
+                        foreach (var i in StaticObjects.Where(x => x.Value is Decoy))
+                            i.Value.Tick(time);
+                    }
+                    else
+                    {
+                        foreach (var i in Enemies)
+                            i.Value.Tick(time);
+                        foreach (var i in StaticObjects)
+                            i.Value.Tick(time);
+                    }
                 }
             }
         }

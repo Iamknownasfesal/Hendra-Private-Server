@@ -87,11 +87,15 @@ namespace wServer.realm
             _manager.Monitor.Tick(t);
             _manager.InterServer.Tick(t.ElaspedMsDelta);
 
-            TickWorlds1(t);
+            using (TickPhases.Measure("worlds"))
+                TickWorlds1(t);
 
-            foreach (var client in clients)
-                if (client.Player != null && client.Player.Owner != null)
-                    client.Player.Flush();
+            using (TickPhases.Measure("flush"))
+                foreach (var client in clients)
+                    if (client.Player != null && client.Player.Owner != null)
+                        client.Player.Flush();
+
+            TickPhases.Report(t.TickDelta > 1);
         }
 
         void TickWorlds1(RealmTime t)    //Continous simulation

@@ -25,9 +25,12 @@ namespace wServer
 
         public static bool AnyPlayerNearby(this Entity entity, int radius = Player.Radius)
         {
-            foreach (var i in entity.Owner.PlayersCollision.HitTest(entity.X, entity.Y, radius).Where(e => e is Player))
+            // Asked once per enemy per tick, so with a room full of them the LINQ filter this used
+            // to run was tens of thousands of throwaway enumerators a second for a test that ends
+            // at the first player it finds.
+            foreach (var i in entity.Owner.PlayersCollision.HitTest(entity.X, entity.Y, radius))
             {
-                if (i.HasConditionEffect(ConditionEffects.Hidden))
+                if (!(i is Player) || i.HasConditionEffect(ConditionEffects.Hidden))
                     continue;
 
                 var d = i.DistSqr(entity);
