@@ -28,8 +28,15 @@ public partial class MinimapView : Control
     /// <summary>Keeps the minimap clear of the stats panel down the right edge.</summary>
     private const int PanelAllowance = 232;
 
-    /// <summary>How many tiles fit across the minimap. Smaller shows more detail.</summary>
-    private const float TilesAcross = 96f;
+    /// <summary>How many tiles fit across the minimap by default. Smaller shows more detail.</summary>
+    private const float DefaultTilesAcross = 96f;
+
+    /// <summary>The zoom range, in tiles across. Beyond these the map is either useless or a dot.</summary>
+    private const float MinTilesAcross = 24f;
+
+    private const float MaxTilesAcross = 384f;
+
+    private float _tilesAcross = DefaultTilesAcross;
 
     private Image _image;
     private ImageTexture _texture;
@@ -39,6 +46,21 @@ public partial class MinimapView : Control
     private TileColors _colours;
 
     private float _cameraAngle;
+
+    /// <summary>
+    /// Zooms a step in or out.
+    /// </summary>
+    /// <param name="steps">Positive zooms in, showing fewer tiles.</param>
+    /// <remarks>
+    /// A halving each step rather than a fixed number of tiles, so the same key press feels the
+    /// same whether the map is showing a room or a realm.
+    /// </remarks>
+    public void Zoom(int steps)
+    {
+        _tilesAcross = Mathf.Clamp(
+            _tilesAcross * Mathf.Pow(0.5f, steps), MinTilesAcross, MaxTilesAcross);
+        QueueRedraw();
+    }
 
     public void Configure(GameMap map, TileColors colours)
     {
@@ -136,7 +158,7 @@ public partial class MinimapView : Control
     /// </remarks>
     private Transform2D MapTransform(LocalPlayer player, Vector2 centre)
     {
-        float scale = Diameter / TilesAcross;
+        float scale = Diameter / _tilesAcross;
 
         var transform = new Transform2D(-_cameraAngle, new Vector2(scale, scale), 0f, Vector2.Zero);
         transform.Origin = centre - transform.BasisXform(new Vector2(player.X, player.Y));

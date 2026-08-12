@@ -95,12 +95,11 @@ Standing up the server locally takes a few steps, none of them obvious:
 2. `wServer.csproj` references 62 files under `logic/db` that are not in the repository — the
    server's own README says behaviours were removed. `BehaviorDb` finds them by reflection, so
    deleting those `<Compile>` entries builds cleanly, just with fewer behaviours.
-3. **Monsters will not move.** `wServer/logic/db` is empty and `wServer.csproj` references 62 files
-   from it that are not in the repository. That directory is the behaviour database — every
-   monster's AI — and the server's own README says it was removed because it is tied to the server
-   assets. Nothing in the client can substitute for it: the client moves an entity when a tick says
-   the entity moved, and without behaviours the server keeps sending the same position. See
-   `tests/Hendra.Tests/EntityMotionTests.cs`, which pins that down from this side.
+3. **The behaviour database is a separate download.** `wServer/logic/db` is every monster's AI, and
+   the server's own README says it was removed because it is tied to the server assets. Without it
+   monsters stand still — the client moves an entity when a tick says it moved, and the server keeps
+   sending the same position. See `tests/Hendra.Tests/EntityMotionTests.cs`, which pins that down
+   from this side so it is not mistaken for a client fault. A set is now checked in.
 4. `xmls/client/EmbeddedData_RegionsCXML.dat` is malformed: the `Biome3` region is missing its
    closing tag, and the server throws on startup parsing it.
 5. Both `server.json` and `wServer.json` ship bound to a public address, and expect Redis with

@@ -23,21 +23,39 @@ public partial class OptionsView : Control
 {
     private const int PanelWidth = 380;
 
-    /// <summary>The keys the game uses, shown as a reminder. Fixed until rebinding exists.</summary>
+    /// <summary>
+    /// What the keys do, in the original's own order.
+    /// </summary>
+    /// <remarks>
+    /// These are the defaults out of the AS3 client's <c>Parameters.setDefaults</c> rather than
+    /// anything invented here, so muscle memory carries over. Fixed until rebinding exists — which
+    /// is what the original's options screen mostly was.
+    /// </remarks>
     private static readonly (string Key, string Does)[] Bindings =
     {
         ("W A S D", "Move"),
         ("Q E", "Turn the camera"),
-        ("R", "Reset the camera"),
+        ("Z", "Reset the camera"),
+        ("X", "Centre on the player"),
         ("Left mouse", "Shoot"),
+        ("C", "Hold fire"),
         ("Space", "Use ability"),
-        ("Shift", "Hold fire"),
+        ("0", "Interact"),
+        ("1 – 8", "Use an inventory slot"),
         ("F", "Health potion"),
-        ("G", "Magic potion"),
+        ("V", "Magic potion"),
+        ("R  ·  F5", "Nexus"),
         ("Enter", "Chat"),
-        ("Insert", "Nexus"),
+        ("/", "Chat, ready for a command"),
+        ("Tab", "Chat, ready for a whisper"),
+        ("G", "Chat, ready for the guild"),
+        ("Page Up / Down", "Scroll the chat"),
+        ("- =", "Zoom the minimap"),
+        ("H", "Health bars"),
+        ("P", "Particle effects"),
+        ("I", "Hide the interface"),
         ("U", "Guild"),
-        ("Escape", "These options"),
+        ("O", "These options"),
     };
 
     private Settings _settings;

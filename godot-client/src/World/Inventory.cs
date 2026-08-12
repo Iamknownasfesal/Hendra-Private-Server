@@ -27,7 +27,10 @@ public sealed class Inventory
     public const int NoItem = -1;
 
     private const int WornSlots = 8;
-    private const int CarriedFirst = 8;
+    /// <summary>The first carried slot. The number keys address the eight from here.</summary>
+    public const int CarriedFirstSlot = 8;
+
+    private const int CarriedFirst = CarriedFirstSlot;
     private const int CarriedLast = 15;
 
     /// <summary>The two potion slots, which live outside the array and are addressed by id.</summary>

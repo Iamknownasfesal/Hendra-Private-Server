@@ -58,6 +58,9 @@ public partial class WorldController : Node
     /// <summary>Localised strings, shared with the rest of the client.</summary>
     private StringMap _strings = new();
 
+    /// <summary>The eight carried slots that answer to the number keys.</summary>
+    private const int InventoryHotkeys = 8;
+
     private float _cameraAngle = 7f * Mathf.Pi / 4f;
     private Entity _focus;
     private bool _autofire;
@@ -107,6 +110,12 @@ public partial class WorldController : Node
 
     /// <summary>Raised when the player asks for the guild panel.</summary>
     public event System.Action GuildToggled;
+
+    /// <summary>Whether the interface is hidden. Bound to I, as the original bound its inventory.</summary>
+    public bool HudHidden { get; private set; }
+
+    /// <summary>Raised when the interface is hidden or shown.</summary>
+    public event System.Action<bool> HudVisibilityChanged;
 
     /// <summary>Whether the options panel is up, so input can be held back while it is.</summary>
     public System.Func<bool> OptionsAreOpen { private get; set; }
@@ -745,7 +754,7 @@ public partial class WorldController : Node
             return;
         }
 
-        if (Input.IsActionJustPressed("guild"))
+        if (Input.IsActionJustPressed("guild_panel"))
         {
             GuildToggled?.Invoke();
             return;
@@ -759,10 +768,40 @@ public partial class WorldController : Node
             return;
         }
 
+        // Three ways into the chat box, and two of them arrive with something already typed. The
+        // original had the same: a slash opens it ready for a command, tab ready for a whisper, and
+        // G ready for guild chat.
         if (Input.IsActionJustPressed("toggle_chat"))
         {
             _chat?.BeginTyping();
             return;
+        }
+
+        if (Input.IsActionJustPressed("chat_command"))
+        {
+            _chat?.BeginTyping("/");
+            return;
+        }
+
+        if (Input.IsActionJustPressed("tell"))
+        {
+            _chat?.BeginTyping("/tell ");
+            return;
+        }
+
+        if (Input.IsActionJustPressed("guild_chat"))
+        {
+            _chat?.BeginTyping("/g ");
+            return;
+        }
+
+        if (Input.IsActionJustPressed("toggle_centering"))
+            CenterOnPlayer = !CenterOnPlayer;
+
+        for (int slot = 0; slot < InventoryHotkeys; slot++)
+        {
+            if (Input.IsActionJustPressed($"inv_slot_{slot + 1}"))
+                OnSlotActivated(Inventory.CarriedFirstSlot + slot);
         }
 
         float x = Input.GetActionStrength("move_right") - Input.GetActionStrength("move_left");
@@ -791,7 +830,24 @@ public partial class WorldController : Node
         if (Input.IsActionJustPressed("interact"))
             Interact();
 
-        if (Input.IsActionJustPressed("nexus"))
+        if (Input.IsActionJustPressed("toggle_hud"))
+        {
+            HudHidden = !HudHidden;
+            HudVisibilityChanged?.Invoke(HudHidden);
+        }
+
+        if (Input.IsActionJustPressed("toggle_hp_bars"))
+            _overlay?.ToggleHealthBars();
+
+        if (Input.IsActionJustPressed("minimap_zoom_in"))
+            _minimap?.Zoom(1);
+
+        if (Input.IsActionJustPressed("minimap_zoom_out"))
+            _minimap?.Zoom(-1);
+
+        // Two keys for the Nexus, as in the original -- R for the hand on the keyboard and F5 for
+        // the one that has just been surprised.
+        if (Input.IsActionJustPressed("nexus") || Input.IsActionJustPressed("nexus_alt"))
             NexusRequested?.Invoke();
 
         if (Input.IsActionJustPressed("health_potion"))

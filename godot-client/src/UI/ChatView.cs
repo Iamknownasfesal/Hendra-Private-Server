@@ -62,11 +62,19 @@ public partial class ChatView : Control
         column.AddChild(_input);
     }
 
-    /// <summary>Shows the input and takes the keyboard.</summary>
-    public void BeginTyping()
+    /// <summary>
+    /// Shows the input and takes the keyboard.
+    /// </summary>
+    /// <param name="prefix">
+    /// Text to start with, and to leave the caret after. The original opens the box already
+    /// carrying a slash, a whisper or a guild prefix depending on which key was pressed.
+    /// </param>
+    public void BeginTyping(string prefix = null)
     {
         _input.Visible = true;
+        _input.Text = prefix ?? string.Empty;
         _input.GrabFocus();
+        _input.CaretColumn = _input.Text.Length;
     }
 
     /// <summary>Hides the input and gives the keyboard back to the game.</summary>

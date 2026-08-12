@@ -27,6 +27,9 @@ public partial class GameScene : Node
     private TradeView _trade;
     private OptionsView _options;
     private GuildView _guild;
+
+    /// <summary>The layer every panel lives on, so hiding the interface is one flag.</summary>
+    private CanvasLayer _ui;
     private WorldController _controller;
     private GameSession _session;
 
@@ -72,32 +75,32 @@ public partial class GameScene : Node
         // the viewport when its parent is a Viewport or a CanvasLayer -- hang one off a plain Node
         // and it silently stays zero-sized, laying everything out on top of itself. And a layer
         // above zero draws over the 3D world regardless of node order.
-        var ui = new CanvasLayer { Layer = 1 };
-        AddChild(ui);
+        _ui = new CanvasLayer { Layer = 1 };
+        AddChild(_ui);
 
         _overlay = new WorldOverlay();
-        ui.AddChild(_overlay);
+        _ui.AddChild(_overlay);
 
         _hud = new HudView();
         _hud.Configure(ServiceLocator.Assets, ServiceLocator.Data);
-        ui.AddChild(_hud);
+        _ui.AddChild(_hud);
 
         _chat = new ChatView();
-        ui.AddChild(_chat);
+        _ui.AddChild(_chat);
 
         _minimap = new MinimapView();
-        ui.AddChild(_minimap);
+        _ui.AddChild(_minimap);
 
         _trade = new TradeView();
-        ui.AddChild(_trade);
+        _ui.AddChild(_trade);
 
         _guild = new GuildView();
-        ui.AddChild(_guild);
+        _ui.AddChild(_guild);
 
         _options = new OptionsView();
         _options.Configure(ServiceLocator.Settings);
         _options.Changed += OnOptionsChanged;
-        ui.AddChild(_options);
+        _ui.AddChild(_options);
 
         _controller = new WorldController();
         AddChild(_controller);
@@ -150,6 +153,10 @@ public partial class GameScene : Node
         _controller.AutoWalk = AutoWalk;
         _controller.StartingCameraAngle = StartingCameraAngle;
         _controller.CenterOnPlayer = ServiceLocator.Settings?.CenterOnPlayer ?? true;
+
+        // The interface is one CanvasLayer, so hiding it is one flag rather than a visit to every
+        // panel. The world keeps drawing underneath.
+        _controller.HudVisibilityChanged += hidden => _ui.Visible = !hidden;
         _controller.OptionsToggled += () => _options.Toggle();
         _controller.GuildToggled += () =>
         {
@@ -272,6 +279,10 @@ public partial class GameScene : Node
         _controller.AutoWalk = AutoWalk;
         _controller.StartingCameraAngle = StartingCameraAngle;
         _controller.CenterOnPlayer = ServiceLocator.Settings?.CenterOnPlayer ?? true;
+
+        // The interface is one CanvasLayer, so hiding it is one flag rather than a visit to every
+        // panel. The world keeps drawing underneath.
+        _controller.HudVisibilityChanged += hidden => _ui.Visible = !hidden;
         _controller.OptionsToggled += () => _options.Toggle();
         _controller.GuildToggled += () =>
         {

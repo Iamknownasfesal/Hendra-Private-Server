@@ -88,6 +88,21 @@ namespace wServer.logic
                     InitDb.Definitions.Add(dat.IdToObjectType[id], new Tuple<State, Loot>(rootState, null));
                 return this;
             }
+
+            /// <summary>
+            /// Registers the same behaviour under several ids, building a fresh state for each.
+            /// </summary>
+            /// <remarks>
+            /// The generator has to run per id rather than the state being shared: Init resolves a
+            /// state tree in place and stores it against one object type, so handing the same
+            /// instance to two ids would leave the second holding the first's resolved children.
+            /// </remarks>
+            public ctor InitMany(string firstId, string secondId, Func<string, State> generate,
+                params MobDrops[] defs)
+            {
+                Init(firstId, generate(firstId), defs);
+                return Init(secondId, generate(secondId), defs);
+            }
         }
         static ctor Behav()
         {

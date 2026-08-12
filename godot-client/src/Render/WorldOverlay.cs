@@ -58,6 +58,11 @@ public partial class WorldOverlay : Control
         _font = ThemeDB.FallbackFont;
     }
 
+    /// <summary>Whether health bars are drawn. The original let players turn them off; so does this.</summary>
+    private bool _healthBars = true;
+
+    public void ToggleHealthBars() => _healthBars = !_healthBars;
+
     public void Clear()
     {
         _items.Clear();
@@ -86,7 +91,7 @@ public partial class WorldOverlay : Control
                 item.Anchor.Y < -100f || item.Anchor.Y > bounds.Y + 100f)
                 continue;
 
-            if (item.ShowHealthBar && item.MaxHp > 0)
+            if (_healthBars && item.ShowHealthBar && item.MaxHp > 0)
                 DrawHealthBar(item);
 
             if (!string.IsNullOrEmpty(item.Name))
