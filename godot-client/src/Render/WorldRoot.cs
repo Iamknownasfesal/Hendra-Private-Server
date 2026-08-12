@@ -31,7 +31,7 @@ public partial class WorldRoot : Node3D
     private MeshInstance3D _groundInstance;
     private MeshInstance3D _spriteInstance;
     private ImmediateMesh _groundMesh;
-    private ImmediateMesh _spriteMesh;
+    private ArrayMesh _spriteMesh;
     private MeshInstance3D _modelInstance;
     private ImmediateMesh _modelMesh;
 
@@ -77,7 +77,7 @@ public partial class WorldRoot : Node3D
         };
         AddChild(_modelInstance);
 
-        _spriteMesh = new ImmediateMesh();
+        _spriteMesh = new ArrayMesh();
         _spriteInstance = new MeshInstance3D
         {
             Mesh = _spriteMesh,

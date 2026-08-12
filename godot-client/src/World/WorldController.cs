@@ -108,6 +108,9 @@ public partial class WorldController : Node
     /// <summary>Raised when the player asks for the options panel.</summary>
     public event System.Action OptionsToggled;
 
+    /// <summary>Raised by the debug key, which shows what the machine and the line are doing.</summary>
+    public event System.Action DebugToggled;
+
     /// <summary>Raised when the player asks for the guild panel.</summary>
     public event System.Action GuildToggled;
 
@@ -269,6 +272,7 @@ public partial class WorldController : Node
         _map.Reset(mapInfo.Width, mapInfo.Height, mapInfo.Name);
         _combat.Clear();
         _particles.Clear();
+        _departing.Clear();
         _minimap?.Configure(_map, _tileColors);
 
         // Per-map XML overlays replace base definitions for the types they mention.
@@ -307,7 +311,7 @@ public partial class WorldController : Node
     /// </remarks>
     private void ShowDamage(Entity target, int amount, bool self)
     {
-        if (amount <= 0 || _overlay == null)
+        if (amount <= 0 || _overlay == null || !WantsDamageText(self))
             return;
 
         // The client predicts its own hits and the server confirms some of them; showing both would
@@ -323,13 +327,43 @@ public partial class WorldController : Node
             self ? new Color("ff4040") : new Color("ffe9a8"));
     }
 
+    /// <summary>Whether the player has asked to see this kind of thing's health.</summary>
+    private bool WantsHealthBar(Resources.ObjectDesc desc)
+    {
+        var mode = (App.HealthBarMode)(Options?.HealthBars ?? (int)App.HealthBarMode.All);
+
+        return mode switch
+        {
+            App.HealthBarMode.Off => false,
+            App.HealthBarMode.Enemies => desc.IsEnemy,
+            App.HealthBarMode.Allies => desc.IsPlayer,
+            _ => true,
+        };
+    }
+
+    /// <summary>Damage numbers, gated separately for the things dishing it out and taking it.</summary>
+    private bool WantsDamageText(bool self) =>
+        self ? Options is not { AllyDamageText: false } : Options is not { EnemyDamageText: false };
+
     /// <summary>When each entity last had a number thrown off it, so the two sources cannot double up.</summary>
     private readonly System.Collections.Generic.Dictionary<int, int> _shownDamageAt = new();
 
     private const int DamageTextGapMs = 120;
 
-    /// <summary>A shot of ours landed, and the client worked out what it was worth.</summary>
-    private void OnDamageDealt(Entity target, int amount, bool self) => ShowDamage(target, amount, self);
+    /// <summary>
+    /// A shot of ours landed, and the client worked out what it was worth.
+    /// </summary>
+    /// <remarks>
+    /// This is the only account of a kill we made ourselves. The server sends a Damage packet to
+    /// everyone who should see the hit except the person who reported it, so an enemy killed by our
+    /// own bullet used to simply stop being drawn: no spray, no flash, nothing to say it died. Both
+    /// of those now come off this path, which is where the hit is actually known.
+    /// </remarks>
+    private void OnDamageDealt(DamageDealt hit)
+    {
+        ShowDamage(hit.Target, hit.Amount, hit.Self);
+        Struck(hit.Target, hit.Killed, hit.Projectile);
+    }
 
     /// <summary>Plays the level-up chime when the server raises our level.</summary>
     private void NoticeLevelUp()
@@ -402,10 +436,90 @@ public partial class WorldController : Node
         }
 
         foreach (int objectId in update.Drops)
+        {
+            var leaving = _map.GetEntity(objectId);
+            var stoodOn = leaving?.Square;
+
             _map.Remove(objectId);
+            NoteDeparture(leaving, stoodOn);
+        }
 
         foreach (var definition in update.NewObjects)
             AddObject(definition);
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Coming and going
+    // ------------------------------------------------------------------------------------------
+
+    /// <summary>How long a character takes to arrive or to leave, in milliseconds.</summary>
+    private const int TransitionMs = 550;
+
+    /// <summary>How far a departing character rises, and an arriving one falls from, in tiles.</summary>
+    private const float TransitionRiseTiles = 1.6f;
+
+    /// <summary>
+    /// How near a character must be for its coming or going to be worth animating, in tiles.
+    /// </summary>
+    /// <remarks>
+    /// The server drops an object from the update both when it stops existing and when it merely
+    /// walks out of the twenty-tile sight radius, and nothing on the wire tells the two apart. A
+    /// death or a portal happens where the player can see it; the radius edge is where things
+    /// scroll out of view all the time, and animating that would have half the screen ascending
+    /// whenever the player walked east.
+    /// </remarks>
+    private const float TransitionRadius = 14f;
+
+    /// <summary>A character that has left the world but is still finishing its exit.</summary>
+    private readonly System.Collections.Generic.List<(Entity Entity, int StartMs)> _departing = new();
+
+    /// <summary>
+    /// Whether a thing's coming or going is worth showing.
+    /// </summary>
+    /// <remarks>
+    /// Characters only. Walls, floors and scenery arrive in their hundreds whenever the map scrolls
+    /// or a world is entered, and a world that assembled itself out of falling masonry every time
+    /// would be unreadable.
+    /// </remarks>
+    private bool WorthAnimating(Entity entity)
+    {
+        if (entity?.Desc == null || entity.Desc.Static)
+            return false;
+
+        if (!entity.Desc.IsPlayer && !entity.Desc.IsEnemy)
+            return false;
+
+        var player = _map.Player;
+        if (player == null || ReferenceEquals(entity, player))
+            return false;
+
+        float dx = entity.X - player.X;
+        float dy = entity.Y - player.Y;
+        return dx * dx + dy * dy <= TransitionRadius * TransitionRadius;
+    }
+
+    private void NoteDeparture(Entity entity, Square stoodOn)
+    {
+        if (!WorthAnimating(entity))
+            return;
+
+        // Leaving the map unbinds the entity from its tile, and the draw path will not touch
+        // anything without one. The binding is handed back here: the map has let go of both ends of
+        // it already, so what is left is a back-pointer on a picture, which is all it needs to be.
+        entity.Square = stoodOn;
+
+        // Kept drawing after the world has forgotten it: it is a picture now, not a thing, and
+        // nothing will move it or shoot it while it goes.
+        _departing.Add((entity, _clock.FrameMs));
+    }
+
+    private void DropFinishedDepartures(int now)
+    {
+        for (int i = _departing.Count - 1; i >= 0; i--)
+        {
+            if (now - _departing[i].StartMs >= TransitionMs)
+                _departing.RemoveAt(i);
+        }
     }
 
     private void AddObject(in ObjectDef definition)
@@ -431,6 +545,11 @@ public partial class WorldController : Node
 
         StatApplier.Apply(entity, definition.Stats, isSelf);
         _map.Add(entity, definition.Stats.Position.X, definition.Stats.Position.Y);
+
+        // Stamped after the position is known, because whether an arrival is worth showing depends
+        // on where it happened.
+        if (WorthAnimating(entity))
+            entity.ArrivedAtMs = _clock.FrameMs;
 
         // Walls and scenery are baked into the minimap where they stand, on the original's exact
         // condition: static, occupying its square, and not marked no-minimap. It is what turns a
@@ -721,7 +840,32 @@ public partial class WorldController : Node
     /// server hands back a new object to keep playing as -- but that path is not implemented, so it
     /// is reported the same way rather than silently doing nothing.
     /// </remarks>
-    private void OnDeath(DeathPacket death) => Died?.Invoke(death);
+    private void OnDeath(DeathPacket death)
+    {
+        // The character is gone. What is left on screen is a corpse the camera happens to be
+        // pointed at, and it should not answer the keyboard: the death screen goes up over a world
+        // that carries on without us, and walking the body around underneath it is nonsense.
+        _dead = true;
+
+        _map.Player?.SetInput(0f, 0f, 0f);
+
+        Died?.Invoke(death);
+    }
+
+    /// <summary>Whether our character has died, after which nothing we press reaches the world.</summary>
+    private bool _dead;
+
+    /// <summary>
+    /// The player's preferences, read at the points they govern rather than copied out.
+    /// </summary>
+    /// <remarks>
+    /// Read live so a setting changed with the panel open takes effect on the next frame, which is
+    /// the only way to judge a shadow or a particle setting: by looking at it while you change it.
+    /// </remarks>
+    private App.Settings Options => App.ServiceLocator.Settings;
+
+    /// <summary>Where the frame goes. Only measured while the debug readout is up.</summary>
+    public readonly FramePhases Phases = new();
 
     /// <summary>The level our own character reached, for the death screen.</summary>
     public int PlayerLevel => _map?.Player?.Level ?? 0;
@@ -768,9 +912,34 @@ public partial class WorldController : Node
     /// before the server's word arrived. Both are the original's behaviour, which chose between them
     /// on whether it had a projectile to hand.
     /// </remarks>
-    private void ThrowDebris(Entity target, DamagePacket damage)
+    private void ThrowDebris(Entity target, DamagePacket damage) =>
+        Struck(target, damage.Kill, _combat.Find(damage.ObjectId, damage.BulletId));
+
+    /// <summary>
+    /// Everything that says a thing was hit: the flash on the sprite and the spray off it.
+    /// </summary>
+    /// <remarks>
+    /// Reached from both accounts of a hit -- the server's Damage packet for everyone else's, and
+    /// the client's own prediction for ours -- so the two look the same and neither is silent.
+    /// <see cref="ShowDamage"/> guards against a hit arriving twice; this does not need to, because
+    /// a second flash over the first is invisible and a second handful of debris reads as a bigger
+    /// handful rather than as a mistake.
+    /// </remarks>
+    private void Struck(Entity target, bool killed, Projectile projectile)
     {
-        if (target.Desc == null)
+        if (target?.Desc == null)
+            return;
+
+        target.StartFlash(_clock.FrameMs, 0xFFFFFF, killed ? DeathFlashMs : HitFlashMs, repeats: 1);
+
+        // The flash stays whatever the particle settings say: it is how a hit registers at all, and
+        // turning particles off to keep a slow machine playable should not also make combat silent
+        // to look at.
+        bool wanted = target.Desc.IsPlayer
+            ? Options is not { PlayerHitParticles: false }
+            : Options is not { EnemyParticles: false };
+
+        if (Options is { Particles: false } || !wanted)
             return;
 
         var resolved = _textures.Resolve(target.Desc.Texture, target.ObjectId, target.AltTextureIndex);
@@ -785,13 +954,12 @@ public partial class WorldController : Node
 
         var palette = _palette.For(target.ObjectType, sprite, target.Desc.BloodProb, target.Desc.BloodColor);
 
-        if (damage.Kill)
+        if (killed)
         {
             _particles.Explode(target.X, target.Y, palette, target.Size, count: 30);
             return;
         }
 
-        var projectile = _combat.Find(damage.ObjectId, damage.BulletId);
         if (projectile?.ProjectileDesc != null)
         {
             _particles.Hit(target.X, target.Y, palette, target.Size, count: 10,
@@ -801,6 +969,16 @@ public partial class WorldController : Node
 
         _particles.Explode(target.X, target.Y, palette, target.Size, count: 10);
     }
+
+    /// <summary>How long a struck sprite burns white for.</summary>
+    /// <remarks>
+    /// Short. Long enough to register on a hit that lands among many, brief enough that a stream of
+    /// them reads as a rhythm rather than leaving the target permanently pale. A kill holds it
+    /// longer, because it is the last thing the sprite does before it stops being drawn.
+    /// </remarks>
+    private const int HitFlashMs = 80;
+
+    private const int DeathFlashMs = 200;
 
     // ------------------------------------------------------------------------------------------
     // Frame
@@ -820,11 +998,21 @@ public partial class WorldController : Node
         if (player != null)
             player.UpdateMovement(_map, _cameraAngle, deltaMs);
 
-        _map.Update(now, deltaMs);
+        using (Phases.Measure("entities"))
+            _map.Update(now, deltaMs);
+
         ApplyGroundDamage(now);
         ApplyAttackInput(now);
-        _combat.Update(now);
-        _particles.Update(now, deltaMs);
+
+        using (Phases.Measure("projectiles"))
+            _combat.Update(now);
+
+        _particles.Quality = Options?.ParticleDetail ?? 2;
+        _world.Zoom = Mathf.Clamp(Options?.CameraZoom ?? 1f, FurthestZoom, NearestZoom);
+
+        using (Phases.Measure("particles"))
+            _particles.Update(now, deltaMs);
+
         _interaction.Update(now);
         _party.Update(now);
         _hud?.ShowPrompt(_interaction.Current.Exists ? _interaction.Current.Label : null);
@@ -855,9 +1043,11 @@ public partial class WorldController : Node
         var cooldown = _inventory.AbilityCooldown(now);
         _hud?.SetAbilityCooldown(cooldown.Remaining, cooldown.Total);
 
-        _minimap?.Refresh();
+        using (Phases.Measure("minimap"))
+            _minimap?.Refresh();
 
-        Draw(now);
+        using (Phases.Measure("draw"))
+            Draw(now);
     }
 
     /// <summary>Who is saying what, and until when. Keyed by the speaker's object id.</summary>
@@ -923,7 +1113,8 @@ public partial class WorldController : Node
 
         // The blast itself, whether or not it reached us: something that goes off across the room
         // is worth seeing.
-        _particles.Blast(blast.Position.X, blast.Position.Y, blast.Radius, blast.OrigType);
+        if (Options is not { Particles: false } and not { AoeParticles: false })
+            _particles.Blast(blast.Position.X, blast.Position.Y, blast.Radius, blast.OrigType);
 
         float dx = player.X - blast.Position.X;
         float dy = player.Y - blast.Position.Y;
@@ -1091,6 +1282,19 @@ public partial class WorldController : Node
     /// <summary>The world's own name, for the line over the party list.</summary>
     private string _worldName = string.Empty;
 
+    /// <summary>What the debug readout asks for, so it can be shown without it reaching in here.</summary>
+    public string CurrentWorldName => _worldName;
+
+    public int EntityCount => _map?.Entities.Count ?? 0;
+
+    public int ProjectileCount => _combat?.Projectiles.Count ?? 0;
+
+    /// <summary>How many surfaces the sprites became: the part of the draw calls we control.</summary>
+    public int SpriteSurfaces => _world?.Sprites?.SurfaceCount ?? 0;
+
+    public (float X, float Y) PlayerAt =>
+        _map?.Player is { } player ? (player.X, player.Y) : (0f, 0f);
+
     /// <summary>The world's internal name, which is what the server's own rules are written against.</summary>
     private string _worldId = string.Empty;
 
@@ -1206,6 +1410,12 @@ public partial class WorldController : Node
         if (player == null)
             return;
 
+        if (_dead)
+        {
+            player.SetInput(0f, 0f, 0f);
+            return;
+        }
+
         // While the chat box has the keyboard, the movement keys belong to it -- they are letters.
         if (_chat is { IsTyping: true })
         {
@@ -1216,13 +1426,16 @@ public partial class WorldController : Node
             return;
         }
 
+        if (Input.IsActionJustPressed("debug_overlay"))
+            DebugToggled?.Invoke();
+
         if (Input.IsActionJustPressed("options"))
         {
             OptionsToggled?.Invoke();
             return;
         }
 
-        if (Input.IsActionJustPressed("guild_panel"))
+        if (Input.IsActionJustPressed("social_panel"))
         {
             GuildToggled?.Invoke();
             return;
@@ -1294,7 +1507,9 @@ public partial class WorldController : Node
 
         float x = Input.GetActionStrength("move_right") - Input.GetActionStrength("move_left");
         float y = Input.GetActionStrength("move_down") - Input.GetActionStrength("move_up");
-        float rotate = Input.GetActionStrength("rotate_right") - Input.GetActionStrength("rotate_left");
+        float rotate = Options is { AllowCameraRotation: false }
+            ? 0f
+            : Input.GetActionStrength("rotate_right") - Input.GetActionStrength("rotate_left");
 
         if (AutoWalk)
         {
@@ -1307,10 +1522,16 @@ public partial class WorldController : Node
         player.SetInput(x, y, rotate);
 
         if (player.InputRotate != 0f)
-            _cameraAngle += deltaMs * LocalPlayer.RotateSpeed * player.InputRotate;
+            _cameraAngle += deltaMs * LocalPlayer.RotateSpeed * RotationSpeed * player.InputRotate;
 
         if (Input.IsActionJustPressed("reset_camera"))
-            _cameraAngle = 7f * Mathf.Pi / 4f;
+            _cameraAngle = DefaultCameraAngle;
+
+        if (Input.IsActionJustPressed("camera_zoom_in"))
+            StepCameraZoom(1);
+
+        if (Input.IsActionJustPressed("camera_zoom_out"))
+            StepCameraZoom(-1);
 
         if (Input.IsActionJustPressed("autofire"))
             _autofire = !_autofire;
@@ -1341,10 +1562,10 @@ public partial class WorldController : Node
         if (Input.IsActionJustPressed("nexus") || Input.IsActionJustPressed("nexus_alt"))
             NexusRequested?.Invoke();
 
-        if (Input.IsActionJustPressed("health_potion"))
+        if (Input.IsActionJustPressed("quick_slot_1"))
             _inventory.UsePotion(health: true);
 
-        if (Input.IsActionJustPressed("magic_potion"))
+        if (Input.IsActionJustPressed("quick_slot_2"))
             _inventory.UsePotion(health: false);
     }
 
@@ -1384,7 +1605,7 @@ public partial class WorldController : Node
     private void ApplyAttackInput(int now)
     {
         var player = _map.Player;
-        if (player == null)
+        if (player == null || _dead)
             return;
 
         // Chat has the keyboard, so the ability key is a letter being typed. The mouse still works.
@@ -1440,6 +1661,9 @@ public partial class WorldController : Node
     /// </remarks>
     private void PlayItemSound(ObjectDesc item)
     {
+        if (Options is { WeaponSounds: false })
+            return;
+
         if (item?.Sounds != null && item.Sounds.TryGetValue(0, out string sound))
             _audio?.PlayEffect(sound, 0.75f);
     }
@@ -1510,16 +1734,28 @@ public partial class WorldController : Node
         _world.Configure(focus.X + shakeX, focus.Y + shakeY, _cameraAngle);
 
         float radius = _world.VisibleRadius();
-        DrawGround(focus, radius, now);
-        DrawEntities(now, _cameraAngle);
-        DrawProjectiles(now);
-        DrawParticles();
-        DrawOverlay(now);
+
+        using (Phases.Measure("draw.ground"))
+            DrawGround(focus, radius, now);
+
+        using (Phases.Measure("draw.sprites"))
+            DrawEntities(now, _cameraAngle);
+
+        using (Phases.Measure("draw.shots"))
+            DrawProjectiles(now);
+
+        using (Phases.Measure("draw.particles"))
+            DrawParticles();
+
+        using (Phases.Measure("draw.overlay"))
+            DrawOverlay(now);
 
         // One upload for however many tiles were baked while sweeping the visible area.
-        _tileAtlas.Flush();
+        using (Phases.Measure("draw.atlas"))
+            _tileAtlas.Flush();
 
-        _world.Render();
+        using (Phases.Measure("draw.submit"))
+            _world.Render();
     }
 
     private void DrawGround(Entity focus, float radius, int now)
@@ -1647,72 +1883,134 @@ public partial class WorldController : Node
 
     private void DrawEntities(int now, float cameraAngle)
     {
+        DropFinishedDepartures(now);
+
         foreach (var entity in _map.Entities)
+            DrawEntity(entity, now, cameraAngle, Arriving(entity, now));
+
+        // Things that have left. Drawn from a list of their own because the world no longer holds
+        // them: they are pictures finishing a movement, and nothing can touch them while they do.
+        foreach (var (entity, startMs) in _departing)
+            DrawEntity(entity, now, cameraAngle, Leaving(now - startMs));
+    }
+
+    /// <summary>Where a coming-or-going sprite is on its way, as a rise in tiles and an opacity.</summary>
+    private readonly record struct Transition(float Rise, float Alpha)
+    {
+        public static readonly Transition Settled = new(0f, 1f);
+    }
+
+    /// <summary>
+    /// A thing that has just appeared, falling the last of the way in and fading up.
+    /// </summary>
+    private static Transition Arriving(Entity entity, int nowMs)
+    {
+        if (entity.ArrivedAtMs == 0)
+            return Transition.Settled;
+
+        int since = nowMs - entity.ArrivedAtMs;
+        if (since < 0 || since >= TransitionMs)
         {
-            if (entity.Desc == null || entity.Square is not { IsKnown: true })
-                continue;
-
-            // A merchant is drawn as the thing it is selling, which is how the original does it:
-            // its own Merchant.getTexture returns the merchandise texture rather than any sprite of
-            // its own. Without this every vendor in the Nexus is the same grey placeholder and the
-            // only way to see what is for sale is to walk into it.
-            var texture = entity.Desc.Texture;
-            int variant = entity.ObjectId;
-
-            if (entity.MerchandiseType >= 0 && _data?.GetObject((ushort)entity.MerchandiseType) is { } sold)
-            {
-                texture = sold.Texture;
-                variant = entity.MerchandiseType;
-            }
-
-            var resolved = _textures.Resolve(texture, variant, entity.AltTextureIndex);
-            if (!resolved.IsValid)
-                continue;
-
-            var draw = new SpriteDraw
-            {
-                TileX = entity.X,
-                TileY = entity.Y,
-                Height = entity.Z,
-                AnchorX = 0.5f,
-                Modulate = Modulate(entity),
-                Tint = TintFor(entity),
-                Outlined = true,
-                // Ties between entities on the same tile resolve by object id, matching the
-                // original's secondary sort.
-                SortBias = (entity.ObjectId & 0xFF) * 0.001f,
-            };
-
-            if (resolved.Animated != null)
-            {
-                var frame = SelectFrame(entity, resolved.Animated, now, cameraAngle);
-                if (!frame.IsValid)
-                    continue;
-
-                draw.Sprite = frame.Sprite;
-                draw.Mirrored = frame.Mirrored;
-                SizeQuad(ref draw, entity, frame.Sprite, frame.RegionCells, frame.RegionCells);
-                draw.AnchorX = AnchorFor(frame);
-            }
-            else
-            {
-                draw.Sprite = resolved.Still;
-                SizeQuad(ref draw, entity, resolved.Still, 1, 1);
-            }
-
-            // Objects painted flat on the ground sort beneath anything standing on the tile.
-            if (entity.Desc.DrawUnder)
-                draw.SortBias -= 1f;
-
-            // A few objects are real geometry rather than a picture of it. Those are drawn as
-            // geometry and their sprite becomes the texture on it, so the flat quad is skipped.
-            if (AddModel(entity, draw))
-                continue;
-
-            AddShadow(entity, draw.SortBias);
-            _world.Sprites.Add(draw);
-            AddFlash(entity, draw, now);
+            entity.ArrivedAtMs = 0;
+            return Transition.Settled;
         }
+
+        // Eased so it lands softly rather than arriving at full speed and stopping dead.
+        float t = since / (float)TransitionMs;
+        float remaining = (1f - t) * (1f - t);
+        return new Transition(TransitionRiseTiles * remaining, t);
+    }
+
+    /// <summary>
+    /// A thing on its way out, rising and fading.
+    /// </summary>
+    /// <remarks>
+    /// It goes pale as it climbs as well as transparent, which is what makes it read as leaving
+    /// rather than as a rendering fault: colour drains out of it before it stops being there.
+    /// </remarks>
+    private static Transition Leaving(int since)
+    {
+        float t = Mathf.Clamp(since / (float)TransitionMs, 0f, 1f);
+        return new Transition(TransitionRiseTiles * t * t, 1f - t);
+    }
+
+    private void DrawEntity(Entity entity, int now, float cameraAngle, Transition transition)
+    {
+        if (entity.Desc == null || entity.Square is not { IsKnown: true })
+            return;
+
+        // A merchant is drawn as the thing it is selling, which is how the original does it:
+        // its own Merchant.getTexture returns the merchandise texture rather than any sprite of
+        // its own. Without this every vendor in the Nexus is the same grey placeholder and the
+        // only way to see what is for sale is to walk into it.
+        var texture = entity.Desc.Texture;
+        int variant = entity.ObjectId;
+
+        if (entity.MerchandiseType >= 0 && _data?.GetObject((ushort)entity.MerchandiseType) is { } sold)
+        {
+            texture = sold.Texture;
+            variant = entity.MerchandiseType;
+        }
+
+        var resolved = _textures.Resolve(texture, variant, entity.AltTextureIndex);
+        if (!resolved.IsValid)
+            return;
+
+        var modulate = Modulate(entity);
+        if (transition.Alpha < 1f)
+        {
+            // Pale as well as faint, so a departure reads as ascending rather than as a sprite
+            // failing to draw.
+            modulate = modulate.Lightened(1f - transition.Alpha);
+            modulate.A *= transition.Alpha;
+        }
+
+        var draw = new SpriteDraw
+        {
+            TileX = entity.X,
+            TileY = entity.Y,
+            Height = entity.Z + transition.Rise,
+            AnchorX = 0.5f,
+            Modulate = modulate,
+            Tint = TintFor(entity),
+            Outlined = true,
+            // Ties between entities on the same tile resolve by object id, matching the
+            // original's secondary sort.
+            SortBias = (entity.ObjectId & 0xFF) * 0.001f,
+        };
+
+        if (resolved.Animated != null)
+        {
+            var frame = SelectFrame(entity, resolved.Animated, now, cameraAngle);
+            if (!frame.IsValid)
+                return;
+
+            draw.Sprite = frame.Sprite;
+            draw.Mirrored = frame.Mirrored;
+            SizeQuad(ref draw, entity, frame.Sprite, frame.RegionCells, frame.RegionCells);
+            draw.AnchorX = AnchorFor(frame);
+        }
+        else
+        {
+            draw.Sprite = resolved.Still;
+            SizeQuad(ref draw, entity, resolved.Still, 1, 1);
+        }
+
+        // Objects painted flat on the ground sort beneath anything standing on the tile.
+        if (entity.Desc.DrawUnder)
+            draw.SortBias -= 1f;
+
+        // A few objects are real geometry rather than a picture of it. Those are drawn as
+        // geometry and their sprite becomes the texture on it, so the flat quad is skipped.
+        if (AddModel(entity, draw))
+            return;
+
+        // Nothing casts a shadow while it is off the ground on its way in or out.
+        if (transition.Rise <= 0f && Options is not { Shadows: 0 })
+            AddShadow(entity, draw.SortBias);
+
+        _world.Sprites.Add(draw);
+        AddFlash(entity, draw, now);
     }
 
     /// <summary>
@@ -1920,7 +2218,7 @@ public partial class WorldController : Node
 
             bool combatant = desc.IsEnemy || desc.IsPlayer;
             bool named = desc.ShowName && !string.IsNullOrEmpty(entity.Name);
-            string bubble = BubbleFor(entity);
+            string bubble = Options is { TextBubbles: false } ? null : BubbleFor(entity);
 
             // Nothing to say about a plain decoration.
             if (!combatant && !named)
@@ -1932,7 +2230,8 @@ public partial class WorldController : Node
                            && !entity.IsInvisible
                            && !entity.IsInvulnerable
                            && !desc.NoMiniMap
-                           && entity.MaxHp > 0;
+                           && entity.MaxHp > 0
+                           && WantsHealthBar(desc);
 
             if (!showBar && !named && bubble == null)
                 continue;
@@ -2152,8 +2451,49 @@ public partial class WorldController : Node
     /// appearing, and on a slow-moving shot there is nothing to say the trigger was pulled until it
     /// has crossed a tile. Coloured from the shot itself so it belongs to the weapon that fired it.
     /// </remarks>
+    /// <summary>The range the view distance may be set to, as camera multipliers.</summary>
+    private const float NearestZoom = 2f;
+
+    private const float FurthestZoom = 0.5f;
+
+    /// <summary>Moves the view distance a step, and remembers it.</summary>
+    private void StepCameraZoom(int steps)
+    {
+        var options = Options;
+        if (options == null)
+            return;
+
+        options.CameraZoom = Mathf.Clamp(
+            Mathf.Round((options.CameraZoom + steps * 0.1f) * 100f) / 100f, FurthestZoom, NearestZoom);
+
+        options.Save();
+    }
+
+    /// <summary>How fast a held turn key sweeps the camera, as a multiple of the original's rate.</summary>
+    private float RotationSpeed => (Options?.CameraRotationSpeed ?? 1) switch
+    {
+        0 => 0.5f,
+        2 => 2f,
+        _ => 1f,
+    };
+
+    /// <summary>
+    /// The angle the camera resets to, in radians.
+    /// </summary>
+    /// <remarks>
+    /// The original's two choices are the isometric default and a further eighth of a turn, which
+    /// squares the world up against the screen. Seven quarters of pi is the default it ships with.
+    /// </remarks>
+    private float DefaultCameraAngle =>
+        Options is { DefaultCameraAngle: 45 }
+            ? 7f * Mathf.Pi / 4f + Mathf.Pi / 4f
+            : 7f * Mathf.Pi / 4f;
+
     private void Muzzle(ProjectileDesc shot, float x, float y, float angle)
     {
+        if (Options is { Particles: false })
+            return;
+
         int colour = shot is { ParticleTrail: true } ? shot.ParticleTrailColor : 0xFFE9A8;
         _particles.Muzzle(x, y, 0.35f, angle, colour);
     }
@@ -2238,6 +2578,11 @@ public partial class WorldController : Node
         const float PixelsPerTile = 8f;
 
         float scale = entity.Size / 100f;
+
+        // Loot bags are the one thing on screen a player has to hit with a mouse, and after a fight
+        // they come in heaps. Their own size stat is left alone; this is on top of it.
+        if (entity.Desc is { Class: "Container" })
+            scale *= Mathf.Clamp(App.ServiceLocator.Settings?.BagSize ?? 1f, 0.5f, 2.5f);
         float cellWidth = sprite.Region.Size.X / (float)Mathf.Max(regionCells, 1);
 
         draw.WidthTiles = cellWidth * cellsWide / PixelsPerTile * scale;
@@ -2313,9 +2658,9 @@ public partial class WorldController : Node
     /// Greyscale reads as "this thing is not currently participating", which covers paused, stasis
     /// and petrified alike. Curse gets its own red wash so it is distinguishable at a glance.
     /// </remarks>
-    private static SpriteTint TintFor(Entity entity)
+    private SpriteTint TintFor(Entity entity)
     {
-        if (entity.Has(ConditionEffects.Curse))
+        if (entity.Has(ConditionEffects.Curse) && Options is { CurseIndication: true })
             return SpriteTint.Red;
 
         if (entity.IsPaused || entity.IsStasis || entity.IsPetrified)
@@ -2324,12 +2669,35 @@ public partial class WorldController : Node
         return SpriteTint.None;
     }
 
-    private static Color Modulate(Entity entity)
+    private Color Modulate(Entity entity)
     {
         // Invisible players are drawn faintly rather than hidden, so allies can still be followed.
         if (entity.IsInvisible)
             return new Color(1f, 1f, 1f, 0.7f);
 
-        return Colors.White;
+        return new Color(1f, 1f, 1f, OpacityOf(entity));
+    }
+
+    /// <summary>
+    /// How solid another player is drawn, so a crowd can be seen through.
+    /// </summary>
+    /// <remarks>
+    /// Only ever applied to other people. Fading your own character, or the monsters shooting at
+    /// you, would make the game harder to read rather than easier -- which is the whole point of
+    /// the setting.
+    /// </remarks>
+    private float OpacityOf(Entity entity)
+    {
+        var options = Options;
+        if (options == null || entity.Desc is not { IsPlayer: true } || ReferenceEquals(entity, _map.Player))
+            return 1f;
+
+        var player = _map.Player;
+        bool guildmate = player != null && !string.IsNullOrEmpty(player.Guild) && entity.Guild == player.Guild;
+
+        if (guildmate ? !options.FadeGuildMembers : !options.FadePlayers)
+            return 1f;
+
+        return Mathf.Clamp(options.Opacity, 0.1f, 1f);
     }
 }

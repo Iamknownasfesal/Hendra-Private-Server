@@ -138,6 +138,20 @@ public sealed class ObjectDesc
     /// </remarks>
     public int[] StatMaxima;
     public bool IsEnemy;
+
+    /// <summary>A Hero of Oryx, or a boss of one of the Realm's roaming encounters.</summary>
+    /// <remarks>
+    /// Two separate flags in the data and one thing to a player looking at a map: something worth
+    /// crossing the Realm for. Marked at any distance rather than only when it is already close
+    /// enough to see, which is the whole reason a player looks at the map.
+    /// </remarks>
+    public bool IsHero;
+
+    public bool IsEncounter;
+
+    /// <summary>A god. Common enough to be worth a colour of its own rather than a mark.</summary>
+    public bool IsGod;
+
     public bool DrawOnGround;
     public bool DrawUnder;
     public bool OccupySquare;

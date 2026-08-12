@@ -52,6 +52,14 @@ public class Entity
     public int SinkLevel;
     public bool Dead;
 
+    /// <summary>Clock reading at which this thing appeared in the world, or zero if it was here.</summary>
+    /// <remarks>
+    /// Drives the arrival: a thing that walked into view, stepped out of a portal or was spawned
+    /// settles down out of the air rather than being there abruptly. A reading rather than a
+    /// countdown, so nothing has to tick it.
+    /// </remarks>
+    public int ArrivedAtMs;
+
     /// <summary>Equipment, inventory and backpack in one array: 0-7 worn, 8-15 carried, 16-23 backpack.</summary>
     public int[] Equipment;
 

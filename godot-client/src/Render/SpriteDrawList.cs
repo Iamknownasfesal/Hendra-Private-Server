@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Godot;
 using Hendra.Assets;
@@ -104,13 +105,27 @@ public sealed class SpriteDrawList
     /// </remarks>
     private const float OutlinePadding = 0.12f;
 
-    private readonly record struct SurfaceKey(Texture2D Texture, SpriteTint Tint, bool Outlined, Vector2I RegionSize);
+/// <summary>
+    /// What forces sprites apart into separate draw calls.
+    /// </summary>
+    /// <remarks>
+    /// Sprite size is deliberately absent. It used to be here because the shader took the region
+    /// size as a uniform, which meant every distinct sprite size on screen became its own surface --
+    /// six hundred of them in a busy frame, each one a fresh GPU buffer every frame and, measured,
+    /// the single largest cost in the frame. The size now rides along per vertex, so sprites only
+    /// separate when they genuinely cannot share a draw: a different sheet, a different tint, or an
+    /// outline.
+    /// </remarks>
+    private readonly record struct SurfaceKey(Texture2D Texture, SpriteTint Tint, bool Outlined);
 
     private readonly Dictionary<SurfaceKey, List<SpriteDraw>> _bySurface = new();
     private readonly List<SurfaceKey> _order = new();
     private readonly Dictionary<SurfaceKey, ShaderMaterial> _materials = new();
 
     private static Shader _shader;
+
+    /// <summary>Surfaces the last build produced: the sprite half of the frame's draw calls.</summary>
+    public int SurfaceCount { get; private set; }
 
     public void Clear()
     {
@@ -123,7 +138,7 @@ public sealed class SpriteDrawList
         if (!draw.Sprite.IsValid)
             return;
 
-        var key = new SurfaceKey(draw.Sprite.Sheet, draw.Tint, draw.Outlined, draw.Sprite.Region.Size);
+        var key = new SurfaceKey(draw.Sprite.Sheet, draw.Tint, draw.Outlined);
         if (!_bySurface.TryGetValue(key, out var list))
         {
             list = new List<SpriteDraw>(256);
@@ -135,7 +150,22 @@ public sealed class SpriteDrawList
     }
 
     /// <summary>Writes the queued quads into <paramref name="mesh"/>, one surface per material.</summary>
-    public void Build(ImmediateMesh mesh, in WorldProjection projection)
+    /// <remarks>
+    /// <para>
+    /// Built into plain arrays and handed over one surface at a time, rather than fed vertex by
+    /// vertex. That distinction is the whole performance story of this class: an ImmediateMesh
+    /// takes each vertex, UV and colour through a separate call across the managed boundary, so a
+    /// screen holding a few thousand sprites was making the better part of a million of them every
+    /// frame and spending nearly all its time in the marshalling rather than the drawing. Filling
+    /// a C# array costs nothing by comparison, and the whole surface crosses over once.
+    /// </para>
+    /// <para>
+    /// The arrays are kept between frames and only ever grown, because the count is stable from one
+    /// frame to the next and a per-frame allocation of this size would land in the garbage
+    /// collector's path.
+    /// </para>
+    /// </remarks>
+    public void Build(ArrayMesh mesh, in WorldProjection projection)
     {
         mesh.ClearSurfaces();
 
@@ -146,24 +176,70 @@ public sealed class SpriteDrawList
         var right = new Vector3(cos, 0f, sin);
         var down = new Vector3(-sin, 0f, cos);
 
+        SurfaceCount = 0;
+
         foreach (var key in _order)
         {
             var draws = _bySurface[key];
             if (draws.Count == 0)
                 continue;
 
-            mesh.SurfaceBegin(Mesh.PrimitiveType.Triangles);
+            // Four corners a quad, not six. Two of a triangle pair's corners are shared, and
+            // sending them twice meant a third of everything crossing to the GPU each frame -- five
+            // arrays' worth, for vertices the GPU already had. The index list says which corners
+            // make which triangle and costs four bytes where a duplicated vertex costs sixty.
+            int vertices = draws.Count * 4;
+            int indices = draws.Count * 6;
 
+            // Filled at exactly the right length and handed straight over. Godot wants arrays sized
+            // to the vertex count, so a shared scratch buffer would have to be copied into a
+            // right-sized one anyway -- this writes once instead of writing and then copying.
+            _positions = new Vector3[vertices];
+            _uvs = new Vector2[vertices];
+            _uv2s = new Vector2[vertices];
+            _colors = new Color[vertices];
+            _extents = new float[vertices * 4];
+            _indices = new int[indices];
+
+            _at = 0;
+            _index = 0;
             foreach (var draw in draws)
-                Emit(mesh, draw, projection, right, down);
+                Emit(draw, projection, right, down);
 
-            mesh.SurfaceEnd();
+            var arrays = new Godot.Collections.Array();
+            arrays.Resize((int)Mesh.ArrayType.Max);
+            arrays[(int)Mesh.ArrayType.Vertex] = _positions;
+            arrays[(int)Mesh.ArrayType.TexUV] = _uvs;
+            arrays[(int)Mesh.ArrayType.TexUV2] = _uv2s;
+            arrays[(int)Mesh.ArrayType.Color] = _colors;
+            arrays[(int)Mesh.ArrayType.Custom0] = _extents;
+            arrays[(int)Mesh.ArrayType.Index] = _indices;
+
+            const Mesh.ArrayFormat custom0 =
+                (Mesh.ArrayFormat)((uint)Mesh.ArrayCustomFormat.RgbaFloat
+                                   << (int)Mesh.ArrayFormat.FormatCustom0Shift);
+
+            mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays, null, null, custom0);
             mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, MaterialFor(key));
+            SurfaceCount++;
         }
     }
 
-    private static void Emit(
-        ImmediateMesh mesh,
+    private Vector3[] _positions = new Vector3[6 * 256];
+    private Vector2[] _uvs = new Vector2[6 * 256];
+    private Vector2[] _uv2s = new Vector2[6 * 256];
+    private Color[] _colors = new Color[6 * 256];
+
+    /// <summary>Four floats a vertex, of which the shader reads the first two.</summary>
+    private float[] _extents = new float[6 * 256 * 4];
+
+    /// <summary>Which corners make which triangles: two per quad, sharing a diagonal.</summary>
+    private int[] _indices = new int[6 * 256];
+
+    private int _at;
+    private int _index;
+
+    private void Emit(
         in SpriteDraw draw,
         in WorldProjection projection,
         Vector3 right,
@@ -214,25 +290,42 @@ public sealed class SpriteDrawList
         var bottomRight = anchor + right * rightEdge + down * bottom;
         var bottomLeft = anchor + right * left + down * bottom;
 
-        mesh.SurfaceSetColor(draw.Modulate);
-
         // The origin of this sprite's rectangle within the sheet; its size comes from a uniform,
         // since surfaces are grouped by size anyway.
-        mesh.SurfaceSetUV2(region.Position);
+        var origin = region.Position;
+        var extent = region.Size;
+        var tint = draw.Modulate;
 
-        Vertex(mesh, topLeft, u0, v0);
-        Vertex(mesh, topRight, u1, v0);
-        Vertex(mesh, bottomRight, u1, v1);
+        int corner = _at;
 
-        Vertex(mesh, topLeft, u0, v0);
-        Vertex(mesh, bottomRight, u1, v1);
-        Vertex(mesh, bottomLeft, u0, v1);
+        Vertex(topLeft, u0, v0, origin, extent, tint);
+        Vertex(topRight, u1, v0, origin, extent, tint);
+        Vertex(bottomRight, u1, v1, origin, extent, tint);
+        Vertex(bottomLeft, u0, v1, origin, extent, tint);
+
+        _indices[_index] = corner;
+        _indices[_index + 1] = corner + 1;
+        _indices[_index + 2] = corner + 2;
+        _indices[_index + 3] = corner;
+        _indices[_index + 4] = corner + 2;
+        _indices[_index + 5] = corner + 3;
+        _index += 6;
     }
 
-    private static void Vertex(ImmediateMesh mesh, Vector3 position, float u, float v)
+    private void Vertex(Vector3 position, float u, float v, Vector2 origin, Vector2 extent, Color tint)
     {
-        mesh.SurfaceSetUV(new Vector2(u, v));
-        mesh.SurfaceAddVertex(position);
+        _positions[_at] = position;
+        _uvs[_at] = new Vector2(u, v);
+        _uv2s[_at] = origin;
+        _colors[_at] = tint;
+
+        int custom = _at * 4;
+        _extents[custom] = extent.X;
+        _extents[custom + 1] = extent.Y;
+        _extents[custom + 2] = 0f;
+        _extents[custom + 3] = 0f;
+
+        _at++;
     }
 
     private ShaderMaterial MaterialFor(SurfaceKey key)
@@ -245,9 +338,8 @@ public sealed class SpriteDrawList
         material = new ShaderMaterial { Shader = _shader };
         material.SetShaderParameter("sheet", key.Texture);
 
-        var textureSize = key.Texture.GetSize();
-        material.SetShaderParameter("region_size",
-            new Vector2(key.RegionSize.X / textureSize.X, key.RegionSize.Y / textureSize.Y));
+        // No region size here any more: it travels per vertex, which is what lets every sprite on
+        // a sheet share one surface regardless of how big it is.
         material.SetShaderParameter("tint_mode", (int)key.Tint);
         material.SetShaderParameter("outline_pixels", key.Outlined ? 2.0f : 0f);
 

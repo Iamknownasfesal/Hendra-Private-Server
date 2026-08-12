@@ -12,19 +12,18 @@ render_mode unshaded, cull_disabled, depth_draw_always, shadows_disabled;
 // All of it collapses into this. Nothing is allocated at runtime and nothing is cached.
 //
 // Per-vertex inputs beyond the usual:
-//   COLOR - tint and alpha
-//   UV2   - the origin of this sprite's rectangle within the sheet
+//   COLOR   - tint and alpha
+//   UV2     - the origin of this sprite's rectangle within the sheet
+//   CUSTOM0 - the size of that rectangle, in xy
 //
-// The rectangle's size comes from a uniform rather than a vertex attribute, because surfaces are
-// already grouped by sheet and grouping them by sprite size as well costs nothing. Knowing the
-// rectangle at all is what makes the outline safe: every sprite shares a sheet with hundreds of
-// others, so sampling a neighbouring texel without clamping would pull in whatever happens to sit
-// next door on the atlas.
+// Knowing the rectangle is what makes the outline safe: every sprite shares a sheet with hundreds
+// of others, so sampling a neighbouring texel without clamping would pull in whatever happens to
+// sit next door on the atlas. The size travels per vertex rather than as a uniform because a
+// uniform forces a separate surface -- and so a separate draw call and a fresh GPU buffer every
+// frame -- for every distinct sprite size on screen. That was six hundred draw calls and the
+// largest single cost in the frame.
 
 uniform sampler2D sheet : source_color, filter_nearest;
-
-// Size of one sprite's rectangle, in texture coordinates.
-uniform vec2 region_size = vec2(1.0);
 
 // Recolour sources. The mask's red channel selects the first, green the second, matching how the
 // original's dye masks were authored.
@@ -53,10 +52,12 @@ uniform int tint_mode = 0;
 uniform float vertical_shade = 0.16;
 
 varying vec2 region_min;
+varying vec2 region_size;
 varying vec4 tint;
 
 void vertex() {
     region_min = UV2;
+    region_size = CUSTOM0.xy;
     tint = COLOR;
 }
 

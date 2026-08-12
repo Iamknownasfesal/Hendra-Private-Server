@@ -208,7 +208,68 @@ public sealed class GameMap : ITileQuery
                 Insert(entity);
             _pendingAdds.Clear();
         }
+
+        RebuildHitIndex();
     }
+
+    // ------------------------------------------------------------------------------------------
+    // Hit index
+    // ------------------------------------------------------------------------------------------
+
+    /// <summary>Everything that can be shot, bucketed by the tile it stands on.</summary>
+    /// <remarks>
+    /// <para>
+    /// Without this, finding what a bullet hit means asking every entity in the world, and a screen
+    /// with four thousand bullets and three thousand monsters on it is eleven million questions per
+    /// frame. Measured, that was the entire frame -- a hundred and fifteen milliseconds of a
+    /// hundred and fifteen millisecond frame, with the actual drawing costing one.
+    /// </para>
+    /// <para>
+    /// Rebuilt once a frame rather than kept up to date as things move: entities move constantly and
+    /// the rebuild is one pass over a list, where incremental maintenance would be a remove and an
+    /// insert per entity per frame for the same answer and more ways to be wrong.
+    /// </para>
+    /// </remarks>
+    private readonly Dictionary<int, List<Entity>> _hitBuckets = new();
+
+    private readonly Stack<List<Entity>> _spareBuckets = new();
+
+    private static int BucketKey(int tileX, int tileY) => (tileX << 16) ^ (tileY & 0xFFFF);
+
+    private void RebuildHitIndex()
+    {
+        // Lists are handed back rather than dropped, so a steady state allocates nothing.
+        foreach (var bucket in _hitBuckets.Values)
+        {
+            bucket.Clear();
+            _spareBuckets.Push(bucket);
+        }
+
+        _hitBuckets.Clear();
+
+        foreach (var entity in _entities)
+        {
+            if (entity.Dead || entity is Projectile)
+                continue;
+
+            int key = BucketKey((int)entity.X, (int)entity.Y);
+            if (!_hitBuckets.TryGetValue(key, out var bucket))
+            {
+                bucket = _spareBuckets.Count > 0 ? _spareBuckets.Pop() : new List<Entity>(8);
+                _hitBuckets[key] = bucket;
+            }
+
+            bucket.Add(entity);
+        }
+    }
+
+    /// <summary>The things standing on one tile, or null if none are.</summary>
+    /// <remarks>
+    /// Half a tile is the widest anything is hit from, so a caller testing a point only has to ask
+    /// for the tile it is on and the eight around it.
+    /// </remarks>
+    public List<Entity> HitBucket(int tileX, int tileY) =>
+        _hitBuckets.TryGetValue(BucketKey(tileX, tileY), out var bucket) ? bucket : null;
 
     // ------------------------------------------------------------------------------------------
     // ITileQuery

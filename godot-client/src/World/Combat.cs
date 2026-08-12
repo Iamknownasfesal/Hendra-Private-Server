@@ -8,6 +8,35 @@ using Hendra.Resources;
 
 namespace Hendra.World;
 
+/// <summary>A hit the client worked out for itself, and everything the world needs to show it.</summary>
+/// <remarks>
+/// The projectile is carried because debris is thrown away from the shot that caused it, and the
+/// kill flag because the server never sends a Damage packet for an enemy we killed ourselves --
+/// we are the one who reported it -- so this is the only place the death is known.
+/// </remarks>
+public readonly struct DamageDealt
+{
+    public readonly Entity Target;
+    public readonly int Amount;
+
+    /// <summary>Whether the thing hit was our own character.</summary>
+    public readonly bool Self;
+
+    public readonly bool Killed;
+
+    /// <summary>The shot responsible, or null when nothing was in flight to blame.</summary>
+    public readonly Projectile Projectile;
+
+    public DamageDealt(Entity target, int amount, bool self, bool killed, Projectile projectile)
+    {
+        Target = target;
+        Amount = amount;
+        Self = self;
+        Killed = killed;
+        Projectile = projectile;
+    }
+}
+
 /// <summary>
 /// Firing, projectile lifetime, and reporting hits to the server.
 /// </summary>
@@ -315,7 +344,7 @@ public sealed class Combat
     /// it has nothing to say back -- and for damage to our own character it applies it here rather
     /// than sending a Damage packet. Waiting for the wire would mean a fight with no numbers in it.
     /// </remarks>
-    public event System.Action<Entity, int, bool> Damaged;
+    public event System.Action<DamageDealt> Damaged;
 
     public void Update(int nowMs)
     {
@@ -406,7 +435,8 @@ public sealed class Combat
             });
 
             target.Hp -= damage;
-            Damaged?.Invoke(target, damage, true);
+            Damaged?.Invoke(new DamageDealt(target, damage, self: true,
+                killed: target.Hp <= 0, projectile));
 
             // The player's own voice. Each class names its own pair in the data --
             // player/archer_hit and player/archer_death -- and this is the only path that reaches
@@ -435,7 +465,7 @@ public sealed class Combat
             // Applied locally so health bars respond immediately; the server's Damage packet is
             // authoritative and will correct it.
             target.Hp -= damage;
-            Damaged?.Invoke(target, damage, false);
+            Damaged?.Invoke(new DamageDealt(target, damage, self: false, killed, projectile));
 
             if (killed)
                 target.Dead = true;

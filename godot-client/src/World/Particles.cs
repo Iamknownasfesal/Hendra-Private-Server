@@ -1090,6 +1090,8 @@ public sealed class ParticleSystem
         if (palette == null || palette.Count == 0)
             return;
 
+        count = Detail(count);
+
         float dx = speed / 600f * MathF.Cos(angle + MathF.PI);
         float dy = speed / 600f * MathF.Sin(angle + MathF.PI);
 
@@ -1103,9 +1105,35 @@ public sealed class ParticleSystem
         if (palette == null || palette.Count == 0)
             return;
 
+        count = Detail(count);
+
         for (int i = 0; i < count; i++)
             EmitDebris(x, y, palette, size, Next() - 0.5f, Next() - 0.5f);
     }
+
+    /// <summary>
+    /// Thins a burst down to what the quality setting asks for.
+    /// </summary>
+    /// <remarks>
+    /// Fewer pieces rather than shorter-lived ones: a spray that vanishes early reads as a bug,
+    /// where a thinner spray just reads as a smaller one. At least one always comes out, so a hit
+    /// is never completely silent to look at.
+    /// </remarks>
+    private int Detail(int count) => Quality switch
+    {
+        0 => Math.Max(1, count / 4),
+        1 => Math.Max(1, count / 2),
+        _ => count,
+    };
+
+    /// <summary>
+    /// How much of a burst to draw: 0 low, 1 medium, 2 high.
+    /// </summary>
+    /// <remarks>
+    /// Pushed in rather than read from the settings, because this class is compiled into the
+    /// engine-free tests and must not know that a settings file exists.
+    /// </remarks>
+    public int Quality { get; set; } = 2;
 
     private void EmitDebris(float x, float y, IReadOnlyList<int> palette, int size, float dx, float dy)
     {

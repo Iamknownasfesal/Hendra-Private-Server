@@ -233,17 +233,38 @@ public sealed class Projectile : Entity
         Entity best = null;
         float bestDistance = float.MaxValue;
 
-        foreach (var entity in map.Entities)
+        // Only the tile under this point and the eight around it. Nothing is hit from further than
+        // half a tile away, so anything that could overlap is standing in one of those nine, and
+        // asking the whole world instead was costing the entire frame.
+        int tileX = (int)x;
+        int tileY = (int)y;
+
+        for (int dx = -1; dx <= 1; dx++)
+        for (int dy = -1; dy <= 1; dy++)
+        {
+            var bucket = map.HitBucket(tileX + dx, tileY + dy);
+            if (bucket == null)
+                continue;
+
+            foreach (var entity in bucket)
+                Consider(entity, x, y, ref best, ref bestDistance);
+        }
+
+        return best;
+    }
+
+    private void Consider(Entity entity, float x, float y, ref Entity best, ref float bestDistance)
+    {
         {
             if (!CanHit(entity))
-                continue;
+                return;
 
             float radius = entity.HitRadius;
             float dx = entity.X - x;
             float dy = entity.Y - y;
 
             if (dx > radius || dx < -radius || dy > radius || dy < -radius)
-                continue;
+                return;
 
             float distance = dx * dx + dy * dy;
             if (distance < bestDistance)
@@ -252,8 +273,6 @@ public sealed class Projectile : Entity
                 best = entity;
             }
         }
-
-        return best;
     }
 }
 

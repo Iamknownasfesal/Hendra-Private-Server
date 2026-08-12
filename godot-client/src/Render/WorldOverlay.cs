@@ -248,12 +248,37 @@ public partial class WorldOverlay : Control
     /// <summary>Call once per frame, after the items for that frame have been added.</summary>
     public void Commit() => QueueRedraw();
 
+    /// <summary>
+    /// How many of each kind of text is drawn in a frame, nearest the middle of the screen first.
+    /// </summary>
+    /// <remarks>
+    /// Laying out a line of text is the most expensive thing this overlay does, and the number of
+    /// things asking for one is set by the world rather than by anything the client controls: a
+    /// room with ten thousand monsters in it wants ten thousand names and, if they are all shouting,
+    /// as many speech balloons. Measuring is cached, so the remaining cost is the drawing itself,
+    /// and these are set high enough to be a backstop against a pathological screen rather than a
+    /// limit anybody meets in play -- past this many overlapping lines the screen is an unreadable
+    /// wall regardless. Health bars and status icons have no cap: they are cheap, and they are what
+    /// the player is actually reading.
+    /// </remarks>
+    private const int MostBubbles = 64;
+
+    private const int MostNames = 400;
+
+    /// <summary>Reused across frames so a busy screen does not allocate one of these per frame.</summary>
+    private readonly List<(float Distance, int Index)> _ranked = new(256);
+
     public override void _Draw()
     {
         var bounds = GetViewportRect().Size;
+        var middle = bounds / 2f;
 
-        foreach (var item in _items)
+        _ranked.Clear();
+
+        for (int i = 0; i < _items.Count; i++)
         {
+            var item = _items[i];
+
             // A generous margin, since a name can be much wider than its anchor point.
             if (item.Anchor.X < -200f || item.Anchor.X > bounds.X + 200f ||
                 item.Anchor.Y < -100f || item.Anchor.Y > bounds.Y + 100f)
@@ -262,14 +287,38 @@ public partial class WorldOverlay : Control
             if (_healthBars && item.ShowHealthBar && item.MaxHp > 0)
                 DrawHealthBar(item);
 
-            if (!string.IsNullOrEmpty(item.Name))
-                DrawName(item);
-
             if (item.Conditions is { Count: > 0 })
                 DrawConditions(item);
 
-            if (!string.IsNullOrEmpty(item.Bubble))
+            if (!string.IsNullOrEmpty(item.Name) || !string.IsNullOrEmpty(item.Bubble))
+                _ranked.Add((item.Anchor.DistanceSquaredTo(middle), i));
+        }
+
+        // Only sorted when there is more text than will be drawn; the usual screenful skips it.
+        if (_ranked.Count > MostNames)
+            _ranked.Sort(static (a, b) => a.Distance.CompareTo(b.Distance));
+
+        int names = 0;
+        int bubbles = 0;
+
+        foreach (var (_, index) in _ranked)
+        {
+            if (names >= MostNames && bubbles >= MostBubbles)
+                break;
+
+            var item = _items[index];
+
+            if (names < MostNames && !string.IsNullOrEmpty(item.Name))
+            {
+                DrawName(item);
+                names++;
+            }
+
+            if (bubbles < MostBubbles && !string.IsNullOrEmpty(item.Bubble))
+            {
                 DrawBubble(item);
+                bubbles++;
+            }
         }
 
         if (_questTarget.HasValue)
@@ -329,7 +378,9 @@ public partial class WorldOverlay : Control
         const float PaddingY = 3f;
         const float Tail = 5f;
 
-        var measured = _font.GetStringSize(item.Bubble, HorizontalAlignment.Left, -1, _fontSize);
+        // Width through the shared cache; the height of a single line never varies with content.
+        var measured = new Vector2(
+            UI.Style.Measure(item.Bubble, _fontSize), _font.GetHeight(_fontSize));
 
         // Above everything else the entity carries: its own artwork, and the status icons over that.
         float above = Mathf.Max(item.SpriteHeight, 16f)
