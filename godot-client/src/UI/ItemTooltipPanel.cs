@@ -34,6 +34,9 @@ public partial class ItemTooltipPanel : MarginContainer
 
     private const int IconSize = 40;
 
+    /// <summary>Space for text once the margins are taken out.</summary>
+    private const int TextWidth = Width - 12;
+
     /// <summary>The original's panel fill and border, 0x363636 over 0x9B9B9B.</summary>
     private static readonly Color Background = new("363636");
 
@@ -97,6 +100,9 @@ public partial class ItemTooltipPanel : MarginContainer
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             VerticalAlignment = VerticalAlignment.Center,
+
+            // The icon and the tier tag take the rest of the row.
+            CustomMinimumSize = new Vector2(TextWidth - IconSize - 34, 0),
         };
         title.AddThemeFontSizeOverride("font_size", 16);
         title.AddThemeColorOverride("font_color", TitleColour());
@@ -138,11 +144,7 @@ public partial class ItemTooltipPanel : MarginContainer
         if (string.IsNullOrWhiteSpace(_desc.Description))
             return;
 
-        var text = new Label
-        {
-            Text = _desc.Description,
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-        };
+        var text = Wrapping(_desc.Description);
         text.AddThemeFontSizeOverride("font_size", 14);
         text.AddThemeColorOverride("font_color", Muted);
         column.AddChild(text);
@@ -159,7 +161,7 @@ public partial class ItemTooltipPanel : MarginContainer
 
         foreach (var line in lines)
         {
-            var label = new Label { Text = line.Text, AutowrapMode = TextServer.AutowrapMode.WordSmart };
+            var label = Wrapping(line.Text);
             label.AddThemeFontSizeOverride("font_size", 14);
             label.AddThemeColorOverride("font_color", line.IsHeading ? Muted : NoDiff);
             column.AddChild(label);
@@ -187,7 +189,7 @@ public partial class ItemTooltipPanel : MarginContainer
 
         foreach (string text in lines)
         {
-            var label = new Label { Text = text, AutowrapMode = TextServer.AutowrapMode.WordSmart };
+            var label = Wrapping(text);
             label.AddThemeFontSizeOverride("font_size", 13);
             label.AddThemeColorOverride("font_color", Muted);
             column.AddChild(label);
@@ -242,6 +244,20 @@ public partial class ItemTooltipPanel : MarginContainer
         label.AddThemeColorOverride("font_color", Colors.White);
         column.AddChild(label);
     }
+
+    /// <summary>
+    /// A label that wraps inside the panel rather than widening it.
+    /// </summary>
+    /// <remarks>
+    /// The width has to be stated. An autowrapping label with none reports the height it would need
+    /// if it were one character wide, which is how a six-line tooltip asked for most of the screen.
+    /// </remarks>
+    private static Label Wrapping(string text) => new()
+    {
+        Text = text,
+        AutowrapMode = TextServer.AutowrapMode.WordSmart,
+        CustomMinimumSize = new Vector2(TextWidth, 0),
+    };
 
     private static HSeparator Rule() => new();
 
