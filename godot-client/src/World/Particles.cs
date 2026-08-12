@@ -428,6 +428,129 @@ public sealed class ParticleSystem
     /// sometimes in <c>Pos2.X</c>. The mapping is the original's and is documented on
     /// <see cref="ShowEffectType"/>.
     /// </remarks>
+    /// <summary>
+    /// The sparks a projectile leaves behind it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The original spawns three of these per frame for every trailing projectile in flight, which
+    /// ties the density of a trail to the frame rate: the same shot leaves a thicker trail on a
+    /// faster machine. Here it is spawned on a clock instead, so a trail looks the same everywhere
+    /// and a slow machine is not also given a thinner one.
+    /// </para>
+    /// <para>
+    /// Everything else is the original's: half alpha, a lifetime of six hundred milliseconds unless
+    /// the projectile names its own, and a scatter of a few tenths of a tile so the trail has width.
+    /// </para>
+    /// </remarks>
+    public void ProjectileTrail(float x, float y, float z, int color, int lifetimeMs)
+    {
+        Emit(new Particle
+        {
+            X = x + Scatter(0.15f),
+            Y = y + Scatter(0.15f),
+            Z = z,
+            Color = color,
+            Motion = ParticleMotion.Drift,
+            LifetimeMs = lifetimeMs,
+            TimeLeftMs = lifetimeMs,
+            Size = 130f,
+            InitialSize = 130f,
+            Shrinks = true,
+            TrailColor = -1,
+        });
+    }
+
+    /// <summary>
+    /// The burst where a shot lands.
+    /// </summary>
+    /// <remarks>
+    /// Not in the original, which shows nothing at all when a bullet stops -- it simply vanishes.
+    /// A few sparks thrown back along the shot's own direction is the cheapest way to make hitting
+    /// something feel like contact rather than like the projectile being switched off.
+    /// </remarks>
+    public void Impact(float x, float y, float z, float angle, int color, int count = 5)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            // Thrown back into the quadrant the shot came from, spread across a half turn, so the
+            // burst reads as a splash off the surface rather than as a ring.
+            float away = angle + MathF.PI + (Next() - 0.5f) * MathF.PI;
+            float speed = 0.6f + Next() * 1.4f;
+
+            Emit(new Particle
+            {
+                X = x,
+                Y = y,
+                Z = z,
+                Dx = MathF.Cos(away) * speed,
+                Dy = MathF.Sin(away) * speed,
+                Dz = 0.4f + Next(),
+                Color = color,
+                Motion = ParticleMotion.Drift,
+                LifetimeMs = 320,
+                TimeLeftMs = 320,
+                Size = 150f,
+                InitialSize = 150f,
+                Shrinks = true,
+                TrailColor = -1,
+            });
+        }
+    }
+
+    /// <summary>
+    /// The flash at the muzzle when a shot goes out.
+    /// </summary>
+    /// <remarks>
+    /// Also new. The original gives firing no visual at all beyond the projectile appearing, and on
+    /// a weapon with a slow projectile there is nothing to tell you the shot happened until it has
+    /// travelled a tile. This puts something where the trigger was pulled.
+    /// </remarks>
+    public void Muzzle(float x, float y, float z, float angle, int color)
+    {
+        // The flash itself: one bright mote at the muzzle that fades fast, with the sparks thrown
+        // out around it. Without the core it reads as a few specks rather than as a discharge.
+        Emit(new Particle
+        {
+            X = x,
+            Y = y,
+            Z = z,
+            Color = color,
+            Motion = ParticleMotion.Drift,
+            LifetimeMs = 110,
+            TimeLeftMs = 110,
+            Size = 260f,
+            InitialSize = 260f,
+            Shrinks = true,
+            TrailColor = -1,
+        });
+
+        for (int i = 0; i < 5; i++)
+        {
+            float spread = angle + (Next() - 0.5f) * 0.7f;
+            float speed = 0.8f + Next() * 0.8f;
+
+            Emit(new Particle
+            {
+                X = x,
+                Y = y,
+                Z = z,
+                Dx = MathF.Cos(spread) * speed,
+                Dy = MathF.Sin(spread) * speed,
+                Color = color,
+                Motion = ParticleMotion.Drift,
+                LifetimeMs = 220,
+                TimeLeftMs = 220,
+                Size = 130f,
+                InitialSize = 130f,
+                Shrinks = true,
+                TrailColor = -1,
+            });
+        }
+    }
+
+    private float Scatter(float amount) => (Next() - 0.5f) * 2f * amount;
+
     public void Show(ShowEffectPacket packet, int nowMs)
     {
         int color = (packet.Color.R << 16) | (packet.Color.G << 8) | packet.Color.B;

@@ -23,6 +23,9 @@ public sealed class Projectile : Entity
 
     public ProjectileDesc ProjectileDesc;
 
+    /// <summary>When this shot may next leave a spark behind it. See WorldController.LeaveTrail.</summary>
+    public int NextTrailMs;
+
     /// <summary>The type of the object that fired, which is what its artwork comes from.</summary>
     public ushort ContainerType;
 

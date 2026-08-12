@@ -172,6 +172,8 @@ public partial class WorldController : Node
         _map = new GameMap(data);
         _minimap?.Configure(_map, _tileColors);
         _combat = new Combat(_map, data, session, clock);
+        _combat.Struck += OnProjectileStruck;
+        _combat.Fired += (shot, x, y, angle) => Muzzle(shot, x, y, angle);
         _interaction = new Interaction(_map);
         _inventory = new Inventory(_map, data, session, clock);
         _inventory.UseCombat(_combat);
@@ -545,7 +547,10 @@ public partial class WorldController : Node
         }
 
         _session.Send(new ShootAckPacket { Time = now });
-        owner.SetAttack(shot.Angle + shot.AngleInc * (shot.NumShots - 1) / 2f, now);
+
+        float centre = shot.Angle + shot.AngleInc * (shot.NumShots - 1) / 2f;
+        owner.SetAttack(centre, now);
+        Muzzle(desc, shot.StartingPos.X, shot.StartingPos.Y, centre);
     }
 
     /// <summary>
@@ -568,6 +573,8 @@ public partial class WorldController : Node
         var container = _data.GetObject((ushort)shot.ContainerType);
         if (container?.Projectiles == null || !container.Projectiles.TryGetValue(0, out var desc))
             return;
+
+        Muzzle(desc, owner.X, owner.Y, shot.Angle);
 
         _combat.SpawnCosmetic(desc, (ushort)shot.ContainerType, shot.OwnerId, shot.BulletId,
             shot.Angle, owner.X, owner.Y, now);
@@ -1599,7 +1606,67 @@ public partial class WorldController : Node
 
             SizeQuad(ref draw, projectile, resolved.Still, 1, 1);
             _world.Sprites.Add(draw);
+
+            LeaveTrail(projectile, now);
         }
+    }
+
+    /// <summary>
+    /// Spawns the sparks a trailing projectile leaves behind it.
+    /// </summary>
+    /// <remarks>
+    /// On a clock rather than per frame, which is what the original does. Three sparks every frame
+    /// ties the density of a trail to the frame rate, so the same shot leaves a thicker trail on a
+    /// faster machine; spawning on an interval makes a trail look the same everywhere.
+    /// </remarks>
+    /// <summary>
+    /// The burst where a shot stopped.
+    /// </summary>
+    /// <remarks>
+    /// Coloured by the shot's own trail colour where it has one, so a fire bolt splashes orange and
+    /// an arrow splashes white. A hit on terrain throws fewer sparks than a hit on something alive,
+    /// which is the difference between striking a wall and striking a target.
+    /// </remarks>
+    private void OnProjectileStruck(Projectile projectile, ProjectileEnding ending)
+    {
+        var shot = projectile.ProjectileDesc;
+        int colour = shot is { ParticleTrail: true } ? shot.ParticleTrailColor : 0xFFFFFF;
+        int count = ending == ProjectileEnding.HitTerrain ? 3 : 6;
+
+        _particles.Impact(projectile.X, projectile.Y, projectile.Z, projectile.Angle, colour, count);
+    }
+
+    /// <summary>
+    /// The flash where a shot leaves.
+    /// </summary>
+    /// <remarks>
+    /// New rather than ported: the original gives firing no visual at all beyond the projectile
+    /// appearing, and on a slow-moving shot there is nothing to say the trigger was pulled until it
+    /// has crossed a tile. Coloured from the shot itself so it belongs to the weapon that fired it.
+    /// </remarks>
+    private void Muzzle(ProjectileDesc shot, float x, float y, float angle)
+    {
+        int colour = shot is { ParticleTrail: true } ? shot.ParticleTrailColor : 0xFFE9A8;
+        _particles.Muzzle(x, y, 0.35f, angle, colour);
+    }
+
+    private void LeaveTrail(Projectile projectile, int now)
+    {
+        const int IntervalMs = 24;
+
+        var shot = projectile.ProjectileDesc;
+        if (shot is not { ParticleTrail: true })
+            return;
+
+        if (now < projectile.NextTrailMs)
+            return;
+
+        // Caught up rather than stepped, so a frame that took a while does not owe a burst of
+        // sparks it then emits all at once.
+        projectile.NextTrailMs = now + IntervalMs;
+
+        _particles.ProjectileTrail(projectile.X, projectile.Y, projectile.Z,
+            shot.ParticleTrailColor, shot.ParticleTrailLifetimeMs);
     }
 
     /// <summary>

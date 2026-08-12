@@ -186,6 +186,8 @@ public sealed class Combat
         }
 
         player.SetAttack(angle, nowMs);
+        Fired?.Invoke(projectileDesc, player.X + MathF.Cos(angle) * MuzzleOffset,
+            player.Y + MathF.Sin(angle) * MuzzleOffset, angle);
     }
 
     /// <summary>
@@ -285,6 +287,25 @@ public sealed class Combat
     }
 
     /// <summary>Advances every projectile and reports whatever they hit.</summary>
+    /// <summary>
+    /// Raised when a shot stops against something, with what it stopped against.
+    /// </summary>
+    /// <remarks>
+    /// An event rather than a call into the particle system, because combat has no business knowing
+    /// what a hit looks like -- only that one happened. Running out of lifetime is not a hit and
+    /// does not raise it.
+    /// </remarks>
+    public event System.Action<Projectile, ProjectileEnding> Struck;
+
+    /// <summary>
+    /// Raised when the player fires, with the shot and where it left from.
+    /// </summary>
+    /// <remarks>
+    /// Once per volley rather than once per projectile: a multishot weapon fires five bullets from
+    /// one trigger pull, and five flashes on top of each other is a blob.
+    /// </remarks>
+    public event System.Action<ProjectileDesc, float, float, float> Fired;
+
     public void Update(int nowMs)
     {
         _finished.Clear();
@@ -295,7 +316,10 @@ public sealed class Combat
                 _finished.Add(projectile);
 
             if (outcome.Ending != ProjectileEnding.Expired)
+            {
                 Report(projectile, outcome, nowMs);
+                Struck?.Invoke(projectile, outcome.Ending);
+            }
         }
 
         foreach (var projectile in _finished)
@@ -371,6 +395,17 @@ public sealed class Combat
             });
 
             target.Hp -= damage;
+
+            // The player's own voice. Each class names its own pair in the data --
+            // player/archer_hit and player/archer_death -- and this is the only path that reaches
+            // them, because damage to the player is applied here rather than arriving as a Damage
+            // packet the way damage to everything else does.
+            if (damage > 0)
+            {
+                App.ServiceLocator.Audio?.PlayEffect(
+                    target.Hp <= 0 ? target.Desc?.DeathSound : target.Desc?.HitSound);
+            }
+
             return;
         }
 
