@@ -22,7 +22,6 @@ namespace Hendra.App;
 /// </remarks>
 public partial class LoginScreen : Control
 {
-    private LineEdit _host;
     private LineEdit _guid;
     private LineEdit _password;
     private Button _signIn;
@@ -46,12 +45,22 @@ public partial class LoginScreen : Control
         // centred child lands in the corner with it.
         UI.ScreenFit.FillScreen(this);
 
-        // A dark ground behind everything, so the screen reads as a screen rather than as a form
-        // floating on the engine's default grey.
-        var backdrop = new ColorRect { Color = new Color(0.06f, 0.055f, 0.055f) };
-        backdrop.SetAnchorsPreset(LayoutPreset.FullRect);
-        backdrop.MouseFilter = MouseFilterEnum.Ignore;
-        AddChild(backdrop);
+        // The title art again, filling the window and dimmed, so signing in and picking a
+        // character read as the same place as the title rather than as a form on flat black.
+        var art = new TextureRect
+        {
+            Texture = ServiceLocator.Assets?.GetImage("TitleScreen"),
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCovered,
+            MouseFilter = MouseFilterEnum.Ignore,
+        };
+        art.SetAnchorsPreset(LayoutPreset.FullRect);
+        AddChild(art);
+
+        var wash = new ColorRect { Color = new Color(0.03f, 0.03f, 0.05f, 0.72f) };
+        wash.SetAnchorsPreset(LayoutPreset.FullRect);
+        wash.MouseFilter = MouseFilterEnum.Ignore;
+        AddChild(wash);
 
         var centre = new CenterContainer();
         centre.SetAnchorsPreset(LayoutPreset.FullRect);
@@ -61,14 +70,15 @@ public partial class LoginScreen : Control
         stack.AddThemeConstantOverride("separation", 14);
         centre.AddChild(stack);
 
-        var title = new Label
+        var heading = new Label
         {
-            Text = "Hendra",
+            Text = "Sign in",
             HorizontalAlignment = HorizontalAlignment.Center,
         };
-        title.AddThemeFontSizeOverride("font_size", 44);
-        title.AddThemeColorOverride("font_color", new Color(0.93f, 0.85f, 0.55f));
-        stack.AddChild(title);
+        heading.AddThemeFontSizeOverride("font_size", 26);
+        heading.AddThemeColorOverride("font_color", new Color(0.93f, 0.9f, 0.84f));
+        stack.AddChild(heading);
+        _heading = heading;
 
         // The sign-in form and the character list share the screen's centre, one replacing the
         // other, the way the original moves from its account screen to its character screen.
@@ -79,7 +89,6 @@ public partial class LoginScreen : Control
         column.AddThemeConstantOverride("separation", 10);
         _signInPanel.AddChild(column);
 
-        _host = AddField(column, "Server", "127.0.0.1:8888");
         _guid = AddField(column, "Account", string.Empty);
         _password = AddField(column, "Password", string.Empty);
         _password.Secret = true;
@@ -87,6 +96,16 @@ public partial class LoginScreen : Control
         _signIn = new Button { Text = "Sign in", CustomMinimumSize = new Vector2(0, 34) };
         _signIn.Pressed += OnSignInPressed;
         column.AddChild(_signIn);
+
+        // Registering is the same two fields, so it is a second button rather than a third page.
+        // The server creates the account and the client signs straight in with it.
+        _register = new Button { Text = "Create an account with these details" };
+        _register.Pressed += OnRegisterPressed;
+        column.AddChild(_register);
+
+        var back = new Button { Text = "Back" };
+        back.Pressed += () => BackPressed?.Invoke();
+        column.AddChild(back);
 
         _status = new Label
         {
@@ -113,7 +132,7 @@ public partial class LoginScreen : Control
         characterColumn.AddChild(_characters);
 
         // Enter submits from any field, which is how anyone actually uses a login form.
-        foreach (var field in new[] { _host, _guid, _password })
+        foreach (var field in new[] { _guid, _password })
             field.TextSubmitted += _ => OnSignInPressed();
 
         _guid.CallDeferred(Control.MethodName.GrabFocus);
@@ -180,6 +199,12 @@ public partial class LoginScreen : Control
     /// <summary>Width of a character entry, wide enough for a class name and its stats.</summary>
     private const int CharacterBoxWidth = 420;
 
+    private Button _register;
+
+    /// <summary>Raised when the player wants to go back to the title screen.</summary>
+    public event Action BackPressed;
+
+    private Label _heading;
     private UI.CutEdgePanel _signInPanel;
     private UI.CutEdgePanel _charactersPanel;
 
@@ -214,13 +239,49 @@ public partial class LoginScreen : Control
         return edit;
     }
 
+    /// <summary>
+    /// Creates an account, then signs in with it.
+    /// </summary>
+    /// <remarks>
+    /// The endpoint wants the *current* credentials as well as the new ones: it doubles as a rename
+    /// for a guest account, so an empty pair means "make a fresh one" rather than "no credentials".
+    /// </remarks>
+    private async void OnRegisterPressed()
+    {
+        _register.Disabled = true;
+        _status.Text = "Creating the account...";
+
+        try
+        {
+            using var client = new AppEngineClient(ServerConfig.AppServer);
+            await client.PostAsync("/account/register", new Dictionary<string, string>
+            {
+                ["guid"] = string.Empty,
+                ["password"] = string.Empty,
+                ["newGUID"] = _guid.Text,
+                ["newPassword"] = _password.Text,
+                ["eliteAccount"] = "0",
+            });
+
+            OnSignInPressed();
+        }
+        catch (Exception ex)
+        {
+            _status.Text = ex.Message;
+        }
+        finally
+        {
+            _register.Disabled = false;
+        }
+    }
+
     private async void OnSignInPressed()
     {
         _signIn.Disabled = true;
         _status.Text = "Signing in...";
         ClearCharacters();
 
-        string baseUrl = NormalizeHost(_host.Text);
+        string baseUrl = ServerConfig.AppServer;
 
         try
         {
@@ -248,22 +309,6 @@ public partial class LoginScreen : Control
         }
     }
 
-    /// <summary>
-    /// Accepts a bare host, a host and port, or a full URL, and produces something addressable.
-    /// </summary>
-    private static string NormalizeHost(string text)
-    {
-        string value = (text ?? string.Empty).Trim();
-        if (value.Length == 0)
-            return "http://127.0.0.1:8888";
-
-        if (value.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-            value.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-            return value;
-
-        // The app server's default port, which differs from the world server's.
-        return value.Contains(':') ? $"http://{value}" : $"http://{value}:8888";
-    }
 
     private void ShowCharacters()
     {
@@ -276,6 +321,7 @@ public partial class LoginScreen : Control
 
         _signInPanel.Visible = false;
         _charactersPanel.Visible = true;
+        _heading.Text = "Choose a character";
         _servers.Visible = _charList.Servers.Count > 0;
         if (_servers.Visible)
         {

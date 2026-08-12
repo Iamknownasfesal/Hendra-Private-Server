@@ -75,10 +75,10 @@ public partial class Boot : Control
         _title = new UI.TitleScreen();
         _title.PlayPressed += ShowLogin;
 
-        // Servers and the account panel both live on the sign-in screen here: it already shows the
-        // server list, and the account is the thing being signed into.
-        _title.ServersPressed += ShowLogin;
+        // Play and Account both lead to the same page: it signs you in and then offers your
+        // characters, which is what both of them are for.
         _title.AccountPressed += ShowLogin;
+        _title.QuitPressed += () => GetTree().Quit();
         AddChild(_title);
     }
 
@@ -100,6 +100,7 @@ public partial class Boot : Control
         CloseScreens();
 
         _login = new LoginScreen();
+        _login.BackPressed += ShowTitle;
         _login.PlayRequested += StartGame;
         _login.CreateRequested += CreateCharacter;
         AddChild(_login);

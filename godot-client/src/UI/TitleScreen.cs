@@ -31,8 +31,8 @@ public partial class TitleScreen : Control
     /// <summary>Raised when the player wants to sign in and pick a character.</summary>
     public event Action PlayPressed;
 
-    /// <summary>Raised when the player wants the server list.</summary>
-    public event Action ServersPressed;
+    /// <summary>Raised when the player wants to leave.</summary>
+    public event Action QuitPressed;
 
     /// <summary>Raised when the player wants the account panel.</summary>
     public event Action AccountPressed;
@@ -75,10 +75,13 @@ public partial class TitleScreen : Control
         bar.AddThemeConstantOverride("separation", 18);
         centre.AddChild(bar);
 
-        // Servers left, Play centre, Account right -- the original's arrangement.
-        bar.AddChild(MenuButton("Servers", () => ServersPressed?.Invoke()));
-        bar.AddChild(MenuButton("Play", () => PlayPressed?.Invoke(), primary: true));
+        // Account left, Play centre, Quit right. The original puts Servers here too, but its
+        // Servers screen picks between named worlds the app server hands back -- and this client
+        // already shows that list once you have signed in, which is the only point at which it
+        // knows what the worlds are.
         bar.AddChild(MenuButton("Account", () => AccountPressed?.Invoke()));
+        bar.AddChild(MenuButton("Play", () => PlayPressed?.Invoke(), primary: true));
+        bar.AddChild(MenuButton("Quit", () => QuitPressed?.Invoke()));
 
         GetViewport().SizeChanged += PlaceButtons;
         PlaceButtons();
