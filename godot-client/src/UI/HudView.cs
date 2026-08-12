@@ -57,9 +57,9 @@ public partial class HudView : Control
     private readonly List<SlotView> _backpack = new();
 
     /// <summary>The backpack section, shown only once the character owns one.</summary>
-    private VBoxContainer _backpackPanel;
+    private CutEdgePanel _backpackPanel;
 
-    private VBoxContainer _inventoryPanel;
+    private CutEdgePanel _inventoryPanel;
     private HBoxContainer _tabs;
     private Button _inventoryTab;
     private Button _backpackTab;
@@ -145,9 +145,11 @@ public partial class HudView : Control
         _stats = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
         column.AddChild(_stats);
 
-        column.AddChild(new HSeparator());
-        column.AddChild(new Label { Text = "Equipment" });
-        AddSlots(column, _equipment, EquipmentSlots, firstIndex: 0);
+        // The original sits its grids on their own backgrounds rather than straight on the column:
+        // an 186 by 92 cut-corner panel behind each. It is what separates the interface into parts
+        // you can find by shape rather than by reading it.
+        var equipmentPanel = AddSection(column, "Equipment");
+        AddSlots(equipmentPanel, _equipment, EquipmentSlots, firstIndex: 0);
 
         // Inventory and backpack share the space, as they do in the original: a strip of two tabs
         // above one grid, rather than both grids stacked. The backpack tab only appears for a
@@ -160,13 +162,19 @@ public partial class HudView : Control
         _inventoryTab = AddTab("Inventory", showBackpack: false);
         _backpackTab = AddTab("Backpack", showBackpack: true);
 
-        _inventoryPanel = new VBoxContainer();
+        _inventoryPanel = NewSectionPanel();
         column.AddChild(_inventoryPanel);
-        AddSlots(_inventoryPanel, _inventory, InventorySlots, firstIndex: 8);
+        AddSlots(SectionBody(_inventoryPanel), _inventory, InventorySlots, firstIndex: 8);
 
-        _backpackPanel = new VBoxContainer { Visible = false };
+        _backpackPanel = NewSectionPanel();
+        _backpackPanel.Visible = false;
         column.AddChild(_backpackPanel);
-        AddSlots(_backpackPanel, _backpack, BackpackSlots, firstIndex: 16);
+        AddSlots(SectionBody(_backpackPanel), _backpack, BackpackSlots, firstIndex: 16);
+
+        // Everything below is pushed to the foot of the column, where the original puts its
+        // interact panel -- it is the part that appears and disappears as the player walks around,
+        // and it is less distracting from down there.
+        column.AddChild(new Control { SizeFlagsVertical = SizeFlags.ExpandFill });
 
         // Only present while standing over something that holds items.
         _containerPanel = new VBoxContainer { Visible = false };
@@ -312,6 +320,44 @@ public partial class HudView : Control
         int purse = player == null ? 0 : fame ? player.Fame : player.Credits;
         _buy.Disabled = purse < merchant.MerchandisePrice;
     }
+
+    /// <summary>
+    /// A sub-panel in the column: the original's cut-corner background with a heading over it.
+    /// </summary>
+    private Control AddSection(Control parent, string heading)
+    {
+        parent.AddChild(new Label { Text = heading });
+
+        var panel = NewSectionPanel();
+        parent.AddChild(panel);
+        return SectionBody(panel);
+    }
+
+    /// <summary>
+    /// An empty sub-panel background.
+    /// </summary>
+    /// <remarks>
+    /// All four corners cut, unlike the column itself: these sit inside it rather than against the
+    /// edge of the screen, so every corner is visible and should be shaped.
+    /// </remarks>
+    private static CutEdgePanel NewSectionPanel()
+    {
+        var panel = new CutEdgePanel { Background = SectionBackground };
+        panel.Padded(4);
+
+        var body = new VBoxContainer();
+        body.AddThemeConstantOverride("separation", 4);
+        panel.AddChild(body);
+        return panel;
+    }
+
+    /// <summary>The container inside a sub-panel that its contents go into.</summary>
+    private static Control SectionBody(CutEdgePanel panel) => panel.GetChild<Control>(0);
+
+    /// <summary>
+    /// A shade lighter than the column, so a grid reads as sitting on the column rather than in it.
+    /// </summary>
+    private static readonly Color SectionBackground = new(0.10f, 0.095f, 0.095f);
 
     /// <summary>One tab in the strip over the carried grids.</summary>
     private Button AddTab(string text, bool showBackpack)
