@@ -26,12 +26,38 @@ namespace wServer.realm.entities
 
         /// <summary>The box the server claims a hit inside, when deciding one for itself.</summary>
         /// <remarks>
-        /// Deliberately smaller than the client's. The server is second-guessing a machine that
+        /// <para>
+        /// Deliberately far smaller than the client's. The server is second-guessing a machine that
         /// saw the same bullet from a slightly different vantage, and it should only ever insist on
         /// hits that machine could not reasonably have called a miss. A graze the two disagree
         /// about is given to the player.
+        /// </para>
+        /// <para>
+        /// Set from the disagreements rather than from taste. An evening of an honest client playing
+        /// normally produced a hundred and seventeen hits the server applied and the client had not
+        /// reported, and every single one of them passed the player between a fifth and two fifths
+        /// of a tile off centre -- edge cases, all of them. Not one was a bullet through the middle.
+        /// At two tenths, a hundred and thirteen of those hundred and seventeen go away.
+        /// </para>
+        /// <para>
+        /// What this gives up is real and worth saying: a client that lies about being hit now gets
+        /// away with everything that passes it more than a fifth of a tile off centre. That is the
+        /// trade. Godmode has to dodge every bullet, and the ones through the middle are the ones a
+        /// player standing in a boss room cannot avoid, so the server only has to be sure about
+        /// those to make lying about them useless.
+        /// </para>
         /// </remarks>
-        private const float SweepBox = 0.4f;
+        private const float SweepBox = 0.2f;
+
+        /// <summary>How much of a bullet's flight the server will second-guess the client about.</summary>
+        /// <remarks>
+        /// The two sides agree about where a bullet is at the instant it is fired and drift apart
+        /// from there: a clock offset estimated over a noisy link, a wavy shot's phase, and a trail
+        /// sampled ten times a second all accumulate. Past a second of flight the server's idea of
+        /// where the bullet was is worth less than the client's, and the disagreements bear that out
+        /// -- two thirds of the false positives were on bullets older than this.
+        /// </remarks>
+        private const int MostSweepMs = 1000;
 
         /// <summary>Finest a swept path is walked, in tiles. Comfortably inside the hitbox.</summary>
         private const float StepTiles = 0.25f;
@@ -121,9 +147,9 @@ namespace wServer.realm.entities
                 // Held a moment past the end of its flight, and only for as long as the accounting
                 // takes. The trail that says where people were during its last leg is still in the
                 // post; the bullet cannot travel any further, only be answered for.
-                SweepPlayers(time, ProjDesc.LifetimeMS);
+                SweepPlayers(time, SweepLimit);
 
-                if (_swept >= ProjDesc.LifetimeMS || elapsed > ProjDesc.LifetimeMS + SweepTailMs)
+                if (_swept >= SweepLimit || elapsed > ProjDesc.LifetimeMS + SweepTailMs)
                     Destroy();
 
                 return;
@@ -138,6 +164,12 @@ namespace wServer.realm.entities
         private bool NeedsSweep
         {
             get { return ProjectileOwner != null && !(ProjectileOwner.Self is Player); }
+        }
+
+        /// <summary>How far into the flight the sweep will go: the shorter of the two limits.</summary>
+        private long SweepLimit
+        {
+            get { return Math.Min(ProjDesc.LifetimeMS, MostSweepMs); }
         }
 
         /// <summary>
@@ -170,6 +202,10 @@ namespace wServer.realm.entities
             // Players' own bullets never hurt players, so there is nothing here to check for them.
             if (world == null || ProjectileOwner == null || ProjectileOwner.Self is Player)
                 return;
+
+            // Nothing past the first second of flight is judged at all: see MostSweepMs.
+            if (upTo > SweepLimit)
+                upTo = SweepLimit;
 
             if (_stopped || upTo <= _swept || world.Players.Count == 0)
                 return;
@@ -229,6 +265,15 @@ namespace wServer.realm.entities
                     continue;
 
                 var answered = from;
+
+                // The closest the bullet came over the whole leg, rather than the first point at
+                // which it was near enough. With a box this tight the difference matters: the walk
+                // is a quarter of a tile at a time, and stopping at the first sample under the
+                // threshold judges the bullet by a point that can be a good deal worse than the one
+                // it actually passed through.
+                var closest = float.MaxValue;
+                var closestAt = from;
+
                 for (var i = 1; i <= steps; i++)
                 {
                     var e = from + (upTo - from) * i / steps;
@@ -244,13 +289,18 @@ namespace wServer.realm.entities
 
                     var at = GetPosition(e);
                     var off = Math.Max(Math.Abs(said.Value.X - at.X), Math.Abs(said.Value.Y - at.Y));
-                    if (off > SweepBox)
+                    if (off >= closest)
                         continue;
 
+                    closest = off;
+                    closestAt = e;
+                }
+
+                if (closest <= SweepBox)
+                {
                     (_noted ??= new HashSet<Entity>()).Add(player);
-                    player.NoteUnacknowledgedHit(this, time, SweepBox - off, e);
+                    player.NoteUnacknowledgedHit(this, time, SweepBox - closest, closestAt);
                     answered = upTo;
-                    break;
                 }
 
                 if (answered < retire)

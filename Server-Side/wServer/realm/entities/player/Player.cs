@@ -773,24 +773,35 @@ namespace wServer.realm.entities
                 return false;
             }
 
+            // Both read once, before any of the player's state is touched. A hit arrives on the
+            // logic thread and the world it arrived from is torn down on another, so either can go
+            // out from under this between the guard at the top of the handler and the end of the
+            // method -- which showed up as a null reference here on a badly lagging server, and
+            // cost the player the hit, since a hit that throws is a hit nobody takes.
+            var world = Owner;
+            var shooter = projectile.ProjectileOwner?.Self;
+            if (world == null || shooter == null)
+                return false;
+
             var dmg = (int)Stats.GetDefenseDamage(projectile.Damage, projectile.ProjDesc.ArmorPiercing);
             if (!HasConditionEffect(ConditionEffects.Invulnerable))
                 HP -= dmg;
             ApplyConditionEffect(projectile.ProjDesc.Effects);
-            Owner.BroadcastPacketNearby(new Damage()
+            world.BroadcastPacketNearby(new Damage()
             {
                 TargetId = this.Id,
                 Effects = HasConditionEffect(ConditionEffects.Invincible) ? 0 : projectile.ConditionEffects,
                 DamageAmount = (ushort)dmg,
                 Kill = HP <= 0,
                 BulletId = projectile.ProjectileId,
-                ObjectId = projectile.ProjectileOwner.Self.Id
+                ObjectId = shooter.Id
             }, this, this, PacketPriority.Low);
 
             if (HP <= 0)
-                Death(projectile.ProjectileOwner.Self.ObjectDesc.DisplayId ??
-                      projectile.ProjectileOwner.Self.ObjectDesc.ObjectId,
-                      projectile.ProjectileOwner.Self);
+                Death(shooter.ObjectDesc?.DisplayId ??
+                      shooter.ObjectDesc?.ObjectId ??
+                      shooter.Name,
+                      shooter);
 
             return base.HitByProjectile(projectile, time);
         }
