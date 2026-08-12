@@ -830,6 +830,9 @@ public partial class WorldController : Node
         if (Input.IsActionJustPressed("interact"))
             Interact();
 
+        if (Input.IsActionJustPressed("switch_tabs"))
+            _hud?.SwitchTab();
+
         if (Input.IsActionJustPressed("toggle_hud"))
         {
             HudHidden = !HudHidden;

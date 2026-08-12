@@ -25,7 +25,14 @@ namespace Hendra.UI;
 /// </remarks>
 public partial class HudView : Control
 {
-    private const int PanelWidth = 232;
+    /// <summary>
+    /// Width of the column, in pixels.
+    /// </summary>
+    /// <remarks>
+    /// The original's: its stage was eight hundred wide and the HUD started at six hundred. The
+    /// slot size follows from it — four across with margins between.
+    /// </remarks>
+    private const int PanelWidth = 200;
     private const int SlotSize = 40;
     private const int SlotsPerRow = 4;
 
@@ -48,6 +55,14 @@ public partial class HudView : Control
 
     /// <summary>The backpack section, shown only once the character owns one.</summary>
     private VBoxContainer _backpackPanel;
+
+    private VBoxContainer _inventoryPanel;
+    private HBoxContainer _tabs;
+    private Button _inventoryTab;
+    private Button _backpackTab;
+
+    /// <summary>Which of the two carried grids the strip is showing.</summary>
+    private bool _showingBackpack;
 
     /// <summary>Raised with the slot's index in the player's 24-entry equipment array.</summary>
     public event Action<int> SlotActivated;
@@ -132,15 +147,23 @@ public partial class HudView : Control
         column.AddChild(new Label { Text = "Equipment" });
         AddSlots(column, _equipment, EquipmentSlots, firstIndex: 0);
 
-        column.AddChild(new Label { Text = "Inventory" });
-        AddSlots(column, _inventory, InventorySlots, firstIndex: 8);
+        // Inventory and backpack share the space, as they do in the original: a strip of two tabs
+        // above one grid, rather than both grids stacked. The backpack tab only appears for a
+        // character that has bought the bag -- the stat that grants it is HasBackpack, and until
+        // then the server refuses a swap into those slots anyway.
+        _tabs = new HBoxContainer();
+        _tabs.AddThemeConstantOverride("separation", 4);
+        column.AddChild(_tabs);
 
-        // Eight more carried slots, and only there for a character that has bought the bag. The
-        // stat that grants them is HasBackpack; until then the slots exist in the data model and
-        // are simply not shown, which is what the server expects -- it refuses a swap into them.
+        _inventoryTab = AddTab("Inventory", showBackpack: false);
+        _backpackTab = AddTab("Backpack", showBackpack: true);
+
+        _inventoryPanel = new VBoxContainer();
+        column.AddChild(_inventoryPanel);
+        AddSlots(_inventoryPanel, _inventory, InventorySlots, firstIndex: 8);
+
         _backpackPanel = new VBoxContainer { Visible = false };
         column.AddChild(_backpackPanel);
-        _backpackPanel.AddChild(new Label { Text = "Backpack" });
         AddSlots(_backpackPanel, _backpack, BackpackSlots, firstIndex: 16);
 
         // Only present while standing over something that holds items.
@@ -288,6 +311,35 @@ public partial class HudView : Control
         _buy.Disabled = purse < merchant.MerchandisePrice;
     }
 
+    /// <summary>One tab in the strip over the carried grids.</summary>
+    private Button AddTab(string text, bool showBackpack)
+    {
+        var tab = new Button
+        {
+            Text = text,
+            ToggleMode = true,
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            ButtonPressed = !showBackpack,
+        };
+
+        tab.Pressed += () => ShowTab(showBackpack);
+        _tabs.AddChild(tab);
+        return tab;
+    }
+
+    /// <summary>Switches which carried grid is showing. Bound to B, as the original bound it.</summary>
+    public void SwitchTab() => ShowTab(!_showingBackpack);
+
+    private void ShowTab(bool showBackpack)
+    {
+        _showingBackpack = showBackpack;
+
+        _inventoryPanel.Visible = !showBackpack;
+        _backpackPanel.Visible = showBackpack;
+        _inventoryTab.ButtonPressed = !showBackpack;
+        _backpackTab.ButtonPressed = showBackpack;
+    }
+
     private void AddSlots(Control parent, List<SlotView> into, int count, int firstIndex)
     {
         var grid = new GridContainer { Columns = SlotsPerRow };
@@ -327,7 +379,11 @@ public partial class HudView : Control
         UpdateSlots(_equipment, player, 0);
         UpdateSlots(_inventory, player, 8);
 
-        _backpackPanel.Visible = player.HasBackpack;
+        // The tab disappears with the bag, and takes the view back to the inventory with it.
+        _backpackTab.Visible = player.HasBackpack;
+        if (!player.HasBackpack && _showingBackpack)
+            ShowTab(showBackpack: false);
+
         if (player.HasBackpack)
             UpdateSlots(_backpack, player, 16);
     }
