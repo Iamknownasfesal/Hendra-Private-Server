@@ -155,6 +155,7 @@ public partial class WorldController : Node
         _minimap = minimap;
         _strings = App.ServiceLocator.Strings ?? _strings;
         _overlay = overlay;
+        _overlay?.Configure(new SheetConditionIcons(assets));
         _hud = hud;
         _chat = chat;
 
@@ -217,8 +218,19 @@ public partial class WorldController : Node
     // Packet handling
     // ------------------------------------------------------------------------------------------
 
+    /// <summary>Raised when a world is named, so the loading screen can say where you are going.</summary>
+    public event System.Action<string, int> WorldEntering;
+
+    /// <summary>Raised once the player is standing in it.</summary>
+    public event System.Action WorldEntered;
+
+    private bool _announcedArrival;
+
     private void OnMapLoaded(MapInfoPacket mapInfo)
     {
+        _announcedArrival = false;
+        WorldEntering?.Invoke(mapInfo.DisplayName ?? mapInfo.Name, mapInfo.Difficulty);
+
         _audio?.PlayMusic(mapInfo.Music);
         _map.Reset(mapInfo.Width, mapInfo.Height, mapInfo.Name);
         _combat.Clear();
@@ -267,8 +279,27 @@ public partial class WorldController : Node
         // The player entity itself arrives in the first Update, not here.
     }
 
+    /// <summary>
+    /// Says the world is standing up, once the player is actually in it.
+    /// </summary>
+    /// <remarks>
+    /// The first Update carries the player and the ground around them, which is the earliest moment
+    /// there is anything worth looking at. Lifting the cover on MapInfo instead would show a map
+    /// assembling itself, which is the thing the cover exists to hide.
+    /// </remarks>
+    private void AnnounceArrival()
+    {
+        if (_announcedArrival || _map?.Player == null)
+            return;
+
+        _announcedArrival = true;
+        WorldEntered?.Invoke();
+    }
+
     private void OnWorldUpdated(UpdatePacket update)
     {
+        AnnounceArrival();
+
         foreach (var tile in update.Tiles)
         {
             _map.SetTile(tile.X, tile.Y, tile.Type);
@@ -1062,7 +1093,7 @@ public partial class WorldController : Node
         DrawEntities(now, _cameraAngle);
         DrawProjectiles(now);
         DrawParticles();
-        DrawOverlay();
+        DrawOverlay(now);
 
         // One upload for however many tiles were baked while sweeping the visible area.
         _tileAtlas.Flush();
@@ -1251,6 +1282,50 @@ public partial class WorldController : Node
     }
 
     /// <summary>
+    /// The status icons showing on an entity, or null if it has none.
+    /// </summary>
+    /// <remarks>
+    /// One list per entity, kept and refilled rather than allocated: this runs for every visible
+    /// entity every frame, and most of them have nothing on them at all.
+    /// </remarks>
+    private System.Collections.Generic.List<int> ConditionsFor(Entity entity, int now)
+    {
+        if (entity.Conditions == ConditionEffects.None)
+            return null;
+
+        if (!_conditionIcons.TryGetValue(entity.ObjectId, out var icons))
+        {
+            icons = new System.Collections.Generic.List<int>(4);
+            _conditionIcons[entity.ObjectId] = icons;
+        }
+
+        Render.ConditionIcons.Collect(entity.Conditions, now, icons);
+        return icons.Count == 0 ? null : icons;
+    }
+
+    private readonly System.Collections.Generic.Dictionary<int, System.Collections.Generic.List<int>>
+        _conditionIcons = new();
+
+    /// <summary>Cuts status icons out of the sheet the original takes them from.</summary>
+    private sealed class SheetConditionIcons : Render.IConditionSheet
+    {
+        private readonly Assets.AssetLibrary _assets;
+
+        public SheetConditionIcons(Assets.AssetLibrary assets) => _assets = assets;
+
+        public Godot.Texture2D Texture =>
+            _assets?.GetSprite(Render.ConditionIcons.Sheet, 0).Sheet;
+
+        public Godot.Rect2? Region(int index)
+        {
+            var sprite = _assets?.GetSprite(Render.ConditionIcons.Sheet, index) ?? default;
+            return sprite.IsValid
+                ? new Godot.Rect2(sprite.Region.Position, sprite.Region.Size)
+                : null;
+        }
+    }
+
+    /// <summary>
     /// Lays the flash colour over an entity that is pulsing.
     /// </summary>
     /// <remarks>
@@ -1392,7 +1467,7 @@ public partial class WorldController : Node
     /// <summary>The entity the server has named as the current objective, or zero for none.</summary>
     private int _questObjectId;
 
-    private void DrawOverlay()
+    private void DrawOverlay(int now)
     {
         if (_overlay == null)
             return;
@@ -1433,6 +1508,7 @@ public partial class WorldController : Node
                 Hp = entity.Hp,
                 MaxHp = entity.MaxHp,
                 ShowHealthBar = showBar,
+                Conditions = ConditionsFor(entity, now),
             });
         }
 

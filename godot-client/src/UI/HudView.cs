@@ -293,12 +293,10 @@ public partial class HudView : Control
         if (container == null)
             return;
 
-        // The Name stat if the server sent one, otherwise what the data calls it. A chest with
-        // neither is just "Contents".
-        string name = !string.IsNullOrEmpty(container.Name)
-            ? container.Name
-            : _data?.GetObject(container.ObjectType)?.DisplayId
-              ?? _data?.GetObject(container.ObjectType)?.Id;
+        // What the data calls it, not the Name stat -- a vault chest's Name is how full it is, and
+        // "0/8" is a fine thing to write over the chest but not a title for the panel.
+        var chest = _data?.GetObject(container.ObjectType);
+        string name = chest?.DisplayId ?? chest?.Id;
 
         _containerName.Text = string.IsNullOrEmpty(name) ? "Contents" : name;
 

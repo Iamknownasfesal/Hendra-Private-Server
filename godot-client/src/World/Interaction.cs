@@ -119,18 +119,34 @@ public sealed class Interaction
         return desc.Class switch
         {
             "Portal" or "GuildHallPortal" => InteractionKind.Portal,
-            "Container" or "OneWayContainer" or "ClosedVaultChest" or "ClosedGiftChest" =>
-                InteractionKind.Container,
-            "Merchant" or "GuildMerchant" => InteractionKind.Merchant,
+
+            // Only the chests that actually hold something. A ClosedVaultChest is a SellableObject
+            // in the original -- a chest you buy, not one you open -- and a ClosedGiftChest is a
+            // gift waiting to be claimed. Treating either as a container put an empty eight-slot
+            // grid on screen for something that has no contents to show.
+            "Container" or "OneWayContainer" => InteractionKind.Container,
+
+            // Bought rather than opened, and the server sends both of them the same merchandise
+            // stats a merchant has, so the same panel serves.
+            "Merchant" or "GuildMerchant" or "ClosedVaultChest" => InteractionKind.Merchant,
+
             _ => InteractionKind.None,
         };
     }
 
+    /// <summary>
+    /// What the prompt calls the thing in front of the player.
+    /// </summary>
+    /// <remarks>
+    /// The data's name for it, not the Name stat. A vault chest's Name is how full it is -- "0/8" --
+    /// which belongs over the chest, where the server means it to go, and not in a sentence reading
+    /// "Open 0/8". The stat is only preferred where it is genuinely a name, which is a player's.
+    /// </remarks>
     private static string LabelFor(Entity entity, InteractionKind kind)
     {
-        string name = !string.IsNullOrEmpty(entity.Name)
-            ? entity.Name
-            : entity.Desc?.DisplayId ?? entity.Desc?.Id ?? "it";
+        string name = entity.Desc?.DisplayId ?? entity.Desc?.Id;
+        if (string.IsNullOrEmpty(name))
+            name = !string.IsNullOrEmpty(entity.Name) ? entity.Name : "it";
 
         return kind switch
         {

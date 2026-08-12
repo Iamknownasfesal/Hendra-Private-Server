@@ -30,6 +30,8 @@ public partial class GameScene : Node
 
     /// <summary>The layer every panel lives on, so hiding the interface is one flag.</summary>
     private CanvasLayer _ui;
+    private CanvasLayer _loadingLayer;
+    private MapLoadingView _loading;
     private WorldController _controller;
     private GameSession _session;
 
@@ -80,6 +82,14 @@ public partial class GameScene : Node
 
         _overlay = new WorldOverlay();
         _ui.AddChild(_overlay);
+
+        // Above the interface, because it covers the whole screen including the HUD while a world
+        // is being entered.
+        _loadingLayer = new CanvasLayer { Layer = 5 };
+        AddChild(_loadingLayer);
+
+        _loading = new MapLoadingView { Visible = false };
+        _loadingLayer.AddChild(_loading);
 
         _hud = new HudView();
         _hud.Configure(ServiceLocator.Assets, ServiceLocator.Data);
@@ -157,6 +167,8 @@ public partial class GameScene : Node
         // The interface is one CanvasLayer, so hiding it is one flag rather than a visit to every
         // panel. The world keeps drawing underneath.
         _controller.HudVisibilityChanged += hidden => _ui.Visible = !hidden;
+        _controller.WorldEntering += (name, difficulty) => _loading?.Show(name, difficulty);
+        _controller.WorldEntered += () => _loading?.Finish();
         _controller.OptionsToggled += () => _options.Toggle();
         _controller.GuildToggled += () =>
         {
@@ -296,6 +308,8 @@ public partial class GameScene : Node
         // The interface is one CanvasLayer, so hiding it is one flag rather than a visit to every
         // panel. The world keeps drawing underneath.
         _controller.HudVisibilityChanged += hidden => _ui.Visible = !hidden;
+        _controller.WorldEntering += (name, difficulty) => _loading?.Show(name, difficulty);
+        _controller.WorldEntered += () => _loading?.Finish();
         _controller.OptionsToggled += () => _options.Toggle();
         _controller.GuildToggled += () =>
         {

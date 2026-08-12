@@ -4,6 +4,21 @@ using Godot;
 namespace Hendra.Render;
 
 /// <summary>One entity's on-screen furniture: a health bar, a name, or both.</summary>
+/// <summary>
+/// Where status icons come from.
+/// </summary>
+/// <remarks>
+/// An interface so the overlay stays a drawing concern: it needs a texture and a rectangle, not the
+/// asset library's view of the world.
+/// </remarks>
+public interface IConditionSheet
+{
+    Godot.Texture2D Texture { get; }
+
+    /// <summary>The rectangle for a sprite index, or null if the sheet has no such sprite.</summary>
+    Godot.Rect2? Region(int index);
+}
+
 public struct OverlayItem
 {
     /// <summary>Where the entity's feet land on screen, in pixels.</summary>
@@ -15,6 +30,15 @@ public struct OverlayItem
     public int Hp;
     public int MaxHp;
     public bool ShowHealthBar;
+
+    /// <summary>
+    /// Sprite indices into the condition sheet, one per effect currently showing.
+    /// </summary>
+    /// <remarks>
+    /// Resolved by the caller rather than here, because which frame a multi-frame icon is on
+    /// depends on the clock and the overlay does not have one.
+    /// </remarks>
+    public System.Collections.Generic.List<int> Conditions;
 }
 
 /// <summary>
@@ -39,11 +63,20 @@ public partial class WorldOverlay : Control
     private const float BarOffsetY = 4f;
     private const float NameOffsetY = -6f;
 
+    /// <summary>How far above the anchor the row of status icons sits, clear of the health bar.</summary>
+    private const float ConditionOffsetY = -30f;
+
     private static readonly Color BarBackground = new(0.33f, 0.33f, 0.33f);
     private static readonly Color BarFill = new(0.06f, 1.0f, 0.0f);
     private static readonly Color BarLowFill = new(1.0f, 0.15f, 0.0f);
 
     private readonly List<OverlayItem> _items = new(128);
+
+    /// <summary>The sheet status icons are cut from, or null before the assets are configured.</summary>
+    private IConditionSheet _conditionSheet;
+
+    /// <summary>Supplies the icon sheet, so the overlay does not have to know how assets are stored.</summary>
+    public void Configure(IConditionSheet conditionSheet) => _conditionSheet = conditionSheet;
 
     /// <summary>Where the quest objective is on screen, or null when there is none.</summary>
     private Vector2? _questTarget;
@@ -96,10 +129,47 @@ public partial class WorldOverlay : Control
 
             if (!string.IsNullOrEmpty(item.Name))
                 DrawName(item);
+
+            if (item.Conditions is { Count: > 0 })
+                DrawConditions(item);
         }
 
         if (_questTarget.HasValue)
             DrawQuestMarker(_questTarget.Value, bounds);
+    }
+
+    /// <summary>
+    /// The status effects on an entity, in a row above it.
+    /// </summary>
+    /// <remarks>
+    /// Above the health bar and centred on the entity, as the original places them, so a stack of
+    /// effects grows outward from the middle rather than off to one side. Sixteen pixels each: the
+    /// original composites an eight-pixel sprite into a sixteen-pixel square with a white outline
+    /// glow, which is what makes them legible against a lit floor.
+    /// </remarks>
+    private void DrawConditions(in OverlayItem item)
+    {
+        if (_conditionSheet == null)
+            return;
+
+        const float Size = 16f;
+
+        int count = item.Conditions.Count;
+        float left = item.Anchor.X - Size * count / 2f;
+        float top = item.Anchor.Y + ConditionOffsetY;
+
+        for (int i = 0; i < count; i++)
+        {
+            var region = _conditionSheet.Region(item.Conditions[i]);
+            if (!region.HasValue)
+                continue;
+
+            var box = new Rect2(left + i * Size, top, Size, Size);
+
+            // A disc behind each one, so a pale icon still reads over a pale floor.
+            DrawCircle(box.Position + box.Size / 2f, Size * 0.42f, new Color(0f, 0f, 0f, 0.45f));
+            DrawTextureRectRegion(_conditionSheet.Texture, box.Grow(-2f), region.Value);
+        }
     }
 
     /// <summary>
