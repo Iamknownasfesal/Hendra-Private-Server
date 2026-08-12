@@ -202,6 +202,24 @@ public sealed class ObjectDesc
     /// <summary>Which equipment slot this fits. -1 means it is not equipment.</summary>
     public int SlotType = -1;
 
+    /// <summary>Quality, zero upward. Negative for anything untiered, which is how UT items read.</summary>
+    public int Tier = -1;
+
+    /// <summary>The flavour line the tooltip ends with.</summary>
+    public string Description;
+
+    /// <summary>Fame earned for feeding this to a pet, and a rough proxy for how good it is.</summary>
+    public int FeedPower;
+
+    /// <summary>
+    /// What equipping this adds to each stat, as (stat, amount) pairs.
+    /// </summary>
+    /// <remarks>
+    /// The stat is one of the wire enum's, translated from the XML's own numbering on the way in --
+    /// the two disagree, and 21 means Defense in the file and Inventory13 in the enum.
+    /// </remarks>
+    public (int Stat, int Amount)[] EquipBonuses = System.Array.Empty<(int, int)>();
+
     /// <summary>
     /// Multiplier on the wielder's attack rate. The server's shot-cooldown check divides by this,
     /// so a mismatch here means shots are silently rejected.

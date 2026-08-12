@@ -100,6 +100,8 @@ public partial class HudView : Control
     private Label _price;
     private Button _buy;
     private VBoxContainer _party;
+    private VBoxContainer _partyPanel;
+    private Label _containerName;
 
     private AssetLibrary _assets;
     private GameData _data;
@@ -197,7 +199,11 @@ public partial class HudView : Control
         // Only present while standing over something that holds items.
         _containerPanel = new VBoxContainer { Visible = false };
         column.AddChild(_containerPanel);
-        _containerPanel.AddChild(new Label { Text = "Contents" });
+
+        // Named after whatever is being looked into, so it is obvious which chest the grid belongs
+        // to when there are several on the floor.
+        _containerName = new Label { Text = "Contents" };
+        _containerPanel.AddChild(_containerName);
         AddContainerSlots(_containerPanel, ContainerSlots);
 
         // Only present while standing at a vendor.
@@ -219,10 +225,20 @@ public partial class HudView : Control
         _buy.Pressed += () => BuyPressed?.Invoke();
         _merchantPanel.AddChild(_buy);
 
-        column.AddChild(new HSeparator());
-        column.AddChild(new Label { Text = "Nearby" });
+        // Nearby players. Hidden outright when there are none, which is most of the time -- a
+        // heading with nothing under it is three lines of column spent saying nothing, and this
+        // sits at the foot where the space runs out first.
+        _partyPanel = new VBoxContainer { Visible = false };
+        column.AddChild(_partyPanel);
+        _partyPanel.AddChild(new HSeparator());
+
+        var partyHeading = new Label { Text = "Nearby" };
+        partyHeading.AddThemeColorOverride("font_color", new Color(0.66f, 0.66f, 0.66f));
+        _partyPanel.AddChild(partyHeading);
+
         _party = new VBoxContainer();
-        column.AddChild(_party);
+        _party.AddThemeConstantOverride("separation", 0);
+        _partyPanel.AddChild(_party);
 
         // Sits over the world rather than in the panel, because it refers to something in front of
         // the player rather than to their own state.
@@ -277,6 +293,15 @@ public partial class HudView : Control
         if (container == null)
             return;
 
+        // The Name stat if the server sent one, otherwise what the data calls it. A chest with
+        // neither is just "Contents".
+        string name = !string.IsNullOrEmpty(container.Name)
+            ? container.Name
+            : _data?.GetObject(container.ObjectType)?.DisplayId
+              ?? _data?.GetObject(container.ObjectType)?.Id;
+
+        _containerName.Text = string.IsNullOrEmpty(name) ? "Contents" : name;
+
         for (int i = 0; i < _container.Count; i++)
         {
             int type = container.Equipment != null && i < container.Equipment.Length
@@ -291,7 +316,7 @@ public partial class HudView : Control
 
             var desc = _data?.GetObject((ushort)type);
             var resolved = _textures?.Resolve(desc?.Texture) ?? default;
-            _container[i].SetItem(resolved.Still, desc?.DisplayId ?? desc?.Id);
+            _container[i].SetItem(resolved.Still, ItemTooltip.Describe(desc));
         }
     }
 
@@ -299,6 +324,10 @@ public partial class HudView : Control
     public void ShowParty(IReadOnlyList<PartyMember> members)
     {
         if (_party == null)
+            return;
+
+        _partyPanel.Visible = members.Count > 0;
+        if (members.Count == 0)
             return;
 
         // Few enough entries, changing seldom enough, that rebuilding the rows is simpler than
@@ -309,10 +338,32 @@ public partial class HudView : Control
         foreach (var member in members)
         {
             float fraction = member.MaxHp > 0 ? member.Hp / (float)member.MaxHp : 0f;
-            _party.AddChild(new Label
+
+            var row = new HBoxContainer();
+            row.AddThemeConstantOverride("separation", 6);
+
+            var name = new Label
             {
-                Text = $"{(member.Starred ? "* " : string.Empty)}{member.Name}  {(int)(fraction * 100)}%",
-            });
+                Text = $"{(member.Starred ? "★ " : string.Empty)}{member.Name}",
+                SizeFlagsHorizontal = SizeFlags.ExpandFill,
+                ClipText = true,
+            };
+            name.AddThemeFontSizeOverride("font_size", 13);
+            row.AddChild(name);
+
+            // Red as it falls, so a name worth reacting to stands out without being read.
+            var health = new Label
+            {
+                Text = $"{(int)(fraction * 100)}%",
+                HorizontalAlignment = HorizontalAlignment.Right,
+            };
+            health.AddThemeFontSizeOverride("font_size", 13);
+            health.AddThemeColorOverride("font_color", fraction < 0.35f
+                ? new Color(0.95f, 0.35f, 0.35f)
+                : new Color(0.72f, 0.72f, 0.72f));
+            row.AddChild(health);
+
+            _party.AddChild(row);
         }
     }
 
@@ -328,7 +379,7 @@ public partial class HudView : Control
 
         var desc = _data?.GetObject((ushort)merchant.MerchandiseType);
         var resolved = _textures?.Resolve(desc?.Texture) ?? default;
-        _merchandise.SetItem(resolved.Still, desc?.DisplayId ?? desc?.Id);
+        _merchandise.SetItem(resolved.Still, ItemTooltip.Describe(desc));
 
         // Currency zero is gold; anything else is fame on this server build.
         bool fame = merchant.MerchandiseCurrency != 0;
@@ -624,7 +675,7 @@ public partial class HudView : Control
 
             var desc = _data?.GetObject((ushort)type);
             var resolved = _textures?.Resolve(desc?.Texture) ?? default;
-            views[i].SetItem(resolved.Still, desc?.DisplayId ?? desc?.Id);
+            views[i].SetItem(resolved.Still, ItemTooltip.Describe(desc));
         }
     }
 }

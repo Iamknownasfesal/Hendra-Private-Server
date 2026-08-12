@@ -151,6 +151,10 @@ public sealed class GameData
             Rotation = Float(e, "Rotation", 0f),
 
             SlotType = Int(e, "SlotType", -1),
+            Tier = Int(e, "Tier", -1),
+            Description = Text(e, "Description"),
+            FeedPower = Int(e, "feedPower", 0),
+            EquipBonuses = ParseEquipBonuses(e),
             RateOfFire = Float(e, "RateOfFire", 1f),
             NumProjectiles = Int(e, "NumProjectiles", 1),
             MpCost = Int(e, "MpCost", 0),
@@ -456,6 +460,45 @@ public sealed class GameData
 
         return maxima;
     }
+
+    /// <summary>
+    /// What equipping an item adds to each stat.
+    /// </summary>
+    /// <remarks>
+    /// The stat attribute uses the old client's numbering -- 20 Attack, 21 Defense, 22 Speed,
+    /// 26 Vitality, 27 Wisdom, 28 Dexterity -- which is not the wire enum's, where those same
+    /// numbers are inventory slots. Translating here means everything downstream can speak one
+    /// language. MaxHP and MaxMP agree in both and pass through.
+    /// </remarks>
+    private static (int Stat, int Amount)[] ParseEquipBonuses(XElement e)
+    {
+        var bonuses = new List<(int, int)>();
+
+        foreach (var element in e.Elements("ActivateOnEquip"))
+        {
+            if (element.Value?.Trim() != "IncrementStat")
+                continue;
+
+            if (!int.TryParse(element.Attribute("stat")?.Value, out int stat) ||
+                !int.TryParse(element.Attribute("amount")?.Value, out int amount))
+                continue;
+
+            bonuses.Add((XmlStat(stat), amount));
+        }
+
+        return bonuses.Count == 0 ? System.Array.Empty<(int, int)>() : bonuses.ToArray();
+    }
+
+    private static int XmlStat(int stat) => stat switch
+    {
+        20 => (int)StatsType.Attack,
+        21 => (int)StatsType.Defense,
+        22 => (int)StatsType.Speed,
+        26 => (int)StatsType.Vitality,
+        27 => (int)StatsType.Wisdom,
+        28 => (int)StatsType.Dexterity,
+        _ => stat,
+    };
 
     private static bool Has(XElement e, string name) => e.Element(name) != null;
 
