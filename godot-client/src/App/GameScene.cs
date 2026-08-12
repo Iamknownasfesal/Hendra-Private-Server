@@ -216,7 +216,9 @@ public partial class GameScene : Node
         // wrong password.
         if (!string.IsNullOrWhiteSpace(description))
         {
-            GD.PushWarning($"[game] {description}");
+            // The account is named because the server's "Bad Login" covers both a wrong password
+            // and an account that does not exist, so the message alone never says whose fault it is.
+            GD.PushWarning($"[game] {_guid}: {description}");
             Ended?.Invoke(description);
             return;
         }
