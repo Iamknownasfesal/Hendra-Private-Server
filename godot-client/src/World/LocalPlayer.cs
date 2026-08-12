@@ -79,6 +79,19 @@ public sealed class LocalPlayer : Entity
     /// <summary>Whether the character owns a backpack, which is what makes slots 16-23 usable.</summary>
     public bool HasBackpack;
 
+    /// <summary>
+    /// How many of each stacked potion is held.
+    /// </summary>
+    /// <remarks>
+    /// These do not live in the inventory array. The server keeps two counted stacks per player and
+    /// addresses them on the wire by slot id -- 254 and 255 -- rather than by index, and sends the
+    /// counts as their own stats. The ceiling is the server's <c>MaxStackablePotions</c>, six on
+    /// this build, which nothing on the wire carries.
+    /// </remarks>
+    public int HealthPotions;
+
+    public int MagicPotions;
+
     /// <summary>Terrain speed factor, updated whenever the player changes tile.</summary>
     public float MoveMultiplier = 1f;
 

@@ -253,6 +253,34 @@ public sealed class Inventory
         return -1;
     }
 
+    /// <summary>
+    /// Drops a carried item on the ground.
+    /// </summary>
+    /// <remarks>
+    /// The server puts it in a bag where the player is standing. Unlike a swap this is not applied
+    /// optimistically: the server refuses in more cases than the client can predict -- the Nexus,
+    /// a trade in progress, a stacked item -- and an item that vanishes from its slot and comes
+    /// back a tick later reads as the game losing it. The inventory arrives as a stat, so the slot
+    /// empties as soon as the server agrees.
+    /// </remarks>
+    public void Drop(int slotIndex)
+    {
+        var player = _map.Player;
+        if (player?.Equipment == null || slotIndex < 0 || slotIndex >= player.Equipment.Length)
+            return;
+
+        int type = player.Equipment[slotIndex];
+        if (type == NoItem)
+            return;
+
+        _session.Send(new InvDropPacket
+        {
+            Slot = new SlotObject(player.ObjectId, (byte)slotIndex, type),
+        });
+
+        App.ServiceLocator.Audio?.PlayEffect("inventory_move_item");
+    }
+
     /// <summary>Drinks one of the two stacked potions, which are addressed by slot id, not index.</summary>
     public void UsePotion(bool health)
     {
@@ -323,6 +351,25 @@ public sealed class Inventory
             var item = _data.GetObject((ushort)type);
             return item is { Usable: true } ? item : null;
         }
+    }
+
+    /// <summary>
+    /// How much of the ability's cooldown is left, in milliseconds, and how long it was.
+    /// </summary>
+    /// <remarks>
+    /// Both come from the timestamp the cooldown was set against rather than from a countdown, so
+    /// the wipe the interface draws over the slot stays right across a window that was not being
+    /// drawn -- half a minute tabbed out is half a minute of cooldown, not half a minute of frames
+    /// that never happened.
+    /// </remarks>
+    public (float Remaining, float Total) AbilityCooldown(int nowMs)
+    {
+        var ability = EquippedAbility;
+        if (ability == null)
+            return (0f, 0f);
+
+        float total = ability.CooldownMs > 0 ? ability.CooldownMs : DefaultAbilityCooldownMs;
+        return (MathF.Max(0f, _abilityReadyAtMs - nowMs), total);
     }
 
     /// <summary>Whether the ability is off cooldown and there is enough magic for it.</summary>

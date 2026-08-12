@@ -142,9 +142,35 @@ public sealed class Interaction
     /// which belongs over the chest, where the server means it to go, and not in a sentence reading
     /// "Open 0/8". The stat is only preferred where it is genuinely a name, which is a player's.
     /// </remarks>
+    /// <summary>
+    /// Puts the spaces back into an identifier: VaultChest becomes Vault Chest.
+    /// </summary>
+    /// <remarks>
+    /// Only reached when an object has no display name, which happens more than it should: a world
+    /// that ships its own XML can redefine an object without one, and the prompt then reads out the
+    /// identifier the data file uses rather than the words on the panel it opens.
+    /// </remarks>
+    private static string Spaced(string id)
+    {
+        if (string.IsNullOrEmpty(id))
+            return id;
+
+        var text = new System.Text.StringBuilder(id.Length + 4);
+
+        for (int i = 0; i < id.Length; i++)
+        {
+            if (i > 0 && char.IsUpper(id[i]) && !char.IsUpper(id[i - 1]))
+                text.Append(' ');
+
+            text.Append(id[i]);
+        }
+
+        return text.ToString();
+    }
+
     private static string LabelFor(Entity entity, InteractionKind kind)
     {
-        string name = entity.Desc?.DisplayId ?? entity.Desc?.Id;
+        string name = entity.Desc?.DisplayId ?? Spaced(entity.Desc?.Id);
         if (string.IsNullOrEmpty(name))
             name = !string.IsNullOrEmpty(entity.Name) ? entity.Name : "it";
 

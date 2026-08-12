@@ -59,6 +59,12 @@ public sealed class LaunchOptions
     /// </remarks>
     public bool AutoWalk { get; private set; }
 
+    /// <summary>Opens the character sheet on arrival, so an unattended run can screenshot it.</summary>
+    public bool OpenCharacterPanel { get; private set; }
+
+    /// <summary>The same, for the account panel.</summary>
+    public bool OpenAccountPanel { get; private set; }
+
     /// <summary>
     /// Starting camera heading in degrees, or null for the usual one.
     /// </summary>
@@ -108,6 +114,8 @@ public sealed class LaunchOptions
                 case "--autofire": options.Autofire = true; break;
                 case "--use-ability": options.AutoAbility = true; break;
                 case "--walk": options.AutoWalk = true; break;
+                case "--character": options.OpenCharacterPanel = true; break;
+                case "--account": options.OpenAccountPanel = true; break;
                 case "--camera-angle": options.CameraAngleDegrees = ParseFloat(Next(), 0f); break;
                 case "--say":
                 {

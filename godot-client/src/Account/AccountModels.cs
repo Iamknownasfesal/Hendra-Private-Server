@@ -58,6 +58,19 @@ public sealed class CharacterInfo
     public bool Dead;
     public bool HasBackpack;
     public int[] Equipment = Array.Empty<int>();
+
+    /// <summary>
+    /// When the character was rolled, or null on a server that does not say.
+    /// </summary>
+    /// <remarks>
+    /// The field has always been in the server's database and its character model; it was simply
+    /// never written into the list's XML. Null here means an older server, and the panel leaves the
+    /// line out rather than inventing a date.
+    /// </remarks>
+    public DateTime? CreatedAt;
+
+    /// <summary>The character's tallies, live. See <see cref="CharacterStats"/>.</summary>
+    public CharacterStats Stats = CharacterStats.Parse(null);
 }
 
 /// <summary>The account itself.</summary>
@@ -178,7 +191,28 @@ public sealed class CharListResult
         Dead = Bool(Text(e, "Dead")),
         HasBackpack = Text(e, "HasBackpack") == "1",
         Equipment = SplitInts(Text(e, "Equipment")),
+        CreatedAt = Timestamp(Text(e, "CreateTime")),
+        Stats = CharacterStats.Parse(Text(e, "PCStats")),
     };
+
+    /// <summary>
+    /// A round-trip timestamp, or null if the server sent none or sent a default one.
+    /// </summary>
+    /// <remarks>
+    /// Characters rolled before the server wrote the field carry the zero date, and "Created on
+    /// 1 January 0001" is worse than no line at all.
+    /// </remarks>
+    private static DateTime? Timestamp(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        if (!DateTime.TryParse(value, CultureInfo.InvariantCulture,
+                DateTimeStyles.RoundtripKind, out var parsed))
+            return null;
+
+        return parsed.Year < 2000 ? null : parsed;
+    }
 
     private static AccountInfo ParseAccount(XElement e) => new()
     {

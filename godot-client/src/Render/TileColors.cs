@@ -40,6 +40,39 @@ public sealed class TileColors
         return colour;
     }
 
+    /// <summary>
+    /// A representative colour for an object, for the walls and scenery baked into the map.
+    /// </summary>
+    /// <remarks>
+    /// The original keeps the same table -- <c>objectTypeColorDict_</c> -- and fills it from the
+    /// object's own artwork the first time it sees one of that type. A wall is whatever colour its
+    /// sprite mostly is, which is why a minimap of a dungeon reads as its floor plan.
+    /// </remarks>
+    public Color Get(ObjectDesc desc)
+    {
+        if (desc == null)
+            return Colors.Black;
+
+        // Objects and ground share the cache: their type numbers come from the same space.
+        if (_objects.TryGetValue(desc.Type, out var cached))
+            return cached;
+
+        var spec = desc.Texture;
+        if (spec is { Kind: TextureKind.Random, Variants.Count: > 0 })
+            spec = spec.Variants[0];
+
+        var colour = spec?.File == null
+            ? Colors.Black
+            : Colour(_assets.GetSprite(spec.File, spec.Index));
+
+        _objects[desc.Type] = colour;
+        return colour;
+    }
+
+    private readonly Dictionary<ushort, Color> _objects = new();
+
+    private Color Colour(Sprite sprite) => sprite.IsValid ? MostCommonColour(sprite) : Colors.Black;
+
     private Color Derive(GroundDesc desc)
     {
         if (desc.Color >= 0)

@@ -43,6 +43,10 @@
     <Compile Include="../../src/Account/AccountModels.cs" />
     <Compile Include="../../src/UI/ItemTooltip.cs" />
     <Compile Include="../../src/UI/Fame.cs" />
+    <!-- The HUD's geometry is deliberately engine-free so it can be checked at every resolution
+         the brief names without booting Godot. -->
+    <Compile Include="../../src/UI/HudLayout.cs" />
+    <Compile Include="../../src/Account/CharacterStats.cs" />
     <Compile Include="../../src/Resources/Descriptors.cs" />
     <Compile Include="../../src/Resources/GameData.cs" />
     <Compile Include="../../src/World/Movement.cs" />

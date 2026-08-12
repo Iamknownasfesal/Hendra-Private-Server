@@ -1,122 +1,136 @@
 using System.Collections.Generic;
 using Godot;
 using Hendra.Render;
+using Hendra.Resources;
 using Hendra.World;
 
 namespace Hendra.UI;
 
 /// <summary>
-/// The minimap: one pixel per tile, revealed as the server streams terrain in.
+/// The minimap: the world's floor painted a pixel to a tile, with a mark on it for everything
+/// nearby.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Backed by an <see cref="Image"/> the size of the world, written to as tiles arrive and uploaded
-/// only on the frames it actually changed. The original kept the same one-pixel-per-tile idea, but
-/// rebuilt its zoom levels by repeatedly halving a bitmap and drew through two masked Shape layers;
-/// here the whole thing is one texture drawn into a clipped frame.
+/// Terrain is back after revision one dropped it. It is one <see cref="Image"/> the size of the
+/// world, written to as tiles are revealed and uploaded to the GPU only when the player crosses
+/// into a new chunk -- not per frame, and not per tile. A realm streams tens of thousands of tiles
+/// in over a couple of minutes, and re-uploading a texture that size on every one of them is the
+/// difference between a map that costs nothing and one that costs more than the world does.
 /// </para>
 /// <para>
-/// The map rotates with the camera, so north on the minimap is whichever way the player is
-/// currently looking. That matches the original's behaviour and is what makes it usable at all
-/// while the camera turns.
+/// Nothing on it is clickable. Zooming is the + and - keys, which is how the original did it and
+/// what players already have their hand on; a pair of buttons in the corner of the map was one more
+/// thing covering the map.
+/// </para>
+/// <para>
+/// The map does not rotate. The original's did, and turning with the camera makes a map easier to
+/// follow while the camera is turning and much harder to remember afterwards; a fixed north means
+/// the shape of a dungeon is the same shape every time you look at it.
 /// </para>
 /// </remarks>
 public partial class MinimapView : Control
 {
-    private const int Diameter = 192;
-    private const int Margin = 12;
+    /// <summary>How many tiles fit across the map at each zoom step. Three, as the brief asks.</summary>
+    private static readonly float[] ZoomLevels = { 48f, 96f, 192f };
 
-    /// <summary>
-    /// The interface column the minimap sits at the top of, and the gap around it.
-    /// </summary>
-    /// <remarks>
-    /// The original's: a two-hundred-pixel column with a 192-pixel map inset four pixels either
-    /// side, so the map is very nearly the full width of the column and everything else in the
-    /// interface hangs below it.
-    /// </remarks>
-    private const int ColumnWidth = 200;
+    /// <summary>The most blips drawn in a frame, nearest first.</summary>
+    private const int MostBlips = 64;
 
-    private const int ColumnInset = 4;
+    private readonly List<(float Distance, float X, float Y, BlipKind Kind)> _blips = new(96);
 
-    /// <summary>How many tiles fit across the minimap by default. Smaller shows more detail.</summary>
-    private const float DefaultTilesAcross = 96f;
-
-    /// <summary>The zoom range, in tiles across. Beyond these the map is either useless or a dot.</summary>
-    private const float MinTilesAcross = 24f;
-
-    private const float MaxTilesAcross = 384f;
-
-    private float _tilesAcross = DefaultTilesAcross;
-
-    private Image _image;
-    private ImageTexture _texture;
-    private bool _dirty;
+    private HudPanel _panel;
+    private Terrain _terrain;
+    private Blips _canvas;
 
     private GameMap _map;
     private TileColors _colours;
 
-    private float _cameraAngle;
+    private Image _image;
+    private ImageTexture _texture;
 
-    /// <summary>
-    /// Zooms a step in or out.
-    /// </summary>
-    /// <param name="steps">Positive zooms in, showing fewer tiles.</param>
-    /// <remarks>
-    /// A halving each step rather than a fixed number of tiles, so the same key press feels the
-    /// same whether the map is showing a room or a realm.
-    /// </remarks>
-    public void Zoom(int steps)
+    /// <summary>Whether a tile has been written since the last upload.</summary>
+    private bool _dirty;
+
+    private int _level = 1;
+
+    /// <summary>How many times the map has been sent to the GPU. Zero while nothing is revealed.</summary>
+    public int TerrainUploads { get; private set; }
+
+    public override void _Ready()
     {
-        _tilesAcross = Mathf.Clamp(
-            _tilesAcross * Mathf.Pow(0.5f, steps), MinTilesAcross, MaxTilesAcross);
-        QueueRedraw();
+        MouseFilter = MouseFilterEnum.Ignore;
+
+        _panel = new HudPanel(Style.PanelSolid);
+        AddChild(_panel);
+
+        _terrain = new Terrain(this);
+        _panel.AddChild(_terrain);
+
+        _canvas = new Blips(this);
+        _panel.AddChild(_canvas);
+
+        _level = Mathf.Clamp(App.ServiceLocator.Settings?.MinimapZoom ?? 1, 0, ZoomLevels.Length - 1);
+
+        Resized += Reflow;
+        if (GetParent() is HudLayer layer)
+            layer.Reflowed += Reflow;
+
+        Reflow();
+    }
+
+    private void Reflow()
+    {
+        if (_panel == null)
+            return;
+
+        var layout = new HudLayout(Size.X > 0f && Size.Y > 0f
+            ? Size
+            : new Vector2(HudLayout.ReferenceWidth, HudLayout.ReferenceHeight));
+
+        var rect = layout.Minimap;
+        _panel.Position = rect.Position;
+        _panel.Size = rect.Size;
+
+        foreach (var child in new Control[] { _terrain, _canvas })
+        {
+            child.Position = Vector2.Zero;
+            child.Size = rect.Size;
+        }
     }
 
     public void Configure(GameMap map, TileColors colours)
     {
         _map = map;
         _colours = colours;
+
         _image = null;
         _texture = null;
-    }
-
-    public override void _Ready()
-    {
-        MouseFilter = MouseFilterEnum.Ignore;
-        SetAnchorsPreset(LayoutPreset.TopLeft);
-        Size = new Vector2(Diameter, Diameter);
-
-        // Clips this node's own drawing as well as its children, which is what keeps the rotated
-        // map inside the frame. Godot has no arbitrary-shape scissor, so the frame is square.
-        ClipContents = true;
-
-        GetViewport().SizeChanged += PlaceInColumn;
-        PlaceInColumn();
-    }
-
-    /// <summary>
-    /// Puts the map at the top of the interface column, as the original does.
-    /// </summary>
-    /// <remarks>
-    /// It was floating clear of the column before, which left a gap the original does not have and
-    /// pushed everything else down a screen it did not need to be pushed down.
-    /// </remarks>
-    private void PlaceInColumn()
-    {
-        var viewport = GetViewportRect().Size;
-        // Hard into the top-right corner, which is where the layout puts it: the currencies sit to
-        // its left and the nearby list under it.
-        Position = new Vector2(viewport.X - Diameter - Margin, Margin);
+        _dirty = false;
     }
 
     /// <summary>Records a revealed tile. Cheap enough to call for every tile of every Update.</summary>
-    public void SetTile(int x, int y, Square square)
+    public void SetTile(int x, int y, Square square) => Paint(x, y, _colours.Get(square.Desc));
+
+    /// <summary>
+    /// Paints a static object onto the map, over the ground it stands on.
+    /// </summary>
+    /// <remarks>
+    /// What makes a dungeon's minimap a floor plan rather than a wash of floor colour. The original
+    /// bakes an object in on exactly one condition -- static, occupying its square, and not marked
+    /// no-minimap -- and never takes it off again, which is why a wall you have blown up is still
+    /// on your map.
+    /// </remarks>
+    public void SetObject(int x, int y, ObjectDesc desc) => Paint(x, y, _colours.Get(desc));
+
+    private void Paint(int x, int y, Color colour)
     {
         EnsureImage();
+
         if (_image == null || x < 0 || y < 0 || x >= _image.GetWidth() || y >= _image.GetHeight())
             return;
 
-        _image.SetPixel(x, y, _colours.Get(square.Desc));
+        _image.SetPixel(x, y, colour);
         _dirty = true;
     }
 
@@ -130,42 +144,112 @@ public partial class MinimapView : Control
         _texture = ImageTexture.CreateFromImage(_image);
     }
 
-    public void Refresh(float cameraAngle)
+    /// <summary>
+    /// Zooms a step in or out.
+    /// </summary>
+    /// <param name="steps">Positive zooms in, showing fewer tiles.</param>
+    public void Zoom(int steps)
     {
-        _cameraAngle = cameraAngle;
+        int level = Mathf.Clamp(_level - steps, 0, ZoomLevels.Length - 1);
+        if (level == _level)
+            return;
 
-        if (_dirty && _texture != null)
+        _level = level;
+
+        var settings = App.ServiceLocator.Settings;
+        if (settings != null)
         {
-            // One upload per frame at most, however many tiles arrived.
-            _texture.Update(_image);
-            _dirty = false;
+            settings.MinimapZoom = level;
+            settings.Save();
         }
 
-        QueueRedraw();
+        _terrain?.QueueRedraw();
+        _canvas?.QueueRedraw();
     }
 
-    public override void _Draw()
+    /// <summary>
+    /// Call once a frame.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Both layers are redrawn every frame, because both move every frame: the map is centred on
+    /// the player, so the ground slides under the marks exactly as the marks slide over it. The
+    /// original does the same -- its <c>draw()</c> clears both layers and re-fills the ground from
+    /// its bitmap at the player's offset on every HUD update.
+    /// </para>
+    /// <para>
+    /// What is <i>not</i> per-frame is the upload. Drawing the ground is one textured quad; sending
+    /// a map-sized image to the GPU is not, so that happens only on the frames a tile actually
+    /// arrived. Redrawing only on a chunk boundary -- which is what this did -- made the ground jump
+    /// eight tiles at a time while the marks on it moved smoothly.
+    /// </para>
+    /// </remarks>
+    public void Refresh()
     {
-        var frame = new Rect2(Vector2.Zero, Size);
-        var centre = Size / 2f;
+        _terrain?.QueueRedraw();
+        _canvas?.QueueRedraw();
 
-        DrawRect(frame, new Color(0.05f, 0.05f, 0.06f, 0.9f));
+        if (!_dirty || _texture == null)
+            return;
 
-        var player = _map?.Player;
-        if (_texture != null && player != null)
+        _texture.Update(_image);
+        _dirty = false;
+        TerrainUploads++;
+    }
+
+    /// <summary>The painted floor, under the marks.</summary>
+    private sealed partial class Terrain : Control
+    {
+        private readonly MinimapView _owner;
+
+        public Terrain(MinimapView owner)
         {
-            DrawSetTransformMatrix(MapTransform(player, centre));
-            DrawTexture(_texture, Vector2.Zero);
-            DrawSetTransform(Vector2.Zero, 0f, Vector2.One);
+            _owner = owner;
+            MouseFilter = MouseFilterEnum.Ignore;
+            ClipContents = true;
+
+            // One pixel per tile blown up eight times over: it has to stay square-edged, or the
+            // map turns into a watercolour of itself.
+            TextureFilter = TextureFilterEnum.Nearest;
         }
 
-        DrawRect(frame, new Color(0.45f, 0.45f, 0.5f), filled: false, width: 2f);
+        public override void _Draw() => _owner.DrawTerrain(this, Size);
+    }
 
-        DrawBlips(centre);
+    /// <summary>
+    /// The marks themselves, over the floor.
+    /// </summary>
+    /// <remarks>
+    /// A separate control from the terrain so the two redraw on their own schedules -- which is the
+    /// whole point of caching the floor.
+    /// </remarks>
+    private sealed partial class Blips : Control
+    {
+        private readonly MinimapView _owner;
 
-        // The player is always at the centre and always facing up, which is the point of rotating
-        // the map rather than a marker.
-        DrawCircle(centre, 3f, Colors.White);
+        public Blips(MinimapView owner)
+        {
+            _owner = owner;
+            MouseFilter = MouseFilterEnum.Ignore;
+            ClipContents = true;
+        }
+
+        public override void _Draw() => _owner.DrawBlips(this, Size);
+    }
+
+    private float PixelsPerTile(Vector2 size) => size.X / ZoomLevels[_level];
+
+    private void DrawTerrain(CanvasItem into, Vector2 size)
+    {
+        var player = _map?.Player;
+        if (_texture == null || player == null)
+            return;
+
+        float scale = PixelsPerTile(size);
+        var origin = size / 2f - new Vector2(player.X, player.Y) * scale;
+
+        into.DrawTextureRect(_texture,
+            new Rect2(origin, new Vector2(_image.GetWidth(), _image.GetHeight()) * scale), false);
     }
 
     /// <summary>
@@ -173,26 +257,24 @@ public partial class MinimapView : Control
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Colour carries the kind, which is the whole point of a minimap: yellow for other players,
-    /// green for guildmates, red for anything hostile, blue for a way out. Read at a glance and
-    /// never legended.
+    /// Colour carries the kind, and it is the game's own code rather than a new one: yellow for
+    /// other players, green for guildmates, purple for the party, red for anything hostile, blue
+    /// for a way out, and white for whatever the current quest is pointing at. Read at a glance and
+    /// never legended, which only works because it is the code every player already knows.
     /// </para>
     /// <para>
-    /// Capped, and sorted by distance before the cap, so a crowded realm draws the twenty nearest
-    /// things rather than every entity the client knows about. The full list is walked once to
-    /// gather candidates, which is the cheap part; the drawing is what is bounded.
+    /// Capped, and sorted by distance before the cap, so a crowded realm draws the sixty nearest
+    /// things rather than every entity the client knows about.
     /// </para>
     /// </remarks>
-    private void DrawBlips(Vector2 centre)
+    private void DrawBlips(CanvasItem into, Vector2 size)
     {
-        const int Most = 48;
-
         var player = _map?.Player;
         if (player == null)
             return;
 
-        var transform = MapTransform(player, centre);
-        var frame = new Rect2(Vector2.Zero, Size);
+        var centre = size / 2f;
+        float scale = PixelsPerTile(size);
 
         _blips.Clear();
 
@@ -207,7 +289,7 @@ public partial class MinimapView : Control
 
             float dx = entity.X - player.X;
             float dy = entity.Y - player.Y;
-            _blips.Add((dx * dx + dy * dy, entity.X, entity.Y, kind));
+            _blips.Add((dx * dx + dy * dy, dx, dy, kind));
         }
 
         _blips.Sort(static (a, b) => a.Distance.CompareTo(b.Distance));
@@ -215,20 +297,24 @@ public partial class MinimapView : Control
         int drawn = 0;
         foreach (var blip in _blips)
         {
-            if (drawn++ >= Most)
+            if (drawn++ >= MostBlips)
                 break;
 
-            var at = transform * new Vector2(blip.X, blip.Y);
-            if (!frame.HasPoint(at))
-                continue;
+            var at = centre + new Vector2(blip.X, blip.Y) * scale;
+            float side = SizeOf(blip.Kind);
+            var box = new Rect2(
+                Mathf.Round(at.X - side / 2f), Mathf.Round(at.Y - side / 2f), side, side);
 
-            float size = blip.Kind == BlipKind.Portal ? 5f : 4f;
-            DrawRect(new Rect2(at - new Vector2(size, size) / 2f, new Vector2(size, size)),
-                ColourOf(blip.Kind));
+            // A dark surround, so a yellow mark still reads over a sunlit floor.
+            into.DrawRect(box.Grow(1f), Style.PanelEdge);
+            into.DrawRect(box, ColourOf(blip.Kind));
         }
-    }
 
-    private readonly List<(float Distance, float X, float Y, BlipKind Kind)> _blips = new(64);
+        // The player is always at the centre, which is the other half of not rotating the map.
+        var self = new Rect2(Mathf.Round(centre.X - 4f), Mathf.Round(centre.Y - 4f), 8f, 8f);
+        into.DrawRect(self.Grow(1f), Style.PanelEdge);
+        into.DrawRect(self, Style.Text);
+    }
 
     private enum BlipKind : byte
     {
@@ -237,50 +323,55 @@ public partial class MinimapView : Control
         Guildmate,
         Enemy,
         Portal,
+        Quest,
     }
 
     /// <summary>What an entity counts as, or None if it is not worth a mark.</summary>
-    private static BlipKind KindOf(Entity entity, LocalPlayer player)
+    private BlipKind KindOf(Entity entity, LocalPlayer player)
     {
         var desc = entity.Desc;
 
         if (desc.IsPlayer)
         {
-            // Guild before player, so a guildmate is green rather than yellow.
+            // Guild before player, so a guildmate is green rather than yellow. There is no purple
+            // for a party: this server has no party system, and the list beside the map is a
+            // proximity list -- colouring it would make every player on screen purple.
             return !string.IsNullOrEmpty(player.Guild) && entity.Guild == player.Guild
                 ? BlipKind.Guildmate
                 : BlipKind.Player;
         }
 
         if (desc.IsEnemy)
-            return entity.IsInvisible ? BlipKind.None : BlipKind.Enemy;
+        {
+            if (entity.IsInvisible)
+                return BlipKind.None;
+
+            return entity.ObjectId == QuestTargetId ? BlipKind.Quest : BlipKind.Enemy;
+        }
 
         return desc.Class is "Portal" or "GuildHallPortal" ? BlipKind.Portal : BlipKind.None;
     }
 
-    private static Color ColourOf(BlipKind kind) => kind switch
+    /// <summary>The object the quest arrow is pointing at, which gets its own mark. Zero for none.</summary>
+    public int QuestTargetId { get; set; }
+
+    /// <summary>Six to ten pixels, by how much it matters that you noticed it.</summary>
+    private static float SizeOf(BlipKind kind) => kind switch
     {
-        BlipKind.Guildmate => new Color("4cd137"),
-        BlipKind.Enemy => new Color("d02020"),
-        BlipKind.Portal => new Color("5b9bd5"),
-        _ => new Color("ffc83d"),
+        BlipKind.Quest => 10f,
+        BlipKind.Portal => 10f,
+        BlipKind.Enemy => 8f,
+        BlipKind.Guildmate => 8f,
+        _ => 6f,
     };
 
-    /// <summary>
-    /// Maps world tiles onto the minimap: centred on the player, scaled down, and turned so that
-    /// the direction the player is facing points up.
-    /// </summary>
-    /// <remarks>
-    /// Built explicitly rather than by chaining the Transform2D helpers, whose composition order is
-    /// easy to get backwards. A Transform2D maps local to global as <c>basis * local + origin</c>,
-    /// so the origin is whatever puts the player's tile at the centre.
-    /// </remarks>
-    private Transform2D MapTransform(LocalPlayer player, Vector2 centre)
+    private static Color ColourOf(BlipKind kind) => kind switch
     {
-        float scale = Diameter / _tilesAcross;
+        BlipKind.Guildmate => Style.BlipGuild,
+        BlipKind.Enemy => Style.BlipEnemy,
+        BlipKind.Portal => Style.BlipPortal,
+        BlipKind.Quest => Style.BlipQuest,
+        _ => Style.BlipPlayer,
+    };
 
-        var transform = new Transform2D(-_cameraAngle, new Vector2(scale, scale), 0f, Vector2.Zero);
-        transform.Origin = centre - transform.BasisXform(new Vector2(player.X, player.Y));
-        return transform;
-    }
 }

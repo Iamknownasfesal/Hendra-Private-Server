@@ -54,6 +54,18 @@ public sealed class Settings
     /// </remarks>
     public bool CenterOnPlayer { get; set; } = true;
 
+    /// <summary>
+    /// Which of the minimap's three zoom steps is showing, nearest first.
+    /// </summary>
+    /// <remarks>
+    /// Kept because it is a preference rather than a state: a player who runs the map zoomed out
+    /// wants it zoomed out in the next world too, not just for the rest of this one.
+    /// </remarks>
+    public int MinimapZoom { get; set; } = 1;
+
+    /// <summary>Which of the two carried pages the hotbar is showing.</summary>
+    public int HotbarPage { get; set; }
+
     public static Settings Load()
     {
         var settings = new Settings();
@@ -66,6 +78,8 @@ public sealed class Settings
         settings.EffectVolume = (float)file.GetValue(Section, "effect_volume", settings.EffectVolume);
         settings.MusicVolume = (float)file.GetValue(Section, "music_volume", settings.MusicVolume);
         settings.CenterOnPlayer = (bool)file.GetValue(Section, "center_on_player", settings.CenterOnPlayer);
+        settings.MinimapZoom = (int)file.GetValue(Section, "minimap_zoom", settings.MinimapZoom);
+        settings.HotbarPage = (int)file.GetValue(Section, "hotbar_page", settings.HotbarPage);
         settings.RememberMe = (bool)file.GetValue(Section, "remember_me", settings.RememberMe);
         settings.Account = (string)file.GetValue(Section, "account", settings.Account);
         settings.Password = (string)file.GetValue(Section, "password", settings.Password);
@@ -78,6 +92,8 @@ public sealed class Settings
         file.SetValue(Section, "effect_volume", EffectVolume);
         file.SetValue(Section, "music_volume", MusicVolume);
         file.SetValue(Section, "center_on_player", CenterOnPlayer);
+        file.SetValue(Section, "minimap_zoom", MinimapZoom);
+        file.SetValue(Section, "hotbar_page", HotbarPage);
         file.SetValue(Section, "remember_me", RememberMe);
         file.SetValue(Section, "account", RememberMe ? Account : string.Empty);
         file.SetValue(Section, "password", RememberMe ? Password : string.Empty);

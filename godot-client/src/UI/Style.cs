@@ -24,68 +24,224 @@ public static class Style
     // The brief's tokens, verbatim. These are the contract every cluster is measured against, so
     // they are transcribed rather than interpreted -- a colour invented here is a colour that has
     // to be found again later when something does not match the reference.
+    //
+    // Revision two replaced the whole palette: the translucent black chrome of the first pass is
+    // gone and the interface is opaque grey plate with hard one-pixel edges, which is what the
+    // pixel font and the bevelled buttons need behind them to read as one thing.
 
-    /// <summary>Player card and chat: black at 55 percent.</summary>
-    public static readonly Color Panel = new(0f, 0f, 0f, 0.55f);
+    /// <summary>Panel chrome: opaque grey, not translucent black.</summary>
+    public static readonly Color Panel = new("474747");
 
-    /// <summary>The minimap, which is solid.</summary>
+    public static readonly Color PanelInset = new("3a3a3a");
+
+    /// <summary>The one-pixel outer border every panel carries.</summary>
+    public static readonly Color PanelEdge = new("1e1e1e");
+
+    public static readonly Color Divider = new("5c5c5c");
+
+    /// <summary>The minimap, which is drawn on rather than filled.</summary>
     public static readonly Color PanelSolid = Colors.Black;
 
-    /// <summary>Hotbar and equipment slots, which are near-white in the reference.</summary>
-    public static readonly Color Slot = new("f2f2f2");
+    // Slots, which inverted in revision two: dark plates with a light border rather than the other
+    // way round.
+    public static readonly Color Slot = new("3a3a3a");
 
-    public static readonly Color SlotBorder = new("b9b9b9");
-    public static readonly Color SlotEmpty = new("ffffff");
+    public static readonly Color SlotBorder = new("9a9a9a");
 
-    public static readonly Color BlueButton = new("2b7fd4");
-    public static readonly Color BlueButtonHover = new("3a92e8");
-    public static readonly Color BlueButtonActive = new("1f66ad");
+    /// <summary>The border under the pointer, and for the hundred milliseconds after a key press.</summary>
+    public static readonly Color SlotBorderHi = new("e2e2e2");
 
+    /// <summary>The large number an empty slot carries in the middle of itself.</summary>
+    public static readonly Color SlotEmptyNumber = new("8f8f8f");
+
+    /// <summary>
+    /// The plate under an item this class cannot equip.
+    /// </summary>
+    /// <remarks>
+    /// The original's restricted-use indicator, in its colour: a dark red behind the item rather
+    /// than a mark beside it, so a bag full of loot for somebody else reads at a glance.
+    /// </remarks>
+    public static readonly Color SlotRestricted = new("5c1d1d");
+
+    // Bars. All four read the same way: an edge, a track, a flat fill, and a highlight along the
+    // top of the fill that moves with it.
+    public static readonly Color FameFill = new("f2a01c");
+
+    public static readonly Color HpFill = new("e02b2b");
+    public static readonly Color MpFill = new("3f7fd0");
     public static readonly Color XpFill = new("5fbb2e");
-    public static readonly Color XpTrack = new("4a4a4a");
-    public static readonly Color HpFill = new("d02020");
-    public static readonly Color HpTrack = new("5a1414");
-    public static readonly Color MpFill = new("5b86bd");
-    public static readonly Color MpTrack = new("26364d");
+    public static readonly Color BarTrack = new("2b2b2b");
+    public static readonly Color BarEdge = new("141414");
+    public static readonly Color BarHighlight = new(1f, 1f, 1f, 0.28f);
+
+    // Buttons: a flat face with a two-tone one-pixel bevel, inverted while held.
+    public static readonly Color ButtonFace = new("5a5a5a");
+
+    public static readonly Color ButtonBevelHigh = new("7d7d7d");
+    public static readonly Color ButtonBevelLow = new("2e2e2e");
+    public static readonly Color ButtonHover = new("6b6b6b");
+
+    /// <summary>The one saturated thing in the top left corner, and the one asking for a click.</summary>
+    public static readonly Color ButtonPromo = new("f2a01c");
+
+    public static readonly Color TierNormal = new("ffffff");
+
+    /// <summary>Untiered and unique grades, which are the ones worth stopping on.</summary>
+    public static readonly Color TierSpecial = new("ff8c1a");
+
+    public static readonly Color PotionCount = new("4ce04c");
+    public static readonly Color Guild = new("5cd05c");
+    public static readonly Color ChatName = new("5cd05c");
+    public static readonly Color IconFame = new("e8622a");
+    public static readonly Color IconGold = new("d6dc3f");
+    public static readonly Color TabActive = new("cfcfcf");
+    public static readonly Color TabIdle = new("3f3f3f");
+
+    public static readonly Color Text = new("ffffff");
+    public static readonly Color TextDim = new("b4b4b4");
 
     /// <summary>The bar under a sprite in the world.</summary>
     public static readonly Color EntityHp = new("4cd137");
 
-    public static readonly Color Gem = new("f0912b");
-    public static readonly Color Coin = new("ffd84a");
     public static readonly Color Star = new("ffd54a");
 
-    /// <summary>The star beside the account rating, which is blue rather than gold.</summary>
-    public static readonly Color StarPremium = new("4aa8e8");
-
-    public static readonly Color MinimapBlip = new("ffc83d");
-    public static readonly Color ChatName = new("62dd52");
-    public static readonly Color Text = new("ffffff");
-    public static readonly Color TextDim = new("cfcfcf");
-
     /// <summary>
-    /// The shadow under every piece of text.
+    /// Minimap marks, which follow the game's own convention rather than a single token.
     /// </summary>
     /// <remarks>
-    /// One pixel down-right at eight tenths black. The world under the overlay is any colour at
-    /// all, and this is what keeps a white label legible over a sunlit floor.
+    /// Yellow for other players, green for guildmates, red for anything hostile, blue for a way
+    /// out, and white for whatever the quest is pointing at. Read at a glance and never legended,
+    /// which only works because it is the same code every player already knows from the original.
+    /// There is no purple for a party: this server has no party system to colour.
     /// </remarks>
-    public static readonly Color TextShadow = new(0f, 0f, 0f, 0.8f);
+    public static readonly Color BlipPlayer = new("ffc83d");
 
-    /// <summary>Party dot states, which the brief asks to be tokens rather than hardcoded.</summary>
+    public static readonly Color BlipGuild = new("5cd05c");
+    public static readonly Color BlipEnemy = new("e02b2b");
+    public static readonly Color BlipPortal = new("5b9bd5");
+    public static readonly Color BlipQuest = new("ffffff");
+
+    /// <summary>Party portrait borders, which carry the member's state.</summary>
     public static readonly Color StatusOk = new("4cd137");
 
-    public static readonly Color StatusLow = new("d02020");
+    public static readonly Color StatusLow = new("e02b2b");
     public static readonly Color StatusDead = new("6b6a6a");
 
-    // The type scale, at the reference resolution.
-    public const int FontName = 26;
-    public const int FontBody = 17;
-    public const int FontSmall = 15;
-    public const int FontSlotNumber = 13;
+    // Secondary interface: the panels that open over the world. A gold frame around a near-black
+    // body, deliberately heavier than the flat grey chrome that is always on screen -- the contrast
+    // is what says "this opened" rather than "this was always here".
+    public static readonly Color ModalFrame = new("b4913f");
+
+    public static readonly Color ModalFrameDark = new("6b5423");
+    public static readonly Color ModalBody = new("262626");
+    public static readonly Color ModalHeader = new("1b1b1b");
+    public static readonly Color ModalBand = new("333333");
+    public static readonly Color ModalStripe = new(1f, 1f, 1f, 0.04f);
+
+    public static readonly Color StatLabel = new("c9b184");
+    public static readonly Color StatValue = new("ffffff");
+
+    /// <summary>An attribute that has reached its class ceiling, which is the point of the grid.</summary>
+    public static readonly Color StatValueMax = new("ffd54a");
+
+    public static readonly Color StatBonus = new("5cd05c");
+    public static readonly Color StatPenalty = new("e05050");
+    public static readonly Color StatNumber = new("5cd05c");
+
+    /// <summary>
+    /// The outline under every piece of text.
+    /// </summary>
+    /// <remarks>
+    /// A hard one-pixel outline on all four sides, not a soft shadow offset down and right. The
+    /// world under the overlay is any colour at all, and an outline is what keeps a pixel face
+    /// legible over a sunlit floor without softening its edges.
+    /// </remarks>
+    public static readonly Color TextOutline = Colors.Black;
+
+    // The type scale, at one times. Everything is drawn at these sizes and the whole canvas is
+    // scaled by a whole or half step, so a glyph is never resampled.
+    public const int FontName = 16;
+    public const int FontBody = 12;
+    public const int FontSmall = 12;
+    public const int FontTag = 10;
 
     /// <summary>Every cluster's margin from the edge of the viewport.</summary>
     public const int EdgeMargin = 20;
+
+    private static Font _pixel;
+
+    /// <summary>
+    /// The face the interface is set in.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The brief asks for a bitmap font. There is not one in the tree -- the extracted assets are
+    /// all world artwork, and the original's interface type is a system face -- so this is the
+    /// engine's fallback with everything that softens a glyph turned off: no antialiasing, no
+    /// subpixel positioning, hinting on. At the sizes above, on a canvas that only ever scales by a
+    /// whole or half step, that gives hard-edged text with no resampling in it.
+    /// </para>
+    /// <para>
+    /// Dropping a real pixel face in is one line: load it here and everything follows, because
+    /// nothing else in the interface names a font.
+    /// </para>
+    /// </remarks>
+    public static Font Pixel
+    {
+        get
+        {
+            if (_pixel != null)
+                return _pixel;
+
+            _pixel = ThemeDB.FallbackFont;
+
+            if (ThemeDB.FallbackFont?.Duplicate() is FontFile crisp)
+            {
+                crisp.Antialiasing = TextServer.FontAntialiasing.None;
+                crisp.SubpixelPositioning = TextServer.SubpixelPositioning.Disabled;
+                crisp.Hinting = TextServer.Hinting.Normal;
+                crisp.ForceAutohinter = true;
+                _pixel = crisp;
+            }
+
+            return _pixel;
+        }
+    }
+
+    /// <summary>Sets a label's face, size, colour and outline in one call.</summary>
+    public static T Typeset<T>(this T label, int size, Color colour)
+        where T : Label
+    {
+        label.AddThemeFontOverride("font", Pixel);
+        label.AddThemeFontSizeOverride("font_size", size);
+        label.AddThemeColorOverride("font_color", colour);
+
+        // A real outline rather than a shadow. Two pixels of outline size is what Godot needs to
+        // put one solid pixel on each of the four sides.
+        label.AddThemeColorOverride("font_outline_color", TextOutline);
+        label.AddThemeConstantOverride("outline_size", 2);
+        label.AddThemeConstantOverride("shadow_offset_x", 0);
+        label.AddThemeConstantOverride("shadow_offset_y", 0);
+
+        label.MouseFilter = Control.MouseFilterEnum.Ignore;
+        return label;
+    }
+
+    /// <summary>
+    /// Draws a string with the interface's outline, for the parts that draw rather than label.
+    /// </summary>
+    /// <param name="at">The text's baseline, at its left edge unless an alignment says otherwise.</param>
+    public static void DrawOutlined(
+        this CanvasItem into, Vector2 at, string text, int size, Color colour,
+        HorizontalAlignment alignment = HorizontalAlignment.Left, float width = -1f)
+    {
+        into.DrawStringOutline(Pixel, at, text, alignment, width, size, 2, TextOutline);
+        into.DrawString(Pixel, at, text, alignment, width, size, colour);
+    }
+
+    /// <summary>How wide a string is in the interface's face, for laying text out by hand.</summary>
+    public static float Measure(string text, int size) =>
+        Pixel.GetStringSize(text, HorizontalAlignment.Left, -1, size).X;
 
     // Names kept from the previous palette so the screens that are not part of this brief -- the
     // title, the character select, the tooltip -- keep working while the HUD is rebuilt against the
@@ -105,31 +261,6 @@ public static class Style
     public static readonly Color Danger = new("e0574f");
     public static readonly Color Good = new("6fdc6f");
     public static readonly Color Edge = new("55505f");
-
-    /// <summary>The size the interface is measured against.</summary>
-    private static readonly Vector2 ReferenceSize = new(1920f, 1080f);
-
-    /// <summary>
-    /// Scales the interface for the window it is in.
-    /// </summary>
-    /// <remarks>
-    /// Every measurement in the layout is taken at 1920 by 1080. Rather than making each of them
-    /// resolution-aware, the whole interface is scaled by the smaller of the two ratios, so it
-    /// keeps its proportions on any shape of screen -- including an ultrawide, where scaling by
-    /// width alone would make everything enormous.
-    /// </remarks>
-    public static void ApplyScale(Window window)
-    {
-        if (window == null)
-            return;
-
-        var size = window.Size;
-        if (size.X <= 0 || size.Y <= 0)
-            return;
-
-        float scale = Mathf.Min(size.X / ReferenceSize.X, size.Y / ReferenceSize.Y);
-        window.ContentScaleFactor = Mathf.Clamp(scale, 0.75f, 1.5f);
-    }
 
     /// <summary>
     /// Builds the theme for the whole interface.

@@ -80,7 +80,8 @@ godot-mono --path . -- --host 127.0.0.1 --guid you@example.com --password pw --c
 ```
 
 `--use-ability` fires the equipped ability on a loop, the same way `--autofire` holds the trigger,
-and `--walk` walks in a circle. Two clients, one of them walking, is how remote-entity movement gets
+`--walk` walks in a circle, and `--character` opens the character sheet on arrival so a panel can be
+screenshotted without anyone pressing C. Two clients, one of them walking, is how remote-entity movement gets
 checked — on a server whose monsters have no behaviours, another player is the only thing in the
 world that ever changes position.
 Repeat `--say` for a script; the lines go out a couple of seconds apart and survive a change of
@@ -129,7 +130,26 @@ anything:
 - **`Hello.BuildVersion` must be exactly `"Alpha v01"`.** On a mismatch the server sends nothing at
   all and leaves the socket open, so it looks like a hang rather than a rejection.
 - **Damage prediction depends on a shared PRNG** seeded from `MapInfo`, stepped in the same order on
-  both sides.
+  both sides. Ground damage draws from it too — `Player.ForceGroundHit` on the server rolls the
+  tile's damage from the same stream — so a client that does not roll when it stands in lava falls a
+  step behind and mispredicts every shot after it. That is a correctness reason to implement
+  damaging tiles, not just a gameplay one.
+- **The HUD is measured at 1920 by 1080 and nothing else is.** Every number in `UI/HudLayout` is a
+  reference pixel; `UI/HudLayer` is the canvas that turns them into screen pixels. The scale is
+  `min(w/1920, h/1080)` **rounded to the nearest half step** and never below 1 — 1, 1.5, 2 — because
+  the interface is drawn as pixels now (one-pixel bevels, one-pixel outlines, a hard-edged face) and
+  anything in between resamples all of it. An ultrawide keeps its extra width as extra layout rather
+  than as a stretched middle. The screens either side of the game — title, login, options — are not
+  on that canvas and keep the project's own 1280 by 720 base. The geometry has no engine in it and is
+  checked at every resolution in `HudLayoutTests`, including that the gaps between clusters still
+  reach the world.
+
+- **Below about 1660 by 680 of layout space the scale stops snapping.** The chat panel ends at 550
+  and the vitals are centred on the viewport, so a window that small cannot hold both at a whole
+  step — at 1280 by 720 they would overlap by a third of the vitals. `HudLayout.ScaleFor` drops to
+  whatever does fit instead, which costs some crispness on a small window and is the one place the
+  pixel rule gives way. Deleting that branch restores strict snapping and reintroduces the overlap.
+
 - **The camera is an oblique projection, not a perspective one.** The ground plane is not
   foreshortened. See `src/Render/WorldProjection.cs`. One consequence: the models in
   `src/Render/ModelDrawList.cs` are rebuilt every frame, because the projection folds height into
@@ -183,14 +203,69 @@ sessions, and, when it ends, the fame tally from `/char/fame`.
 
 ## What is not done yet
 
-- Pets, and the panels for the market, the quest log and daily rewards. All three of those are
-  driven by slash commands that work today and answer in the chat log — `/market`, `/marketall`,
-  `/mymarket` — so what is missing is a nicer way to reach them, not the ability to.
+- A panel for the market. It is driven by slash commands that work today and answer in the chat log
+  — `/market`, `/marketall`, `/mymarket` — so what is missing is a nicer way to reach it, not the
+  ability to.
 - The charging aura on a Rising Fury enemy is emitted around the enemy rather than sampled over its
   sprite, which is what the original did. Sampling would mean reading the texture back per frame.
 - Rebinding keys. The options panel lists what the keys do but cannot change them.
+- **Fame on death is shown as the fame already banked.** The bonuses are applied server-side at the
+  moment of death and there is no endpoint that will project them for a living character, so the
+  footer is a floor rather than a forecast. Mirroring the server's bonus table client-side would
+  work and would drift.
+- **Power Level, the quick-action tray and the seasonal pass have no data behind them.** The tray
+  and the pass are built and take content through `HudView.ShowQuickActions` and `ShowSeasonPass`;
+  nothing in this fork's protocol sends any, so both stay collapsed. Power Level is not rendered at
+  all rather than being invented.
+- **No bitmap font or icon sheet.** The interface asks for both. There is no pixel face in the tree,
+  so `Style.Pixel` is the engine's fallback with antialiasing, subpixel positioning and soft hinting
+  turned off; dropping a real face in is one line there and nothing else names a font. The icons are
+  drawn as geometry in `UI/HudIcons` for the same reason — the original's interface art is compiled
+  into a SWF and the game's own sprites are 8px world art.
+
+- **The character sheet opens out of the card that holds its button** — directly under the icon row,
+  down the left. The interface brief docked it to the right, which put it over the map column and the
+  equipment row; it is a panel you flick open to read one number, so it covers world margin and
+  nothing else, and the Shop/Special Offer stack folds away while it is over that space.
+  `HudLayoutTests.ThePanelCoversNothing` holds that at every resolution, including that it never
+  reaches the middle of the screen.
+
+- **One bar is both level and fame.** A character earns no fame before the cap, so the top row of
+  the vitals counts experience in green up to level twenty and becomes the fame bar in amber after
+  it. That is why the player card has no bar on it and is only as tall as its portrait.
+
+- **The minimap has no buttons on it.** Zooming is the `+` and `-` keys, as in the original. A pair
+  of chevrons in the corner of a 305-pixel map was one more thing covering the map.
+
+- **The character sheet reads two clocks.** Attributes and identity come off the player entity and
+  refresh twice a second while it is open; the tallies and dungeon counts come from the `PCStats`
+  blob in `/char/list`, fetched once per opening. That is the only place the server publishes a
+  living character's statistics — `/char/fame` answers "Character not dead" and nothing else — so
+  they are a snapshot, not a live feed. `Account/CharacterStats` decodes the blob (an id byte then a
+  network-order int, the server's own `common/FameStats` format) and is tested against it.
+
+- **`Character.ToXml` now writes `CreateTime`.** The field was always in the database and in the
+  server's own model; it simply was never sent. One line in `Server-Side/server/XmlModels.cs` adds
+  it, and the client shows the "Created on…" line only when it arrives — **the server has to be
+  rebuilt and restarted for that line to appear.**
+
+- **The world header counts what the client can see.** Nothing on the wire carries a world's
+  population or its ceiling — the server list's usage is a fraction per server, not a count per
+  world — so `Nexus (4)` is the players this client knows about, and the `(4/100)` form only appears
+  if a caller ever has a real capacity to pass.
+- Reaching the HUD from the keyboard. Every key that would carry focus is already a gameplay
+  binding here — Tab whispers, Enter opens the chat box, Space fires the ability — so the interface
+  is pointer-only and its controls do not take focus. Changing that needs a keymap decision first.
 
 ## Out of scope
+
+**Pets and the arena.** Both exist in the AS3 client and neither exists on this server: nothing in
+it ever sends `ActivePet`, `PetYard`, `pets` or any arena message, so a client that answered them
+would be answering itself. The same goes for the quest *log* — `QuestFetchResponse` and
+`QuestRedeemResponse` are never sent, and `NewAbilityMessage` with them. Quests themselves are
+implemented, because this server does have them: it picks a nearby target and names it with
+`QuestObjId`, and the client shows the arrow, the marker under the party list, and the original's
+timing — four seconds before a new quest appears, fifteen or so after one is finished.
 
 The in-game map editor, the sprite editor, the tutorial, and the Kongregate/Kabam/Steam account
 paths are not ported.

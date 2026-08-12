@@ -506,6 +506,29 @@ public sealed class ParticleSystem
     /// a weapon with a slow projectile there is nothing to tell you the shot happened until it has
     /// travelled a tile. This puts something where the trigger was pulled.
     /// </remarks>
+    /// <summary>
+    /// A blast: a ring of sparks thrown outward from where something went off.
+    /// </summary>
+    /// <remarks>
+    /// Drawn from the impact spray rather than a new kind of particle, so an explosion looks like a
+    /// great many small hits at once -- which is what it is. The count follows the radius, because a
+    /// grenade and a boss's detonation should not throw the same handful of sparks.
+    /// </remarks>
+    public void Blast(float x, float y, float radius, int origType)
+    {
+        int arms = Math.Clamp((int)(radius * 6f), 8, 32);
+
+        for (int i = 0; i < arms; i++)
+        {
+            float angle = i / (float)arms * MathF.Tau;
+
+            Impact(
+                x + MathF.Cos(angle) * radius * 0.6f,
+                y + MathF.Sin(angle) * radius * 0.6f,
+                0.4f, angle, 0xFF6A2A, 3);
+        }
+    }
+
     public void Muzzle(float x, float y, float z, float angle, int color)
     {
         // The flash itself: one bright mote at the muzzle that fades fast, with the sparks thrown

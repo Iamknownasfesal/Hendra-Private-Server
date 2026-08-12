@@ -36,17 +36,19 @@ public partial class Boot : Control
         // arrive looking like an editor's.
         GetTree().Root.Theme = UI.Style.Build();
 
-        // The interface is laid out against 1920 by 1080 and scaled from there, so it holds its
-        // proportions from a laptop panel to an ultrawide instead of shrinking to a corner on one
-        // and swallowing the screen on the other. Clamped, because past about half again the
-        // chrome starts costing more play area than it is worth.
-        UI.Style.ApplyScale(GetTree().Root);
-        GetTree().Root.SizeChanged += () => UI.Style.ApplyScale(GetTree().Root);
-
+        // The in-game HUD is laid out against 1920 by 1080 and scales itself from there; it carries
+        // that on its own canvas (see UI.HudLayer) rather than here, so the screens around it keep
+        // the project's own base resolution and the stretch Godot already applies to it.
         _status = new Label
         {
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+
+            // It covers the whole screen and is moved in front of the login page to be read, so it
+            // must not take the pointer -- otherwise it swallows every click on the character list
+            // behind it.
+            MouseFilter = MouseFilterEnum.Ignore,
         };
         _status.SetAnchorsPreset(LayoutPreset.FullRect);
         AddChild(_status);
@@ -126,6 +128,11 @@ public partial class Boot : Control
 
     private void StartGame(ServerInfo server, string guid, string password, int characterId)
     {
+        // Whatever the last session ended with, it is not true of this one. The message outlives
+        // its own screen otherwise: it is a child of the boot node rather than of the login page,
+        // so nothing takes it down when the world comes back.
+        _status.Visible = false;
+
         // One game at a time. Every route into here goes through a button, and a second one
         // arriving while a session is already up would leave the first running unreferenced --
         // still connected, still acking -- with the server dropping both for the double login.
@@ -148,7 +155,7 @@ public partial class Boot : Control
         // waiting on a download before showing the world would be a poor trade.
         _ = Assets.RemoteTextures.LoadAsync(_appServerUrl, ServiceLocator.Assets, ServiceLocator.Data);
 
-        _game = new GameScene { Autofire = _options?.Autofire ?? false, AutoAbility = _options?.AutoAbility ?? false, AutoWalk = _options?.AutoWalk ?? false,
+        _game = new GameScene { Autofire = _options?.Autofire ?? false, AutoAbility = _options?.AutoAbility ?? false, AutoWalk = _options?.AutoWalk ?? false, OpenCharacterPanel = _options?.OpenCharacterPanel ?? false, OpenAccountPanel = _options?.OpenAccountPanel ?? false,
             StartingCameraAngle = _options?.CameraAngleDegrees * Mathf.Pi / 180f, ScriptedLines = new System.Collections.Generic.Queue<string>(_options?.Say ?? new System.Collections.Generic.List<string>()) };
         _game.Ended += OnSessionEnded;
         _game.Died += OnCharacterDied;
@@ -161,6 +168,8 @@ public partial class Boot : Control
 
     private void CreateCharacter(ServerInfo server, string guid, string password, int characterId, ushort classType)
     {
+        _status.Visible = false;
+
         // One game at a time. Every route into here goes through a button, and a second one
         // arriving while a session is already up would leave the first running unreferenced --
         // still connected, still acking -- with the server dropping both for the double login.
@@ -181,7 +190,7 @@ public partial class Boot : Control
         // waiting on a download before showing the world would be a poor trade.
         _ = Assets.RemoteTextures.LoadAsync(_appServerUrl, ServiceLocator.Assets, ServiceLocator.Data);
 
-        _game = new GameScene { Autofire = _options?.Autofire ?? false, AutoAbility = _options?.AutoAbility ?? false, AutoWalk = _options?.AutoWalk ?? false,
+        _game = new GameScene { Autofire = _options?.Autofire ?? false, AutoAbility = _options?.AutoAbility ?? false, AutoWalk = _options?.AutoWalk ?? false, OpenCharacterPanel = _options?.OpenCharacterPanel ?? false, OpenAccountPanel = _options?.OpenAccountPanel ?? false,
             StartingCameraAngle = _options?.CameraAngleDegrees * Mathf.Pi / 180f, ScriptedLines = new System.Collections.Generic.Queue<string>(_options?.Say ?? new System.Collections.Generic.List<string>()) };
         _game.Ended += OnSessionEnded;
         _game.Died += OnCharacterDied;
@@ -224,8 +233,18 @@ public partial class Boot : Control
             return;
 
         ShowLogin();
+
+        // Above the screen it is explaining, and out of the middle of it. The login page is added
+        // after this label, so left where it is the reason for the disconnection is drawn behind
+        // the panel that replaced the world -- the player is dropped to character select with no
+        // idea why.
         _status.Visible = !string.IsNullOrEmpty(reason);
         _status.Text = reason;
+        _status.VerticalAlignment = VerticalAlignment.Top;
+        _status.AddThemeColorOverride("font_color", UI.Style.HpFill.Lightened(0.35f));
+        _status.OffsetTop = 24f;
+
+        MoveChild(_status, GetChildCount() - 1);
     }
 
     /// <summary>Dismisses the death screen and goes back to the character list.</summary>
@@ -234,6 +253,8 @@ public partial class Boot : Control
         _death = null;
         ShowLogin();
         _status.Visible = false;
+        _status.VerticalAlignment = VerticalAlignment.Center;
+        _status.OffsetTop = 0f;
     }
 
     public override void _Process(double delta)

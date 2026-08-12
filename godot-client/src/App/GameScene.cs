@@ -27,9 +27,18 @@ public partial class GameScene : Node
     private TradeView _trade;
     private OptionsView _options;
     private GuildView _guild;
+    private CharacterPanel _character;
+    private AccountPanel _account;
 
-    /// <summary>The layer every panel lives on, so hiding the interface is one flag.</summary>
+    /// <summary>The world's own furniture: health bars and markers, in the world's coordinates.</summary>
     private CanvasLayer _ui;
+
+    /// <summary>The HUD, on its own scaled canvas so it can be written in reference pixels.</summary>
+    private HudLayer _hudLayer;
+
+    /// <summary>The panels that open over the HUD: options, guild, trade.</summary>
+    private CanvasLayer _modalLayer;
+
     private CanvasLayer _loadingLayer;
     private MapLoadingView _loading;
     private WorldController _controller;
@@ -49,6 +58,12 @@ public partial class GameScene : Node
 
     /// <summary>Walks in a circle. Set from the command line for unattended runs.</summary>
     public bool AutoWalk { get; set; }
+
+    /// <summary>Opens the character sheet once in the world. Set from the command line.</summary>
+    public bool OpenCharacterPanel { get; set; }
+
+    /// <summary>Opens the account panel once in the world. Set from the command line.</summary>
+    public bool OpenAccountPanel { get; set; }
 
     /// <summary>Overrides the starting camera heading, in radians. Set from the command line.</summary>
     public float? StartingCameraAngle { get; set; }
@@ -83,8 +98,19 @@ public partial class GameScene : Node
         _overlay = new WorldOverlay();
         _ui.AddChild(_overlay);
 
-        // Above the interface, because it covers the whole screen including the HUD while a world
-        // is being entered.
+        // The three clusters of the HUD share a canvas of their own. Its scale is what lets them be
+        // laid out in the reference resolution's pixels while the screens either side of the game
+        // keep the project's own base; see UI.HudLayer.
+        _hudLayer = new HudLayer { Layer = 2 };
+        AddChild(_hudLayer);
+
+        // Over the HUD, because these are opened on top of it and expect to be read rather than
+        // played through.
+        _modalLayer = new CanvasLayer { Layer = 3 };
+        AddChild(_modalLayer);
+
+        // Above everything, because it covers the whole screen including the HUD while a world is
+        // being entered.
         _loadingLayer = new CanvasLayer { Layer = 5 };
         AddChild(_loadingLayer);
 
@@ -93,24 +119,35 @@ public partial class GameScene : Node
 
         _hud = new HudView();
         _hud.Configure(ServiceLocator.Assets, ServiceLocator.Data);
-        _ui.AddChild(_hud);
+        _hudLayer.AddChild(_hud);
 
         _chat = new ChatView();
-        _ui.AddChild(_chat);
+        _hudLayer.AddChild(_chat);
 
         _minimap = new MinimapView();
-        _ui.AddChild(_minimap);
+        _hudLayer.AddChild(_minimap);
+
+        // Last onto the HUD canvas, so it draws over the clusters it docks beside while still being
+        // laid out in the same reference pixels they are.
+        _character = new CharacterPanel();
+        _character.Configure(ServiceLocator.Data, ServiceLocator.Assets);
+        _hudLayer.AddChild(_character);
+
+        _account = new AccountPanel();
+        _hudLayer.AddChild(_account);
 
         _trade = new TradeView();
-        _ui.AddChild(_trade);
+        _modalLayer.AddChild(_trade);
 
         _guild = new GuildView();
-        _ui.AddChild(_guild);
+        _modalLayer.AddChild(_guild);
 
         _options = new OptionsView();
         _options.Configure(ServiceLocator.Settings);
         _options.Changed += OnOptionsChanged;
-        _ui.AddChild(_options);
+        _modalLayer.AddChild(_options);
+
+        _hudLayer.Refit();
 
         _controller = new WorldController();
         AddChild(_controller);
@@ -143,6 +180,31 @@ public partial class GameScene : Node
             _host, _port, _guid, _password, GameIds.Nexus, _characterId, classType, skinType));
     }
 
+    /// <summary>
+    /// Feeds the character sheet, which is the one panel that reads the player rather than a packet.
+    /// </summary>
+    /// <remarks>
+    /// Pushed from here rather than pulled inside the panel, so the panel keeps the property every
+    /// other piece of the interface has: it is handed what it draws and never reaches into the
+    /// world for it.
+    /// </remarks>
+    public override void _Process(double delta) =>
+        _character?.Refresh(_controller?.Map?.Player, delta);
+
+    /// <summary>
+    /// Shows or hides everything drawn over the world.
+    /// </summary>
+    /// <remarks>
+    /// Three layers rather than one now that the HUD has a canvas of its own, which is what the key
+    /// that hides the interface for a screenshot has to reach. The world keeps drawing underneath.
+    /// </remarks>
+    private void ShowInterface(bool shown)
+    {
+        _ui.Visible = shown;
+        _hudLayer.Visible = shown;
+        _modalLayer.Visible = shown;
+    }
+
     /// <summary>Applies a changed setting immediately and writes it out.</summary>
     private void OnOptionsChanged()
     {
@@ -164,11 +226,18 @@ public partial class GameScene : Node
         _controller.StartingCameraAngle = StartingCameraAngle;
         _controller.CenterOnPlayer = ServiceLocator.Settings?.CenterOnPlayer ?? true;
 
-        // The interface is one CanvasLayer, so hiding it is one flag rather than a visit to every
-        // panel. The world keeps drawing underneath.
-        _controller.HudVisibilityChanged += hidden => _ui.Visible = !hidden;
+        _controller.HudVisibilityChanged += hidden => ShowInterface(!hidden);
         _controller.WorldEntering += (name, difficulty) => _loading?.Show(name, difficulty);
-        _controller.WorldEntered += () => _loading?.Finish();
+        _controller.WorldEntered += () =>
+        {
+            _loading?.Finish();
+
+            if (OpenCharacterPanel && !_character.IsOpen)
+                _character.Toggle();
+
+            if (OpenAccountPanel && !_account.IsOpen)
+                _account.Toggle();
+        };
         _controller.OptionsToggled += () => _options.Toggle();
         _controller.GuildToggled += () =>
         {
@@ -176,6 +245,24 @@ public partial class GameScene : Node
             _guild.AccountName = _controller.Map?.Player?.Name;
             _guild.Toggle();
         };
+        // The two share a slot on the screen, so opening one closes the other.
+        _controller.CharacterToggled += () =>
+        {
+            _account.Close();
+            _character.Toggle();
+        };
+
+        _controller.AccountToggled += () =>
+        {
+            _character.Close();
+            _account.Toggle();
+        };
+
+        _account.Connect($"http://{_host}:8888", _guid, _password);
+        _character.Connect($"http://{_host}:8888", _guid, _password, _characterId);
+
+        // The character sheet is deliberately absent from this list. It opens beside the world
+        // rather than over it, and the player keeps playing while it is up.
         _controller.OptionsAreOpen = () => _options.IsOpen || _guild.IsOpen;
         _guild.Configure(_session, $"http://{_host}:8888", _guid, _password);
         _controller.ScriptedLines = ScriptedLines;
@@ -305,11 +392,18 @@ public partial class GameScene : Node
         _controller.StartingCameraAngle = StartingCameraAngle;
         _controller.CenterOnPlayer = ServiceLocator.Settings?.CenterOnPlayer ?? true;
 
-        // The interface is one CanvasLayer, so hiding it is one flag rather than a visit to every
-        // panel. The world keeps drawing underneath.
-        _controller.HudVisibilityChanged += hidden => _ui.Visible = !hidden;
+        _controller.HudVisibilityChanged += hidden => ShowInterface(!hidden);
         _controller.WorldEntering += (name, difficulty) => _loading?.Show(name, difficulty);
-        _controller.WorldEntered += () => _loading?.Finish();
+        _controller.WorldEntered += () =>
+        {
+            _loading?.Finish();
+
+            if (OpenCharacterPanel && !_character.IsOpen)
+                _character.Toggle();
+
+            if (OpenAccountPanel && !_account.IsOpen)
+                _account.Toggle();
+        };
         _controller.OptionsToggled += () => _options.Toggle();
         _controller.GuildToggled += () =>
         {
@@ -317,6 +411,24 @@ public partial class GameScene : Node
             _guild.AccountName = _controller.Map?.Player?.Name;
             _guild.Toggle();
         };
+        // The two share a slot on the screen, so opening one closes the other.
+        _controller.CharacterToggled += () =>
+        {
+            _account.Close();
+            _character.Toggle();
+        };
+
+        _controller.AccountToggled += () =>
+        {
+            _character.Close();
+            _account.Toggle();
+        };
+
+        _account.Connect($"http://{_host}:8888", _guid, _password);
+        _character.Connect($"http://{_host}:8888", _guid, _password, _characterId);
+
+        // The character sheet is deliberately absent from this list. It opens beside the world
+        // rather than over it, and the player keeps playing while it is up.
         _controller.OptionsAreOpen = () => _options.IsOpen || _guild.IsOpen;
         _guild.Configure(_session, $"http://{_host}:8888", _guid, _password);
         _controller.ScriptedLines = ScriptedLines;

@@ -24,6 +24,19 @@ public struct OverlayItem
     /// <summary>Where the entity's feet land on screen, in pixels.</summary>
     public Vector2 Anchor;
 
+    /// <summary>
+    /// How far above the anchor the sprite's own top is, in pixels.
+    /// </summary>
+    /// <remarks>
+    /// Supplied by the caller, which is the only thing that knows how tall the artwork is once its
+    /// size stat and the projection have been applied. Without it the status icons sit across the
+    /// middle of whatever they belong to.
+    /// </remarks>
+    public float SpriteHeight;
+
+    /// <summary>What this entity is saying, or null. Shown for as long as the server asked.</summary>
+    public string Bubble;
+
     public string Name;
     public Color NameColor;
 
@@ -58,17 +71,25 @@ public struct OverlayItem
 /// </remarks>
 public partial class WorldOverlay : Control
 {
-    private const float BarHalfWidth = 20f;
+    /// <summary>The bar under a sprite: forty-four by six, as the brief measures it.</summary>
+    private const float BarHalfWidth = 22f;
+
     private const float BarHeight = 6f;
     private const float BarOffsetY = 4f;
     private const float NameOffsetY = -6f;
 
-    /// <summary>How far above the anchor the row of status icons sits, clear of the health bar.</summary>
-    private const float ConditionOffsetY = -30f;
+    /// <summary>The gap between the top of a sprite and the row of status icons over it.</summary>
+    private const float ConditionGap = 6f;
 
     private static readonly Color BarBackground = new(0.33f, 0.33f, 0.33f);
-    private static readonly Color BarFill = new(0.06f, 1.0f, 0.0f);
-    private static readonly Color BarLowFill = new(1.0f, 0.15f, 0.0f);
+
+    /// <summary>The brief's entity-health green, and the red it turns as the bar empties.</summary>
+    private static readonly Color BarFill = new("4cd137");
+
+    private static readonly Color BarLowFill = new("d02020");
+
+    /// <summary>The marker pointing at whatever is worth walking towards, off the edge of the view.</summary>
+    private static readonly Color MarkerColour = new("d02020");
 
     private readonly List<OverlayItem> _items = new(128);
 
@@ -96,6 +117,7 @@ public partial class WorldOverlay : Control
 
     public void ToggleHealthBars() => _healthBars = !_healthBars;
 
+    /// <summary>Clears the per-frame items. The rising numbers are not among them; see the note there.</summary>
     public void Clear()
     {
         _items.Clear();
@@ -106,9 +128,122 @@ public partial class WorldOverlay : Control
     /// Marks the quest objective. Pass null when there is none.
     /// </summary>
     /// <param name="screenPosition">Where the objective is, in pixels. May be off screen.</param>
-    public void SetQuestMarker(Vector2? screenPosition) => _questTarget = screenPosition;
+    public void SetQuestMarker(Vector2? screenPosition)
+    {
+        // The age is what the fade is driven from, and it restarts whenever there is no marker, so
+        // the next one to appear fades in as well.
+        if (!screenPosition.HasValue)
+            _markerAgeMs = 0f;
+
+        _questTarget = screenPosition;
+    }
+
+    /// <summary>How long the current marker has been on screen, for the fade.</summary>
+    private float _markerAgeMs;
+
+    public override void _Process(double delta)
+    {
+        if (_questTarget.HasValue)
+            _markerAgeMs += (float)delta * 1000f;
+
+        // The numbers move every frame whether or not the world sent anything.
+        if (_texts.Count > 0)
+            QueueRedraw();
+    }
 
     public void Add(in OverlayItem item) => _items.Add(item);
+
+    /// <summary>
+    /// Numbers that rise off something and fade: damage dealt, damage taken, experience gained.
+    /// </summary>
+    /// <remarks>
+    /// Anchored to a place in the world rather than to a place on the screen, and re-projected each
+    /// frame, so a number stays over the thing it belongs to while the camera moves under it.
+    /// </remarks>
+    public void AddFloatingText(float x, float y, float z, string text, Color colour)
+    {
+        // A cap, because a boss taking a stream of hits can produce these faster than they expire
+        // and the oldest are the least interesting.
+        if (_texts.Count >= MostTexts)
+            _texts.RemoveAt(0);
+
+        _texts.Add(new FloatingText
+        {
+            X = x,
+            Y = y,
+            Z = z,
+            Text = text,
+            Colour = colour,
+            BornMs = Time.GetTicksMsec(),
+        });
+    }
+
+    /// <summary>How the overlay turns a world position into a screen one. Set by the world.</summary>
+    public System.Func<float, float, float, Vector2> Project { get; set; }
+
+    private const int MostTexts = 64;
+
+    /// <summary>How long a number lives, and how far it rises in that time.</summary>
+    private const float TextLifeMs = 900f;
+
+    private const float TextRisePixels = 34f;
+
+    private readonly List<FloatingText> _texts = new(MostTexts);
+
+    private struct FloatingText
+    {
+        public float X;
+        public float Y;
+        public float Z;
+        public string Text;
+        public Color Colour;
+        public ulong BornMs;
+    }
+
+    /// <summary>
+    /// Draws the rising numbers and drops the ones that have finished.
+    /// </summary>
+    /// <remarks>
+    /// They are deliberately not in <see cref="_items"/>: that list is cleared and refilled every
+    /// frame from the entities in view, and a number has to outlive both the frame it was made in
+    /// and, often, the monster it was made over.
+    /// </remarks>
+    private void DrawFloatingTexts()
+    {
+        if (_texts.Count == 0 || Project == null)
+            return;
+
+        ulong now = Time.GetTicksMsec();
+
+        for (int i = _texts.Count - 1; i >= 0; i--)
+        {
+            var text = _texts[i];
+            float age = (now - text.BornMs) / TextLifeMs;
+
+            if (age >= 1f)
+            {
+                _texts.RemoveAt(i);
+                continue;
+            }
+
+            var at = Project(text.X, text.Y, text.Z);
+
+            // Quick at first and slowing, which reads as thrown off rather than floated up.
+            at.Y -= TextRisePixels * Mathf.Sqrt(age);
+
+            // Held at full strength for the first half, so it is legible before it starts to go.
+            float alpha = age < 0.5f ? 1f : 1f - (age - 0.5f) * 2f;
+
+            var size = _font.GetStringSize(text.Text, HorizontalAlignment.Left, -1, _fontSize);
+            var origin = new Vector2(at.X - size.X / 2f, at.Y);
+
+            DrawString(_font, origin + new Vector2(1f, 1f), text.Text, HorizontalAlignment.Left, -1,
+                _fontSize, new Color(0f, 0f, 0f, 0.75f * alpha));
+
+            DrawString(_font, origin, text.Text, HorizontalAlignment.Left, -1, _fontSize,
+                text.Colour with { A = alpha });
+        }
+    }
 
     /// <summary>Call once per frame, after the items for that frame have been added.</summary>
     public void Commit() => QueueRedraw();
@@ -132,10 +267,15 @@ public partial class WorldOverlay : Control
 
             if (item.Conditions is { Count: > 0 })
                 DrawConditions(item);
+
+            if (!string.IsNullOrEmpty(item.Bubble))
+                DrawBubble(item);
         }
 
         if (_questTarget.HasValue)
             DrawQuestMarker(_questTarget.Value, bounds);
+
+        DrawFloatingTexts();
     }
 
     /// <summary>
@@ -156,7 +296,10 @@ public partial class WorldOverlay : Control
 
         int count = item.Conditions.Count;
         float left = item.Anchor.X - Size * count / 2f;
-        float top = item.Anchor.Y + ConditionOffsetY;
+
+        // Above the artwork rather than across it: the anchor is where the entity's feet are, so
+        // the icons have to clear its own height before they are over its head.
+        float top = item.Anchor.Y - Mathf.Max(item.SpriteHeight, 16f) - Size - ConditionGap;
 
         for (int i = 0; i < count; i++)
         {
@@ -170,6 +313,49 @@ public partial class WorldOverlay : Control
             DrawCircle(box.Position + box.Size / 2f, Size * 0.42f, new Color(0f, 0f, 0f, 0.45f));
             DrawTextureRectRegion(_conditionSheet.Texture, box.Grow(-2f), region.Value);
         }
+    }
+
+    /// <summary>
+    /// What somebody just said, over their head.
+    /// </summary>
+    /// <remarks>
+    /// The original puts every line of chat over its speaker for a few seconds as well as in the
+    /// log -- the Text packet carries the duration -- and without it a crowded Nexus is a wall of
+    /// text in the corner with no way to tell who is talking to you.
+    /// </remarks>
+    private void DrawBubble(in OverlayItem item)
+    {
+        const float PaddingX = 6f;
+        const float PaddingY = 3f;
+        const float Tail = 5f;
+
+        var measured = _font.GetStringSize(item.Bubble, HorizontalAlignment.Left, -1, _fontSize);
+
+        // Above everything else the entity carries: its own artwork, and the status icons over that.
+        float above = Mathf.Max(item.SpriteHeight, 16f)
+                      + (item.Conditions is { Count: > 0 } ? 24f : 0f);
+
+        var box = new Rect2(
+            item.Anchor.X - measured.X / 2f - PaddingX,
+            item.Anchor.Y - above - measured.Y - PaddingY * 2f - Tail,
+            measured.X + PaddingX * 2f,
+            measured.Y + PaddingY * 2f);
+
+        DrawRect(box, new Color(0f, 0f, 0f, 0.72f));
+        DrawRect(box, new Color(1f, 1f, 1f, 0.25f), filled: false, width: 1f);
+
+        // The tail, pointing back down at whoever said it.
+        DrawColoredPolygon(
+            new[]
+            {
+                new Vector2(item.Anchor.X - 4f, box.End.Y),
+                new Vector2(item.Anchor.X + 4f, box.End.Y),
+                new Vector2(item.Anchor.X, box.End.Y + Tail),
+            },
+            new Color(0f, 0f, 0f, 0.72f));
+
+        DrawString(_font, new Vector2(box.Position.X + PaddingX, box.End.Y - PaddingY - _font.GetDescent(_fontSize)),
+            item.Bubble, HorizontalAlignment.Left, -1, _fontSize, Colors.White);
     }
 
     /// <summary>
@@ -187,7 +373,11 @@ public partial class WorldOverlay : Control
         const float BobPixels = 4f;
         const float BobPeriodMs = 900f;
 
-        var colour = new Color(0.99f, 0.83f, 0.2f);
+        // Two hundred milliseconds to fade in, so a marker that appears because something walked
+        // out of view arrives rather than blinks into existence.
+        const float FadeMs = 200f;
+
+        var colour = MarkerColour with { A = Mathf.Min(1f, _markerAgeMs / FadeMs) };
         var centre = bounds / 2f;
 
         bool visible = target.X > Margin && target.X < bounds.X - Margin &&
@@ -241,14 +431,19 @@ public partial class WorldOverlay : Control
         DrawRect(background, BarBackground);
 
         float fraction = Mathf.Clamp(item.Hp / (float)item.MaxHp, 0f, 1f);
-        if (fraction <= 0f)
-            return;
 
-        var fill = new Rect2(background.Position, new Vector2(background.Size.X * fraction, BarHeight));
+        if (fraction > 0f)
+        {
+            var fill = new Rect2(background.Position, new Vector2(background.Size.X * fraction, BarHeight));
 
-        // Turning red as it empties makes a dangerous health level readable at a glance, without
-        // having to read the number.
-        DrawRect(fill, fraction < 0.25f ? BarLowFill : BarFill);
+            // Turning red as it empties makes a dangerous health level readable at a glance,
+            // without having to read the number.
+            DrawRect(fill, fraction < 0.25f ? BarLowFill : BarFill);
+        }
+
+        // A hairline of black around the whole thing, which is what keeps a green bar legible over
+        // grass and a grey one legible over stone.
+        DrawRect(background, Colors.Black, filled: false, width: 1f);
     }
 
     private void DrawName(in OverlayItem item)

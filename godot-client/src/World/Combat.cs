@@ -306,6 +306,17 @@ public sealed class Combat
     /// </remarks>
     public event System.Action<ProjectileDesc, float, float, float> Fired;
 
+    /// <summary>
+    /// Raised when a shot of ours lands, with what it hit and for how much.
+    /// </summary>
+    /// <remarks>
+    /// The damage the client works out for itself, not the server's. For a shot we fired at an
+    /// enemy the server never tells us the number at all -- we are the one who reported the hit, so
+    /// it has nothing to say back -- and for damage to our own character it applies it here rather
+    /// than sending a Damage packet. Waiting for the wire would mean a fight with no numbers in it.
+    /// </remarks>
+    public event System.Action<Entity, int, bool> Damaged;
+
     public void Update(int nowMs)
     {
         _finished.Clear();
@@ -395,6 +406,7 @@ public sealed class Combat
             });
 
             target.Hp -= damage;
+            Damaged?.Invoke(target, damage, true);
 
             // The player's own voice. Each class names its own pair in the data --
             // player/archer_hit and player/archer_death -- and this is the only path that reaches
@@ -423,6 +435,8 @@ public sealed class Combat
             // Applied locally so health bars respond immediately; the server's Damage packet is
             // authoritative and will correct it.
             target.Hp -= damage;
+            Damaged?.Invoke(target, damage, false);
+
             if (killed)
                 target.Dead = true;
             return;

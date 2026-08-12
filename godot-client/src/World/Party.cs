@@ -12,13 +12,17 @@ public readonly struct PartyMember
     public readonly float Distance;
     public readonly bool Starred;
 
-    public PartyMember(string name, int hp, int maxHp, float distance, bool starred)
+    /// <summary>Their class, which is what the list draws a portrait of.</summary>
+    public readonly ushort ObjectType;
+
+    public PartyMember(string name, int hp, int maxHp, float distance, bool starred, ushort objectType)
     {
         Name = name;
         Hp = hp;
         MaxHp = maxHp;
         Distance = distance;
         Starred = starred;
+        ObjectType = objectType;
     }
 }
 
@@ -100,7 +104,9 @@ public sealed class Party
             if (distance > RangeSquared)
                 continue;
 
-            nearby.Add(new PartyMember(entity.Name, entity.Hp, entity.MaxHp, distance, _starred.Contains(entity.Name)));
+            nearby.Add(new PartyMember(
+                entity.Name, entity.Hp, entity.MaxHp, distance,
+                _starred.Contains(entity.Name), entity.ObjectType));
         }
 
         _members.AddRange(nearby

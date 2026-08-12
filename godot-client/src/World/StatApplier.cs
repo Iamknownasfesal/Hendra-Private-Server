@@ -109,6 +109,11 @@ public static class StatApplier
             // Sent as a number rather than a flag, and it is what makes the last eight inventory
             // slots real -- the server refuses a swap into them for a character without one.
             case StatsType.HasBackpack when player != null: player.HasBackpack = stat.IntValue != 0; break;
+
+            // The two counted potion stacks, which the vitals row shows beside the bar each one
+            // refills. They are not slots in the inventory array; see LocalPlayer.
+            case StatsType.HealthPotionStack when player != null: player.HealthPotions = stat.IntValue; break;
+            case StatsType.MagicPotionStack when player != null: player.MagicPotions = stat.IntValue; break;
         }
     }
 

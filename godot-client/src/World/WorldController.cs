@@ -47,11 +47,11 @@ public partial class WorldController : Node
     private Audio.AudioLibrary _audio;
     private SpritePalette _palette;
     private MinimapView _minimap;
-    private TileColors _tileColors;
     private TileAtlas _tileAtlas;
     private TileBlender _tileBlender;
     private ModelLibrary _models;
     private WorldOverlay _overlay;
+    private TileColors _tileColors;
     private HudView _hud;
     private ChatView _chat;
 
@@ -117,6 +117,12 @@ public partial class WorldController : Node
     /// <summary>Raised when the interface is hidden or shown.</summary>
     public event System.Action<bool> HudVisibilityChanged;
 
+    /// <summary>Raised when the character sheet should open or close.</summary>
+    public event System.Action CharacterToggled;
+
+    /// <summary>Raised when the account panel should open or close.</summary>
+    public event System.Action AccountToggled;
+
     /// <summary>Whether the options panel is up, so input can be held back while it is.</summary>
     public System.Func<bool> OptionsAreOpen { private get; set; }
 
@@ -156,6 +162,11 @@ public partial class WorldController : Node
         _strings = App.ServiceLocator.Strings ?? _strings;
         _overlay = overlay;
         _overlay?.Configure(new SheetConditionIcons(assets));
+
+        // The overlay draws in screen space but the numbers belong to places in the world, so it is
+        // given the projection rather than a snapshot of where things were when they were made.
+        if (_overlay != null)
+            _overlay.Project = (x, y, z) => _world.Unproject(_world.Projection.ToScene(x, y, z));
         _hud = hud;
         _chat = chat;
 
@@ -173,6 +184,7 @@ public partial class WorldController : Node
         _minimap?.Configure(_map, _tileColors);
         _combat = new Combat(_map, data, session, clock);
         _combat.Struck += OnProjectileStruck;
+        _combat.Damaged += OnDamageDealt;
         _combat.Fired += (shot, x, y, angle) => Muzzle(shot, x, y, angle);
         _interaction = new Interaction(_map);
         _inventory = new Inventory(_map, data, session, clock);
@@ -193,11 +205,24 @@ public partial class WorldController : Node
             _hud.SlotActivated += OnSlotActivated;
             _hud.ContainerSlotActivated += OnContainerSlotActivated;
             _hud.SlotDropped += OnSlotDropped;
+            _hud.SlotDroppedOutside += OnSlotDroppedOutside;
             _hud.PotionRequested += health => _inventory.UsePotion(health);
             _hud.NexusPressed += () => NexusRequested?.Invoke();
             _hud.OptionsPressed += () => OptionsToggled?.Invoke();
-            _hud.GuildPressed += () => GuildToggled?.Invoke();
             _hud.BuyPressed += OnBuyPressed;
+
+            // The card's own buttons open the panels they name. Routed through the controller
+            // rather than wired straight to a panel inside the view, so what a button does is
+            // decided in one place and can be changed without opening the interface.
+            _hud.AccountPressed += () => AccountToggled?.Invoke();
+            _hud.StatsPressed += () => CharacterToggled?.Invoke();
+            _hud.PartyMemberActivated += who => _chat?.BeginTyping($"/tell {who} ");
+
+            // Four buttons the reference has and this server does not answer. Saying so is better
+            // than a button that swallows a click and does nothing, which reads as a broken client.
+            _hud.ShopPressed += () => Unavailable("The shop");
+            _hud.NewsPressed += () => Unavailable("News");
+            _hud.SwapPressed += () => Unavailable("Swapping loadouts");
         }
 
         _session.MapLoaded += OnMapLoaded;
@@ -236,7 +261,9 @@ public partial class WorldController : Node
     private void OnMapLoaded(MapInfoPacket mapInfo)
     {
         _announcedArrival = false;
-        WorldEntering?.Invoke(mapInfo.DisplayName ?? mapInfo.Name, mapInfo.Difficulty);
+        _worldName = WorldName(mapInfo);
+        _worldId = mapInfo.Name ?? string.Empty;
+        WorldEntering?.Invoke(_worldName, mapInfo.Difficulty);
 
         _audio?.PlayMusic(mapInfo.Music);
         _map.Reset(mapInfo.Width, mapInfo.Height, mapInfo.Name);
@@ -271,14 +298,74 @@ public partial class WorldController : Node
     /// <summary>The level we last saw, so a level-up can be noticed rather than announced.</summary>
     private int _lastLevel = -1;
 
+    /// <summary>
+    /// The number thrown off something that was hit.
+    /// </summary>
+    /// <remarks>
+    /// Red over your own character and pale gold over anything else, because damage you took and
+    /// damage you dealt are the two things you must never confuse mid-fight.
+    /// </remarks>
+    private void ShowDamage(Entity target, int amount, bool self)
+    {
+        if (amount <= 0 || _overlay == null)
+            return;
+
+        // The client predicts its own hits and the server confirms some of them; showing both would
+        // double every number. Whichever arrives first wins for a moment.
+        int now = _clock.FrameMs;
+        if (_shownDamageAt.TryGetValue(target.ObjectId, out int last) && now - last < DamageTextGapMs)
+            return;
+
+        _shownDamageAt[target.ObjectId] = now;
+
+        _overlay.AddFloatingText(target.X, target.Y, target.Z,
+            self ? $"-{amount}" : amount.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            self ? new Color("ff4040") : new Color("ffe9a8"));
+    }
+
+    /// <summary>When each entity last had a number thrown off it, so the two sources cannot double up.</summary>
+    private readonly System.Collections.Generic.Dictionary<int, int> _shownDamageAt = new();
+
+    private const int DamageTextGapMs = 120;
+
+    /// <summary>A shot of ours landed, and the client worked out what it was worth.</summary>
+    private void OnDamageDealt(Entity target, int amount, bool self) => ShowDamage(target, amount, self);
+
     /// <summary>Plays the level-up chime when the server raises our level.</summary>
     private void NoticeLevelUp()
     {
-        int level = _map.Player?.Level ?? -1;
+        var player = _map.Player;
+        int level = player?.Level ?? -1;
+
         if (level > _lastLevel && _lastLevel > 0)
             _audio?.PlayEffect("level_up");
 
         _lastLevel = level;
+        NoticeExperience(player);
+    }
+
+    /// <summary>The experience we last saw, so a gain can be noticed rather than announced.</summary>
+    private int _lastExperience = -1;
+
+    /// <summary>
+    /// Throws the experience gained off the character.
+    /// </summary>
+    /// <remarks>
+    /// Derived from the stat rather than from a packet, because nothing on the wire says "you
+    /// gained experience" -- the server simply sends a new total, several times a second while
+    /// anything nearby is dying. Levelling resets the total, so a drop is a level rather than a
+    /// loss and says nothing.
+    /// </remarks>
+    private void NoticeExperience(LocalPlayer player)
+    {
+        if (player == null)
+            return;
+
+        int gained = player.Experience - _lastExperience;
+        _lastExperience = player.Experience;
+
+        if (gained > 0 && gained < 1_000_000 && _lastExperience >= 0)
+            _overlay?.AddFloatingText(player.X, player.Y, player.Z, $"+{gained} XP", new Color("7fe07f"));
     }
 
     private void OnEntered(CreateSuccessPacket packet)
@@ -344,6 +431,12 @@ public partial class WorldController : Node
 
         StatApplier.Apply(entity, definition.Stats, isSelf);
         _map.Add(entity, definition.Stats.Position.X, definition.Stats.Position.Y);
+
+        // Walls and scenery are baked into the minimap where they stand, on the original's exact
+        // condition: static, occupying its square, and not marked no-minimap. It is what turns a
+        // dungeon's map from a wash of floor colour into its floor plan.
+        if (desc is { Static: true, OccupySquare: true, NoMiniMap: false })
+            _minimap?.SetObject((int)entity.X, (int)entity.Y, desc);
 
         // The chime that says something dropped. Only for bags that appear near enough to be worth
         // hearing about; the server streams every container in the world as it comes into view.
@@ -422,7 +515,7 @@ public partial class WorldController : Node
                 break;
 
             case QuestObjIdPacket quest:
-                _questObjectId = quest.ObjectId;
+                SetQuest(quest.ObjectId);
                 break;
 
             case PlaySoundPacket sound:
@@ -469,11 +562,19 @@ public partial class WorldController : Node
                 break;
 
             case TextPacket text:
-                _chat?.Add(text, LineBuilder.Resolve(text.Text, _strings));
+                {
+                    string said = LineBuilder.Resolve(text.Text, _strings);
+                    _chat?.Add(text, said);
+                    Speak(text, said);
+                }
+                break;
+
+            case AoePacket blast:
+                OnAoe(blast);
                 break;
 
             case NotificationPacket notification:
-                _chat?.AddSystem(LineBuilder.Resolve(notification.Message, _strings));
+                OnNotification(notification);
                 break;
 
             case GlobalNotificationPacket announcement:
@@ -634,6 +735,11 @@ public partial class WorldController : Node
 
         target.Hp -= damage.DamageAmount;
 
+        // The number, for damage that did not come from one of our own shots -- another player's
+        // work, a wall of poison, anything the client did not predict for itself.
+        if (damage.DamageAmount > 0 && target.Desc is { IsEnemy: true } or { IsPlayer: true })
+            ShowDamage(target, damage.DamageAmount, ReferenceEquals(target, _map.Player));
+
         foreach (var effect in damage.Effects)
             target.Conditions |= effect.ToFlag();
 
@@ -715,6 +821,7 @@ public partial class WorldController : Node
             player.UpdateMovement(_map, _cameraAngle, deltaMs);
 
         _map.Update(now, deltaMs);
+        ApplyGroundDamage(now);
         ApplyAttackInput(now);
         _combat.Update(now);
         _particles.Update(now, deltaMs);
@@ -724,6 +831,8 @@ public partial class WorldController : Node
         _hud?.ShowContainer(OpenContainer);
         _hud?.ShowMerchant(NearbyMerchant, _map.Player);
         _hud?.ShowParty(_party.Members);
+        _hud?.ShowWorld(_worldName, PlayersHere(), 0);
+        RefreshQuest();
 
         // Publish before polling: a NewTick delivered by Poll answers with a Move built from this.
         if (player != null)
@@ -740,9 +849,197 @@ public partial class WorldController : Node
 
         NoticeLevelUp();
         _hud?.Refresh(_map.Player);
-        _minimap?.Refresh(_cameraAngle);
+
+        // Pushed in rather than pulled: the view is handed the numbers it draws and never reaches
+        // back into the inventory to ask.
+        var cooldown = _inventory.AbilityCooldown(now);
+        _hud?.SetAbilityCooldown(cooldown.Remaining, cooldown.Total);
+
+        _minimap?.Refresh();
 
         Draw(now);
+    }
+
+    /// <summary>Who is saying what, and until when. Keyed by the speaker's object id.</summary>
+    private readonly System.Collections.Generic.Dictionary<int, (string Text, int UntilMs)> _bubbles = new();
+
+    /// <summary>
+    /// Puts a line of chat over the head of whoever said it.
+    /// </summary>
+    /// <remarks>
+    /// Only when the server asked for one: the Text packet carries a bubble duration, and it is
+    /// zero for the lines that are not speech -- guild chat, whispers, and everything the server
+    /// says in its own voice.
+    /// </remarks>
+    private void Speak(TextPacket text, string said)
+    {
+        if (text.BubbleTime == 0 || text.ObjectId <= 0 || string.IsNullOrEmpty(said))
+            return;
+
+        // Long enough to read is the server's call, but a paragraph over someone's head is not.
+        string shown = said.Length <= 64 ? said : said[..63] + "…";
+
+        _bubbles[text.ObjectId] = (shown, _clock.FrameMs + text.BubbleTime * 1000);
+    }
+
+    /// <summary>What this entity is saying right now, or null.</summary>
+    private string BubbleFor(Entity entity)
+    {
+        if (!_bubbles.TryGetValue(entity.ObjectId, out var bubble))
+            return null;
+
+        if (_clock.FrameMs < bubble.UntilMs)
+            return bubble.Text;
+
+        _bubbles.Remove(entity.ObjectId);
+        return null;
+    }
+
+    /// <summary>
+    /// A blast: something exploded, and everything inside the radius is caught in it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The client decides whether it was caught. The server broadcasts the blast and waits for an
+    /// acknowledgement carrying where we were when it landed -- it does not work out the hit for
+    /// us -- so a client that ignores these takes no damage from a grenade and answers nothing.
+    /// </para>
+    /// <para>
+    /// The ack goes out on every path, including having no player at all, because it is an answer
+    /// to a question rather than a report of damage. This server's handler happens to be an empty
+    /// TODO, but a client that only answered sometimes would be a client that desynchronises
+    /// against any server that counts them.
+    /// </para>
+    /// </remarks>
+    private void OnAoe(AoePacket blast)
+    {
+        var player = _map.Player;
+
+        if (player == null)
+        {
+            _session.Send(new AoeAckPacket { Time = _clock.FrameMs, Position = new WorldPos(0f, 0f) });
+            return;
+        }
+
+        // The blast itself, whether or not it reached us: something that goes off across the room
+        // is worth seeing.
+        _particles.Blast(blast.Position.X, blast.Position.Y, blast.Radius, blast.OrigType);
+
+        float dx = player.X - blast.Position.X;
+        float dy = player.Y - blast.Position.Y;
+        bool caught = dx * dx + dy * dy < blast.Radius * blast.Radius;
+
+        if (caught && !player.IsInvincible && !player.IsPaused)
+        {
+            int damage = Entity.ApplyDefense(blast.Damage, player.Defense, false, player.Conditions);
+
+            player.Hp -= damage;
+            ShowDamage(player, damage, self: true);
+
+            if (blast.Effect != 0)
+                player.Conditions |= blast.Effect.ToFlag();
+
+            if (damage > 0)
+                _audio?.PlayEffect(player.Hp <= 0 ? player.Desc?.DeathSound : player.Desc?.HitSound);
+        }
+
+        _session.Send(new AoeAckPacket
+        {
+            Time = _clock.FrameMs,
+            Position = new WorldPos(player.X, player.Y),
+        });
+    }
+
+    /// <summary>
+    /// Something the server wants said about a particular thing in the world.
+    /// </summary>
+    /// <remarks>
+    /// Over the thing it is about, not in the chat log. These are "Quest Complete!", the effect of
+    /// a potion, an enemy shrugging off a hit -- all of them about a position on screen, and all of
+    /// them useless three lines up in a log by the time they are read.
+    /// </remarks>
+    private void OnNotification(NotificationPacket notification)
+    {
+        string message = LineBuilder.Resolve(notification.Message, _strings);
+        var entity = _map.GetEntity(notification.ObjectId);
+
+        // The server says a quest is done in the same breath as it says anything else about the
+        // player, so the key is the only thing that distinguishes it.
+        if (notification.Message != null && notification.Message.Contains("quest_complete"))
+            QuestCompleted();
+
+        if (entity == null)
+        {
+            _chat?.AddSystem(message);
+            return;
+        }
+
+        var colour = new Color(
+            notification.Color.R / 255f, notification.Color.G / 255f, notification.Color.B / 255f);
+
+        // A server that sends no colour at all should not produce invisible text.
+        if (colour.R + colour.G + colour.B < 0.05f)
+            colour = Colors.White;
+
+        _overlay?.AddFloatingText(entity.X, entity.Y, entity.Z, message, colour);
+    }
+
+    /// <summary>How often a damaging tile can hurt the same square's occupant.</summary>
+    private const int GroundDamageIntervalMs = 500;
+
+    /// <summary>
+    /// Lava, and everything else that hurts to stand on.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The client is the one that decides this happened: it rolls the damage, applies it, and tells
+    /// the server, which re-rolls the same number from its own copy of the shared stream and agrees.
+    /// The server does not send a Damage packet back for it, so nothing else would ever apply it.
+    /// </para>
+    /// <para>
+    /// Which makes the roll itself load-bearing beyond this feature. <c>Player.ForceGroundHit</c>
+    /// draws from the same synchronised generator every time a ground hit lands; a client that never
+    /// drew would fall one step behind for the rest of the session and mispredict every shot after
+    /// it. Standing in lava was quietly corrupting the damage stream.
+    /// </para>
+    /// </remarks>
+    private void ApplyGroundDamage(int now)
+    {
+        var player = _map.Player;
+        var square = player?.Square;
+
+        if (square?.Desc == null || square.Desc.MaxDamage <= 0)
+            return;
+
+        if (now < square.LastDamageMs + GroundDamageIntervalMs)
+            return;
+
+        if (player.IsInvincible || player.IsPaused)
+            return;
+
+        // Something built over the tile can shelter whoever stands on it -- a bridge over lava.
+        if (square.StaticObject?.Desc is { ProtectFromGroundDamage: true })
+            return;
+
+        square.LastDamageMs = now;
+
+        int damage = _session.Random == null
+            ? square.Desc.MinDamage
+            : (int)_session.Random.NextIntRange((uint)square.Desc.MinDamage, (uint)square.Desc.MaxDamage);
+
+        // Armour does not help against the floor, which is why the original passes the rolled
+        // number straight through rather than through its defence formula.
+        player.Hp -= damage;
+        ShowDamage(player, damage, self: true);
+
+        if (damage > 0)
+            _audio?.PlayEffect(player.Hp <= 0 ? player.Desc?.DeathSound : player.Desc?.HitSound);
+
+        _session.Send(new GroundDamagePacket
+        {
+            Time = now,
+            Position = new WorldPos(player.X, player.Y),
+        });
     }
 
     /// <summary>The container in reach, if any. Its panel appears and disappears with proximity.</summary>
@@ -770,6 +1067,81 @@ public partial class WorldController : Node
     /// <summary>
     /// A click on one of our own slots: use it, or move it into an open container.
     /// </summary>
+    /// <summary>
+    /// How many players this client can see, itself included.
+    /// </summary>
+    /// <remarks>
+    /// Not the world's population, which nothing on the wire carries -- the server list's usage is
+    /// a fraction per server, not a count per world. In a Nexus it is very nearly everyone; in a
+    /// realm it is the ones near you.
+    /// </remarks>
+    private int PlayersHere()
+    {
+        int count = _map.Player == null ? 0 : 1;
+
+        foreach (var entity in _map.Entities)
+        {
+            if (entity.Desc is { IsPlayer: true } && !entity.Dead && !ReferenceEquals(entity, _map.Player))
+                count++;
+        }
+
+        return count;
+    }
+
+    /// <summary>The world's own name, for the line over the party list.</summary>
+    private string _worldName = string.Empty;
+
+    /// <summary>The world's internal name, which is what the server's own rules are written against.</summary>
+    private string _worldId = string.Empty;
+
+    /// <summary>
+    /// What to call the world we have just entered.
+    /// </summary>
+    /// <remarks>
+    /// The server sends some of these as localisation keys in braces -- the vault arrives as
+    /// "{server.vault}" -- so a name that looks like one is looked up before it is shown. Anything
+    /// the table does not know keeps its own text rather than showing the braces.
+    /// </remarks>
+    private string WorldName(MapInfoPacket mapInfo)
+    {
+        string name = mapInfo.DisplayName ?? mapInfo.Name ?? string.Empty;
+
+        if (name.Length < 3 || name[0] != '{' || name[^1] != '}')
+            return name;
+
+        string key = name[1..^1];
+        return _strings != null && _strings.Has(key) ? _strings.Get(key) : key;
+    }
+
+    /// <summary>Says that a button the reference carries is not answered by this server.</summary>
+    private void Unavailable(string what) =>
+        _chat?.AddSystem($"{what} is not available on this server.");
+
+    /// <summary>
+    /// An item was dragged out of a slot and let go over the world.
+    /// </summary>
+    /// <remarks>
+    /// Only the player's own slots can drop: dragging out of a chest and letting go over the ground
+    /// would be asking the server to move an item between two things it does not own, and it has no
+    /// packet for that.
+    /// </remarks>
+    private void OnSlotDroppedOutside(SlotAddress from)
+    {
+        if (from.Owner != SlotOwner.Player)
+            return;
+
+        // The server refuses outright in the Nexus and answers nothing at all -- a bare return, no
+        // InvResult -- so a client that just sent it would show the item leaving the slot and then
+        // reappearing a tick later with no explanation.
+        if (string.Equals(_worldId, "Nexus", System.StringComparison.OrdinalIgnoreCase))
+        {
+            _chat?.AddSystem("Items cannot be dropped in the Nexus.");
+            return;
+        }
+
+        _inventory.Drop(from.Index);
+    }
+
     private void OnSlotActivated(int slotIndex)
     {
         var container = OpenContainer;
@@ -856,6 +1228,11 @@ public partial class WorldController : Node
             return;
         }
 
+        // The character sheet is the one panel that does not hold the keyboard: it opens beside the
+        // world and everything below carries on working while it is up.
+        if (Input.IsActionJustPressed("character_panel"))
+            CharacterToggled?.Invoke();
+
         // With the panel up the keyboard belongs to it, but movement should stop rather than
         // continue in whatever direction was last held.
         if (OptionsAreOpen != null && OptionsAreOpen())
@@ -896,9 +1273,24 @@ public partial class WorldController : Node
 
         for (int slot = 0; slot < InventoryHotkeys; slot++)
         {
-            if (Input.IsActionJustPressed($"inv_slot_{slot + 1}"))
-                OnSlotActivated(Inventory.CarriedFirstSlot + slot);
+            if (!Input.IsActionJustPressed($"inv_slot_{slot + 1}"))
+                continue;
+
+            // The border flashes whether or not the item did anything, so a key that fired
+            // something invisible -- a potion at full health, an ability on cooldown -- is still
+            // distinguishable from a key that did not register.
+            // Whichever page the hotbar is showing: 3 always means the third square you can see.
+            int index = (_hud?.HotbarFirstSlot ?? Inventory.CarriedFirstSlot) + slot;
+
+            _hud?.FlashSlot(index);
+            OnSlotActivated(index);
         }
+
+        if (Input.IsActionJustPressed("scroll_chat_up"))
+            _chat?.Scroll(-3);
+
+        if (Input.IsActionJustPressed("scroll_chat_down"))
+            _chat?.Scroll(3);
 
         float x = Input.GetActionStrength("move_right") - Input.GetActionStrength("move_left");
         float y = Input.GetActionStrength("move_down") - Input.GetActionStrength("move_up");
@@ -1260,7 +1652,20 @@ public partial class WorldController : Node
             if (entity.Desc == null || entity.Square is not { IsKnown: true })
                 continue;
 
-            var resolved = _textures.Resolve(entity.Desc.Texture, entity.ObjectId, entity.AltTextureIndex);
+            // A merchant is drawn as the thing it is selling, which is how the original does it:
+            // its own Merchant.getTexture returns the merchandise texture rather than any sprite of
+            // its own. Without this every vendor in the Nexus is the same grey placeholder and the
+            // only way to see what is for sale is to walk into it.
+            var texture = entity.Desc.Texture;
+            int variant = entity.ObjectId;
+
+            if (entity.MerchandiseType >= 0 && _data?.GetObject((ushort)entity.MerchandiseType) is { } sold)
+            {
+                texture = sold.Texture;
+                variant = entity.MerchandiseType;
+            }
+
+            var resolved = _textures.Resolve(texture, variant, entity.AltTextureIndex);
             if (!resolved.IsValid)
                 continue;
 
@@ -1504,6 +1909,9 @@ public partial class WorldController : Node
         _overlay.Clear();
         _overlay.SetQuestMarker(QuestMarkerPosition());
 
+        if (_minimap != null)
+            _minimap.QuestTargetId = _questObjectId;
+
         foreach (var entity in _map.Entities)
         {
             var desc = entity.Desc;
@@ -1512,6 +1920,7 @@ public partial class WorldController : Node
 
             bool combatant = desc.IsEnemy || desc.IsPlayer;
             bool named = desc.ShowName && !string.IsNullOrEmpty(entity.Name);
+            string bubble = BubbleFor(entity);
 
             // Nothing to say about a plain decoration.
             if (!combatant && !named)
@@ -1525,13 +1934,22 @@ public partial class WorldController : Node
                            && !desc.NoMiniMap
                            && entity.MaxHp > 0;
 
-            if (!showBar && !named)
+            if (!showBar && !named && bubble == null)
                 continue;
 
             var scene = _world.Projection.ToScene(entity.X, entity.Y, entity.Z);
+            var anchor = _world.Unproject(scene);
+
+            // How tall this thing draws, in screen pixels: the difference between its feet and the
+            // top of its artwork, once its size stat has been applied.
+            float top = _world.Unproject(
+                _world.Projection.ToScene(entity.X, entity.Y, entity.Z + SpriteHeightTiles(entity))).Y;
+
             _overlay.Add(new OverlayItem
             {
-                Anchor = _world.Unproject(scene),
+                Anchor = anchor,
+                SpriteHeight = Mathf.Abs(anchor.Y - top),
+                Bubble = bubble,
                 Name = named ? entity.Name : null,
                 NameColor = desc.IsPlayer ? new Color(0.99f, 0.87f, 0f) : Colors.White,
                 Hp = entity.Hp,
@@ -1554,14 +1972,76 @@ public partial class WorldController : Node
     /// </remarks>
     private Vector2? QuestMarkerPosition()
     {
-        if (_questObjectId == 0)
+        var target = QuestTarget();
+
+        return target == null
+            ? null
+            : _world.Unproject(_world.Projection.ToScene(target.X, target.Y, target.Z));
+    }
+
+    /// <summary>
+    /// The thing the realm has asked for, once it is worth pointing at.
+    /// </summary>
+    /// <remarks>
+    /// Held back for four seconds after the server names it, and for fifteen or so after one is
+    /// finished, which is the original's timing. A quest arrow that snapped to the next monster the
+    /// instant the last one died would be pointing somewhere new before the player had noticed the
+    /// first was gone.
+    /// </remarks>
+    private Entity QuestTarget()
+    {
+        if (_questObjectId == 0 || _clock.FrameMs < _questAvailableAtMs)
             return null;
 
         var target = _map.GetEntity(_questObjectId);
-        if (target == null || target.Dead)
-            return null;
+        return target is { Dead: false } ? target : null;
+    }
 
-        return _world.Unproject(_world.Projection.ToScene(target.X, target.Y, target.Z));
+    /// <summary>When the current quest becomes worth showing, and how long it counts as new.</summary>
+    private int _questAvailableAtMs;
+
+    private int _questNewUntilMs;
+
+    private void SetQuest(int objectId)
+    {
+        // Only a quest arriving where there was none waits: one replacing another is the realm
+        // moving the player on, and holding that back would leave the arrow pointing at a corpse.
+        if (_questObjectId == 0 && objectId != 0)
+        {
+            _questAvailableAtMs = _clock.FrameMs + 4000;
+            _questNewUntilMs = _questAvailableAtMs + 2000;
+        }
+
+        _questObjectId = objectId;
+    }
+
+    /// <summary>
+    /// A quest was finished, so the next one waits a while.
+    /// </summary>
+    /// <remarks>
+    /// Fifteen seconds less a random few, exactly as the original does it -- the stagger is there so
+    /// that a group who all finished the same quest do not all turn to the same next target at the
+    /// same instant.
+    /// </remarks>
+    private void QuestCompleted()
+    {
+        _questAvailableAtMs = _clock.FrameMs + 15000 - (int)(GD.Randf() * 10000f);
+        _questNewUntilMs = _questAvailableAtMs + 2000;
+    }
+
+    /// <summary>Pushes the quest to the interface: who it is, and whether it is still new.</summary>
+    private void RefreshQuest()
+    {
+        var target = QuestTarget();
+
+        if (target?.Desc == null)
+        {
+            _hud?.ShowQuest(null, 0, false);
+            return;
+        }
+
+        string name = target.Desc.DisplayId ?? target.Desc.Id;
+        _hud?.ShowQuest(name, target.ObjectType, _clock.FrameMs < _questNewUntilMs);
     }
 
     /// <summary>
@@ -1631,6 +2111,30 @@ public partial class WorldController : Node
     /// an arrow splashes white. A hit on terrain throws fewer sparks than a hit on something alive,
     /// which is the difference between striking a wall and striking a target.
     /// </remarks>
+    /// <summary>
+    /// How tall an entity's artwork is, in tiles.
+    /// </summary>
+    /// <remarks>
+    /// The same arithmetic the sprite list does -- eight pixels to the tile, scaled by the size
+    /// stat -- so the furniture over an entity lines up with the artwork rather than with a guess.
+    /// Animated characters are measured from their standing frame, which is representative enough.
+    /// </remarks>
+    private float SpriteHeightTiles(Entity entity)
+    {
+        const float PixelsPerTile = 8f;
+
+        var resolved = _textures.Resolve(entity.Desc.Texture, entity.ObjectId, entity.AltTextureIndex);
+
+        var sprite = resolved.Animated != null
+            ? resolved.Animated.Frame(0f, 0f, Assets.CharAction.Stand, 0f).Sprite
+            : resolved.Still;
+
+        if (!sprite.IsValid)
+            return 1f;
+
+        return sprite.Region.Size.Y / PixelsPerTile * (entity.Size / 100f);
+    }
+
     private void OnProjectileStruck(Projectile projectile, ProjectileEnding ending)
     {
         var shot = projectile.ProjectileDesc;

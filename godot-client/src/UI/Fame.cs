@@ -36,6 +36,24 @@ public static class Fame
     /// <summary>Administrators get their own colour, ahead of every rating.</summary>
     private static readonly Color Admin = new(0f, 1f, 0f);
 
+    /// <summary>
+    /// The fame the next star costs, or zero once every star has been earned.
+    /// </summary>
+    /// <remarks>
+    /// What the fame bar measures against. The class quest is a different ladder and belongs to the
+    /// character sheet; the star is the one the rating beside the player's name is counting.
+    /// </remarks>
+    public static int NextThreshold(int fame)
+    {
+        foreach (int threshold in Thresholds)
+        {
+            if (fame < threshold)
+                return threshold;
+        }
+
+        return 0;
+    }
+
     /// <summary>How many stars a single character's fame is worth, from zero to five.</summary>
     public static int Stars(int fame)
     {
