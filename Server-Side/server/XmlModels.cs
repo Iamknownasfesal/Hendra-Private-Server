@@ -447,7 +447,10 @@ namespace server
                     new XElement("HealthStackCount", HealthStackCount),
                     new XElement("MagicStackCount", MagicStackCount),
                     new XElement("Dead", Dead),
-                    new XElement("HasBackpack", (HasBackpack) ? "1" : "0")
+                    new XElement("HasBackpack", (HasBackpack) ? "1" : "0"),
+                    // Round-trip format, so the client can parse it without knowing the server's
+                    // locale and format it in its own. Read off DbChar, which has always stored it.
+                    new XElement("CreateTime", CreateTime.ToString("o"))
                 );
         }
     }
