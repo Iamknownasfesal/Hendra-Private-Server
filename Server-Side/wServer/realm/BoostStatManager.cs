@@ -156,6 +156,15 @@ namespace wServer.realm
         private void IncrementBoost(StatsType stat, int amount)
         {
             var i = StatsManager.GetStatIndex(stat);
+
+            // A stat that is not one of the eleven the manager tracks. GetStatIndex answers -1 for
+            // it, which used to go straight into the array below and throw -- and a throw here
+            // reaches nothing but the catch-all around packet handling, so one unrecognised number
+            // in a data file logged nothing and dropped the player with "server closed the
+            // connection". Ignoring the bonus leaves the item merely weaker than intended.
+            if (i < 0)
+                return;
+
             if (_parent.Base[i] + amount < 1)
             {
                 amount = (i == 0) ? -_parent.Base[i] + 1 : -_parent.Base[i];
@@ -166,6 +175,9 @@ namespace wServer.realm
         private void FixedStat(StatsType stat, int value)
         {
             var i = StatsManager.GetStatIndex(stat);
+            if (i < 0)
+                return;
+
             _boost[i] = value - _parent.Base[i];
         }
     }

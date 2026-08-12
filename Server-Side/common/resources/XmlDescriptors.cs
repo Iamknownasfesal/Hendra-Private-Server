@@ -297,6 +297,37 @@ namespace common.resources
         CommonBox
     }
 
+    /// <summary>
+    /// Translates the stat numbering used by the item XML into this server's StatsType.
+    /// </summary>
+    /// <remarks>
+    /// The two are different numberings for the same eight stats, and the collision is silent
+    /// rather than obvious. The XML is written against the old client's ids -- 20 Attack, 21
+    /// Defense, 22 Speed, 26 Vitality, 27 Wisdom, 28 Dexterity -- while StatsType is the wire enum,
+    /// where those same numbers are Inventory12, Inventory13, Inventory14, Speed, Vitality and
+    /// Wisdom. So 20 to 22 crashed the player load outright (no base stat has that index, and the
+    /// lookup returns -1 straight into an array), and 26 to 28 quietly granted the wrong stat --
+    /// every point of Vitality on every item in the game was being paid out as Speed.
+    ///
+    /// MaximumHP (0) and MaximumMP (3) happen to agree in both numberings and pass through.
+    /// </remarks>
+    public static class XmlStat
+    {
+        public static int ToStatsType(int xmlStat)
+        {
+            switch (xmlStat)
+            {
+                case 20: return 24;  // Attack
+                case 21: return 25;  // Defense
+                case 22: return 26;  // Speed
+                case 26: return 27;  // Vitality
+                case 27: return 28;  // Wisdom
+                case 28: return 29;  // Dexterity
+                default: return xmlStat;
+            }
+        }
+    }
+
     public class ActivateEffect
     {
         public ActivateEffects Effect { get; private set; }
@@ -334,7 +365,7 @@ namespace common.resources
         {
             Effect = (ActivateEffects)Enum.Parse(typeof(ActivateEffects), elem.Value);
             if (elem.Attribute("stat") != null)
-                Stats = Utils.FromString(elem.Attribute("stat").Value);
+                Stats = XmlStat.ToStatsType(Utils.FromString(elem.Attribute("stat").Value));
 
             if (elem.Attribute("amount") != null)
                 Amount = Utils.FromString(elem.Attribute("amount").Value);
@@ -645,7 +676,7 @@ namespace common.resources
             var stats = new List<KeyValuePair<int, int>>();
             foreach (XElement i in elem.Elements("ActivateOnEquip"))
                 stats.Add(new KeyValuePair<int, int>(
-                    int.Parse(i.Attribute("stat").Value), 
+                    XmlStat.ToStatsType(int.Parse(i.Attribute("stat").Value)),
                     int.Parse(i.Attribute("amount").Value)));
             StatsBoost = stats.ToArray();
 

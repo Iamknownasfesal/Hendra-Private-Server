@@ -144,7 +144,11 @@ namespace wServer.networking
 
                     handler.Handle(this, (IncomingMessage)pkt);
                 }
-                catch (Exception) {
+                catch (Exception e) {
+                    // Logged rather than swallowed. This drops the connection with no Failure
+                    // packet, so to the player it is an unexplained "server closed the connection"
+                    // and to the log it was never here at all.
+                    Log.Error($"Error handling {pkt.ID} for {Account?.Name ?? "?"}: {e}");
                     Disconnect("Packet handling error.");
                 }
             }
