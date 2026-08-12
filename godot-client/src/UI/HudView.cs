@@ -105,27 +105,21 @@ public partial class HudView : Control
         MouseFilter = MouseFilterEnum.Ignore;
         this.FillScreen();
 
-        var panel = new PanelContainer
+        // The column itself, in the original's cut-corner shape and its background colour. Only the
+        // left corners are cut: the right two sit against the edge of the screen where a bevel
+        // would show as a notch out of the frame.
+        var panel = new CutEdgePanel
         {
             CustomMinimumSize = new Vector2(PanelWidth, 0),
             MouseFilter = MouseFilterEnum.Stop,
+            Background = CutEdgePanel.PanelBackground,
         };
-
-        // The default panel style is transparent, which leaves the world showing through the stats.
-        panel.AddThemeStyleboxOverride("panel", new StyleBoxFlat
-        {
-            BgColor = new Color(0.07f, 0.07f, 0.08f, 0.92f),
-            BorderColor = new Color(0.25f, 0.25f, 0.28f),
-            BorderWidthLeft = 1,
-        });
+        panel.Cuts(topLeft: true, topRight: false, bottomRight: false, bottomLeft: true).Padded(7);
         panel.SetAnchorsPreset(LayoutPreset.RightWide);
         panel.OffsetLeft = -PanelWidth;
         AddChild(panel);
 
-        var margin = new MarginContainer();
-        foreach (string side in new[] { "margin_left", "margin_top", "margin_right", "margin_bottom" })
-            margin.AddThemeConstantOverride(side, 8);
-        panel.AddChild(margin);
+        var margin = panel;
 
         var column = new VBoxContainer();
         column.AddThemeConstantOverride("separation", 6);

@@ -54,16 +54,12 @@ public partial class DeathScreen : Control
         backdrop.SetAnchorsPreset(LayoutPreset.FullRect);
         AddChild(backdrop);
 
-        var panel = new PanelContainer();
-        panel.AddThemeStyleboxOverride("panel", new StyleBoxFlat
+        var panel = new CutEdgePanel
         {
-            BgColor = new Color(0.07f, 0.07f, 0.08f, 0.97f),
-            BorderColor = new Color(0.35f, 0.3f, 0.3f),
-            BorderWidthTop = 1,
-            BorderWidthBottom = 1,
-            BorderWidthLeft = 1,
-            BorderWidthRight = 1,
-        });
+            Background = CutEdgePanel.PanelBackground,
+            Border = new Color(0.42f, 0.35f, 0.35f),
+        };
+        panel.Padded(0);
         panel.SetAnchorsPreset(LayoutPreset.Center);
         panel.OffsetLeft = -PanelWidth / 2f;
         panel.OffsetRight = PanelWidth / 2f;

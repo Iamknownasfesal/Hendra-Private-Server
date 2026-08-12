@@ -29,7 +29,7 @@ public partial class GuildView : Control
 {
     private const int PanelWidth = 480;
 
-    private PanelContainer _panel;
+    private CutEdgePanel _panel;
     private Label _title;
     private Label _summary;
     private Label _status;
@@ -66,16 +66,10 @@ public partial class GuildView : Control
         MouseFilter = MouseFilterEnum.Ignore;
         this.FillScreen();
 
-        _panel = new PanelContainer { Visible = false, MouseFilter = MouseFilterEnum.Stop };
-        _panel.AddThemeStyleboxOverride("panel", new StyleBoxFlat
-        {
-            BgColor = new Color(0.07f, 0.07f, 0.08f, 0.97f),
-            BorderColor = new Color(0.3f, 0.3f, 0.34f),
-            BorderWidthTop = 1,
-            BorderWidthBottom = 1,
-            BorderWidthLeft = 1,
-            BorderWidthRight = 1,
-        });
+        _panel = new CutEdgePanel { Visible = false, MouseFilter = MouseFilterEnum.Stop };
+        _panel.Background = CutEdgePanel.PanelBackground;
+        _panel.Border = new Color(0.42f, 0.42f, 0.42f);
+        _panel.Padded(0);
         _panel.SetAnchorsPreset(LayoutPreset.Center);
         _panel.OffsetLeft = -PanelWidth / 2f;
         _panel.OffsetRight = PanelWidth / 2f;
