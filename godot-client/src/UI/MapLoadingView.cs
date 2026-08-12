@@ -33,6 +33,16 @@ public partial class MapLoadingView : Control
     /// </remarks>
     private const float MinimumSeconds = 0.8f;
 
+    /// <summary>
+    /// How long it will wait to be told the world is ready before lifting anyway.
+    /// </summary>
+    /// <remarks>
+    /// A cover that never lifts is worse than no cover at all -- it hides a working game behind a
+    /// word. Whatever goes wrong upstream, this is the floor: the player gets their world back and
+    /// can see for themselves whether anything is actually broken.
+    /// </remarks>
+    private const float GiveUpSeconds = 12f;
+
     private Label _name;
     private DifficultyMarks _difficulty;
     private ColorRect _cover;
@@ -100,7 +110,10 @@ public partial class MapLoadingView : Control
 
         _shownFor += delta;
 
-        if (!_ready || _shownFor < MinimumSeconds)
+        if (_shownFor < MinimumSeconds)
+            return;
+
+        if (!_ready && _shownFor < GiveUpSeconds)
             return;
 
         _fade = Mathf.MoveToward(_fade, 0f, (float)delta / FadeSeconds);

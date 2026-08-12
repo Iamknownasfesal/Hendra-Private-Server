@@ -283,9 +283,11 @@ public partial class WorldController : Node
     /// Says the world is standing up, once the player is actually in it.
     /// </summary>
     /// <remarks>
-    /// The first Update carries the player and the ground around them, which is the earliest moment
-    /// there is anything worth looking at. Lifting the cover on MapInfo instead would show a map
-    /// assembling itself, which is the thing the cover exists to hide.
+    /// Driven from the tick rather than from an Update. Updates arrive when there is something to
+    /// send, so in a quiet world the one that follows the player's own arrival may be a long time
+    /// coming -- which left the loading screen up over a world that was already standing. Ticks
+    /// come six times a second regardless, and a tick with a player on the map means the world is
+    /// there to be looked at.
     /// </remarks>
     private void AnnounceArrival()
     {
@@ -298,7 +300,6 @@ public partial class WorldController : Node
 
     private void OnWorldUpdated(UpdatePacket update)
     {
-        AnnounceArrival();
 
         foreach (var tile in update.Tiles)
         {
@@ -359,6 +360,8 @@ public partial class WorldController : Node
 
     private void OnTicked(NewTickPacket tick)
     {
+        AnnounceArrival();
+
         foreach (var status in tick.Statuses)
         {
             var entity = _map.GetEntity(status.ObjectId);
