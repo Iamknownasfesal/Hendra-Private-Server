@@ -101,7 +101,7 @@ public partial class DeathScreen : Control
         _tallies.AddThemeConstantOverride("v_separation", 2);
         _column.AddChild(_tallies);
 
-        var continueButton = new Button { Text = "Continue" };
+        var continueButton = new GameButton("Continue", primary: true);
         continueButton.Pressed += () => Dismissed?.Invoke();
         _column.AddChild(continueButton);
 

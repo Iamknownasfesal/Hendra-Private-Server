@@ -63,6 +63,10 @@ public partial class LoginScreen : Control
         wash.MouseFilter = MouseFilterEnum.Ignore;
         AddChild(wash);
 
+        // The same sky as the title screen, so moving between them does not change worlds.
+        AddChild(new UI.Starfield());
+        AddChild(new UI.Vignette(0.45f));
+
         var centre = new CenterContainer();
         centre.SetAnchorsPreset(LayoutPreset.FullRect);
         AddChild(centre);
@@ -110,17 +114,17 @@ public partial class LoginScreen : Control
         };
         column.AddChild(_remember);
 
-        _signIn = new Button { Text = "Sign in", CustomMinimumSize = new Vector2(0, 34) };
+        _signIn = new UI.GameButton("Sign in", primary: true, compact: true) { CustomMinimumSize = new Vector2(0, 38) };
         _signIn.Pressed += OnSignInPressed;
         column.AddChild(_signIn);
 
         // Registering is the same two fields, so it is a second button rather than a third page.
         // The server creates the account and the client signs straight in with it.
-        _register = new Button { Text = "Create an account with these details" };
+        _register = new UI.GameButton("Create an account with these details", compact: true);
         _register.Pressed += OnRegisterPressed;
         column.AddChild(_register);
 
-        var back = new Button { Text = "Back" };
+        var back = new UI.GameButton("Back", compact: true);
         back.Pressed += () => BackPressed?.Invoke();
         column.AddChild(back);
 
@@ -154,7 +158,7 @@ public partial class LoginScreen : Control
         _name = AddField(nameColumn, "Name", string.Empty);
         _name.MaxLength = 15;
 
-        _setName = new Button { Text = "Take this name", CustomMinimumSize = new Vector2(0, 32) };
+        _setName = new UI.GameButton("Take this name", primary: true, compact: true) { CustomMinimumSize = new Vector2(0, 36) };
         _setName.Pressed += OnSetNamePressed;
         nameColumn.AddChild(_setName);
 
@@ -239,17 +243,14 @@ public partial class LoginScreen : Control
     /// </remarks>
     private static Control NewCharacterBox(string className, Account.CharacterInfo character, Action play)
     {
-        var box = new Button
+        // A click target, not a keyboard widget -- the original's are graphics you click, and
+        // CardButton keeps itself out of the focus chain for the same reason. Godot gives the first
+        // focusable control focus on its own, and a focused Button is activated by ui_accept, which
+        // is Enter, Space *and joypad button 0* by default.
+        var box = new UI.CardButton(UI.Style.Gold)
         {
-            CustomMinimumSize = new Vector2(CharacterBoxWidth, 82),
+            CustomMinimumSize = new Vector2(CharacterBoxWidth, 86),
             TooltipText = "Play this character",
-
-            // A click target, not a keyboard widget -- the original's are graphics you click. Godot
-            // gives the first focusable control focus on its own, and a focused Button is activated
-            // by ui_accept, which is Enter, Space *and joypad button 0* by default. That launched a
-            // character with no click at all: come back from a disconnect, the rebuilt list takes
-            // focus, and the game restarts itself in a loop nothing on screen explains.
-            FocusMode = FocusModeEnum.None,
         };
 
         box.Pressed += play;
@@ -270,13 +271,27 @@ public partial class LoginScreen : Control
         rows.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         across.AddChild(rows);
 
+        // The class and the level are the two things you compare between characters, so the level
+        // gets a badge of its own rather than trailing the name as more words.
+        var headingRow = new HBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
+        headingRow.AddThemeConstantOverride("separation", 7);
+        rows.AddChild(headingRow);
+
         var heading = new Label
         {
-            Text = $"{className}   Level {character.Level}",
+            Text = className,
             MouseFilter = MouseFilterEnum.Ignore,
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
         };
-        heading.AddThemeFontSizeOverride("font_size", 17);
-        rows.AddChild(heading);
+        heading.AddThemeFontSizeOverride("font_size", 18);
+        heading.AddThemeColorOverride("font_color", UI.Style.Text);
+        headingRow.AddChild(heading);
+
+        headingRow.AddChild(new UI.LevelBadge(character.Level)
+        {
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            SizeFlagsVertical = SizeFlags.ShrinkCenter,
+        });
 
         var vitals = new Label
         {
@@ -586,14 +601,12 @@ public partial class LoginScreen : Control
         {
             ushort classType = playerClass.Type;
 
-            var button = new Button
+            // Click only, for the reason the character boxes are: creating a character by accident
+            // costs a slot, and CardButton stays out of the focus chain.
+            var button = new UI.CardButton(UI.Style.Steel)
             {
-                CustomMinimumSize = new Vector2(126, 74),
+                CustomMinimumSize = new Vector2(126, 78),
                 TooltipText = playerClass.DisplayId ?? playerClass.Id,
-
-                // Click only, for the reason the character boxes are: creating a character by
-                // accident costs a slot.
-                FocusMode = FocusModeEnum.None,
             };
             button.Pressed += () => RequestCreate(classType);
             grid.AddChild(button);

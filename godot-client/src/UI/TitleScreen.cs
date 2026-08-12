@@ -41,7 +41,7 @@ public partial class TitleScreen : Control
     {
         this.FillScreen();
 
-        var backdrop = new ColorRect { Color = new Color(0.04f, 0.04f, 0.05f) };
+        var backdrop = new ColorRect { Color = Style.Void };
         backdrop.SetAnchorsPreset(LayoutPreset.FullRect);
         backdrop.MouseFilter = MouseFilterEnum.Ignore;
         AddChild(backdrop);
@@ -58,6 +58,12 @@ public partial class TitleScreen : Control
         };
         _art.SetAnchorsPreset(LayoutPreset.FullRect);
         AddChild(_art);
+
+        // The original runs a live world behind its title, which is a whole second simulation for a
+        // screen you look at for four seconds. This is the part of that worth keeping: the first
+        // thing a player sees should be moving.
+        AddChild(new Starfield());
+        AddChild(new Vignette());
 
         // The buttons sit on the art's own band rather than the window's, so they stay where the
         // artwork expects them however the window is shaped.
@@ -111,13 +117,7 @@ public partial class TitleScreen : Control
 
     private static Button MenuButton(string text, Action pressed, bool primary = false)
     {
-        var button = new Button
-        {
-            Text = text,
-            CustomMinimumSize = new Vector2(primary ? 170 : 130, primary ? 44 : 38),
-        };
-
-        button.AddThemeFontSizeOverride("font_size", primary ? 22 : 17);
+        var button = new GameButton(text, primary);
         button.Pressed += pressed;
         return button;
     }

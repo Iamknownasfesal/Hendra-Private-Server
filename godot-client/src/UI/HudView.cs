@@ -221,7 +221,7 @@ public partial class HudView : Control
         _price = new Label { VerticalAlignment = VerticalAlignment.Center };
         row.AddChild(_price);
 
-        _buy = new Button { Text = "Buy" };
+        _buy = new GameButton("Buy", compact: true);
         _buy.Pressed += () => BuyPressed?.Invoke();
         _merchantPanel.AddChild(_buy);
 
@@ -689,6 +689,12 @@ public sealed partial class VitalBar : Control
     private Label _label;
     private float _fraction;
 
+    /// <summary>Where the bar is drawn, chasing <see cref="_fraction"/>.</summary>
+    private float _shown;
+
+    /// <summary>Where it was, falling behind a drop so the loss is visible.</summary>
+    private float _ghost;
+
     /// <summary>The bar's colour. Settable because the level bar becomes the fame bar at the cap.</summary>
     public Color Fill
     {
@@ -737,20 +743,68 @@ public sealed partial class VitalBar : Control
         QueueRedraw();
     }
 
+    /// <summary>
+    /// Eases the fill towards the value rather than snapping to it.
+    /// </summary>
+    /// <remarks>
+    /// A bar that jumps tells you the number changed; a bar that slides tells you which way and by
+    /// how much, which is the thing you actually need while something is hitting you. The ghost
+    /// trails behind a drop so a hit leaves a mark you can see after it has landed.
+    /// </remarks>
+    public override void _Process(double delta)
+    {
+        float step = (float)delta * 6f;
+        _shown = Mathf.MoveToward(_shown, _fraction, step);
+
+        // The ghost catches up slowly on the way down and instantly on the way up.
+        _ghost = _ghost < _shown ? _shown : Mathf.MoveToward(_ghost, _shown, step * 0.35f);
+
+        if (!Mathf.IsEqualApprox(_shown, _fraction) || !Mathf.IsEqualApprox(_ghost, _shown))
+            QueueRedraw();
+    }
+
     public override void _Draw()
     {
         var full = new Rect2(Vector2.Zero, Size);
-        DrawRect(full, new Color(0.12f, 0.12f, 0.12f));
-        DrawRect(new Rect2(Vector2.Zero, new Vector2(Size.X * _fraction, Size.Y)), _fill);
-        DrawRect(full, new Color(0f, 0f, 0f, 0.6f), filled: false, width: 1f);
+
+        DrawRect(full, new Color(0.06f, 0.055f, 0.07f));
+
+        // What the bar is losing, in a dimmed version of its own colour.
+        if (_ghost > _shown)
+        {
+            DrawRect(new Rect2(0f, 0f, Size.X * _ghost, Size.Y),
+                _fill.Lerp(Colors.White, 0.35f) with { A = 0.4f });
+        }
+
+        float width = Size.X * _shown;
+        if (width > 0f)
+        {
+            // Lit along the top edge and shaded below, so the bar reads as a surface with a
+            // highlight on it rather than as a coloured rectangle.
+            DrawRect(new Rect2(0f, 0f, width, Size.Y), _fill.Darkened(0.25f));
+            DrawRect(new Rect2(0f, 0f, width, Size.Y * 0.45f), _fill.Lightened(0.12f));
+            DrawRect(new Rect2(0f, 0f, width, 1f), _fill.Lightened(0.45f) with { A = 0.8f });
+        }
+
+        // Quarter marks, so a glance gives a fraction rather than a length.
+        for (int i = 1; i < 4; i++)
+        {
+            float x = Size.X * i / 4f;
+            DrawLine(new Vector2(x, 2f), new Vector2(x, Size.Y - 2f), new Color(0f, 0f, 0f, 0.28f));
+        }
+
+        DrawRect(full, new Color(0f, 0f, 0f, 0.65f), filled: false, width: 1f);
     }
 }
 
 /// <summary>One inventory or equipment slot.</summary>
 public sealed partial class SlotView : Control
 {
-    private static readonly Color Background = new(0.10f, 0.10f, 0.10f);
-    private static readonly Color Border = new(0.35f, 0.35f, 0.35f);
+    private static readonly Color Background = new("15141a");
+    private static readonly Color Border = new("46424f");
+
+    /// <summary>Eased towards one while the pointer is over the slot.</summary>
+    private float _glow;
 
     private Assets.Sprite _sprite;
     private Resources.ObjectDesc _desc;
@@ -759,7 +813,25 @@ public sealed partial class SlotView : Control
     /// <summary>Raised on a left click, whether or not the slot holds anything.</summary>
     public event Action Activated;
 
-    public override void _Ready() => MouseFilter = MouseFilterEnum.Stop;
+    public override void _Ready()
+    {
+        MouseFilter = MouseFilterEnum.Stop;
+
+        MouseEntered += QueueRedraw;
+        MouseExited += QueueRedraw;
+    }
+
+    public override void _Process(double delta)
+    {
+        float target = _sprite.IsValid && GetGlobalRect().HasPoint(GetGlobalMousePosition()) ? 1f : 0f;
+        float eased = Mathf.MoveToward(_glow, target, (float)delta * 8f);
+
+        if (Mathf.IsEqualApprox(eased, _glow))
+            return;
+
+        _glow = eased;
+        QueueRedraw();
+    }
 
     public override void _GuiInput(InputEvent @event)
     {
@@ -798,8 +870,21 @@ public sealed partial class SlotView : Control
     public override void _Draw()
     {
         var full = new Rect2(Vector2.Zero, Size);
-        DrawRect(full, Background);
-        DrawRect(full, Border, filled: false, width: 1f);
+
+        // An empty slot is a recess; a full one is a plate with something sitting on it, and it
+        // lifts under the pointer. The difference is what makes a grid of them scannable.
+        DrawRect(full, _sprite.IsValid
+            ? Background.Lightened(0.06f + _glow * 0.10f)
+            : Background);
+
+        if (_sprite.IsValid)
+            DrawRect(new Rect2(1f, 1f, Size.X - 2f, Size.Y * 0.4f), new Color(1f, 1f, 1f, 0.035f));
+
+        var border = _sprite.IsValid
+            ? Border.Lerp(Style.Gold, _glow * 0.8f)
+            : Border with { A = 0.55f };
+
+        DrawRect(full, border, filled: false, width: _glow > 0.5f ? 2f : 1f);
 
         if (!_sprite.IsValid)
             return;

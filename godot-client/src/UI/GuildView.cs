@@ -120,7 +120,7 @@ public partial class GuildView : Control
         };
         inviteRow.AddChild(_nameField);
 
-        _inviteButton = new Button { Text = "Invite" };
+        _inviteButton = new GameButton("Invite", compact: true);
         _inviteButton.Pressed += () => Send(new GuildInvitePacket { Name = _nameField.Text });
         inviteRow.AddChild(_inviteButton);
 
@@ -128,7 +128,7 @@ public partial class GuildView : Control
         joinRow.AddThemeConstantOverride("separation", 6);
         column.AddChild(joinRow);
 
-        _createButton = new Button { Text = "Create a guild with this name" };
+        _createButton = new GameButton("Create a guild with this name", compact: true);
         _createButton.Pressed += () => Send(new CreateGuildPacket { Name = _nameField.Text });
         joinRow.AddChild(_createButton);
 
@@ -136,15 +136,15 @@ public partial class GuildView : Control
         buttons.AddThemeConstantOverride("separation", 6);
         column.AddChild(buttons);
 
-        var refresh = new Button { Text = "Refresh" };
+        var refresh = new GameButton("Refresh", compact: true);
         refresh.Pressed += Refresh;
         buttons.AddChild(refresh);
 
-        var leave = new Button { Text = "Leave" };
+        var leave = new GameButton("Leave", compact: true);
         leave.Pressed += () => Send(new GuildRemovePacket { Name = _accountName });
         buttons.AddChild(leave);
 
-        var close = new Button { Text = "Close" };
+        var close = new GameButton("Close", compact: true);
         close.Pressed += Toggle;
         buttons.AddChild(close);
     }
@@ -266,15 +266,15 @@ public partial class GuildView : Control
         if (!overThem)
             return row;
 
-        var promote = new Button { Text = "▲" , TooltipText = "Promote" };
+        var promote = new GameButton("▲", compact: true) { TooltipText = "Promote" };
         promote.Pressed += () => ChangeRank(member, up: true);
         row.AddChild(promote);
 
-        var demote = new Button { Text = "▼", TooltipText = "Demote" };
+        var demote = new GameButton("▼", compact: true) { TooltipText = "Demote" };
         demote.Pressed += () => ChangeRank(member, up: false);
         row.AddChild(demote);
 
-        var remove = new Button { Text = "✕", TooltipText = "Remove from the guild" };
+        var remove = new GameButton("✕", compact: true) { TooltipText = "Remove from the guild" };
         remove.Pressed += () => Send(new GuildRemovePacket { Name = member.Name });
         row.AddChild(remove);
 

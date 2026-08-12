@@ -131,7 +131,7 @@ public partial class OptionsView : Control
             keys.AddChild(new Label { Text = does });
         }
 
-        var close = new Button { Text = "Close" };
+        var close = new GameButton("Close", compact: true);
         close.Pressed += Toggle;
         column.AddChild(close);
     }

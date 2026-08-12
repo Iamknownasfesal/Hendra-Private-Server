@@ -31,6 +31,11 @@ public partial class Boot : Control
     {
         SetAnchorsPreset(LayoutPreset.FullRect);
 
+        // One theme for the window, so every control the port creates picks it up -- including the
+        // ones it does not draw itself, like the dropdown and the text fields, which otherwise
+        // arrive looking like an editor's.
+        GetTree().Root.Theme = UI.Style.Build();
+
         _status = new Label
         {
             HorizontalAlignment = HorizontalAlignment.Center,
