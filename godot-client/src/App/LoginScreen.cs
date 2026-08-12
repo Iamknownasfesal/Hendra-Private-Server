@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 using Hendra.Account;
 
@@ -90,6 +91,7 @@ public partial class LoginScreen : Control
         _signInPanel.AddChild(column);
 
         _guid = AddField(column, "Account", string.Empty);
+        _guid.PlaceholderText = "you@example.com";
         _password = AddField(column, "Password", string.Empty);
         _password.Secret = true;
 
@@ -128,12 +130,14 @@ public partial class LoginScreen : Control
 
         nameColumn.AddChild(new Label
         {
-            Text = "Choose the name other players will see.\nThis is separate from your account, and you only get one.",
+            Text = "Choose the name other players will see. Three to fifteen letters, " +
+                   "no digits or spaces.\nThis is separate from your account, and you only get one.",
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
             CustomMinimumSize = new Vector2(CharacterBoxWidth, 0),
         });
 
         _name = AddField(nameColumn, "Name", string.Empty);
+        _name.MaxLength = 15;
 
         _setName = new Button { Text = "Take this name", CustomMinimumSize = new Vector2(0, 32) };
         _setName.Pressed += OnSetNamePressed;
@@ -326,6 +330,15 @@ public partial class LoginScreen : Control
     /// </remarks>
     private async void OnSetNamePressed()
     {
+        // The server's rule, checked here so a refusal is instant and says what is wrong rather
+        // than coming back from a round trip as a bare "Invalid name".
+        string name = _name.Text ?? string.Empty;
+        if (name.Length < 3 || name.Length > 15 || !name.All(char.IsLetter))
+        {
+            _status.Text = "A name must be three to fifteen letters, with no digits or spaces.";
+            return;
+        }
+
         _setName.Disabled = true;
         _status.Text = "Claiming the name...";
 
@@ -360,6 +373,13 @@ public partial class LoginScreen : Control
     /// </remarks>
     private async void OnRegisterPressed()
     {
+        // The server takes an email address as the account name and refuses anything else.
+        if (!_guid.Text.Contains('@') || !_guid.Text.Contains('.'))
+        {
+            _status.Text = "The account name has to be an email address.";
+            return;
+        }
+
         _register.Disabled = true;
         _status.Text = "Creating the account...";
 

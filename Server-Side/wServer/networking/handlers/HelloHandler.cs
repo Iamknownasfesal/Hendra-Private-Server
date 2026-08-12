@@ -76,12 +76,6 @@ namespace wServer.networking.handlers
                 return null;
             }
 
-            if(!(acc.Alpha))
-            {
-                client.SendFailure("Failed to log in, this server is alpha-members only.", Failure.MessageWithDisconnect);
-                return null;
-            }
-
             if (client.Manager.Database.IsIpBanned(client.IP))
             {
                 client.SendFailure("Failed to log in, account is banned.", Failure.MessageWithDisconnect);
