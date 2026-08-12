@@ -243,6 +243,13 @@ public partial class LoginScreen : Control
         {
             CustomMinimumSize = new Vector2(CharacterBoxWidth, 82),
             TooltipText = "Play this character",
+
+            // A click target, not a keyboard widget -- the original's are graphics you click. Godot
+            // gives the first focusable control focus on its own, and a focused Button is activated
+            // by ui_accept, which is Enter, Space *and joypad button 0* by default. That launched a
+            // character with no click at all: come back from a disconnect, the rebuilt list takes
+            // focus, and the game restarts itself in a loop nothing on screen explains.
+            FocusMode = FocusModeEnum.None,
         };
 
         box.Pressed += play;
@@ -583,6 +590,10 @@ public partial class LoginScreen : Control
             {
                 CustomMinimumSize = new Vector2(126, 74),
                 TooltipText = playerClass.DisplayId ?? playerClass.Id,
+
+                // Click only, for the reason the character boxes are: creating a character by
+                // accident costs a slot.
+                FocusMode = FocusModeEnum.None,
             };
             button.Pressed += () => RequestCreate(classType);
             grid.AddChild(button);

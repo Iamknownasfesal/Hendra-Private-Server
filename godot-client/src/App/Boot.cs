@@ -114,6 +114,12 @@ public partial class Boot : Control
 
     private void StartGame(ServerInfo server, string guid, string password, int characterId)
     {
+        // One game at a time. Every route into here goes through a button, and a second one
+        // arriving while a session is already up would leave the first running unreferenced --
+        // still connected, still acking -- with the server dropping both for the double login.
+        if (_game != null)
+            return;
+
         if (_login != null)
         {
             _login.QueueFree();
@@ -143,6 +149,12 @@ public partial class Boot : Control
 
     private void CreateCharacter(ServerInfo server, string guid, string password, int characterId, ushort classType)
     {
+        // One game at a time. Every route into here goes through a button, and a second one
+        // arriving while a session is already up would leave the first running unreferenced --
+        // still connected, still acking -- with the server dropping both for the double login.
+        if (_game != null)
+            return;
+
         if (_login != null)
         {
             _login.QueueFree();
