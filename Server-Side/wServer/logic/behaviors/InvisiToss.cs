@@ -47,7 +47,7 @@ namespace wServer.logic.behaviors
                     X = host.X + (float)(range * Math.Cos(angle.Value)),
                     Y = host.Y + (float)(range * Math.Sin(angle.Value)),
                 };
-                host.Owner.Timers.Add(new WorldTimer(0, (world, t) =>
+                host.Owner.AddTimer(new WorldTimer(0, (world, t) =>
                 {
                     Entity entity = Entity.Resolve(world.Manager, child);
                     entity.Move(target.X, target.Y);

@@ -80,7 +80,7 @@ namespace wServer.logic.behaviors
 
 
 
-                    host.Owner.Timers.Add(new WorldTimer(1500, (world, t) =>
+                    host.Owner.AddTimer(new WorldTimer(1500, (world, t) =>
                     {
                         world.BroadcastPacketNearby(new Aoe()
                         {

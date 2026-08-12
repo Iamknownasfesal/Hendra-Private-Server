@@ -25,18 +25,27 @@ namespace wServer
 
         public static bool AnyPlayerNearby(this Entity entity, int radius = Player.Radius)
         {
-            // Asked once per enemy per tick, so with a room full of them the LINQ filter this used
-            // to run was tens of thousands of throwaway enumerators a second for a test that ends
-            // at the first player it finds.
-            foreach (var i in entity.Owner.PlayersCollision.HitTest(entity.X, entity.Y, radius))
+            // Asked once per enemy per tick, which is the most-called thing on the server: with a
+            // room full of monsters it runs tens of thousands of times a second. It used to ask the
+            // collision map, whose HitTest is a yield iterator -- so every one of those calls
+            // allocated an enumerator and walked the chunks overlapping a twenty-tile circle, to
+            // answer a question about the handful of players in the world. Asking them directly is
+            // the same answer for a fraction of the work, and allocates nothing.
+            var players = entity.Owner.Players;
+            if (players.Count == 0)
+                return false;
+
+            var range = radius * radius;
+            foreach (var pair in players)
             {
-                if (!(i is Player) || i.HasConditionEffect(ConditionEffects.Hidden))
+                var player = pair.Value;
+                if (player == null || player.HasConditionEffect(ConditionEffects.Hidden))
                     continue;
 
-                var d = i.DistSqr(entity);
-                if (d < radius * radius)
+                if (player.DistSqr(entity) < range)
                     return true;
             }
+
             return false;
         }
 

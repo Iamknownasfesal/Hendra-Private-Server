@@ -1427,7 +1427,7 @@ namespace wServer.realm.commands
             else
             {
                 player.SpectateTarget = null;
-                player.Owner.Timers.Add(new WorldTimer(3000, (w, t) =>
+                player.Owner.AddTimer(new WorldTimer(3000, (w, t) =>
                     {
                         if (player.SpectateTarget == null)
                             player.ApplyConditionEffect(ConditionEffectIndex.Paused, 0);

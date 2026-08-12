@@ -60,17 +60,21 @@ namespace wServer.realm.entities
         public float Angle { get; set; }
         public int Damage { get; set; }
 
-        private readonly ConcurrentDictionary<Player, Tuple<int, int>> _startTime =
-            new ConcurrentDictionary<Player, Tuple<int, int>>();
-        private readonly HashSet<Entity> _hit = new HashSet<Entity>();
-
-        /// <summary>Players this bullet has already been reported as passing through.</summary>
+        /// <summary>
+        /// What this bullet has hit, and what it has been reported as passing through.
+        /// </summary>
         /// <remarks>
-        /// Separate from <see cref="_hit"/> on purpose: a noted pass-through has not happened yet
-        /// and must not stop the client's own report from landing, it only stops the same bullet
-        /// being reported twice while it is still overlapping.
+        /// Both built on first use rather than in the constructor. Bullets are the most numerous
+        /// thing the server makes -- a room of bosses fires thousands a second -- and the great
+        /// majority of them hit nothing at all, so a set each was two allocations apiece for
+        /// answers that stayed empty. The lock guards creation as well as contents, since the sweep
+        /// runs on the world thread and the hit reports arrive on the logic thread.
         /// </remarks>
-        private readonly HashSet<Entity> _noted = new HashSet<Entity>();
+        private HashSet<Entity> _hit;
+
+        private HashSet<Entity> _noted;
+
+        private readonly object _hitLock = new object();
 
         /// <summary>
         /// How much of this bullet's flight has been checked against the players it passed.
@@ -216,7 +220,7 @@ namespace wServer.realm.entities
             foreach (var player in world.Players.Values)
             {
                 if (player?.Owner == null || player.IsInvulnerable() ||
-                    HasHit(player) || _noted.Contains(player))
+                    HasHit(player) || _noted != null && _noted.Contains(player))
                     continue;
 
                 var dx = player.X - start.X;
@@ -243,7 +247,7 @@ namespace wServer.realm.entities
                     if (off > SweepBox)
                         continue;
 
-                    _noted.Add(player);
+                    (_noted ??= new HashSet<Entity>()).Add(player);
                     player.NoteUnacknowledgedHit(this, time, SweepBox - off, e);
                     answered = upTo;
                     break;
@@ -419,8 +423,8 @@ namespace wServer.realm.entities
                 return;
 
             bool first;
-            lock (_hit)
-                first = _hit.Add(entity);
+            lock (_hitLock)
+                first = (_hit ??= new HashSet<Entity>()).Add(entity);
 
             if (first)
                 entity.HitByProjectile(this, time);
@@ -435,29 +439,8 @@ namespace wServer.realm.entities
         /// </remarks>
         public bool HasHit(Entity entity)
         {
-            lock (_hit)
-                return _hit.Contains(entity);
-        }
-
-        public void AddPlayerStartTime(Player player, int serverTime, int clientTime)
-        {
-            _startTime.TryAdd(player, new Tuple<int, int>(serverTime, clientTime));
-        }
-
-        public int GetPlayerServerStartTime(Player player)
-        {
-            if (!_startTime.ContainsKey(player))
-                return -1;
-
-            return _startTime[player].Item1;
-        }
-
-        public int GetPlayerClientStartTime(Player player)
-        {
-            if (!_startTime.ContainsKey(player))
-                return -1;
-
-            return _startTime[player].Item2;
+            lock (_hitLock)
+                return _hit != null && _hit.Contains(entity);
         }
     }
 }

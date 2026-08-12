@@ -505,7 +505,7 @@ namespace wServer.realm.entities
                 return;
 
             SpectateTarget = null;
-            Owner.Timers.Add(new WorldTimer(3000, (w, t) =>
+            Owner.AddTimer(new WorldTimer(3000, (w, t) =>
                 ApplyConditionEffect(ConditionEffectIndex.Paused, 0)));
             Client.SendPacket(new SetFocus()
             {
@@ -1019,7 +1019,7 @@ namespace wServer.realm.entities
                 ZombieId = -1
             });
 
-            Owner.Timers.Add(new WorldTimer(1000, (w, t) =>
+            Owner.AddTimer(new WorldTimer(1000, (w, t) =>
             {
                 if (_client.Player != this)
                     return;

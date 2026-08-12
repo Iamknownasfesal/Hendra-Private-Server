@@ -169,7 +169,7 @@ namespace wServer.logic.behaviors
                             TargetObjectId = host.Id,
                             Pos1 = target
                         }, target, PacketPriority.Low);
-                    host.Owner.Timers.Add(new WorldTimer(1500, (world, t) =>
+                    host.Owner.AddTimer(new WorldTimer(1500, (world, t) =>
                     {
                         if (!world.IsPassable(target.X, target.Y, true))
                             return;

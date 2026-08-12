@@ -217,7 +217,7 @@ namespace wServer.realm.entities
                 var newQuest = FindQuest(destination);
                 if (newQuest != null && newQuest != questEntity)
                 {
-                    Owner.Timers.Add(new WorldTimer(100, (w, t) =>
+                    Owner.AddTimer(new WorldTimer(100, (w, t) =>
                     {
                         _client.SendPacket(new QuestObjId()
                         {

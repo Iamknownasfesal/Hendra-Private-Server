@@ -870,7 +870,7 @@ namespace wServer.realm
         {
             Closing = true;
             _world.Manager.Chat.Announce("Realm closing in 1 minute.", true);
-            _world.Timers.Add(new WorldTimer(60000, (w, t) => CloseRealm()));
+            _world.AddTimer(new WorldTimer(60000, (w, t) => CloseRealm()));
         }
 
         private void CloseRealm()
@@ -879,7 +879,7 @@ namespace wServer.realm
             BroadcastMsg("I HAVE CLOSED THIS REALM!");
             BroadcastMsg("YOU WILL NOT LIVE TO SEE THE LIGHT OF DAY!");
 
-            _world.Timers.Add(new WorldTimer(22000, (w, t) => SendToCastle()));
+            _world.AddTimer(new WorldTimer(22000, (w, t) => SendToCastle()));
         }
 
         private void SendToCastle()

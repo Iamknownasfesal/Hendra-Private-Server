@@ -46,7 +46,7 @@ namespace wServer.logic.behaviors
                     owner.EnterWorld(entity);
 
                     if (timeoutTime != 0)
-                        owner.Timers.Add(new WorldTimer(timeoutTime * 1000, (world, t) => //default portal close time * 1000
+                        owner.AddTimer(new WorldTimer(timeoutTime * 1000, (world, t) => //default portal close time * 1000
                         {
                             try
                             {

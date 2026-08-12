@@ -43,7 +43,7 @@ namespace wServer.networking.handlers
             DynamicWorld.TryGetWorld(alertArea, player.Client, out var world);
             world = player.Owner.Manager.AddWorld(world ?? new World(alertArea));
 
-            player.Owner.Timers.Add(new WorldTimer(8000, (w, t) => {
+            player.Owner.AddTimer(new WorldTimer(8000, (w, t) => {
                 player.Client.Reconnect(new Reconnect {
                     Host = "",
                     Port = 2050,

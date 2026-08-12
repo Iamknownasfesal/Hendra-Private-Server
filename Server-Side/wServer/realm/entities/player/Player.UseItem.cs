@@ -495,7 +495,7 @@ namespace wServer.realm.entities
             if (!uPortalDesc.NexusPortal)
             {
                 var timeoutTime = gameData.Portals[portalType].Timeout;
-                Owner.Timers.Add(new WorldTimer(timeoutTime * 1000, (w, t) => w.LeaveWorld(uPortal)));
+                Owner.AddTimer(new WorldTimer(timeoutTime * 1000, (w, t) => w.LeaveWorld(uPortal)));
             }
 
             // announce
@@ -611,7 +611,7 @@ namespace wServer.realm.entities
             (entity as Portal).PlayerOpened = true;
             (entity as Portal).Opener = Name;
 
-            Owner.Timers.Add(new WorldTimer(timeoutTime * 1000, (world, t) => world.LeaveWorld(entity)));
+            Owner.AddTimer(new WorldTimer(timeoutTime * 1000, (world, t) => world.LeaveWorld(entity)));
 
             Owner.BroadcastPacket(new Notification
             {
@@ -685,7 +685,7 @@ namespace wServer.realm.entities
             var x = new Placeholder(Manager, 1500);
             x.Move(target.X, target.Y);
             Owner.EnterWorld(x);
-            Owner.Timers.Add(new WorldTimer(1500, (world, t) =>
+            Owner.AddTimer(new WorldTimer(1500, (world, t) =>
             {
                 world.BroadcastPacketNearby(new ShowEffect()
                 {
@@ -826,7 +826,7 @@ namespace wServer.realm.entities
                 {
                     enemy.ApplyConditionEffect(ConditionEffectIndex.Stasis, eff.DurationMS);
 
-                    Owner.Timers.Add(new WorldTimer(eff.DurationMS, (world, t) =>
+                    Owner.AddTimer(new WorldTimer(eff.DurationMS, (world, t) =>
                         enemy.ApplyConditionEffect(ConditionEffectIndex.StasisImmune, 3000)));
 
                     pkts.Add(new Notification()
@@ -850,7 +850,7 @@ namespace wServer.realm.entities
                 Pos1 = target
             }, p => this.DistSqr(p) < RadiusSqr);
 
-            Owner.Timers.Add(new WorldTimer(1500, (world, t) =>
+            Owner.AddTimer(new WorldTimer(1500, (world, t) =>
             {
                 var trap = new Trap(
                     this,
@@ -1079,7 +1079,7 @@ namespace wServer.realm.entities
                 }
 
 
-                Owner.Timers.Add(new WorldTimer(duration, (world, t) =>
+                Owner.AddTimer(new WorldTimer(duration, (world, t) =>
                 {
                     ((Player)player).Stats.Boost.ActivateBoost[idx].Pop(amount, eff.NoStack);
                     ((Player)player).Stats.ReCalculateValues();
@@ -1102,7 +1102,7 @@ namespace wServer.realm.entities
             var s = eff.Amount;
             Stats.Boost.ActivateBoost[idx].Push(s, eff.NoStack);
             Stats.ReCalculateValues();
-            Owner.Timers.Add(new WorldTimer(eff.DurationMS, (world, t) =>
+            Owner.AddTimer(new WorldTimer(eff.DurationMS, (world, t) =>
             {
                 Stats.Boost.ActivateBoost[idx].Pop(s, eff.NoStack);
                 Stats.ReCalculateValues();
@@ -1228,7 +1228,7 @@ namespace wServer.realm.entities
             var x = new Placeholder(Manager, 1500);
             x.Move(target.X, target.Y);
             Owner.EnterWorld(x);
-            Owner.Timers.Add(new WorldTimer(1500, (world, t) =>
+            Owner.AddTimer(new WorldTimer(1500, (world, t) =>
             {
                 world.BroadcastPacketNearby(new ShowEffect()
                 {
@@ -1327,7 +1327,7 @@ namespace wServer.realm.entities
             };
 
             tmr = new WorldTimer(250, poisonTick);
-            world.Timers.Add(tmr);
+            world.AddTimer(tmr);
         }
 
         void HealingPlayersPoison(World world, Player player, ActivateEffect eff)
@@ -1364,7 +1364,7 @@ namespace wServer.realm.entities
             };
 
             tmr = new WorldTimer(250, healTick);
-            world.Timers.Add(tmr);
+            world.AddTimer(tmr);
         }
 
         private float UseWisMod(float value, int offset = 1)

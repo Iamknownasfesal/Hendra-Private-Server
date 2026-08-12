@@ -46,8 +46,8 @@ namespace wServer.networking.handlers
                                 (entity as Portal).PlayerOpened = true;
                                 (entity as Portal).Opener = player.Name;
 
-                                player.Owner.Timers.Add(new WorldTimer(timeoutTime * 1000, (world, t) => world.LeaveWorld(entity)));
-                                player.Owner.Timers.Add(new WorldTimer(60000, (w, t) =>
+                                player.Owner.AddTimer(new WorldTimer(timeoutTime * 1000, (world, t) => world.LeaveWorld(entity)));
+                                player.Owner.AddTimer(new WorldTimer(60000, (w, t) =>
                                 {
                                     Manager._isRaidLaunched = false;
                                 }));
@@ -86,8 +86,8 @@ namespace wServer.networking.handlers
                                 (entity as Portal).PlayerOpened = true;
                                 (entity as Portal).Opener = player.Name;
                                 var timeoutTime = gameData.Portals[objType].Timeout;
-                                player.Owner.Timers.Add(new WorldTimer(timeoutTime * 1000, (world, t) => world.LeaveWorld(entity)));
-                                player.Owner.Timers.Add(new WorldTimer(60000, (w, t) =>
+                                player.Owner.AddTimer(new WorldTimer(timeoutTime * 1000, (world, t) => world.LeaveWorld(entity)));
+                                player.Owner.AddTimer(new WorldTimer(60000, (w, t) =>
                                 {
                                     Manager._isRaidLaunched = false;
                                 }));
@@ -132,8 +132,8 @@ namespace wServer.networking.handlers
                                 (entity as Portal).PlayerOpened = true;
                                 (entity as Portal).Opener = player.Name;
 
-                                player.Owner.Timers.Add(new WorldTimer(timeoutTime * 1000, (world, t) => world.LeaveWorld(entity)));
-                                player.Owner.Timers.Add(new WorldTimer(60000, (w, t) =>
+                                player.Owner.AddTimer(new WorldTimer(timeoutTime * 1000, (world, t) => world.LeaveWorld(entity)));
+                                player.Owner.AddTimer(new WorldTimer(60000, (w, t) =>
                                 {
                                     Manager._isRaidLaunched = false;
                                 }));
@@ -173,8 +173,8 @@ namespace wServer.networking.handlers
                                 (entity as Portal).PlayerOpened = true;
                                 (entity as Portal).Opener = player.Name;
                                 var timeoutTime = gameData.Portals[objType].Timeout;
-                                player.Owner.Timers.Add(new WorldTimer(timeoutTime * 1000, (world, t) => world.LeaveWorld(entity)));
-                                player.Owner.Timers.Add(new WorldTimer(60000, (w, t) =>
+                                player.Owner.AddTimer(new WorldTimer(timeoutTime * 1000, (world, t) => world.LeaveWorld(entity)));
+                                player.Owner.AddTimer(new WorldTimer(60000, (w, t) =>
                                 {
                                     Manager._isRaidLaunched = false;
                                 }));

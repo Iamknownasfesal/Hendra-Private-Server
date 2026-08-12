@@ -267,7 +267,7 @@ namespace wServer.logic.behaviors
             var world = host.Owner;
             var terrain = (host as Enemy)?.Terrain;
 
-            world.Timers.Add(new WorldTimer(LandsAfterMs, (w, t) =>
+            world.AddTimer(new WorldTimer(LandsAfterMs, (w, t) =>
             {
                 var entity = Entity.Resolve(w.Manager, _child);
                 entity.Move(target.X, target.Y);

@@ -283,7 +283,7 @@ namespace wServer.realm.commands
                 var pX = player.X;
                 var pY = player.Y;
 
-                player.Owner.Timers.Add(new WorldTimer(Delay * 1000, (world, t) => // spawn mob in delay seconds
+                player.Owner.AddTimer(new WorldTimer(Delay * 1000, (world, t) => // spawn mob in delay seconds
                 {
                     for (var i = 0; i < num && i < 500; i++)
                     {
@@ -543,7 +543,7 @@ namespace wServer.realm.commands
             var pX = player.X;
             var pY = player.Y;
 
-            player.Owner.Timers.Add(new WorldTimer(Delay * 1000, (world, t) => // spawn mob in delay seconds
+            player.Owner.AddTimer(new WorldTimer(Delay * 1000, (world, t) => // spawn mob in delay seconds
             {
                 for (var i = 0; i < num && i < 500; i++)
                 {
@@ -1801,7 +1801,7 @@ namespace wServer.realm.commands
             var i = 0;
             foreach (var plr in owner.Players.Values)
             {
-                owner.Timers.Add(new WorldTimer(100 * i, (w, t) =>
+                owner.AddTimer(new WorldTimer(100 * i, (w, t) =>
                 {
                     if (plr == null)
                         return;
@@ -2385,7 +2385,7 @@ namespace wServer.realm.commands
             player.SpectateTarget = target;
             player.Sight.UpdateCount++;
 
-            player.Owner.Timers.Add(new WorldTimer(500, (w, t) =>
+            player.Owner.AddTimer(new WorldTimer(500, (w, t) =>
             {
                 player.Client.SendPacket(new SetFocus()
                 {

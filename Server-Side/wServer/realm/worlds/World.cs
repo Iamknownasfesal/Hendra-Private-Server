@@ -89,7 +89,22 @@ namespace wServer.realm.worlds
         public CollisionMap<Entity> EnemiesCollision { get; private set; }
         public CollisionMap<Entity> PlayersCollision { get; private set; }
 
-        public List<WorldTimer> Timers { get; private set; }
+        /// <summary>
+        /// Work to run later, owned by the tick that runs it.
+        /// </summary>
+        /// <remarks>
+        /// Private, and added to only through <see cref="AddTimer"/>. It used to be a public list,
+        /// which meant the world tick walked it and removed from it while behaviours, commands and
+        /// packet handlers added to it from two other threads -- a race that predates any
+        /// parallelism here and would eventually throw or quietly drop a timer. Arrivals now queue
+        /// and are folded in at the top of the tick, so exactly one thread ever touches the list.
+        /// </remarks>
+        private List<WorldTimer> Timers { get; set; }
+
+        private readonly ConcurrentQueue<WorldTimer> _arrivingTimers = new ConcurrentQueue<WorldTimer>();
+
+        /// <summary>Runs a piece of work on this world's tick, from any thread.</summary>
+        public void AddTimer(WorldTimer timer) => _arrivingTimers.Enqueue(timer);
 
         private static int _entityInc;
 
@@ -534,7 +549,7 @@ namespace wServer.realm.worlds
                 EffectType = EffectType.Earthquake
             }, null, PacketPriority.Low);
 
-            Timers.Add(new WorldTimer(8000, (w, t) =>
+            AddTimer(new WorldTimer(8000, (w, t) =>
             {
                 var rcpNotPaused = new Reconnect()
                 {
@@ -559,7 +574,7 @@ namespace wServer.realm.worlds
             }));
 
             if (!Persist)
-                Timers.Add(new WorldTimer(20000, (w2, t2) =>
+                AddTimer(new WorldTimer(20000, (w2, t2) =>
                 {
                     // to ensure people get kicked out of world
                     foreach (var plr in w2.Players.Values)
@@ -601,6 +616,12 @@ namespace wServer.realm.worlds
                     Delete();
                     return;
                 }
+
+                // Straight onto the list, not back through AddTimer -- which is the queue, and
+                // would hand every arrival back to the loop that just took it.
+                WorldTimer arriving;
+                while (_arrivingTimers.TryDequeue(out arriving))
+                    Timers.Add(arriving);
 
                 for (var i = Timers.Count - 1; i >= 0; i--)
                     try

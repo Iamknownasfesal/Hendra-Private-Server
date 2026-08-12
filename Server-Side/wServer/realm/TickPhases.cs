@@ -82,15 +82,18 @@ namespace wServer.realm
             // was entered: a phase that runs once per world and one that runs once per tick are
             // otherwise reported on different scales, which had the enemy tick looking six times
             // cheaper than it was because five of the six worlds it was averaged over were empty.
-            double seconds = (now - windowStart) / 1000d;
-            var line = new StringBuilder($"tick cost per second over {seconds:0.0}s:");
+            // Both sides in milliseconds. Dividing a total in milliseconds by a window in seconds
+            // and calling it a percentage overstates everything by a thousand, which is how this
+            // came to report an enemy tick at ninety-nine thousand per cent of a second.
+            double windowMs = now - windowStart;
+            var line = new StringBuilder($"share of the last {windowMs / 1000d:0.0}s:");
 
             lock (Gate)
             {
                 foreach (var name in Order)
                 {
                     var phase = Phases[name];
-                    line.Append($" {name} {phase.TotalMs / seconds * 100d:0}%");
+                    line.Append($" {name} {phase.TotalMs / windowMs * 100d:0.0}%");
                     phase.TotalMs = 0d;
                 }
             }

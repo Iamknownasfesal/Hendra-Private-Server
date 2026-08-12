@@ -6,6 +6,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using log4net;
 
+using wServer.realm.worlds;
+
 namespace wServer.realm
 {
     public class FLLogicTicker
@@ -98,15 +100,46 @@ namespace wServer.realm
             TickPhases.Report(t.TickDelta > 1);
         }
 
+        private void TickOneWorld(World world, RealmTime t)
+        {
+            try
+            {
+                world.TickLogic(t);
+            }
+            catch (Exception e)
+            {
+                // Contained per world: a dungeon whose behaviour throws should not stop the realm.
+                Log.Error(e);
+            }
+        }
+
         void TickWorlds1(RealmTime t)    //Continous simulation
         {
             _worldTime.TickDelta += t.TickDelta;
             
             // tick essentials
+            //
+            // Worlds are ticked side by side because they share almost nothing: each owns its
+            // entities, its collision map and its timers, and the little they do share -- the
+            // manager's world table, the pending-action queues -- is already concurrent. What is
+            // deliberately *not* parallel is the inside of a world, where behaviours spawn things,
+            // move things and damage each other through structures with no locking at all.
+            //
+            // A world that throws takes only itself down, as before, rather than the tick.
             try
             {
-                foreach (var w in _manager.Worlds.Values.Distinct())
-                    w.TickLogic(t);
+                var worlds = _manager.Worlds.Values.Distinct().ToArray();
+
+                // One world is the common case on a quiet server, and handing a single item to the
+                // thread pool costs more than doing it here.
+                if (worlds.Length == 1)
+                {
+                    TickOneWorld(worlds[0], t);
+                }
+                else
+                {
+                    Parallel.ForEach(worlds, w => TickOneWorld(w, t));
+                }
             }
             catch (Exception e)
             {
