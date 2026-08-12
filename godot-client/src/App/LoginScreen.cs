@@ -90,10 +90,25 @@ public partial class LoginScreen : Control
         column.AddThemeConstantOverride("separation", 10);
         _signInPanel.AddChild(column);
 
-        _guid = AddField(column, "Account", string.Empty);
+        var saved = ServiceLocator.Settings;
+
+        _guid = AddField(column, "Account", saved?.Account ?? string.Empty);
         _guid.PlaceholderText = "you@example.com";
-        _password = AddField(column, "Password", string.Empty);
+        _password = AddField(column, "Password", saved?.Password ?? string.Empty);
         _password.Secret = true;
+
+        _remember = new CheckBox { Text = "Remember me", ButtonPressed = saved?.RememberMe ?? true };
+        _remember.Toggled += on =>
+        {
+            if (ServiceLocator.Settings == null)
+                return;
+
+            // Turning it off forgets what is already saved rather than only declining to save next
+            // time, which is what someone unticking it on a shared machine is asking for.
+            ServiceLocator.Settings.RememberMe = on;
+            ServiceLocator.ApplySettings();
+        };
+        column.AddChild(_remember);
 
         _signIn = new Button { Text = "Sign in", CustomMinimumSize = new Vector2(0, 34) };
         _signIn.Pressed += OnSignInPressed;
@@ -164,7 +179,10 @@ public partial class LoginScreen : Control
         foreach (var field in new[] { _guid, _password })
             field.TextSubmitted += _ => OnSignInPressed();
 
-        _guid.CallDeferred(Control.MethodName.GrabFocus);
+        if (!string.IsNullOrEmpty(saved?.Account) && !string.IsNullOrEmpty(saved.Password) && saved.RememberMe)
+            CallDeferred(nameof(OnSignInPressed));
+        else
+            _guid.CallDeferred(Control.MethodName.GrabFocus);
     }
 
     /// <summary>
@@ -279,6 +297,7 @@ public partial class LoginScreen : Control
     private const int CharacterBoxWidth = 420;
 
     private Button _register;
+    private CheckBox _remember;
     private UI.CutEdgePanel _namePanel;
     private LineEdit _name;
     private Button _setName;
@@ -433,6 +452,16 @@ public partial class LoginScreen : Control
             });
 
             _charList = CharListResult.Parse(xml);
+
+            // Saved only once the server has accepted them; storing what was typed would keep a
+            // wrong password and quietly fail the auto sign-in every time from then on.
+            if (ServiceLocator.Settings != null)
+            {
+                ServiceLocator.Settings.RememberMe = _remember.ButtonPressed;
+                ServiceLocator.Settings.Account = _guid.Text;
+                ServiceLocator.Settings.Password = _password.Text;
+                ServiceLocator.ApplySettings();
+            }
             ShowCharacters();
         }
         catch (AppEngineException ex)
