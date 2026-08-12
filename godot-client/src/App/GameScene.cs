@@ -210,11 +210,22 @@ public partial class GameScene : Node
 
     private void ReportFailure(int errorId, string description)
     {
+        // The server's own words win whenever it sent any. Its failure codes are broader than they
+        // look -- a refused login and a refused reconnect both arrive as BadKey -- so a canned
+        // message per code told players their reconnect key was bad when they had simply typed the
+        // wrong password.
+        if (!string.IsNullOrWhiteSpace(description))
+        {
+            GD.PushWarning($"[game] {description}");
+            Ended?.Invoke(description);
+            return;
+        }
+
         string message = errorId switch
         {
             FailureCode.IncorrectVersion =>
                 $"The server rejected this client's version. It expects {ProtocolKeys.BuildVersion}.",
-            FailureCode.BadKey => "That reconnect key was not accepted.",
+            FailureCode.BadKey => "Those credentials were not accepted.",
             FailureCode.EmailVerificationNeeded => "This account needs its email verified first.",
             _ => string.IsNullOrEmpty(description) ? $"The server refused the connection (code {errorId})." : description,
         };
