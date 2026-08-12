@@ -119,7 +119,13 @@ public static class Style
     public static readonly Color BlipGuild = new("5cd05c");
     public static readonly Color BlipEnemy = new("e02b2b");
     public static readonly Color BlipPortal = new("5b9bd5");
-    public static readonly Color BlipQuest = new("ffffff");
+    public static readonly Color BlipQuest = new("ff4d4d");
+
+    /// <summary>Gods, told apart from the rank and file by a warmer red.</summary>
+    public static readonly Color BlipGod = new("ff8a3d");
+
+    /// <summary>Heroes of Oryx and encounter bosses, in his own purple.</summary>
+    public static readonly Color BlipBoss = new("b46ce0");
 
     /// <summary>Party portrait borders, which carry the member's state.</summary>
     public static readonly Color StatusOk = new("4cd137");
@@ -240,8 +246,41 @@ public static class Style
     }
 
     /// <summary>How wide a string is in the interface's face, for laying text out by hand.</summary>
-    public static float Measure(string text, int size) =>
-        Pixel.GetStringSize(text, HorizontalAlignment.Left, -1, size).X;
+    /// <summary>
+    /// Width of a string, remembered rather than re-measured.
+    /// </summary>
+    /// <remarks>
+    /// Measuring is shaping: the font server walks the string and lays out every glyph, and it
+    /// costs the same whether the answer is new or the four hundredth identical copy this frame.
+    /// The interface asks the same questions over and over -- the same names, the same numbers, a
+    /// room full of monsters shouting the same line -- so the answers are kept. A few thousand of
+    /// them is a few hundred kilobytes against a client already holding three hundred megabytes of
+    /// texture, and it turns a per-frame cost that scales with what is on screen into one that
+    /// scales with how many *different* things are on screen.
+    /// </remarks>
+    public static float Measure(string text, int size)
+    {
+        if (string.IsNullOrEmpty(text))
+            return 0f;
+
+        var key = (text, size);
+        if (_measured.TryGetValue(key, out float width))
+            return width;
+
+        width = Pixel.GetStringSize(text, HorizontalAlignment.Left, -1, size).X;
+
+        // Cleared wholesale rather than evicted one at a time: it only grows when the game starts
+        // showing text it has never shown, which is not something that happens in a steady state.
+        if (_measured.Count >= MostMeasured)
+            _measured.Clear();
+
+        _measured[key] = width;
+        return width;
+    }
+
+    private const int MostMeasured = 4096;
+
+    private static readonly System.Collections.Generic.Dictionary<(string, int), float> _measured = new();
 
     // Names kept from the previous palette so the screens that are not part of this brief -- the
     // title, the character select, the tooltip -- keep working while the HUD is rebuilt against the

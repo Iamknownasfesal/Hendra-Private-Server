@@ -49,7 +49,15 @@ public sealed partial class SlotView : Control
     public string Hotkey { get; set; }
 
     /// <summary>The mouse button this slot is bound to, drawn in its corner. Null for most slots.</summary>
-    public bool? MouseBind { get; set; }
+    /// <summary>
+    /// The input action this slot fires on, or null for a slot that is not bound to one.
+    /// </summary>
+    /// <remarks>
+    /// The action rather than a picture of a button: these two are the only part of the control
+    /// scheme written nowhere else, and a player who has rebound the ability to a key should see
+    /// that key here rather than a mouse that lies to them.
+    /// </remarks>
+    public string BoundAction { get; set; }
 
     private bool _usable = true;
 
@@ -299,7 +307,8 @@ public sealed partial class SlotView : Control
         DrawCooldown();
         DrawNumber();
         DrawMouseBind();
-        DrawTierTag();
+        if (App.ServiceLocator.Settings is not { ShowTierLevel: false })
+            DrawTierTag();
         DrawBorder(full);
     }
 
@@ -362,16 +371,33 @@ public sealed partial class SlotView : Control
             new Vector2(Mathf.Round((Size.X - width) / 2f), baseline), Hotkey, size, Style.SlotEmptyNumber);
     }
 
-    /// <summary>Which mouse button fires this slot, for the weapon and the ability.</summary>
+    /// <summary>What fires this slot, for the weapon and the ability.</summary>
     private void DrawMouseBind()
     {
-        if (MouseBind is not { } right || !_sprite.IsValid)
+        if (string.IsNullOrEmpty(BoundAction) || !_sprite.IsValid)
             return;
 
-        float height = Mathf.Min(18f, Size.Y * 0.24f);
-        var box = new Rect2(Size.X - height * 0.75f - 4f, 4f, height * 0.75f, height);
+        float height = Mathf.Min(22f, Size.Y * 0.30f);
 
-        HudIcons.MouseButton(this, box, Style.TextDim, right);
+        if (App.KeyBindings.IsMouse(BoundAction))
+        {
+            var which = App.KeyBindings.MouseFor(BoundAction);
+            if (which == MouseButton.Middle)
+                return;
+
+            var box = new Rect2(Size.X - height * 0.75f - 4f, 4f, height * 0.75f, height);
+            HudIcons.MouseButton(this, box, Style.TextDim, which == MouseButton.Right);
+            return;
+        }
+
+        // Bound to a key instead. Written out, in the corner the mouse would have been in.
+        string name = App.KeyBindings.BoundTo(BoundAction);
+        if (name == "None")
+            return;
+
+        float width = Style.Measure(name, Style.FontTag);
+        this.DrawOutlined(new Vector2(Size.X - width - 4f, 4f + Style.FontTag), name,
+            Style.FontTag, Style.TextDim);
     }
 
     /// <summary>The dark wipe over a slot that cannot be used yet, and how long is left of it.</summary>

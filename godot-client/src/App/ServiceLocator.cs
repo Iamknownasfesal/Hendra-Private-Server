@@ -65,11 +65,34 @@ public partial class ServiceLocator : Node
         if (_instance?._settings == null)
             return;
 
+        var options = _instance._settings;
+
         if (_instance._audio != null)
         {
-            _instance._audio.EffectVolume = _instance._settings.EffectVolume;
-            _instance._audio.MusicVolume = _instance._settings.MusicVolume;
+            // Master multiplies the other two rather than replacing them, so turning everything
+            // down and back up leaves the balance between music and effects where it was.
+            _instance._audio.EffectVolume = options.EffectVolume * options.MasterVolume;
+            _instance._audio.MusicVolume = options.MusicVolume * options.MasterVolume;
         }
+
+        // Zero means no ceiling, which is what Godot's own "unlimited" is.
+        Engine.MaxFps = Mathf.Max(0, options.MaxFps);
+
+        DisplayServer.WindowSetVsyncMode(options.VSync switch
+        {
+            0 => DisplayServer.VSyncMode.Disabled,
+            2 => DisplayServer.VSyncMode.Adaptive,
+            _ => DisplayServer.VSyncMode.Enabled,
+        });
+
+        // Only when it is actually changing. Setting the mode unconditionally churns the window on
+        // every saved setting, and every panel in the game relays itself when the window resizes.
+        var wanted = options.Windowed
+            ? DisplayServer.WindowMode.Windowed
+            : DisplayServer.WindowMode.Fullscreen;
+
+        if (DisplayServer.WindowGetMode() != wanted)
+            DisplayServer.WindowSetMode(wanted);
 
         _instance._settings.Save();
     }
@@ -82,6 +105,10 @@ public partial class ServiceLocator : Node
         _clock.Reset();
 
         _settings = Settings.Load();
+
+        // Before anything reads the input map, and exactly once: the defaults are taken out of the
+        // map itself, so applying overrides any later would record an override as the default.
+        KeyBindings.Apply(_settings);
 
         _audio = new Audio.AudioLibrary
         {

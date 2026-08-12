@@ -26,6 +26,7 @@ public partial class GameScene : Node
     private MinimapView _minimap;
     private TradeView _trade;
     private OptionsView _options;
+    private DebugOverlay _debug;
     private GuildView _guild;
     private CharacterPanel _character;
     private AccountPanel _account;
@@ -142,6 +143,11 @@ public partial class GameScene : Node
         _guild = new GuildView();
         _modalLayer.AddChild(_guild);
 
+        // On the HUD's own layer, so it is laid out in the same space as the player card it sits
+        // under and is scaled with the rest of the interface rather than beside it.
+        _debug = new DebugOverlay();
+        _hudLayer.AddChild(_debug);
+
         _options = new OptionsView();
         _options.Configure(ServiceLocator.Settings);
         _options.Changed += OnOptionsChanged;
@@ -212,6 +218,9 @@ public partial class GameScene : Node
 
         if (_controller != null)
             _controller.CenterOnPlayer = ServiceLocator.Settings.CenterOnPlayer;
+
+        if (_chat != null)
+            _chat.Visible = !ServiceLocator.Settings.HideChat;
     }
 
     private async void StartSession(Func<GameSession, System.Threading.Tasks.Task> connect)
@@ -239,6 +248,14 @@ public partial class GameScene : Node
                 _account.Toggle();
         };
         _controller.OptionsToggled += () => _options.Toggle();
+        _controller.DebugToggled += () => _debug.Toggle();
+        _debug.Session = () => _session;
+        _debug.EntityCount = () => _controller.EntityCount;
+        _debug.ProjectileCount = () => _controller.ProjectileCount;
+        _debug.WorldName = () => _controller.CurrentWorldName;
+        _debug.PlayerAt = () => _controller.PlayerAt;
+        _debug.Phases = _controller.Phases;
+        _debug.SpriteSurfaces = () => _controller.SpriteSurfaces;
         _controller.GuildToggled += () =>
         {
             // Read at the moment it opens: the name arrives as a stat after the panel is built.
@@ -405,6 +422,14 @@ public partial class GameScene : Node
                 _account.Toggle();
         };
         _controller.OptionsToggled += () => _options.Toggle();
+        _controller.DebugToggled += () => _debug.Toggle();
+        _debug.Session = () => _session;
+        _debug.EntityCount = () => _controller.EntityCount;
+        _debug.ProjectileCount = () => _controller.ProjectileCount;
+        _debug.WorldName = () => _controller.CurrentWorldName;
+        _debug.PlayerAt = () => _controller.PlayerAt;
+        _debug.Phases = _controller.Phases;
+        _debug.SpriteSurfaces = () => _controller.SpriteSurfaces;
         _controller.GuildToggled += () =>
         {
             // Read at the moment it opens: the name arrives as a stat after the panel is built.

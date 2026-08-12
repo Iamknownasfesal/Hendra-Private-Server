@@ -1187,12 +1187,12 @@ public partial class HudView : Control
             var slot = NewSlot(new SlotAddress(SlotOwner.Player, index));
             slot.Activated += () => SlotActivated?.Invoke(index);
 
-            // The weapon fires on the left button and the ability on the right, which is the one
-            // piece of the control scheme that is not written anywhere else.
+            // The weapon and the ability are the one piece of the control scheme written nowhere
+            // else, so each slot names the action it fires and draws whatever that is bound to.
             if (i == 0)
-                slot.MouseBind = false;
+                slot.BoundAction = "shoot";
             else if (i == 1)
-                slot.MouseBind = true;
+                slot.BoundAction = "use_ability";
 
             slot.Position = new Vector2(i * (HudLayout.EquipmentSlotWidth + HudLayout.SlotGap), 0f);
             slot.Size = new Vector2(HudLayout.EquipmentSlotWidth, HudLayout.EquipmentSlotHeight);

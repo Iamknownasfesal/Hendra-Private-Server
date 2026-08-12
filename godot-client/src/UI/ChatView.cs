@@ -345,7 +345,17 @@ public partial class ChatView : Control
             }
         }
 
-        private float RowHeight => Mathf.Round(Mathf.Max(Style.Pixel.GetHeight(Style.FontSmall), 14f) + 4f);
+        /// <summary>
+        /// The size the log is drawn at, which the player can change.
+        /// </summary>
+        /// <remarks>
+        /// Everything about a line -- its height, where it wraps, where the hanging indent falls --
+        /// is measured from this, so it is read rather than baked in at construction: changing it
+        /// with the panel open re-flows the log on the next redraw.
+        /// </remarks>
+        private static int FontSize => App.ServiceLocator.Settings?.ChatFontSize ?? Style.FontSmall;
+
+        private float RowHeight => Mathf.Round(Mathf.Max(Style.Pixel.GetHeight(FontSize), 14f) + 4f);
 
         private float TextWidth => Size.X - ScrollbarWidth - 6f;
 
@@ -430,7 +440,7 @@ public partial class ChatView : Control
             float hang = left;
 
             if (!string.IsNullOrEmpty(line.Author))
-                hang += Style.Measure($"<{line.Author}> ", Style.FontSmall);
+                hang += Style.Measure($"<{line.Author}> ", FontSize);
 
             int before = _rows.Count;
             bool first = true;
@@ -451,7 +461,7 @@ public partial class ChatView : Control
                 int mark = current.Length;
                 current.Append(' ').Append(word);
 
-                if (hang + Style.Measure(current.ToString(), Style.FontSmall) <= limit - 4f)
+                if (hang + Style.Measure(current.ToString(), FontSize) <= limit - 4f)
                     continue;
 
                 current.Length = mark;
@@ -592,7 +602,7 @@ public partial class ChatView : Control
                 Rewrap();
 
             float rowHeight = RowHeight;
-            float ascent = Style.Pixel.GetAscent(Style.FontSmall);
+            float ascent = Style.Pixel.GetAscent(FontSize);
 
             float offset = Offset;
             int firstRow = Mathf.Max(0, (int)(offset / rowHeight));
@@ -630,7 +640,7 @@ public partial class ChatView : Control
         }
 
         private void Text(Vector2 at, string text, Color colour) =>
-            this.DrawOutlined(at, text, Style.FontSmall, colour);
+            this.DrawOutlined(at, text, FontSize, colour);
 
         private void DrawScrollbar()
         {

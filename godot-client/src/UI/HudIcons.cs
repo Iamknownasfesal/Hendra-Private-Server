@@ -333,27 +333,43 @@ public static class HudIcons
     /// <summary>
     /// The mouse button a slot answers to, in its corner.
     /// </summary>
-    /// <param name="right">Whether the right button is the one highlighted.</param>
+    /// <remarks>
+    /// Drawn as a dark body with the bound button lit inside it, rather than a light body with the
+    /// unbound one shaded. At the dozen-odd pixels this gets in a slot corner, a shaded half and a
+    /// filled half are the same picture; a dark shell with one bright button in it is not.
+    /// </remarks>
+    /// <param name="right">Whether the right button is the one bound.</param>
     public static void MouseButton(CanvasItem into, Rect2 box, Color colour, bool right)
     {
-        var outline = new Rect2(At(box, 0.18f, 0.04f), new Vector2(box.Size.X * 0.64f, box.Size.Y * 0.92f));
+        var outline = new Rect2(At(box, 0.10f, 0.04f), new Vector2(box.Size.X * 0.80f, box.Size.Y * 0.92f));
         float radius = outline.Size.X / 2f;
 
-        // The body: a capsule, drawn as a rectangle between two discs.
-        into.DrawCircle(outline.Position + new Vector2(radius, radius), radius, colour);
-        into.DrawCircle(new Vector2(outline.Position.X + radius, outline.End.Y - radius), radius, colour);
-        into.DrawRect(new Rect2(outline.Position.X, outline.Position.Y + radius,
-            outline.Size.X, outline.Size.Y - radius * 2f), colour);
+        // The shell: a capsule, drawn as a rectangle between two discs.
+        void Capsule(Rect2 at, Color fill)
+        {
+            float r = at.Size.X / 2f;
+            into.DrawCircle(at.Position + new Vector2(r, r), r, fill);
+            into.DrawCircle(new Vector2(at.Position.X + r, at.End.Y - r), r, fill);
+            into.DrawRect(new Rect2(at.Position.X, at.Position.Y + r, at.Size.X, at.Size.Y - r * 2f), fill);
+        }
 
-        // The button that is not bound is hollowed out, so which half is filled is the whole
-        // message the glyph carries.
-        var hollow = new Rect2(
-            right ? outline.Position.X + 1f : outline.Position.X + outline.Size.X / 2f,
+        Capsule(outline, colour);
+        Capsule(outline.Grow(-1f), Style.PanelSolid);
+
+        // The lit button. Half the width, the top two fifths of the height, hard against the
+        // shell's inside edge so there is no doubt which side it is on.
+        float half = outline.Size.X / 2f;
+        var lit = new Rect2(
+            right ? outline.Position.X + half : outline.Position.X + 1f,
             outline.Position.Y + 1f,
-            outline.Size.X / 2f - 1f,
-            outline.Size.Y * 0.42f);
+            half - 1f,
+            outline.Size.Y * 0.40f);
 
-        into.DrawRect(hollow, Style.PanelSolid with { A = 0.75f });
+        into.DrawRect(lit, Style.Text);
+
+        // The line between the two buttons, so the unlit one still reads as a button.
+        into.DrawRect(new Rect2(outline.Position.X + half - 0.5f, outline.Position.Y + 1f,
+            1f, outline.Size.Y * 0.40f), colour);
     }
 
     /// <summary>The loadout cycle: two arrows chasing each other.</summary>
@@ -407,5 +423,47 @@ public static class HudIcons
 
         into.DrawCircle(centre, radius, new Color(0f, 0f, 0f, 0.55f));
         into.DrawCircle(centre, radius - Mathf.Max(1f, radius * 0.16f), colour);
+    }
+
+    /// <summary>
+    /// Oryx's helmet: the mark a boss gets on the map.
+    /// </summary>
+    /// <remarks>
+    /// A horned dome with a dark visor across it. Drawn as three polygons rather than a sprite
+    /// because it has to stay legible at ten pixels, where a scaled-down picture is mud.
+    /// </remarks>
+    public static void Helmet(CanvasItem into, Rect2 box, Color colour)
+    {
+        var dark = new Color(0f, 0f, 0f, 0.75f);
+
+        // The horns, swept up and out of the crown.
+        into.DrawColoredPolygon(Map(box, 0.06f, 0.00f, 0.30f, 0.34f, 0.14f, 0.44f), colour);
+        into.DrawColoredPolygon(Map(box, 0.94f, 0.00f, 0.70f, 0.34f, 0.86f, 0.44f), colour);
+
+        // The dome, and the visor slot cut across it.
+        into.DrawColoredPolygon(
+            Map(box, 0.50f, 0.10f, 0.84f, 0.40f, 0.76f, 0.96f, 0.24f, 0.96f, 0.16f, 0.40f), colour);
+        into.DrawRect(new Rect2(At(box, 0.24f, 0.50f), new Vector2(box.Size.X * 0.52f, box.Size.Y * 0.16f)), dark);
+    }
+
+    /// <summary>
+    /// A skull, for whatever the current quest is pointing at.
+    /// </summary>
+    public static void Skull(CanvasItem into, Rect2 box, Color colour)
+    {
+        var dark = new Color(0f, 0f, 0f, 0.75f);
+        var cranium = At(box, 0.5f, 0.42f);
+
+        into.DrawCircle(cranium, Span(box) * 0.36f, colour);
+
+        // The jaw, narrower than the cranium and squared off.
+        into.DrawRect(new Rect2(At(box, 0.30f, 0.62f), new Vector2(box.Size.X * 0.40f, box.Size.Y * 0.28f)), colour);
+
+        // Two sockets. At this size they are what makes it read as a skull rather than a blob.
+        float socket = Mathf.Max(1f, Span(box) * 0.13f);
+        into.DrawCircle(At(box, 0.36f, 0.40f), socket, dark);
+        into.DrawCircle(At(box, 0.64f, 0.40f), socket, dark);
+        into.DrawRect(new Rect2(At(box, 0.44f, 0.66f), new Vector2(Mathf.Max(1f, box.Size.X * 0.12f),
+            box.Size.Y * 0.20f)), dark);
     }
 }

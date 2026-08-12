@@ -19,9 +19,8 @@ namespace Hendra.UI;
 /// difference between a map that costs nothing and one that costs more than the world does.
 /// </para>
 /// <para>
-/// Nothing on it is clickable. Zooming is the + and - keys, which is how the original did it and
-/// what players already have their hand on; a pair of buttons in the corner of the map was one more
-/// thing covering the map.
+/// Zooming is the = and - keys, as the original had it, and a pair of buttons in the bottom corner
+/// of the map, because a control nobody can see is a control nobody finds.
 /// </para>
 /// <para>
 /// The map does not rotate. The original's did, and turning with the camera makes a map easier to
@@ -42,6 +41,11 @@ public partial class MinimapView : Control
     private HudPanel _panel;
     private Terrain _terrain;
     private Blips _canvas;
+    private HudIconButton _zoomIn;
+    private HudIconButton _zoomOut;
+
+    /// <summary>The side of a zoom button, in reference pixels.</summary>
+    private const float ZoomButton = 18f;
 
     private GameMap _map;
     private TileColors _colours;
@@ -70,6 +74,15 @@ public partial class MinimapView : Control
         _canvas = new Blips(this);
         _panel.AddChild(_canvas);
 
+        // The keys are still there, but a control nobody can see is a control nobody uses.
+        _zoomIn = new HudIconButton(HudIcons.Plus, "Zoom in [=]", inset: 5f);
+        _zoomIn.Pressed += () => Zoom(1);
+        _panel.AddChild(_zoomIn);
+
+        _zoomOut = new HudIconButton(HudIcons.Minus, "Zoom out [-]", inset: 5f);
+        _zoomOut.Pressed += () => Zoom(-1);
+        _panel.AddChild(_zoomOut);
+
         _level = Mathf.Clamp(App.ServiceLocator.Settings?.MinimapZoom ?? 1, 0, ZoomLevels.Length - 1);
 
         Resized += Reflow;
@@ -97,6 +110,15 @@ public partial class MinimapView : Control
             child.Position = Vector2.Zero;
             child.Size = rect.Size;
         }
+
+        // Stacked in the bottom-right corner, out of the way of the player's own mark in the middle.
+        if (_zoomIn == null)
+            return;
+
+        _zoomIn.Size = new Vector2(ZoomButton, ZoomButton);
+        _zoomOut.Size = new Vector2(ZoomButton, ZoomButton);
+        _zoomIn.Position = new Vector2(rect.Size.X - ZoomButton - 4f, rect.Size.Y - ZoomButton * 2f - 7f);
+        _zoomOut.Position = new Vector2(rect.Size.X - ZoomButton - 4f, rect.Size.Y - ZoomButton - 4f);
     }
 
     public void Configure(GameMap map, TileColors colours)
@@ -297,17 +319,46 @@ public partial class MinimapView : Control
         int drawn = 0;
         foreach (var blip in _blips)
         {
-            if (drawn++ >= MostBlips)
-                break;
+            // The cap is for the crowd. A boss or a quest target is never one of the things
+            // crowded off, however many monsters are standing between here and it.
+            bool always = AlwaysShown(blip.Kind);
+            if (!always && drawn >= MostBlips)
+                continue;
 
-            var at = centre + new Vector2(blip.X, blip.Y) * scale;
             float side = SizeOf(blip.Kind);
+            var at = centre + new Vector2(blip.X, blip.Y) * scale;
+
+            if (always)
+                at = PinToEdge(at, size, side);
+            else if (at.X < 0f || at.Y < 0f || at.X > size.X || at.Y > size.Y)
+                continue;
+
+            // Counted where it is spent, so the budget buys sixty-four marks the player can see
+            // rather than being used up by things sorted nearest but still off the edge.
+            if (!always)
+                drawn++;
+
             var box = new Rect2(
                 Mathf.Round(at.X - side / 2f), Mathf.Round(at.Y - side / 2f), side, side);
 
-            // A dark surround, so a yellow mark still reads over a sunlit floor.
-            into.DrawRect(box.Grow(1f), Style.PanelEdge);
-            into.DrawRect(box, ColourOf(blip.Kind));
+            var colour = ColourOf(blip.Kind);
+
+            switch (blip.Kind)
+            {
+                case BlipKind.Boss:
+                    HudIcons.Helmet(into, box, colour);
+                    break;
+
+                case BlipKind.Quest:
+                    HudIcons.Skull(into, box, colour);
+                    break;
+
+                default:
+                    // A dark surround, so a yellow mark still reads over a sunlit floor.
+                    into.DrawRect(box.Grow(1f), Style.PanelEdge);
+                    into.DrawRect(box, colour);
+                    break;
+            }
         }
 
         // The player is always at the centre, which is the other half of not rotating the map.
@@ -316,15 +367,44 @@ public partial class MinimapView : Control
         into.DrawRect(self, Style.Text);
     }
 
+    /// <summary>
+    /// Holds a mark inside the map, so something off the edge still says which way it lies.
+    /// </summary>
+    private static Vector2 PinToEdge(Vector2 at, Vector2 size, float side)
+    {
+        float margin = side / 2f + 1f;
+        return new Vector2(
+            Mathf.Clamp(at.X, margin, size.X - margin),
+            Mathf.Clamp(at.Y, margin, size.Y - margin));
+    }
+
     private enum BlipKind : byte
     {
         None,
         Player,
         Guildmate,
         Enemy,
+
+        /// <summary>A god. Numerous enough to want telling apart from the rank and file.</summary>
+        God,
         Portal,
+
+        /// <summary>A Hero of Oryx or an encounter boss: worth crossing the map for.</summary>
+        Boss,
+
+        /// <summary>Whatever the current quest is pointing at.</summary>
         Quest,
     }
+
+    /// <summary>
+    /// Whether a mark is shown however far away it is, rather than only inside the zoom.
+    /// </summary>
+    /// <remarks>
+    /// The point of a map is to say where to go next, and the two things worth going to are the
+    /// quest and a boss. Both are pinned to the edge when they fall outside the view, which is the
+    /// only way a player standing in the wrong corner of the Realm ever learns they exist.
+    /// </remarks>
+    private static bool AlwaysShown(BlipKind kind) => kind is BlipKind.Boss or BlipKind.Quest;
 
     /// <summary>What an entity counts as, or None if it is not worth a mark.</summary>
     private BlipKind KindOf(Entity entity, LocalPlayer player)
@@ -346,7 +426,13 @@ public partial class MinimapView : Control
             if (entity.IsInvisible)
                 return BlipKind.None;
 
-            return entity.ObjectId == QuestTargetId ? BlipKind.Quest : BlipKind.Enemy;
+            if (entity.ObjectId == QuestTargetId)
+                return BlipKind.Quest;
+
+            if (desc.IsHero || desc.IsEncounter)
+                return BlipKind.Boss;
+
+            return desc.IsGod ? BlipKind.God : BlipKind.Enemy;
         }
 
         return desc.Class is "Portal" or "GuildHallPortal" ? BlipKind.Portal : BlipKind.None;
@@ -355,11 +441,13 @@ public partial class MinimapView : Control
     /// <summary>The object the quest arrow is pointing at, which gets its own mark. Zero for none.</summary>
     public int QuestTargetId { get; set; }
 
-    /// <summary>Six to ten pixels, by how much it matters that you noticed it.</summary>
+    /// <summary>Six to twelve pixels, by how much it matters that you noticed it.</summary>
     private static float SizeOf(BlipKind kind) => kind switch
     {
-        BlipKind.Quest => 10f,
+        BlipKind.Boss => 12f,
+        BlipKind.Quest => 11f,
         BlipKind.Portal => 10f,
+        BlipKind.God => 9f,
         BlipKind.Enemy => 8f,
         BlipKind.Guildmate => 8f,
         _ => 6f,
@@ -369,7 +457,9 @@ public partial class MinimapView : Control
     {
         BlipKind.Guildmate => Style.BlipGuild,
         BlipKind.Enemy => Style.BlipEnemy,
+        BlipKind.God => Style.BlipGod,
         BlipKind.Portal => Style.BlipPortal,
+        BlipKind.Boss => Style.BlipBoss,
         BlipKind.Quest => Style.BlipQuest,
         _ => Style.BlipPlayer,
     };

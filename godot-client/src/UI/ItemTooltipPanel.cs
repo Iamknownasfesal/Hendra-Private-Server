@@ -44,6 +44,9 @@ public partial class ItemTooltipPanel : MarginContainer
     /// <summary>How far the frame's corners are cut, as the game's panels cut theirs.</summary>
     private const int CornerCut = 7;
 
+    /// <summary>How many faint copies make up the shadow's falloff.</summary>
+    private const int Steps = 4;
+
     /// <summary>The body, lighter at the top than at the bottom.</summary>
     private static readonly Color BodyTop = new("2e2c31");
 
@@ -297,12 +300,18 @@ public partial class ItemTooltipPanel : MarginContainer
         var outline = CutEdgePanel.Outline(Size, CornerCut, new[] { true, true, true, true });
 
         // Cast down and to the right, so the panel reads as lying over the world rather than as a
-        // hole cut into it.
+        // hole cut into it. Laid down in thin steps rather than as one offset copy: a single hard
+        // silhouette at that offset reads as a second panel behind the first, which is what it
+        // looked like, where a few faint ones stacked read as a shadow falling off.
         var shadow = new Vector2[outline.Length];
-        for (int i = 0; i < outline.Length; i++)
-            shadow[i] = outline[i] + new Vector2(3f, 4f);
+        for (int step = Steps; step >= 1; step--)
+        {
+            var drop = new Vector2(step * 0.9f, step * 1.2f);
+            for (int i = 0; i < outline.Length; i++)
+                shadow[i] = outline[i] + drop;
 
-        DrawColoredPolygon(shadow, new Color(0f, 0f, 0f, 0.45f));
+            DrawColoredPolygon(shadow, new Color(0f, 0f, 0f, 0.13f));
+        }
 
         // Lighter at the top, which is where the light comes from everywhere else in the interface.
         var shades = new Color[outline.Length];
