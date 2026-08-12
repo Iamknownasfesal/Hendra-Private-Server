@@ -118,6 +118,41 @@ public sealed class GameSession : IDisposable
     public event Action<ReconnectPacket> ReconnectRequested;
     public event Action<QueuePingPacket> QueueUpdated;
 
+    /// <summary>
+    /// How far the last ping ran behind the best one this session, in milliseconds.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Not a round trip, and labelled as such wherever it is shown. This protocol has the server
+    /// ping and the client answer, and the server keeps the measurement to itself -- nothing comes
+    /// back that a client could time against. What the client can see is the gap between the clock
+    /// reading the server stamped on the ping and its own when the ping arrived. That gap is a
+    /// fixed clock offset plus however long the packet spent in transit, so its smallest value all
+    /// session is the offset on a clear path, and everything above that is delay.
+    /// </para>
+    /// <para>
+    /// Which is the number that matters when the game feels bad: not the absolute distance to the
+    /// server, which nothing can change, but how much worse than usual the line is right now.
+    /// </para>
+    /// </remarks>
+    public int PingDelayMs { get; private set; }
+
+    /// <summary>Milliseconds since anything at all arrived from the server.</summary>
+    public int SinceLastPacketMs => _lastPacketMs < 0 ? 0 : _clock.FrameMs - _lastPacketMs;
+
+    private int _bestPingGap = int.MaxValue;
+    private int _lastPacketMs = -1;
+
+    private void NotePing(int serial)
+    {
+        int gap = _clock.FrameMs - serial;
+
+        if (gap < _bestPingGap)
+            _bestPingGap = gap;
+
+        PingDelayMs = Math.Max(0, gap - _bestPingGap);
+    }
+
     /// <summary>Everything not handled above, for the world and UI layers to dispatch on.</summary>
     public event Action<ServerPacket> PacketReceived;
 
@@ -193,6 +228,8 @@ public sealed class GameSession : IDisposable
 
     private void Handle(ServerPacket packet)
     {
+        _lastPacketMs = _clock.FrameMs;
+
         switch (packet)
         {
             case MapInfoPacket mapInfo:
@@ -224,6 +261,7 @@ public sealed class GameSession : IDisposable
                 return;
 
             case PingPacket ping:
+                NotePing(ping.Serial);
                 _pong.Serial = ping.Serial;
                 _pong.Time = _clock.FrameMs;
                 _connection.Send(_pong);

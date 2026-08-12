@@ -30,8 +30,18 @@ namespace Hendra.Net;
 /// </remarks>
 public sealed class GameConnection : IDisposable
 {
-    /// <summary>Server's cap on a single frame. Anything larger is a framing error.</summary>
-    private const int MaxFrameLength = 0x20000;
+    /// <summary>
+    /// Largest frame the server can put on the wire, above which this is a framing error.
+    /// </summary>
+    /// <remarks>
+    /// A megabyte, which is the size of the server's outgoing buffer -- <c>SendToken.Data</c> in
+    /// its Server.cs. This used to be 0x20000, taken from the server's <i>receive</i> buffer, which
+    /// is the wrong side of the connection: it bounds what a client may send, not what it may be
+    /// sent. An Update carrying a few hundred entities at once sails past that, and because a
+    /// framing error is unrecoverable -- the RC4 keystream position depends on having consumed
+    /// exactly the right bytes -- the connection was dropped rather than merely stuttering.
+    /// </remarks>
+    private const int MaxFrameLength = 0x100000;
 
     private const int HeaderLength = 5;
 
@@ -156,6 +166,11 @@ public sealed class GameConnection : IDisposable
 
                 if (!TryDecode(packet, body, out string decodeError))
                 {
+                    // The body is written out before the connection goes, because a decode failure
+                    // is the one fault that cannot be reproduced by staring at the code: whatever
+                    // is on the wire disagrees with what both sides believe, and only the bytes say
+                    // how. Deleted on the next successful run of the same packet id.
+                    DumpBody(id, body);
                     Drop($"Could not decode {id}: {decodeError}");
                     return;
                 }
@@ -193,10 +208,31 @@ public sealed class GameConnection : IDisposable
             error = null;
             return true;
         }
-        catch (PacketFormatException ex)
+        catch (Exception ex)
         {
-            error = ex.Message;
+            // Anything at all, not just a format error. A reader that trips over an unexpected
+            // length throws whatever the framework felt like -- an overflow from allocating a
+            // negative array, most memorably -- and catching only the tidy exception meant those
+            // surfaced as an unattributed "receive failed" with no clue which packet did it.
+            error = $"{ex.GetType().Name}: {ex.Message}";
             return false;
+        }
+    }
+
+    /// <summary>Writes a body that would not decode next to the log, for picking apart offline.</summary>
+    private static void DumpBody(PacketId id, byte[] body)
+    {
+        try
+        {
+            string path = System.IO.Path.Combine(
+                Godot.ProjectSettings.GlobalizePath("user://"), $"bad-{id}-{body.Length}.bin");
+
+            System.IO.File.WriteAllBytes(path, body);
+            Godot.GD.PushWarning($"[net] wrote {body.Length} undecodable bytes to {path}");
+        }
+        catch (Exception ex)
+        {
+            Godot.GD.PushWarning($"[net] could not dump body: {ex.Message}");
         }
     }
 

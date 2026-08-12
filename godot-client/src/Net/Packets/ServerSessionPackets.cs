@@ -73,11 +73,11 @@ public sealed class MapInfoPacket : ServerPacket
         AllowPlayerTeleport = r.ReadBoolean();
         ShowDisplays = r.ReadBoolean();
 
-        ClientXml = new string[r.ReadInt16()];
+        ClientXml = new string[r.ReadUInt16()];
         for (int i = 0; i < ClientXml.Length; i++)
             ClientXml[i] = r.Read32Utf();
 
-        ExtraXml = new string[r.ReadInt16()];
+        ExtraXml = new string[r.ReadUInt16()];
         for (int i = 0; i < ExtraXml.Length; i++)
             ExtraXml[i] = r.Read32Utf();
 
@@ -122,15 +122,20 @@ public sealed class UpdatePacket : ServerPacket
 
     public override void Read(ref NetReader r)
     {
-        Tiles = new GroundTile[r.ReadInt16()];
+        // Counts are read unsigned: the server writes them with an unchecked (short) cast, so a
+        // world holding more than thirty-two thousand of anything wraps the length negative on the
+        // wire. Read signed, that allocates an array of negative length and throws -- which is a
+        // dropped connection, because the read position is then lost. Read unsigned it comes back
+        // as the number the server meant, all the way to sixty-five thousand.
+        Tiles = new GroundTile[r.ReadUInt16()];
         for (int i = 0; i < Tiles.Length; i++)
             Tiles[i] = GroundTile.Read(ref r);
 
-        NewObjects = new ObjectDef[r.ReadInt16()];
+        NewObjects = new ObjectDef[r.ReadUInt16()];
         for (int i = 0; i < NewObjects.Length; i++)
             NewObjects[i] = ObjectDef.Read(ref r);
 
-        Drops = new int[r.ReadInt16()];
+        Drops = new int[r.ReadUInt16()];
         for (int i = 0; i < Drops.Length; i++)
             Drops[i] = r.ReadInt32();
     }
@@ -156,7 +161,7 @@ public sealed class NewTickPacket : ServerPacket
         TickId = r.ReadInt32();
         TickTime = r.ReadInt32();
 
-        Statuses = new ObjectStats[r.ReadInt16()];
+        Statuses = new ObjectStats[r.ReadUInt16()];
         for (int i = 0; i < Statuses.Length; i++)
             Statuses[i] = ObjectStats.Read(ref r);
     }

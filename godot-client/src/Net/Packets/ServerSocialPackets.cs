@@ -64,7 +64,7 @@ public sealed class AccountListPacket : ServerPacket
     {
         ListId = (AccountListId)r.ReadInt32();
 
-        AccountIds = new string[r.ReadInt16()];
+        AccountIds = new string[r.ReadUInt16()];
         for (int i = 0; i < AccountIds.Length; i++)
             AccountIds[i] = r.ReadUtf();
 
@@ -186,13 +186,13 @@ public sealed class TradeStartPacket : ServerPacket
 
     public override void Read(ref NetReader r)
     {
-        MyItems = new TradeItem[r.ReadInt16()];
+        MyItems = new TradeItem[r.ReadUInt16()];
         for (int i = 0; i < MyItems.Length; i++)
             MyItems[i] = TradeItem.Read(ref r);
 
         YourName = r.ReadUtf();
 
-        YourItems = new TradeItem[r.ReadInt16()];
+        YourItems = new TradeItem[r.ReadUInt16()];
         for (int i = 0; i < YourItems.Length; i++)
             YourItems[i] = TradeItem.Read(ref r);
     }
@@ -207,7 +207,7 @@ public sealed class TradeChangedPacket : ServerPacket
 
     public override void Read(ref NetReader r)
     {
-        Offer = new bool[r.ReadInt16()];
+        Offer = new bool[r.ReadUInt16()];
         for (int i = 0; i < Offer.Length; i++)
             Offer[i] = r.ReadBoolean();
     }
@@ -223,11 +223,11 @@ public sealed class TradeAcceptedPacket : ServerPacket
 
     public override void Read(ref NetReader r)
     {
-        MyOffer = new bool[r.ReadInt16()];
+        MyOffer = new bool[r.ReadUInt16()];
         for (int i = 0; i < MyOffer.Length; i++)
             MyOffer[i] = r.ReadBoolean();
 
-        YourOffer = new bool[r.ReadInt16()];
+        YourOffer = new bool[r.ReadUInt16()];
         for (int i = 0; i < YourOffer.Length; i++)
             YourOffer[i] = r.ReadBoolean();
     }

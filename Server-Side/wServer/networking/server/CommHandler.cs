@@ -238,8 +238,13 @@ namespace wServer.networking.server
                 return;
             }
 
+            // Both move by what this send actually transferred. Taking the running total off the
+            // remaining count instead drove it negative on the third chunk of a large packet, and a
+            // non-positive count is read as "done" -- so anything over two buffers' worth was
+            // truncated mid-flight, the rest of the buffer reused for the next packets, and the
+            // client left decrypting unrelated bytes as the tail of the one it was promised.
             s.BytesSent += e.BytesTransferred;
-            s.BytesAvailable -= s.BytesSent;
+            s.BytesAvailable -= e.BytesTransferred;
 
             var delay = 0;
             if (s.BytesAvailable <= 0)
