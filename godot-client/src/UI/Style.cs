@@ -21,41 +21,89 @@ namespace Hendra.UI;
 /// </remarks>
 public static class Style
 {
-    /// <summary>The darkest ground, behind everything.</summary>
+    // The brief's tokens, verbatim. These are the contract every cluster is measured against, so
+    // they are transcribed rather than interpreted -- a colour invented here is a colour that has
+    // to be found again later when something does not match the reference.
+
+    /// <summary>Player card and chat: black at 55 percent.</summary>
+    public static readonly Color Panel = new(0f, 0f, 0f, 0.55f);
+
+    /// <summary>The minimap, which is solid.</summary>
+    public static readonly Color PanelSolid = Colors.Black;
+
+    /// <summary>Hotbar and equipment slots, which are near-white in the reference.</summary>
+    public static readonly Color Slot = new("f2f2f2");
+
+    public static readonly Color SlotBorder = new("b9b9b9");
+    public static readonly Color SlotEmpty = new("ffffff");
+
+    public static readonly Color BlueButton = new("2b7fd4");
+    public static readonly Color BlueButtonHover = new("3a92e8");
+    public static readonly Color BlueButtonActive = new("1f66ad");
+
+    public static readonly Color XpFill = new("5fbb2e");
+    public static readonly Color XpTrack = new("4a4a4a");
+    public static readonly Color HpFill = new("d02020");
+    public static readonly Color HpTrack = new("5a1414");
+    public static readonly Color MpFill = new("5b86bd");
+    public static readonly Color MpTrack = new("26364d");
+
+    /// <summary>The bar under a sprite in the world.</summary>
+    public static readonly Color EntityHp = new("4cd137");
+
+    public static readonly Color Gem = new("f0912b");
+    public static readonly Color Coin = new("ffd84a");
+    public static readonly Color Star = new("ffd54a");
+
+    /// <summary>The star beside the account rating, which is blue rather than gold.</summary>
+    public static readonly Color StarPremium = new("4aa8e8");
+
+    public static readonly Color MinimapBlip = new("ffc83d");
+    public static readonly Color ChatName = new("62dd52");
+    public static readonly Color Text = new("ffffff");
+    public static readonly Color TextDim = new("cfcfcf");
+
+    /// <summary>
+    /// The shadow under every piece of text.
+    /// </summary>
+    /// <remarks>
+    /// One pixel down-right at eight tenths black. The world under the overlay is any colour at
+    /// all, and this is what keeps a white label legible over a sunlit floor.
+    /// </remarks>
+    public static readonly Color TextShadow = new(0f, 0f, 0f, 0.8f);
+
+    /// <summary>Party dot states, which the brief asks to be tokens rather than hardcoded.</summary>
+    public static readonly Color StatusOk = new("4cd137");
+
+    public static readonly Color StatusLow = new("d02020");
+    public static readonly Color StatusDead = new("6b6a6a");
+
+    // The type scale, at the reference resolution.
+    public const int FontName = 26;
+    public const int FontBody = 17;
+    public const int FontSmall = 15;
+    public const int FontSlotNumber = 13;
+
+    /// <summary>Every cluster's margin from the edge of the viewport.</summary>
+    public const int EdgeMargin = 20;
+
+    // Names kept from the previous palette so the screens that are not part of this brief -- the
+    // title, the character select, the tooltip -- keep working while the HUD is rebuilt against the
+    // tokens above.
     public static readonly Color Void = new("101016");
-
-    /// <summary>Panel fills, lighter at the top than the bottom.</summary>
     public static readonly Color PanelTop = new("2c2a31");
-
     public static readonly Color PanelBottom = new("1c1a20");
-
-    /// <summary>A control at rest, and the same control under the pointer.</summary>
     public static readonly Color ControlTop = new("3a3742");
-
     public static readonly Color ControlBottom = new("26242c");
     public static readonly Color ControlHoverTop = new("4b4757");
     public static readonly Color ControlHoverBottom = new("332f3c");
-
-    /// <summary>The accent. The original's player-name gold, which is the colour it means "you" with.</summary>
     public static readonly Color Gold = new("fcdf00");
-
     public static readonly Color GoldDim = new("8a7a1e");
-
-    /// <summary>A cooler second accent, for anything that is not the main action.</summary>
     public static readonly Color Steel = new("7f9bb5");
-
-    public static readonly Color Text = new("efece6");
-
-    /// <summary>The original's tab grey, used for anything that only frames the words that matter.</summary>
     public static readonly Color Muted = new("9b9898");
-
     public static readonly Color Faint = new("6b6a6a");
-
     public static readonly Color Danger = new("e0574f");
-
     public static readonly Color Good = new("6fdc6f");
-
-    /// <summary>Borders, which are the accent held well back.</summary>
     public static readonly Color Edge = new("55505f");
 
     /// <summary>The size the interface is measured against.</summary>

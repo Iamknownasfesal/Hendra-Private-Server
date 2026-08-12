@@ -206,7 +206,7 @@ public partial class HudView : Control
         _levelLabel.AddThemeColorOverride("font_color", Style.Muted);
         levelRow.AddChild(_levelLabel);
 
-        _level = new VitalBar(new Color("5a8025")) { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        _level = new VitalBar(Style.XpFill) { Track = Style.XpTrack, SizeFlagsHorizontal = SizeFlags.ExpandFill };
         levelRow.AddChild(_level);
 
         _panelButtons = new HBoxContainer();
@@ -297,11 +297,11 @@ public partial class HudView : Control
         bars.AddThemeConstantOverride("separation", 4);
         row.AddChild(bars);
 
-        _health = new VitalBar(new Color("c83c3c"));
+        _health = new VitalBar(Style.HpFill) { Track = Style.HpTrack };
         _health.CustomMinimumSize = new Vector2(0, 22);
         bars.AddChild(_health);
 
-        _mana = new VitalBar(new Color("5a7fd0"));
+        _mana = new VitalBar(Style.MpFill) { Track = Style.MpTrack };
         _mana.CustomMinimumSize = new Vector2(0, 22);
         bars.AddChild(_mana);
 
@@ -833,7 +833,7 @@ public partial class HudView : Control
     private const int MaxLevel = 20;
 
     /// <summary>The original's bar colours, taken from StatMetersView.</summary>
-    private static readonly Color ExperienceBar = new("5a8025");
+    private static readonly Color ExperienceBar = Style.XpFill;
 
     private static readonly Color FameBar = new("e25f00");
 
@@ -1155,6 +1155,9 @@ public sealed partial class VitalBar : Control
         set { _fill = value; QueueRedraw(); }
     }
 
+    /// <summary>What shows through where the bar is not filled.</summary>
+    public Color Track { get; set; } = new(0.06f, 0.055f, 0.07f);
+
     public VitalBar(Color fill)
     {
         _fill = fill;
@@ -1220,7 +1223,7 @@ public sealed partial class VitalBar : Control
     {
         var full = new Rect2(Vector2.Zero, Size);
 
-        DrawRect(full, new Color(0.06f, 0.055f, 0.07f));
+        DrawRect(full, Track);
 
         // What the bar is losing, in a dimmed version of its own colour.
         if (_ghost > _shown)
@@ -1253,8 +1256,8 @@ public sealed partial class VitalBar : Control
 /// <summary>One inventory or equipment slot.</summary>
 public sealed partial class SlotView : Control
 {
-    private static readonly Color Background = new("15141a");
-    private static readonly Color Border = new("46424f");
+    private static readonly Color Background = Style.Slot;
+    private static readonly Color Border = Style.SlotBorder;
 
     /// <summary>Eased towards one while the pointer is over the slot.</summary>
     private float _glow;
@@ -1433,16 +1436,17 @@ public sealed partial class SlotView : Control
 
         // An empty slot is a recess; a full one is a plate with something sitting on it, and it
         // lifts under the pointer. The difference is what makes a grid of them scannable.
+        // Filled slots are the panel colour; empty ones are plain white, as the reference has them.
         DrawRect(full, _sprite.IsValid
-            ? Background.Lightened(0.06f + _glow * 0.10f)
-            : Background);
+            ? Background.Lightened(_glow * 0.10f)
+            : Style.SlotEmpty);
 
         if (_sprite.IsValid)
             DrawRect(new Rect2(1f, 1f, Size.X - 2f, Size.Y * 0.4f), new Color(1f, 1f, 1f, 0.035f));
 
         var border = _sprite.IsValid
-            ? Border.Lerp(Style.Gold, _glow * 0.8f)
-            : Border with { A = 0.55f };
+            ? Border.Lerp(Style.BlueButton, _glow * 0.8f)
+            : Border;
 
         DrawRect(full, border, filled: false, width: _glow > 0.5f ? 2f : 1f);
 
@@ -1469,9 +1473,9 @@ public sealed partial class SlotView : Control
         var at = new Vector2(3f, FontSize + 1f);
 
         DrawString(font, at + Vector2.One, Hotkey, HorizontalAlignment.Left, -1, FontSize,
-            new Color(0f, 0f, 0f, 0.8f));
+            new Color(1f, 1f, 1f, 0.8f));
         DrawString(font, at, Hotkey, HorizontalAlignment.Left, -1, FontSize,
-            new Color(1f, 1f, 1f, 0.55f));
+            new Color(0.1f, 0.1f, 0.1f, 0.75f));
     }
 
     /// <summary>
@@ -1502,12 +1506,12 @@ public sealed partial class SlotView : Control
                     continue;
 
                 DrawString(font, at + new Vector2(dx, dy), tag, HorizontalAlignment.Left, -1, FontSize,
-                    new Color(0f, 0f, 0f, 0.85f));
+                    new Color(1f, 1f, 1f, 0.85f));
             }
         }
 
         DrawString(font, at, tag, HorizontalAlignment.Left, -1, FontSize,
-            tag == "UT" ? new Color("b689f0") : Colors.White);
+            tag == "UT" ? new Color("7b3fb0") : new Color("1a1a1a"));
     }
 }
 
