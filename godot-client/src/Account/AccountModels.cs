@@ -188,10 +188,12 @@ public sealed class CharListResult
         Fame = Int(Text(e, "Fame")),
         Rank = Int(Text(e, "Rank")),
 
-        // These are presence flags rather than values, which is why they are tested for existence.
-        NameChosen = e.Element("NameChosen") != null,
-        Admin = e.Element("Admin") != null,
-        VerifiedEmail = e.Element("VerifiedEmail") != null,
+        // Not presence flags. The server writes a false boolean as an *empty element* -- see
+        // <NameChosen></NameChosen>, <isFirstDeath></isFirstDeath> -- so the tag is there either
+        // way and testing for existence reads every one of them as true.
+        NameChosen = Flag(e, "NameChosen"),
+        Admin = Flag(e, "Admin"),
+        VerifiedEmail = Flag(e, "VerifiedEmail"),
 
         GuildName = Text(e.Element("Guild"), "Name") ?? string.Empty,
         GuildRank = Int(Text(e.Element("Guild"), "Rank")),
@@ -207,6 +209,15 @@ public sealed class CharListResult
         AdminOnly = e.Element("AdminOnly") != null && Bool(Text(e, "AdminOnly")),
     };
 
+    /// <summary>
+    /// A boolean the server writes as element content, where absent and empty both mean false.
+    /// </summary>
+    private static bool Flag(XElement parent, string name)
+    {
+        var element = parent?.Element(name);
+        return element != null && Bool(element.Value?.Trim());
+    }
+
     private static string Text(XElement parent, string name)
     {
         string value = parent?.Element(name)?.Value;
@@ -221,6 +232,9 @@ public sealed class CharListResult
 
     private static bool Bool(string text) =>
         text != null && (text.Equals("true", StringComparison.OrdinalIgnoreCase) || text == "1");
+
+    /// <summary>Whether the account already has a display name to play under.</summary>
+    private static bool HasName(AccountInfo account) => !string.IsNullOrWhiteSpace(account.Name);
 
     private static int[] SplitInts(string text) =>
         string.IsNullOrEmpty(text)

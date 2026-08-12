@@ -491,7 +491,12 @@ public partial class LoginScreen : Control
         _signInPanel.Visible = false;
 
         // Nothing else on this screen matters until the account has a name.
-        bool needsName = !_charList.Account.NameChosen;
+        // The name itself is the authority, not the flag beside it: an account carrying a name has
+        // clearly chosen one, and asking again strands the player on a page whose only button then
+        // fails -- the server charges a thousand credits to *change* a name, and a new account has
+        // none.
+        bool needsName = !_charList.Account.NameChosen &&
+                         string.IsNullOrWhiteSpace(_charList.Account.Name);
         _namePanel.Visible = needsName;
         _charactersPanel.Visible = !needsName;
         _heading.Text = needsName ? "Choose your name" : "Choose a character";
