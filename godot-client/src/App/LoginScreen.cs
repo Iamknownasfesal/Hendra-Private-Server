@@ -139,6 +139,50 @@ public partial class LoginScreen : Control
     }
 
     /// <summary>
+    /// The standing sprite for a class, at the size the boxes want it.
+    /// </summary>
+    /// <remarks>
+    /// The original's character boxes are built from SWF graphics with the sprite composited into
+    /// them. Those are compiled artwork rather than loose files and cannot be pulled out, so the
+    /// box is drawn here instead and the sprite that goes in it is the real one — the same
+    /// eight-pixel frame the game draws when the character is standing still.
+    /// </remarks>
+    private static Control Portrait(ushort objectType, int size)
+    {
+        var holder = new Control
+        {
+            CustomMinimumSize = new Vector2(size, size),
+            MouseFilter = MouseFilterEnum.Ignore,
+        };
+
+        var desc = ServiceLocator.Data?.GetObject(objectType);
+        if (desc?.Texture == null || ServiceLocator.Assets == null)
+            return holder;
+
+        var resolved = new Assets.TextureResolver(ServiceLocator.Assets).Resolve(desc.Texture);
+        var sprite = resolved.Animated != null
+            ? resolved.Animated.Frame(0f, 0f, Assets.CharAction.Stand, 0f).Sprite
+            : resolved.Still;
+
+        if (!sprite.IsValid)
+            return holder;
+
+        var view = new TextureRect
+        {
+            Texture = new AtlasTexture { Atlas = sprite.Sheet, Region = sprite.Region },
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+
+            // Nearest, or an eight-pixel sprite blown up to forty is a smear.
+            TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
+            MouseFilter = MouseFilterEnum.Ignore,
+        };
+
+        view.SetAnchorsPreset(LayoutPreset.FullRect);
+        holder.AddChild(view);
+        return holder;
+    }
+
+    /// <summary>
     /// One character on the list: class and level over its vital and stat lines.
     /// </summary>
     /// <remarks>
@@ -150,7 +194,7 @@ public partial class LoginScreen : Control
     {
         var box = new Button
         {
-            CustomMinimumSize = new Vector2(CharacterBoxWidth, 62),
+            CustomMinimumSize = new Vector2(CharacterBoxWidth, 82),
             TooltipText = "Play this character",
         };
 
@@ -162,9 +206,15 @@ public partial class LoginScreen : Control
             margin.AddThemeConstantOverride(side, 8);
         box.AddChild(margin);
 
+        var across = new HBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
+        across.AddThemeConstantOverride("separation", 10);
+        margin.AddChild(across);
+        across.AddChild(Portrait(character.ObjectType, 46));
+
         var rows = new VBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
         rows.AddThemeConstantOverride("separation", 2);
-        margin.AddChild(rows);
+        rows.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        across.AddChild(rows);
 
         var heading = new Label
         {
@@ -275,6 +325,14 @@ public partial class LoginScreen : Control
         }
     }
 
+    /// <summary>Fills the form and signs in. Development only.</summary>
+    public void PrefillForTesting(string account, string password)
+    {
+        _guid.Text = account;
+        _password.Text = password;
+        OnSignInPressed();
+    }
+
     private async void OnSignInPressed()
     {
         _signIn.Disabled = true;
@@ -363,20 +421,44 @@ public partial class LoginScreen : Control
         if (classes == null || classes.Count == 0)
             return;
 
+        _characters.AddChild(new Control { CustomMinimumSize = new Vector2(0, 6) });
         _characters.AddChild(new Label
         {
             Text = onlyOption ? "No characters yet. Create one:" : "Or create a new character:",
         });
 
-        var grid = new GridContainer { Columns = 3 };
+        var grid = new GridContainer { Columns = 5 };
+        grid.AddThemeConstantOverride("h_separation", 6);
+        grid.AddThemeConstantOverride("v_separation", 6);
         _characters.AddChild(grid);
 
         foreach (var playerClass in classes)
         {
-            var button = new Button { Text = playerClass.DisplayId ?? playerClass.Id ?? "?" };
             ushort classType = playerClass.Type;
+
+            var button = new Button
+            {
+                CustomMinimumSize = new Vector2(126, 74),
+                TooltipText = playerClass.DisplayId ?? playerClass.Id,
+            };
             button.Pressed += () => RequestCreate(classType);
             grid.AddChild(button);
+
+            var stack = new VBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
+            stack.AddThemeConstantOverride("separation", 2);
+            stack.SetAnchorsPreset(LayoutPreset.FullRect);
+            button.AddChild(stack);
+
+            var art = Portrait(classType, 34);
+            art.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            stack.AddChild(art);
+
+            stack.AddChild(new Label
+            {
+                Text = playerClass.DisplayId ?? playerClass.Id ?? "?",
+                HorizontalAlignment = HorizontalAlignment.Center,
+                MouseFilter = MouseFilterEnum.Ignore,
+            });
         }
     }
 
