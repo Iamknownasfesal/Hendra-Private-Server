@@ -436,10 +436,46 @@ public partial class WorldController : Node
                 break;
 
             case GlobalNotificationPacket announcement:
-                _chat?.AddSystem(LineBuilder.Resolve(announcement.Text, _strings));
+                HandleGlobalNotification(announcement.Text);
                 break;
         }
     }
+
+    /// <summary>
+    /// Acts on a GlobalNotification.
+    /// </summary>
+    /// <remarks>
+    /// Despite the name and the string field, this packet carries commands rather than anything to
+    /// read: a key colour to show, the key interface to toggle, whether the gift chest has anything
+    /// in it. Printing the string is why "giftChestEmpty" was floating in the Nexus -- it is the
+    /// server saying the chest is empty, not the name of a thing.
+    /// </remarks>
+    private void HandleGlobalNotification(string text)
+    {
+        switch (text)
+        {
+            case "giftChestOccupied":
+                HasGift = true;
+                break;
+
+            case "giftChestEmpty":
+                HasGift = false;
+                break;
+
+            // Key colours and the key interface, neither of which this port shows yet. Swallowed
+            // rather than printed, because none of them is a sentence.
+            case "yellow" or "red" or "green" or "purple" or "showKeyUI":
+                break;
+
+            default:
+                // Anything the original does not recognise either, which it treats as a message.
+                _chat?.AddSystem(LineBuilder.Resolve(text, _strings));
+                break;
+        }
+    }
+
+    /// <summary>Whether the account has an unclaimed gift waiting in the Nexus chest.</summary>
+    public bool HasGift { get; private set; }
 
     /// <summary>
     /// An enemy fired. One packet can describe a whole volley.

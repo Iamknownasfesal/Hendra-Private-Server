@@ -287,6 +287,26 @@ public partial class LoginScreen : Control
         heading.AddThemeColorOverride("font_color", UI.Style.Text);
         headingRow.AddChild(heading);
 
+        // Stars, on the original's thresholds: one for each of 20, 150, 400, 800 and 2000 fame.
+        // They are what the original rates an account by, and a character's own count is the part
+        // of that rating it contributes.
+        int stars = UI.Fame.Stars(character.CurrentFame);
+        if (stars > 0)
+        {
+            var starRow = new HBoxContainer
+            {
+                MouseFilter = Control.MouseFilterEnum.Ignore,
+                SizeFlagsVertical = SizeFlags.ShrinkCenter,
+            };
+            starRow.AddThemeConstantOverride("separation", 1);
+
+            var colour = UI.Fame.Colour(stars, 1);
+            for (int i = 0; i < stars; i++)
+                starRow.AddChild(new UI.StarIcon(colour, 13));
+
+            headingRow.AddChild(starRow);
+        }
+
         headingRow.AddChild(new UI.LevelBadge(character.Level)
         {
             MouseFilter = Control.MouseFilterEnum.Ignore,

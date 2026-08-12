@@ -263,7 +263,7 @@ public partial class HudView : Control
 
         _prompt.Visible = !string.IsNullOrEmpty(label);
         if (_prompt.Visible)
-            _prompt.Text = $"[R] {label}";
+            _prompt.Text = $"[{InteractKey()}] {label}";
     }
 
     private void AddContainerSlots(Control parent, int count)
@@ -426,6 +426,25 @@ public partial class HudView : Control
     /// <summary>
     /// A shade lighter than the column, so a grid reads as sitting on the column rather than in it.
     /// </summary>
+    /// <summary>
+    /// The key that works the thing in front of the player, as it is currently bound.
+    /// </summary>
+    /// <remarks>
+    /// Read from the input map rather than written into the sentence. The prompt used to say R,
+    /// which is Nexus -- pressing it did leave, so the prompt was not only wrong but actively
+    /// misleading. Asking the map means it cannot drift from the binding again.
+    /// </remarks>
+    private static string InteractKey()
+    {
+        foreach (var bound in InputMap.ActionGetEvents("interact"))
+        {
+            if (bound is InputEventKey key)
+                return OS.GetKeycodeString(key.PhysicalKeycode != Key.None ? key.PhysicalKeycode : key.Keycode);
+        }
+
+        return "?";
+    }
+
     private static readonly Color SectionBackground = new(0.10f, 0.095f, 0.095f);
 
     /// <summary>The level cap, past which there is no experience left to earn.</summary>
@@ -892,6 +911,44 @@ public sealed partial class SlotView : Control
         // Item sprites are tiny and must not be smoothed when blown up to slot size.
         var inset = full.Grow(-4f);
         DrawTextureRectRegion(_sprite.Sheet, inset, _sprite.Region);
+
+        DrawTierTag();
+    }
+
+    /// <summary>
+    /// The tier, in the corner of the tile.
+    /// </summary>
+    /// <remarks>
+    /// The original's ItemTile puts it at the bottom right with a text outline, and it is how you
+    /// read a bag at a glance instead of hovering over every square in it.
+    /// </remarks>
+    private void DrawTierTag()
+    {
+        string tag = ItemTooltip.TierTag(_desc);
+        if (tag == null)
+            return;
+
+        var font = GetThemeDefaultFont();
+        const int FontSize = 11;
+
+        var measured = font.GetStringSize(tag, HorizontalAlignment.Left, -1, FontSize);
+        var at = new Vector2(Size.X - measured.X - 2f, Size.Y - 3f);
+
+        // Outlined rather than shadowed: it sits over artwork, which can be any colour at all.
+        for (int dx = -1; dx <= 1; dx++)
+        {
+            for (int dy = -1; dy <= 1; dy++)
+            {
+                if (dx == 0 && dy == 0)
+                    continue;
+
+                DrawString(font, at + new Vector2(dx, dy), tag, HorizontalAlignment.Left, -1, FontSize,
+                    new Color(0f, 0f, 0f, 0.85f));
+            }
+        }
+
+        DrawString(font, at, tag, HorizontalAlignment.Left, -1, FontSize,
+            tag == "UT" ? new Color("b689f0") : Colors.White);
     }
 }
 

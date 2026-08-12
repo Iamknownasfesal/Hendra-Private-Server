@@ -42,6 +42,7 @@
     <Compile Include="../../src/Account/GuildResult.cs" />
     <Compile Include="../../src/Account/AccountModels.cs" />
     <Compile Include="../../src/UI/ItemTooltip.cs" />
+    <Compile Include="../../src/UI/Fame.cs" />
     <Compile Include="../../src/Resources/Descriptors.cs" />
     <Compile Include="../../src/World/Movement.cs" />
     <Compile Include="../../src/World/Projectile.cs" />
