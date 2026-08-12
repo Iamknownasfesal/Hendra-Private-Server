@@ -54,7 +54,13 @@ public partial class Boot : Control
 
         _status.Visible = false;
 
-        if (_options.CanAutoConnect)
+        if (_options.CanAutoCreate)
+        {
+            GD.Print($"[boot] auto-creating a character of class {_options.CreateClassType}");
+            CreateCharacter(_options.ToServer(), _options.Guid, _options.Password ?? string.Empty,
+                _options.CharacterId >= 0 ? _options.CharacterId : 0, (ushort)_options.CreateClassType);
+        }
+        else if (_options.CanAutoConnect)
         {
             GD.Print($"[boot] auto-connecting to {_options.Host}:{_options.Port} as character {_options.CharacterId}");
             StartGame(_options.ToServer(), _options.Guid, _options.Password ?? string.Empty, _options.CharacterId);

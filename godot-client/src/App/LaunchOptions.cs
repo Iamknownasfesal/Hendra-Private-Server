@@ -23,6 +23,18 @@ public sealed class LaunchOptions
     public string Password { get; private set; }
     public int CharacterId { get; private set; } = -1;
 
+    /// <summary>
+    /// The object type of a class to create a character for, instead of playing an existing one.
+    /// </summary>
+    /// <remarks>
+    /// An object type -- Archer is 775 -- not an index into the class list. The two are easy to
+    /// confuse and the server answers an index with a disconnect rather than an explanation.
+    /// </remarks>
+    public int CreateClassType { get; private set; } = -1;
+
+    public bool CanAutoCreate =>
+        !string.IsNullOrEmpty(Host) && !string.IsNullOrEmpty(Guid) && CreateClassType >= 0;
+
     /// <summary>Where to write a screenshot, or null to take none.</summary>
     public string ScreenshotPath { get; private set; }
 
@@ -87,6 +99,7 @@ public sealed class LaunchOptions
                 case "--guid": options.Guid = Next(); break;
                 case "--password": options.Password = Next(); break;
                 case "--char": options.CharacterId = ParseInt(Next(), -1); break;
+                case "--create": options.CreateClassType = ParseInt(Next(), -1); break;
                 case "--screenshot": options.ScreenshotPath = Next(); break;
                 case "--screenshot-after":
                     options.ScreenshotDelaySeconds = ParseFloat(Next(), options.ScreenshotDelaySeconds);
