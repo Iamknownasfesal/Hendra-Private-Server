@@ -63,6 +63,39 @@ public partial class GameButton : Button
         AddThemeStyleboxOverride("focus", new StyleBoxEmpty());
     }
 
+    /// <summary>
+    /// How much room the button needs.
+    /// </summary>
+    /// <remarks>
+    /// Measured from the label, because the label is drawn here rather than by the base class --
+    /// which means the base class measures an empty string and reports a button no wider than its
+    /// padding. In a row that collapses them all onto the same spot.
+    /// </remarks>
+    /// <summary>
+    /// Re-measures once the theme is available.
+    /// </summary>
+    /// <remarks>
+    /// The first minimum-size query happens before the node is in the tree, when there is no font
+    /// to measure with, and Godot caches what it is told. Without this every button keeps the
+    /// no-font answer and a row of them collapses onto one spot.
+    /// </remarks>
+    public override void _Ready() => UpdateMinimumSize();
+
+    public override Vector2 _GetMinimumSize()
+    {
+        var font = GetThemeDefaultFont();
+        if (font == null)
+            return CustomMinimumSize;
+
+        int size = GetThemeDefaultFontSize() + (_compact ? -1 : _primary ? 5 : 2);
+        var measured = font.GetStringSize(_label, HorizontalAlignment.Left, -1, size);
+
+        float padding = _compact ? 18f : 34f;
+        return new Vector2(
+            Mathf.Max(measured.X + padding, CustomMinimumSize.X),
+            Mathf.Max(_compact ? 28f : _primary ? 46f : 40f, CustomMinimumSize.Y));
+    }
+
     public override void _Process(double delta)
     {
         float target = IsHovered() && !Disabled ? 1f : 0f;

@@ -193,6 +193,10 @@ public partial class WorldController : Node
             _hud.SlotActivated += OnSlotActivated;
             _hud.ContainerSlotActivated += OnContainerSlotActivated;
             _hud.SlotDropped += OnSlotDropped;
+            _hud.PotionRequested += health => _inventory.UsePotion(health);
+            _hud.NexusPressed += () => NexusRequested?.Invoke();
+            _hud.OptionsPressed += () => OptionsToggled?.Invoke();
+            _hud.GuildPressed += () => GuildToggled?.Invoke();
             _hud.BuyPressed += OnBuyPressed;
         }
 

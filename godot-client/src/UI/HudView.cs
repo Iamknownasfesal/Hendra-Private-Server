@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using Godot;
 using Hendra.Assets;
 using Hendra.Resources;
@@ -57,9 +58,9 @@ public partial class HudView : Control
     private readonly List<SlotView> _backpack = new();
 
     /// <summary>The backpack section, shown only once the character owns one.</summary>
-    private CutEdgePanel _backpackPanel;
+    private Control _backpackPanel;
 
-    private CutEdgePanel _inventoryPanel;
+    private Control _inventoryPanel;
     private HBoxContainer _tabs;
     private Button _inventoryTab;
     private Button _statsTab;
@@ -96,6 +97,30 @@ public partial class HudView : Control
     private VitalBar _mana;
     private Label _name;
     private VitalBar _level;
+    private Label _levelLabel;
+    private Label _guild;
+    private HBoxContainer _stars;
+    private Label _fame;
+    private Label _gold;
+    private HBoxContainer _panelButtons;
+    private Control _healthPotions;
+    private Control _manaPotions;
+    private Control _interactions;
+
+    /// <summary>Raised by the buttons in the identity panel.</summary>
+    public event Action OptionsPressed;
+
+    public event Action GuildPressed;
+
+    public event Action NexusPressed;
+
+    /// <summary>The potion slots, which the wire numbers just past the backpack.</summary>
+    private const int HealthPotionSlot = 254;
+
+    private const int MagicPotionSlot = 255;
+
+    /// <summary>The minimap's size, which the corner groups arrange themselves around.</summary>
+    private const int MinimapSize = 192;
     private Label _prompt;
     private VBoxContainer _containerPanel;
     private VBoxContainer _merchantPanel;
@@ -122,56 +147,197 @@ public partial class HudView : Control
         MouseFilter = MouseFilterEnum.Ignore;
         this.FillScreen();
 
-        // The column itself, in the original's cut-corner shape and its background colour. Only the
-        // left corners are cut: the right two sit against the edge of the screen where a bevel
-        // would show as a notch out of the frame.
-        var panel = new CutEdgePanel
-        {
-            CustomMinimumSize = new Vector2(PanelWidth, 0),
-            MouseFilter = MouseFilterEnum.Stop,
-            Background = CutEdgePanel.PanelBackground,
-        };
-        panel.Cuts(topLeft: true, topRight: false, bottomRight: false, bottomLeft: true).Padded(7);
-        panel.SetAnchorsPreset(LayoutPreset.RightWide);
-        panel.OffsetLeft = -PanelWidth;
-        AddChild(panel);
+        BuildPlayerPanel();
+        BuildCurrencies();
+        BuildNearby();
+        BuildVitals();
+        BuildCarried();
+        BuildInteractions();
+        BuildPrompt();
 
-        var margin = panel;
+        ShowTab(Page.Inventory);
+    }
+
+    /// <summary>
+    /// Top left: who you are, and the buttons that open the panels about you.
+    /// </summary>
+    /// <remarks>
+    /// The identity block. Name, star rating, guild and progress to the next level, in the corner
+    /// furthest from the action, because it is the part you read between fights rather than during
+    /// one.
+    /// </remarks>
+    private void BuildPlayerPanel()
+    {
+        var panel = Corner(LayoutPreset.TopLeft, new Vector2(12, 12));
+        panel.CustomMinimumSize = new Vector2(228, 0);
 
         var column = new VBoxContainer();
-        column.AddThemeConstantOverride("separation", 6);
-        margin.AddChild(column);
+        column.AddThemeConstantOverride("separation", 4);
+        panel.AddChild(column);
 
-        // The minimap is drawn over the top of this column by its own node, so the column starts
-        // below it. Reserved rather than parented, because the map has to clip its own rotated
-        // drawing and a container would fight it for the size.
-        column.AddChild(new Control { CustomMinimumSize = new Vector2(0, MinimapAllowance) });
+        var heading = new HBoxContainer();
+        heading.AddThemeConstantOverride("separation", 8);
+        column.AddChild(heading);
+
+        var names = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        names.AddThemeConstantOverride("separation", 0);
+        heading.AddChild(names);
 
         _name = new Label { Text = "—" };
-        column.AddChild(_name);
+        _name.AddThemeFontSizeOverride("font_size", 18);
+        names.AddChild(_name);
 
-        // Level is a bar, as it is in the original: progress toward the next level, labelled with
-        // the level itself. At the cap it becomes the fame bar, measured against the next class
-        // quest -- the same swap StatMetersView makes, and the colours are its colours.
-        _level = new VitalBar(new Color(0.35f, 0.50f, 0.14f));
-        column.AddChild(_level);
+        _guild = new Label { Text = string.Empty };
+        _guild.AddThemeFontSizeOverride("font_size", 12);
+        _guild.AddThemeColorOverride("font_color", Style.Good);
+        names.AddChild(_guild);
 
-        _health = new VitalBar(new Color(0.88f, 0.20f, 0.20f));
-        column.AddChild(_health);
+        _stars = new HBoxContainer { SizeFlagsVertical = SizeFlags.ShrinkCenter };
+        _stars.AddThemeConstantOverride("separation", 1);
+        heading.AddChild(_stars);
 
-        _mana = new VitalBar(new Color(0.38f, 0.52f, 0.88f));
-        column.AddChild(_mana);
+        // Level and progress on one line: the number matters, the bar behind it is the detail.
+        var levelRow = new HBoxContainer();
+        levelRow.AddThemeConstantOverride("separation", 6);
+        column.AddChild(levelRow);
 
-        // The original sits its grids on their own backgrounds rather than straight on the column:
-        // an 186 by 92 cut-corner panel behind each. It is what separates the interface into parts
-        // you can find by shape rather than by reading it.
-        var equipmentPanel = AddSection(column, "Equipment");
-        AddSlots(equipmentPanel, _equipment, EquipmentSlots, firstIndex: 0);
+        _levelLabel = new Label { Text = "Lvl —" };
+        _levelLabel.AddThemeFontSizeOverride("font_size", 13);
+        _levelLabel.AddThemeColorOverride("font_color", Style.Muted);
+        levelRow.AddChild(_levelLabel);
 
-        // Inventory and backpack share the space, as they do in the original: a strip of two tabs
-        // above one grid, rather than both grids stacked. The backpack tab only appears for a
-        // character that has bought the bag -- the stat that grants it is HasBackpack, and until
-        // then the server refuses a swap into those slots anyway.
+        _level = new VitalBar(new Color("5a8025")) { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        levelRow.AddChild(_level);
+
+        _panelButtons = new HBoxContainer();
+        _panelButtons.AddThemeConstantOverride("separation", 4);
+        column.AddChild(_panelButtons);
+
+        _panelButtons.AddChild(IconButton("Stats", "Character stats", () => ShowTab(Page.Stats)));
+        _panelButtons.AddChild(IconButton("Guild", "Guild", () => GuildPressed?.Invoke()));
+
+        _panelButtons.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
+        _panelButtons.AddChild(IconButton("Options", "Options", () => OptionsPressed?.Invoke()));
+    }
+
+    /// <summary>Top right: fame and gold, over the minimap.</summary>
+    private void BuildCurrencies()
+    {
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 14);
+        row.SetAnchorsPreset(LayoutPreset.TopRight);
+        row.MouseFilter = MouseFilterEnum.Ignore;
+
+        // Left of the minimap rather than under it, so a wide number grows away from the screen
+        // edge instead of into it.
+        row.OffsetLeft = -MinimapSize - 210;
+        row.OffsetRight = -MinimapSize - 14;
+        row.OffsetTop = 14;
+        row.OffsetBottom = 40;
+        row.Alignment = BoxContainer.AlignmentMode.End;
+        AddChild(row);
+
+        _fame = Currency(row, Style.Gold.Lerp(Style.Danger, 0.4f));
+        _gold = Currency(row, Style.Gold);
+    }
+
+    private Label Currency(Control parent, Color colour)
+    {
+        var group = new HBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
+        group.AddThemeConstantOverride("separation", 5);
+        parent.AddChild(group);
+
+        var amount = new Label
+        {
+            Text = "0",
+            HorizontalAlignment = HorizontalAlignment.Right,
+            MouseFilter = MouseFilterEnum.Ignore,
+        };
+        amount.AddThemeFontSizeOverride("font_size", 17);
+        group.AddChild(amount);
+
+        group.AddChild(new CurrencyPip(colour) { MouseFilter = MouseFilterEnum.Ignore });
+        return amount;
+    }
+
+    /// <summary>Under the minimap: who else is nearby.</summary>
+    private void BuildNearby()
+    {
+        _partyPanel = new VBoxContainer { Visible = false, MouseFilter = MouseFilterEnum.Ignore };
+        _partyPanel.AddThemeConstantOverride("separation", 1);
+        _partyPanel.SetAnchorsPreset(LayoutPreset.TopRight);
+        _partyPanel.OffsetLeft = -MinimapSize - 14;
+        _partyPanel.OffsetRight = -14;
+        _partyPanel.OffsetTop = MinimapSize + 24;
+        AddChild(_partyPanel);
+
+        _party = new VBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
+        _party.AddThemeConstantOverride("separation", 1);
+        _partyPanel.AddChild(_party);
+    }
+
+    /// <summary>
+    /// Bottom centre: health, mana, the potions that refill them, and the way home.
+    /// </summary>
+    /// <remarks>
+    /// The things you look at while something is hitting you, put where the eye already is -- under
+    /// the character, not off in a corner. The potion counts sit against their own bars because
+    /// that is the pair you check together.
+    /// </remarks>
+    private void BuildVitals()
+    {
+        var panel = Corner(LayoutPreset.CenterBottom, new Vector2(0, -14));
+        panel.CustomMinimumSize = new Vector2(520, 0);
+
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 8);
+        panel.AddChild(row);
+
+        var bars = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        bars.AddThemeConstantOverride("separation", 4);
+        row.AddChild(bars);
+
+        _health = new VitalBar(new Color("c83c3c"));
+        _health.CustomMinimumSize = new Vector2(0, 22);
+        bars.AddChild(_health);
+
+        _mana = new VitalBar(new Color("5a7fd0"));
+        _mana.CustomMinimumSize = new Vector2(0, 22);
+        bars.AddChild(_mana);
+
+        var potions = new VBoxContainer { SizeFlagsVertical = SizeFlags.ShrinkCenter };
+        potions.AddThemeConstantOverride("separation", 4);
+        row.AddChild(potions);
+
+        // Buttons rather than slots. This fork sends no potion count -- the server tracks how many
+        // you hold and the client only ever asks it to drink one -- so a square showing a number
+        // would be showing a number nobody sent.
+        _healthPotions = PotionButton("F", "Drink a health potion", new Color("c83c3c"), health: true);
+        potions.AddChild(_healthPotions);
+
+        _manaPotions = PotionButton("V", "Drink a magic potion", new Color("5a7fd0"), health: false);
+        potions.AddChild(_manaPotions);
+
+        // The way out, next to the bars, because reaching for it is the same reflex as watching
+        // them. Labelled with the key that does the same thing.
+        var nexus = new GameButton($"Nexus  [{NexusKey()}]", compact: true)
+        {
+            SizeFlagsVertical = SizeFlags.ShrinkCenter,
+            CustomMinimumSize = new Vector2(96, 48),
+        };
+        nexus.Pressed += () => NexusPressed?.Invoke();
+        row.AddChild(nexus);
+    }
+
+    /// <summary>Bottom right: what you are carrying and what you are wearing.</summary>
+    private void BuildCarried()
+    {
+        var panel = Corner(LayoutPreset.BottomRight, new Vector2(-12, -14));
+
+        var column = new VBoxContainer();
+        column.AddThemeConstantOverride("separation", 5);
+        panel.AddChild(column);
+
         _tabs = new HBoxContainer();
         _tabs.AddThemeConstantOverride("separation", 4);
         column.AddChild(_tabs);
@@ -180,36 +346,52 @@ public partial class HudView : Control
         _statsTab = AddTab("Stats", Page.Stats);
         _backpackTab = AddTab("Backpack", Page.Backpack);
 
-        _inventoryPanel = NewSectionPanel();
+        _inventoryPanel = new VBoxContainer();
         column.AddChild(_inventoryPanel);
-        AddSlots(SectionBody(_inventoryPanel), _inventory, InventorySlots, firstIndex: 8);
+        AddSlots(_inventoryPanel, _inventory, InventorySlots, firstIndex: 8);
 
         _statsPanel = NewSectionPanel();
         _statsPanel.Visible = false;
         column.AddChild(_statsPanel);
         BuildStatsPage(SectionBody(_statsPanel));
 
-        _backpackPanel = NewSectionPanel();
-        _backpackPanel.Visible = false;
+        _backpackPanel = new VBoxContainer { Visible = false };
         column.AddChild(_backpackPanel);
-        AddSlots(SectionBody(_backpackPanel), _backpack, BackpackSlots, firstIndex: 16);
+        AddSlots(_backpackPanel, _backpack, BackpackSlots, firstIndex: 16);
 
-        // Everything below is pushed to the foot of the column, where the original puts its
-        // interact panel -- it is the part that appears and disappears as the player walks around,
-        // and it is less distracting from down there.
-        column.AddChild(new Control { SizeFlagsVertical = SizeFlags.ExpandFill });
+        column.AddChild(new HSeparator());
 
-        // Only present while standing over something that holds items.
+        // Worn, under carried: the four you are using, beneath the eight you are holding.
+        var equipment = new HBoxContainer();
+        equipment.AddThemeConstantOverride("separation", 4);
+        column.AddChild(equipment);
+
+        for (int i = 0; i < EquipmentSlots; i++)
+        {
+            int index = i;
+            var slot = NewSlot(new World.SlotAddress(World.SlotOwner.Player, index), SlotSize);
+            slot.Activated += () => SlotActivated?.Invoke(index);
+            equipment.AddChild(slot);
+            _equipment.Add(slot);
+        }
+    }
+
+    /// <summary>What is at the player's feet: a container's contents, or a vendor's wares.</summary>
+    private void BuildInteractions()
+    {
+        var panel = Corner(LayoutPreset.BottomRight, new Vector2(-12, -270));
+
+        var column = new VBoxContainer();
+        column.AddThemeConstantOverride("separation", 5);
+        panel.AddChild(column);
+
         _containerPanel = new VBoxContainer { Visible = false };
         column.AddChild(_containerPanel);
 
-        // Named after whatever is being looked into, so it is obvious which chest the grid belongs
-        // to when there are several on the floor.
         _containerName = new Label { Text = "Contents" };
         _containerPanel.AddChild(_containerName);
         AddContainerSlots(_containerPanel, ContainerSlots);
 
-        // Only present while standing at a vendor.
         _merchantPanel = new VBoxContainer { Visible = false };
         column.AddChild(_merchantPanel);
         _merchantPanel.AddChild(new Label { Text = "For sale" });
@@ -218,7 +400,7 @@ public partial class HudView : Control
         row.AddThemeConstantOverride("separation", 8);
         _merchantPanel.AddChild(row);
 
-        _merchandise = new SlotView { CustomMinimumSize = new Vector2(SlotSize, SlotSize) };
+        _merchandise = NewSlot(default, SlotSize);
         row.AddChild(_merchandise);
 
         _price = new Label { VerticalAlignment = VerticalAlignment.Center };
@@ -228,34 +410,189 @@ public partial class HudView : Control
         _buy.Pressed += () => BuyPressed?.Invoke();
         _merchantPanel.AddChild(_buy);
 
-        // Nearby players. Hidden outright when there are none, which is most of the time -- a
-        // heading with nothing under it is three lines of column spent saying nothing, and this
-        // sits at the foot where the space runs out first.
-        _partyPanel = new VBoxContainer { Visible = false };
-        column.AddChild(_partyPanel);
-        _partyPanel.AddChild(new HSeparator());
+        _interactions = panel;
+    }
 
-        var partyHeading = new Label { Text = "Nearby" };
-        partyHeading.AddThemeColorOverride("font_color", new Color(0.66f, 0.66f, 0.66f));
-        _partyPanel.AddChild(partyHeading);
-
-        _party = new VBoxContainer();
-        _party.AddThemeConstantOverride("separation", 0);
-        _partyPanel.AddChild(_party);
-
-        // Sits over the world rather than in the panel, because it refers to something in front of
-        // the player rather than to their own state.
+    private void BuildPrompt()
+    {
+        // Over the world rather than in a panel, because it refers to something in front of the
+        // player rather than to their own state.
         _prompt = new Label
         {
             HorizontalAlignment = HorizontalAlignment.Center,
             Visible = false,
         };
         _prompt.SetAnchorsPreset(LayoutPreset.CenterBottom);
-        _prompt.OffsetTop = -96;
+        _prompt.OffsetTop = -122;
         _prompt.OffsetLeft = -200;
         _prompt.OffsetRight = 200;
-        _prompt.OffsetBottom = -72;
+        _prompt.OffsetBottom = -100;
         AddChild(_prompt);
+    }
+
+    /// <summary>A panel pinned to one corner of the screen, in the game's shape.</summary>
+    private CornerPanel Corner(LayoutPreset preset, Vector2 inset)
+    {
+        var panel = new CornerPanel(preset, inset)
+        {
+            MouseFilter = MouseFilterEnum.Stop,
+            Background = CutEdgePanel.PanelBackground with { A = 0.88f },
+        };
+        panel.Cuts(true, true, true, true).Padded(8);
+        panel.Border = Style.Edge with { A = 0.5f };
+
+        AddChild(panel);
+        return panel;
+    }
+
+    /// <summary>
+    /// A panel that sizes itself to what it holds and stays pinned to its corner.
+    /// </summary>
+    /// <remarks>
+    /// Anchors alone do not size a control. A preset pins the edges but leaves the rectangle
+    /// wherever it was, so a panel built this way starts at zero by zero and its contents pile up
+    /// on top of each other outside it. KeepMinsize is the mode that means "as big as its contents
+    /// and no bigger", and it has to be re-applied whenever those contents change size -- which is
+    /// every time a tab is switched or a chest is opened.
+    /// </remarks>
+    private sealed partial class CornerPanel : CutEdgePanel
+    {
+        private readonly LayoutPreset _preset;
+        private readonly Vector2 _inset;
+
+        public CornerPanel(LayoutPreset preset, Vector2 inset)
+        {
+            _preset = preset;
+            _inset = inset;
+        }
+
+        public override void _Ready() => Pin();
+
+        public override void _Notification(int what)
+        {
+            base._Notification(what);
+
+            if (what == NotificationSortChildren || what == NotificationResized)
+                CallDeferred(nameof(Pin));
+        }
+
+        private void Pin()
+        {
+            var wanted = GetCombinedMinimumSize();
+            if (wanted.X <= 0f || wanted.Y <= 0f)
+                return;
+
+            SetAnchorsAndOffsetsPreset(_preset, LayoutPresetMode.KeepSize);
+
+            Size = wanted;
+            Position = Corner(wanted) + _inset;
+        }
+
+        /// <summary>Where the panel's top-left goes for the corner it is pinned to.</summary>
+        private Vector2 Corner(Vector2 size)
+        {
+            var screen = GetParentAreaSize();
+
+            float x = _preset switch
+            {
+                LayoutPreset.TopRight or LayoutPreset.BottomRight => screen.X - size.X,
+                LayoutPreset.CenterBottom or LayoutPreset.CenterTop => (screen.X - size.X) / 2f,
+                _ => 0f,
+            };
+
+            float y = _preset switch
+            {
+                LayoutPreset.BottomLeft or LayoutPreset.BottomRight or LayoutPreset.CenterBottom =>
+                    screen.Y - size.Y,
+                _ => 0f,
+            };
+
+            return new Vector2(x, y);
+        }
+    }
+
+    private SlotView NewSlot(World.SlotAddress address, int size)
+    {
+        var slot = new SlotView
+        {
+            CustomMinimumSize = new Vector2(size, size),
+            Address = address,
+            Draggable = true,
+        };
+
+        slot.Dropped += (from, to) => SlotDropped?.Invoke(from, to);
+        return slot;
+    }
+
+    /// <summary>
+    /// A potion button, sitting against the bar it refills.
+    /// </summary>
+    /// <remarks>
+    /// Labelled with the key that does the same thing, because that is how it is actually used --
+    /// the button is for the first hour, the key is for every hour after.
+    /// </remarks>
+    private Control PotionButton(string key, string tooltip, Color colour, bool health)
+    {
+        var button = new GameButton(key, compact: true)
+        {
+            TooltipText = tooltip,
+            CustomMinimumSize = new Vector2(34, 22),
+        };
+
+        button.Pressed += () => PotionRequested?.Invoke(health);
+        return button;
+    }
+
+    /// <summary>Raised when a potion button is pressed, with true for health.</summary>
+    public event Action<bool> PotionRequested;
+
+    /// <summary>A small square button that opens a panel.</summary>
+    private static GameButton IconButton(string label, string tooltip, Action pressed)
+    {
+        // An explicit width. GameButton draws its own label, so the base class measures an empty
+        // string and reports a button no wider than its padding -- and a row of those lands every
+        // one of them on the same spot.
+        var button = new GameButton(label, compact: true)
+        {
+            TooltipText = tooltip,
+            CustomMinimumSize = new Vector2(78, 26),
+        };
+        button.Pressed += pressed;
+        return button;
+    }
+
+    /// <summary>The key that returns to the Nexus, as it is currently bound.</summary>
+    private static string NexusKey()
+    {
+        foreach (var bound in InputMap.ActionGetEvents("nexus"))
+        {
+            if (bound is InputEventKey key)
+                return OS.GetKeycodeString(key.PhysicalKeycode != Key.None ? key.PhysicalKeycode : key.Keycode);
+        }
+
+        return "R";
+    }
+
+    /// <summary>The lozenge beside a currency, standing in for its icon.</summary>
+    private sealed partial class CurrencyPip : Control
+    {
+        private readonly Color _colour;
+
+        public CurrencyPip(Color colour)
+        {
+            _colour = colour;
+            CustomMinimumSize = new Vector2(14, 14);
+        }
+
+        public override void _Draw()
+        {
+            var centre = Size / 2f;
+            float radius = Mathf.Min(Size.X, Size.Y) / 2f;
+
+            DrawCircle(centre, radius, _colour);
+            DrawCircle(centre - new Vector2(0f, radius * 0.3f), radius * 0.45f,
+                Colors.White with { A = 0.35f });
+        }
     }
 
     /// <summary>Shows what pressing the interact key would do, or hides the prompt when null.</summary>
@@ -626,9 +963,11 @@ public partial class HudView : Control
 
         _name.Text = string.IsNullOrEmpty(player.Name) ? "—" : player.Name;
 
+        RefreshIdentity(player);
         RefreshLevel(player);
-        _health.Set(player.Hp, player.MaxHp);
-        _mana.Set(player.Mp, player.MaxMp);
+        _health.Set(player.Hp, player.MaxHp, Vital(player.Hp, player.MaxHp, player.Boosts[0]));
+        _mana.Set(player.Mp, player.MaxMp, Vital(player.Mp, player.MaxMp, player.Boosts[1]));
+
         RefreshStats(player);
 
         // Slots 0-3 are worn, 4-7 continue the worn row in the data model but the original shows
@@ -652,6 +991,32 @@ public partial class HudView : Control
     /// Twenty is the cap. The original swaps the bar there rather than leaving a full one sitting
     /// at the top of the column, because fame is what the character is working toward from then on.
     /// </remarks>
+    /// <summary>Guild, star rating, and the two currencies.</summary>
+    private void RefreshIdentity(LocalPlayer player)
+    {
+        _guild.Text = player.Guild ?? string.Empty;
+        _guild.Visible = !string.IsNullOrEmpty(player.Guild);
+
+        _fame.Text = player.Fame.ToString("N0", CultureInfo.InvariantCulture);
+        _gold.Text = player.Credits.ToString("N0", CultureInfo.InvariantCulture);
+
+        // The character's own stars, from its fame, on the original's thresholds. Rebuilt only when
+        // the count changes: it changes a handful of times in a character's life.
+        int stars = Fame.Stars(player.Fame);
+        if (stars == _shownStars)
+            return;
+
+        _shownStars = stars;
+        foreach (var child in _stars.GetChildren())
+            child.QueueFree();
+
+        var colour = Fame.Colour(stars, 1);
+        for (int i = 0; i < stars; i++)
+            _stars.AddChild(new StarIcon(colour, 14));
+    }
+
+    private int _shownStars = -1;
+
     private void RefreshLevel(LocalPlayer player)
     {
         if (player.Level < 0)
@@ -663,12 +1028,16 @@ public partial class HudView : Control
         if (player.Level >= MaxLevel)
         {
             _level.Fill = FameBar;
-            _level.Set(player.Fame, player.NextClassQuestFame, "Fame");
+            _levelLabel.Text = "Fame";
+            _level.Set(player.Fame, player.NextClassQuestFame,
+                $"{player.Fame:N0} / {player.NextClassQuestFame:N0}");
             return;
         }
 
         _level.Fill = ExperienceBar;
-        _level.Set(player.Experience, player.NextLevelExperience, $"Level {player.Level}");
+        _levelLabel.Text = $"Lvl {player.Level}";
+        _level.Set(player.Experience, player.NextLevelExperience,
+            $"{player.Experience:N0} / {player.NextLevelExperience:N0}");
     }
 
     private void RefreshStats(LocalPlayer player)
@@ -689,6 +1058,17 @@ public partial class HudView : Control
             _statRows[i].Set(values[i], player.Boosts[at], maxima != null && at < maxima.Length ? maxima[at] : 0);
         }
     }
+
+    /// <summary>
+    /// A vital's reading, with what equipment adds to its maximum called out.
+    /// </summary>
+    /// <remarks>
+    /// The boosted part is shown separately rather than folded in, because a maximum that changed
+    /// when you swapped a ring is otherwise indistinguishable from one that changed when you
+    /// levelled.
+    /// </remarks>
+    private static string Vital(int current, int maximum, int boost) =>
+        boost > 0 ? $"{current} / {maximum} (+{boost})" : $"{current} / {maximum}";
 
     private void UpdateSlots(List<SlotView> views, LocalPlayer player, int firstIndex)
     {

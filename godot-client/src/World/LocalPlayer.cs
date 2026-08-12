@@ -52,6 +52,9 @@ public sealed class LocalPlayer : Entity
 
     public int Fame;
 
+    /// <summary>The guild the account belongs to, or empty. Arrives as a stat.</summary>
+    public string Guild = string.Empty;
+
     /// <summary>Experience toward the next level, and what it takes to reach it.</summary>
     /// <remarks>
     /// Both stop being meaningful at level 20, which is the cap: the original swaps the level bar

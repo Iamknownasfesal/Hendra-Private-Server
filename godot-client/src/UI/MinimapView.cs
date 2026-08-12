@@ -103,7 +103,9 @@ public partial class MinimapView : Control
     private void PlaceInColumn()
     {
         var viewport = GetViewportRect().Size;
-        Position = new Vector2(viewport.X - ColumnWidth + ColumnInset, ColumnInset + Margin);
+        // Hard into the top-right corner, which is where the layout puts it: the currencies sit to
+        // its left and the nearby list under it.
+        Position = new Vector2(viewport.X - Diameter - Margin, Margin);
     }
 
     /// <summary>Records a revealed tile. Cheap enough to call for every tile of every Update.</summary>
