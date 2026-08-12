@@ -13,7 +13,7 @@
       <Player/>
       <BloodProb>1.0</BloodProb>
       <SlotTypes>2, 13, 6, 9, 52, 53 , 54 ,55 ,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0</SlotTypes>
-      <Equipment>-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1</Equipment>
+      <Equipment>2580, 2646, 2680, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1</Equipment>
       <MaxHitPoints max="720">150</MaxHitPoints>
       <MaxMagicPoints max="252">100</MaxMagicPoints>
       <Attack max="50">10</Attack>
@@ -45,7 +45,7 @@
       <Player/>
       <BloodProb>1.0</BloodProb>
       <SlotTypes>3, 15, 6, 9, 52, 53 , 54 ,55 , 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0</SlotTypes>
-      <Equipment>-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1</Equipment>
+      <Equipment>2586, 2657, 2680, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1</Equipment>
       <MaxHitPoints max="700">130</MaxHitPoints>
       <MaxMagicPoints max="252">100</MaxMagicPoints>
       <Attack max="75">12</Attack>
@@ -77,7 +77,7 @@
       <Player/>
       <BloodProb>1.0</BloodProb>
       <SlotTypes>17, 11, 14, 9, 52, 53 , 54 ,55 , 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0</SlotTypes>
-      <Equipment>-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1</Equipment>
+      <Equipment>2711, 2606, 2652, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1</Equipment>
       <MaxHitPoints max="670">100</MaxHitPoints>
       <MaxMagicPoints max="385">100</MaxMagicPoints>
       <Attack max="75">12</Attack>
@@ -108,7 +108,7 @@
       <Player/>
       <BloodProb>1.0</BloodProb>
       <SlotTypes>8, 4, 14, 9, 52, 53 , 54 ,55 ,0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0</SlotTypes>
-      <Equipment>-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1</Equipment>
+      <Equipment>2564, 2609, 2652, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1</Equipment>
       <MaxHitPoints max="670">100</MaxHitPoints>
       <MaxMagicPoints max="385">100</MaxMagicPoints>
       <Attack max="50">12</Attack>
@@ -140,7 +140,7 @@
       <Player/>
       <BloodProb>1.0</BloodProb>
       <SlotTypes>1, 16, 7, 9, 52, 53 , 54 ,55 , 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0</SlotTypes>
-      <Equipment>-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1</Equipment>
+      <Equipment>2560, 2662, 2683, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1</Equipment>
       <MaxHitPoints max="770">200</MaxHitPoints>
       <MaxMagicPoints max="252">100</MaxMagicPoints>
       <Attack max="75">15</Attack>
@@ -172,7 +172,7 @@
       <Player/>
       <BloodProb>1.0</BloodProb>
       <SlotTypes>1, 5, 7, 9, 52, 53 , 54 ,55 , 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0</SlotTypes>
-      <Equipment>-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1</Equipment>
+      <Equipment>2560, 2568, 2683, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1</Equipment>
       <MaxHitPoints max="770">200</MaxHitPoints>
       <MaxMagicPoints max="252">100</MaxMagicPoints>
       <Attack max="50">15</Attack>
@@ -204,7 +204,7 @@
       <Player/>
       <BloodProb>1.0</BloodProb>
       <SlotTypes>1, 12, 7, 9, 52, 53 , 54 ,55 , 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0</SlotTypes>
-      <Equipment>-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1</Equipment>
+      <Equipment>2560, 2642, 2683, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1</Equipment>
       <MaxHitPoints max="770">200</MaxHitPoints>
       <MaxMagicPoints max="252">100</MaxMagicPoints>
       <Attack max="50">12</Attack>
@@ -237,7 +237,7 @@
       <Player/>
       <BloodProb>1.0</BloodProb>
       <SlotTypes>2, 18, 6, 9, 52, 53 , 54 ,55 , 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0</SlotTypes>
-      <Equipment>-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1</Equipment>
+      <Equipment>2580, 2723, 2680, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1</Equipment>
       <MaxHitPoints max="720">150</MaxHitPoints>
       <MaxMagicPoints max="252">100</MaxMagicPoints>
       <Attack max="60">12</Attack>
@@ -270,7 +270,7 @@
       <Player/>
       <BloodProb>1.0</BloodProb>
       <SlotTypes>17, 19, 14, 9, 52, 53 , 54 ,55 , 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0</SlotTypes>
-      <Equipment>-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1</Equipment>
+      <Equipment>2711, 2730, 2652, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1</Equipment>
       <MaxHitPoints max="670">100</MaxHitPoints>
       <MaxMagicPoints max="385">100</MaxMagicPoints>
       <Attack max="75">12</Attack>
@@ -303,7 +303,7 @@
       <Player/>
       <BloodProb>1.0</BloodProb>
       <SlotTypes>3, 20, 6, 9, 52, 53 , 54 ,55 , 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0</SlotTypes>
-      <Equipment>-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1</Equipment>
+      <Equipment>2586, 2737, 2680, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1</Equipment>
       <MaxHitPoints max="700">130</MaxHitPoints>
       <MaxMagicPoints max="252">100</MaxMagicPoints>
       <Attack max="75">12</Attack>
@@ -336,7 +336,7 @@
       <Player/>
       <BloodProb>1.0</BloodProb>
       <SlotTypes>17, 21, 14, 9, 52, 53 , 54 ,55 , 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0</SlotTypes>
-      <Equipment>-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1</Equipment>
+      <Equipment>2711, 2788, 2652, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1</Equipment>
       <MaxHitPoints max="670">100</MaxHitPoints>
       <MaxMagicPoints max="385">100</MaxMagicPoints>
       <Attack max="60">10</Attack>
@@ -369,7 +369,7 @@
       <Player/>
       <BloodProb>1.0</BloodProb>
       <SlotTypes>2, 22, 6, 9, 52, 53 , 54 ,55 , 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0</SlotTypes>
-      <Equipment>-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1</Equipment>
+      <Equipment>2580, 2787, 2680, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1</Equipment>
       <MaxHitPoints max="720">150</MaxHitPoints>
       <MaxMagicPoints max="252">100</MaxMagicPoints>
       <Attack max="65">10</Attack>
@@ -402,7 +402,7 @@
       <Player/>
       <BloodProb>1.0</BloodProb>
       <SlotTypes>8, 23, 14, 9, 52, 53 , 54 ,55 , 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0</SlotTypes>
-      <Equipment>-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1</Equipment>
+      <Equipment>2564, 2789, 2652, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1</Equipment>
       <MaxHitPoints max="670">100</MaxHitPoints>
       <MaxMagicPoints max="385">100</MaxMagicPoints>
       <Attack max="60">10</Attack>
@@ -435,7 +435,7 @@
       <Player/>
       <BloodProb>1.0</BloodProb>
       <SlotTypes>24, 25, 6, 9, 52, 53 , 54 ,55 , 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0</SlotTypes>
-      <Equipment>-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1</Equipment>
+      <Equipment>3140, 3155, 2680, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1</Equipment>
       <MaxHitPoints max="720">150</MaxHitPoints>
       <MaxMagicPoints max="252">100</MaxMagicPoints>
       <Attack max="70">15</Attack>
