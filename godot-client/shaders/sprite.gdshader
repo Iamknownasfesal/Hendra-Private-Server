@@ -11,17 +11,17 @@ render_mode unshaded, cull_disabled, depth_draw_always, shadows_disabled;
 //
 // All of it collapses into this. Nothing is allocated at runtime and nothing is cached.
 //
-// Per-vertex inputs beyond the usual:
-//   COLOR   - tint and alpha
-//   UV2     - the origin of this sprite's rectangle within the sheet
-//   CUSTOM0 - the size of that rectangle, in xy
+// Every sprite on a sheet is one instance of the same unit quad. What differs between them arrives
+// per instance:
+//   INSTANCE_CUSTOM - the sprite's rectangle within the sheet: origin in xy, size in zw
+//   COLOR           - tint and alpha
+//   the transform   - where the quad lands, how big, which way up, and mirrored or not
 //
-// Knowing the rectangle is what makes the outline safe: every sprite shares a sheet with hundreds
-// of others, so sampling a neighbouring texel without clamping would pull in whatever happens to
-// sit next door on the atlas. The size travels per vertex rather than as a uniform because a
-// uniform forces a separate surface -- and so a separate draw call and a fresh GPU buffer every
-// frame -- for every distinct sprite size on screen. That was six hundred draw calls and the
-// largest single cost in the frame.
+// Sending four corners each instead meant roughly sixty floats a sprite crossing to the GPU every
+// frame, freshly allocated, where an instance is twenty and the buffer is reused. Knowing the
+// rectangle is also what makes the outline safe: every sprite shares a sheet with hundreds of
+// others, so sampling a neighbouring texel without clamping would pull in whatever sits next door
+// on the atlas.
 
 uniform sampler2D sheet : source_color, filter_nearest;
 
@@ -56,9 +56,14 @@ varying vec2 region_size;
 varying vec4 tint;
 
 void vertex() {
-    region_min = UV2;
-    region_size = CUSTOM0.xy;
+    region_min = INSTANCE_CUSTOM.xy;
+    region_size = INSTANCE_CUSTOM.zw;
     tint = COLOR;
+
+    // The quad carries its own corner as a fraction of the sprite -- nought to one, or a little
+    // outside it where there is an outline to draw into -- and the rectangle turns that into a
+    // place on the sheet.
+    UV = region_min + UV * region_size;
 }
 
 // Samples the sheet, treating anything outside this sprite's own rectangle as empty.

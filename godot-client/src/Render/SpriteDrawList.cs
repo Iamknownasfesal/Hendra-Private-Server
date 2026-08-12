@@ -149,26 +149,26 @@ public sealed class SpriteDrawList
         list.Add(draw);
     }
 
-    /// <summary>Writes the queued quads into <paramref name="mesh"/>, one surface per material.</summary>
+    /// <summary>
+    /// Turns the queued sprites into one batch of instances per surface.
+    /// </summary>
     /// <remarks>
     /// <para>
-    /// Built into plain arrays and handed over one surface at a time, rather than fed vertex by
-    /// vertex. That distinction is the whole performance story of this class: an ImmediateMesh
-    /// takes each vertex, UV and colour through a separate call across the managed boundary, so a
-    /// screen holding a few thousand sprites was making the better part of a million of them every
-    /// frame and spending nearly all its time in the marshalling rather than the drawing. Filling
-    /// a C# array costs nothing by comparison, and the whole surface crosses over once.
+    /// Every sprite is the same unit quad; what differs is where it lands, how big it is, which
+    /// rectangle of the sheet it shows and what colour it is tinted. All four fit in a
+    /// MultiMesh instance -- twelve floats of transform, four of colour, four naming the
+    /// rectangle -- against roughly sixty floats for the four corners it used to send. The
+    /// instance buffer is kept between frames and only grown, so a steady state uploads without
+    /// allocating, where the vertex arrays had to be built fresh at exactly the vertex count and
+    /// were several megabytes a frame of garbage.
     /// </para>
     /// <para>
-    /// The arrays are kept between frames and only ever grown, because the count is stable from one
-    /// frame to the next and a per-frame allocation of this size would land in the garbage
-    /// collector's path.
+    /// Depth ordering is unaffected: it has always ridden on the position handed back by the
+    /// projection, which is now the instance's origin rather than its corners.
     /// </para>
     /// </remarks>
-    public void Build(ArrayMesh mesh, in WorldProjection projection)
+    public void Build(SpriteBatches batches, in WorldProjection projection)
     {
-        mesh.ClearSurfaces();
-
         // Screen right and screen down, expressed in the ground plane. Every quad is built from
         // these two, which is what keeps sprites upright on screen as the camera rotates.
         float sin = Mathf.Sin(projection.Angle);
@@ -177,6 +177,7 @@ public sealed class SpriteDrawList
         var down = new Vector3(-sin, 0f, cos);
 
         SurfaceCount = 0;
+        batches.Begin();
 
         foreach (var key in _order)
         {
@@ -184,61 +185,41 @@ public sealed class SpriteDrawList
             if (draws.Count == 0)
                 continue;
 
-            // Four corners a quad, not six. Two of a triangle pair's corners are shared, and
-            // sending them twice meant a third of everything crossing to the GPU each frame -- five
-            // arrays' worth, for vertices the GPU already had. The index list says which corners
-            // make which triangle and costs four bytes where a duplicated vertex costs sixty.
-            int vertices = draws.Count * 4;
-            int indices = draws.Count * 6;
+            int needed = draws.Count * FloatsPerInstance;
+            if (_instances.Length < needed)
+            {
+                int size = _instances.Length;
+                while (size < needed)
+                    size *= 2;
 
-            // Filled at exactly the right length and handed straight over. Godot wants arrays sized
-            // to the vertex count, so a shared scratch buffer would have to be copied into a
-            // right-sized one anyway -- this writes once instead of writing and then copying.
-            _positions = new Vector3[vertices];
-            _uvs = new Vector2[vertices];
-            _uv2s = new Vector2[vertices];
-            _colors = new Color[vertices];
-            _extents = new float[vertices * 4];
-            _indices = new int[indices];
+                _instances = new float[size];
+            }
 
             _at = 0;
-            _index = 0;
             foreach (var draw in draws)
                 Emit(draw, projection, right, down);
 
-            var arrays = new Godot.Collections.Array();
-            arrays.Resize((int)Mesh.ArrayType.Max);
-            arrays[(int)Mesh.ArrayType.Vertex] = _positions;
-            arrays[(int)Mesh.ArrayType.TexUV] = _uvs;
-            arrays[(int)Mesh.ArrayType.TexUV2] = _uv2s;
-            arrays[(int)Mesh.ArrayType.Color] = _colors;
-            arrays[(int)Mesh.ArrayType.Custom0] = _extents;
-            arrays[(int)Mesh.ArrayType.Index] = _indices;
-
-            const Mesh.ArrayFormat custom0 =
-                (Mesh.ArrayFormat)((uint)Mesh.ArrayCustomFormat.RgbaFloat
-                                   << (int)Mesh.ArrayFormat.FormatCustom0Shift);
-
-            mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays, null, null, custom0);
-            mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, MaterialFor(key));
+            batches.Submit(key.Outlined, MaterialFor(key), _instances, draws.Count);
             SurfaceCount++;
         }
+
+        batches.End();
     }
 
-    private Vector3[] _positions = new Vector3[6 * 256];
-    private Vector2[] _uvs = new Vector2[6 * 256];
-    private Vector2[] _uv2s = new Vector2[6 * 256];
-    private Color[] _colors = new Color[6 * 256];
+    /// <summary>Twelve of transform, four of colour, four naming the sheet rectangle.</summary>
+    private const int FloatsPerInstance = 20;
 
-    /// <summary>Four floats a vertex, of which the shader reads the first two.</summary>
-    private float[] _extents = new float[6 * 256 * 4];
-
-    /// <summary>Which corners make which triangles: two per quad, sharing a diagonal.</summary>
-    private int[] _indices = new int[6 * 256];
-
+    private float[] _instances = new float[256 * FloatsPerInstance];
     private int _at;
-    private int _index;
 
+    /// <summary>Places one sprite as an instance of the shared quad.</summary>
+    /// <remarks>
+    /// The quad spans nought to one in both directions, so the transform's two in-plane axes are
+    /// the sprite's own width and height along screen right and screen down, and its origin is the
+    /// sprite's top-left corner. An outlined sprite's quad reaches a little beyond that on every
+    /// side, which the base mesh carries rather than the transform, so the size here is the
+    /// sprite's own either way.
+    /// </remarks>
     private void Emit(
         in SpriteDraw draw,
         in WorldProjection projection,
@@ -247,34 +228,8 @@ public sealed class SpriteDrawList
     {
         var region = draw.Sprite.Uv;
 
-        // The outline is drawn on transparent texels next to solid ones, so the quad has to reach
-        // beyond the sprite for it to land anywhere. Both the geometry and the UV range grow by the
-        // same fraction, and the shader treats anything outside the region as empty.
-        float pad = draw.Outlined ? OutlinePadding : 0f;
-        float padU = region.Size.X * pad;
-        float padV = region.Size.Y * pad;
-
-        float u0 = region.Position.X - padU;
-        float u1 = region.Position.X + region.Size.X + padU;
-        if (draw.Mirrored)
-            (u0, u1) = (u1, u0);
-
-        float v0 = region.Position.Y - padV;
-        float v1 = region.Position.Y + region.Size.Y + padV;
-
-        float padWidth = draw.WidthTiles * pad;
-        float padHeight = draw.HeightTiles * pad;
-
-        // The anchor sits on the ground point: horizontally by AnchorX, vertically at the bottom
-        // edge, so a sprite stands on its tile rather than straddling it.
-        var anchor = projection.ToScene(draw.TileX, draw.TileY, draw.Height, draw.SortBias);
-        float left = -draw.WidthTiles * draw.AnchorX - padWidth;
-        float rightEdge = left + draw.WidthTiles + 2f * padWidth;
-        float top = -draw.HeightTiles * (1f - draw.AnchorY) - padHeight;
-        float bottom = draw.HeightTiles * draw.AnchorY + padHeight;
-
-        // A rotated sprite spins about its anchor, so the corners are turned in the screen plane
-        // before being mapped onto the ground axes.
+        // A rotated sprite spins about its anchor, so the screen axes are turned before the quad is
+        // laid on them.
         if (draw.Rotation != 0f)
         {
             float spin = Mathf.Sin(draw.Rotation);
@@ -285,47 +240,51 @@ public sealed class SpriteDrawList
             down = turnedDown;
         }
 
-        var topLeft = anchor + right * left + down * top;
-        var topRight = anchor + right * rightEdge + down * top;
-        var bottomRight = anchor + right * rightEdge + down * bottom;
-        var bottomLeft = anchor + right * left + down * bottom;
+        // The anchor sits on the ground point: horizontally by AnchorX, vertically at the bottom
+        // edge, so a sprite stands on its tile rather than straddling it.
+        var anchor = projection.ToScene(draw.TileX, draw.TileY, draw.Height, draw.SortBias);
+        float left = -draw.WidthTiles * draw.AnchorX;
+        float top = -draw.HeightTiles * (1f - draw.AnchorY);
 
-        // The origin of this sprite's rectangle within the sheet; its size comes from a uniform,
-        // since surfaces are grouped by size anyway.
-        var origin = region.Position;
-        var extent = region.Size;
+        // Mirroring flips the quad across its own vertical. The far edge becomes the origin and the
+        // width runs back towards the near one, so the sprite covers the same ground and only its
+        // artwork turns round -- starting from the same corner and negating the width would slide
+        // it a whole width sideways, which is every character that walks left.
+        float start = draw.Mirrored ? left + draw.WidthTiles : left;
+
+        var origin = anchor + right * start + down * top;
+        var axisX = (draw.Mirrored ? -right : right) * draw.WidthTiles;
+        var axisY = down * draw.HeightTiles;
+
+        // Godot lays a Transform3D out as three rows of four: the basis columns, then the origin.
+        int at = _at;
+        _instances[at] = axisX.X;
+        _instances[at + 1] = axisY.X;
+        _instances[at + 2] = 0f;
+        _instances[at + 3] = origin.X;
+
+        _instances[at + 4] = axisX.Y;
+        _instances[at + 5] = axisY.Y;
+        _instances[at + 6] = 1f;
+        _instances[at + 7] = origin.Y;
+
+        _instances[at + 8] = axisX.Z;
+        _instances[at + 9] = axisY.Z;
+        _instances[at + 10] = 0f;
+        _instances[at + 11] = origin.Z;
+
         var tint = draw.Modulate;
+        _instances[at + 12] = tint.R;
+        _instances[at + 13] = tint.G;
+        _instances[at + 14] = tint.B;
+        _instances[at + 15] = tint.A;
 
-        int corner = _at;
+        _instances[at + 16] = region.Position.X;
+        _instances[at + 17] = region.Position.Y;
+        _instances[at + 18] = region.Size.X;
+        _instances[at + 19] = region.Size.Y;
 
-        Vertex(topLeft, u0, v0, origin, extent, tint);
-        Vertex(topRight, u1, v0, origin, extent, tint);
-        Vertex(bottomRight, u1, v1, origin, extent, tint);
-        Vertex(bottomLeft, u0, v1, origin, extent, tint);
-
-        _indices[_index] = corner;
-        _indices[_index + 1] = corner + 1;
-        _indices[_index + 2] = corner + 2;
-        _indices[_index + 3] = corner;
-        _indices[_index + 4] = corner + 2;
-        _indices[_index + 5] = corner + 3;
-        _index += 6;
-    }
-
-    private void Vertex(Vector3 position, float u, float v, Vector2 origin, Vector2 extent, Color tint)
-    {
-        _positions[_at] = position;
-        _uvs[_at] = new Vector2(u, v);
-        _uv2s[_at] = origin;
-        _colors[_at] = tint;
-
-        int custom = _at * 4;
-        _extents[custom] = extent.X;
-        _extents[custom + 1] = extent.Y;
-        _extents[custom + 2] = 0f;
-        _extents[custom + 3] = 0f;
-
-        _at++;
+        _at = at + FloatsPerInstance;
     }
 
     private ShaderMaterial MaterialFor(SurfaceKey key)

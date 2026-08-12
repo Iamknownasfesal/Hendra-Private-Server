@@ -230,7 +230,17 @@ public sealed class GameMap : ITileQuery
     /// insert per entity per frame for the same answer and more ways to be wrong.
     /// </para>
     /// </remarks>
-    private readonly Dictionary<int, List<Entity>> _hitBuckets = new();
+    /// <remarks>
+    /// Split by what can be shot rather than pooled together, because a projectile only ever hits
+    /// one side: <c>Projectile.CanHit</c> ends by asking whether the target is an enemy this
+    /// damages or a player this damages, never both. With a single index every one of a boss's
+    /// bullets walked the monsters standing around it looking for the one player, which in a room
+    /// holding ten thousand monsters is most of the frame. A bullet now looks only where its
+    /// target could be.
+    /// </remarks>
+    private readonly Dictionary<int, List<Entity>> _enemyBuckets = new();
+
+    private readonly Dictionary<int, List<Entity>> _playerBuckets = new();
 
     private readonly Stack<List<Entity>> _spareBuckets = new();
 
@@ -238,38 +248,55 @@ public sealed class GameMap : ITileQuery
 
     private void RebuildHitIndex()
     {
-        // Lists are handed back rather than dropped, so a steady state allocates nothing.
-        foreach (var bucket in _hitBuckets.Values)
-        {
-            bucket.Clear();
-            _spareBuckets.Push(bucket);
-        }
-
-        _hitBuckets.Clear();
+        Recycle(_enemyBuckets);
+        Recycle(_playerBuckets);
 
         foreach (var entity in _entities)
         {
-            if (entity.Dead || entity is Projectile)
+            if (entity.Dead || entity is Projectile || entity.Desc == null)
+                continue;
+
+            var into = entity.Desc.IsPlayer ? _playerBuckets
+                : entity.Desc.IsEnemy ? _enemyBuckets
+                : null;
+
+            // Anything that is neither is scenery, and nothing shoots at scenery.
+            if (into == null)
                 continue;
 
             int key = BucketKey((int)entity.X, (int)entity.Y);
-            if (!_hitBuckets.TryGetValue(key, out var bucket))
+            if (!into.TryGetValue(key, out var bucket))
             {
                 bucket = _spareBuckets.Count > 0 ? _spareBuckets.Pop() : new List<Entity>(8);
-                _hitBuckets[key] = bucket;
+                into[key] = bucket;
             }
 
             bucket.Add(entity);
         }
     }
 
-    /// <summary>The things standing on one tile, or null if none are.</summary>
+    /// <summary>Lists are handed back rather than dropped, so a steady state allocates nothing.</summary>
+    private void Recycle(Dictionary<int, List<Entity>> buckets)
+    {
+        foreach (var bucket in buckets.Values)
+        {
+            bucket.Clear();
+            _spareBuckets.Push(bucket);
+        }
+
+        buckets.Clear();
+    }
+
+    /// <summary>The things of one kind standing on one tile, or null if none are.</summary>
     /// <remarks>
     /// Half a tile is the widest anything is hit from, so a caller testing a point only has to ask
     /// for the tile it is on and the eight around it.
     /// </remarks>
-    public List<Entity> HitBucket(int tileX, int tileY) =>
-        _hitBuckets.TryGetValue(BucketKey(tileX, tileY), out var bucket) ? bucket : null;
+    public List<Entity> HitBucket(int tileX, int tileY, bool players)
+    {
+        var buckets = players ? _playerBuckets : _enemyBuckets;
+        return buckets.TryGetValue(BucketKey(tileX, tileY), out var bucket) ? bucket : null;
+    }
 
     // ------------------------------------------------------------------------------------------
     // ITileQuery

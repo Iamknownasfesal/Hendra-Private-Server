@@ -239,18 +239,27 @@ public sealed class Projectile : Entity
         int tileX = (int)x;
         int tileY = (int)y;
 
+        // A projectile hits players or enemies, never both, so only one index is worth walking.
         for (int dx = -1; dx <= 1; dx++)
         for (int dy = -1; dy <= 1; dy++)
         {
-            var bucket = map.HitBucket(tileX + dx, tileY + dy);
-            if (bucket == null)
-                continue;
+            if (DamagesEnemies)
+                Sweep(map.HitBucket(tileX + dx, tileY + dy, players: false), x, y, ref best, ref bestDistance);
 
-            foreach (var entity in bucket)
-                Consider(entity, x, y, ref best, ref bestDistance);
+            if (DamagesPlayers)
+                Sweep(map.HitBucket(tileX + dx, tileY + dy, players: true), x, y, ref best, ref bestDistance);
         }
 
         return best;
+    }
+
+    private void Sweep(List<Entity> bucket, float x, float y, ref Entity best, ref float bestDistance)
+    {
+        if (bucket == null)
+            return;
+
+        foreach (var entity in bucket)
+            Consider(entity, x, y, ref best, ref bestDistance);
     }
 
     private void Consider(Entity entity, float x, float y, ref Entity best, ref float bestDistance)

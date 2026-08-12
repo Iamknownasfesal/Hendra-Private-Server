@@ -29,9 +29,8 @@ public partial class WorldRoot : Node3D
 
     private Camera3D _camera;
     private MeshInstance3D _groundInstance;
-    private MeshInstance3D _spriteInstance;
     private ImmediateMesh _groundMesh;
-    private ArrayMesh _spriteMesh;
+    private SpriteBatches _spriteBatches;
     private MeshInstance3D _modelInstance;
     private ImmediateMesh _modelMesh;
 
@@ -77,13 +76,9 @@ public partial class WorldRoot : Node3D
         };
         AddChild(_modelInstance);
 
-        _spriteMesh = new ArrayMesh();
-        _spriteInstance = new MeshInstance3D
-        {
-            Mesh = _spriteMesh,
-            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-        };
-        AddChild(_spriteInstance);
+        // Sprites are drawn as instances of a shared quad, which needs a node per batch rather
+        // than one node holding every surface.
+        _spriteBatches = new SpriteBatches(this);
     }
 
     /// <summary>
@@ -136,7 +131,7 @@ public partial class WorldRoot : Node3D
         var projection = Projection;
         Ground.Build(_groundMesh, projection);
         Models.Build(_modelMesh, projection);
-        Sprites.Build(_spriteMesh, projection);
+        Sprites.Build(_spriteBatches, projection);
 
         Ground.Clear();
         Models.Clear();

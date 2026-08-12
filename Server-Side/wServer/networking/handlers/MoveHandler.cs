@@ -40,7 +40,16 @@ namespace wServer.networking.handlers
 
         private static void CheckLabConditions(Entity player, Move packet)
         {
-            var tile = player.Owner.Map[(int)packet.NewPosition.X, (int)packet.NewPosition.Y];
+            var x = (int)packet.NewPosition.X;
+            var y = (int)packet.NewPosition.Y;
+
+            // Minus one is the protocol's way of saying the player did not move, not a position,
+            // and indexing the map with it threw -- which skipped MoveReceived, and with it the
+            // tick accounting the connection depends on, so the player never finished arriving.
+            if (!player.Owner.Map.Contains(x, y))
+                return;
+
+            var tile = player.Owner.Map[x, y];
             switch (tile.TileId)
             {
                 //Green water
