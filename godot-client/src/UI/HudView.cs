@@ -573,6 +573,40 @@ public partial class HudView : Control
         return "R";
     }
 
+    /// <summary>
+    /// A party member's state, as a dot.
+    /// </summary>
+    /// <remarks>
+    /// Three states rather than a gradient: fine, hurt, and dead. A gradient reads as decoration
+    /// and needs comparing against itself; three colours are a glance.
+    /// </remarks>
+    private sealed partial class StatusDot : Control
+    {
+        /// <summary>Below this share of health, a member counts as in trouble.</summary>
+        private const float Low = 0.35f;
+
+        private readonly Color _colour;
+
+        public StatusDot(float fraction)
+        {
+            _colour = fraction <= 0f ? Style.Faint
+                : fraction < Low ? Style.Danger
+                : Style.Good;
+
+            CustomMinimumSize = new Vector2(9, 9);
+            MouseFilter = MouseFilterEnum.Ignore;
+        }
+
+        public override void _Draw()
+        {
+            var centre = Size / 2f;
+            float radius = Mathf.Min(Size.X, Size.Y) / 2f;
+
+            DrawCircle(centre, radius, new Color(0f, 0f, 0f, 0.5f));
+            DrawCircle(centre, radius - 1f, _colour);
+        }
+    }
+
     /// <summary>The lozenge beside a currency, standing in for its icon.</summary>
     private sealed partial class CurrencyPip : Control
     {
@@ -685,6 +719,10 @@ public partial class HudView : Control
 
             var row = new HBoxContainer();
             row.AddThemeConstantOverride("separation", 6);
+
+            // A dot carrying their state, ahead of the name. Colour is read before text is, and in
+            // a fight the thing you need from this list is who is in trouble, not who is present.
+            row.AddChild(new StatusDot(fraction) { SizeFlagsVertical = SizeFlags.ShrinkCenter });
 
             var name = new Label
             {

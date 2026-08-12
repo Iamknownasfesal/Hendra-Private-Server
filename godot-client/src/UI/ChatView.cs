@@ -51,7 +51,9 @@ public partial class ChatView : Control
         _log = new RichTextLabel
         {
             BbcodeEnabled = true,
-            ScrollFollowing = true,
+            // Following is done by hand below, because the built-in kind follows unconditionally
+            // and drags you off whatever you had scrolled back to read.
+            ScrollFollowing = false,
             CustomMinimumSize = new Vector2(Width, Height),
             MouseFilter = MouseFilterEnum.Ignore,
         };
@@ -116,13 +118,39 @@ public partial class ChatView : Control
     public void AddSystem(string message) =>
         Append($"[color=#8899aa]{Escape(message)}[/color]");
 
+    /// <summary>
+    /// Appends a line, following the log only if the reader was already at the bottom.
+    /// </summary>
+    /// <remarks>
+    /// Someone who has scrolled back to read something is reading it. Following unconditionally --
+    /// which is what the built-in setting does -- pulls them off it the moment anyone speaks, and
+    /// in a busy world that is every second. So the position is only restored to the bottom when it
+    /// was at the bottom to begin with.
+    /// </remarks>
     private void Append(string bbcode)
     {
+        var bar = _log.GetVScrollBar();
+        bool wasAtBottom = bar == null || bar.Value >= bar.MaxValue - bar.Page - 1.0;
+
         _log.AppendText(bbcode + "\n");
 
         // The original kept 150 lines; without a bound this grows for the life of the session.
         while (_log.GetLineCount() > MaxLines)
             _log.RemoveParagraph(0);
+
+        if (!wasAtBottom || bar == null)
+            return;
+
+        // Deferred because the scrollbar's range is not updated until the label has laid the new
+        // line out, and scrolling to a stale maximum lands short of the bottom.
+        CallDeferred(nameof(ScrollToBottom));
+    }
+
+    private void ScrollToBottom()
+    {
+        var bar = _log.GetVScrollBar();
+        if (bar != null)
+            bar.Value = bar.MaxValue;
     }
 
     /// <summary>
