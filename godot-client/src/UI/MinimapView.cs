@@ -22,11 +22,20 @@ namespace Hendra.UI;
 /// </remarks>
 public partial class MinimapView : Control
 {
-    private const int Diameter = 176;
+    private const int Diameter = 192;
     private const int Margin = 12;
 
-    /// <summary>Keeps the minimap clear of the stats panel down the right edge.</summary>
-    private const int PanelAllowance = 232;
+    /// <summary>
+    /// The interface column the minimap sits at the top of, and the gap around it.
+    /// </summary>
+    /// <remarks>
+    /// The original's: a two-hundred-pixel column with a 192-pixel map inset four pixels either
+    /// side, so the map is very nearly the full width of the column and everything else in the
+    /// interface hangs below it.
+    /// </remarks>
+    private const int ColumnWidth = 200;
+
+    private const int ColumnInset = 4;
 
     /// <summary>How many tiles fit across the minimap by default. Smaller shows more detail.</summary>
     private const float DefaultTilesAcross = 96f;
@@ -80,14 +89,21 @@ public partial class MinimapView : Control
         // map inside the frame. Godot has no arbitrary-shape scissor, so the frame is square.
         ClipContents = true;
 
-        GetViewport().SizeChanged += PlaceTopRight;
-        PlaceTopRight();
+        GetViewport().SizeChanged += PlaceInColumn;
+        PlaceInColumn();
     }
 
-    private void PlaceTopRight()
+    /// <summary>
+    /// Puts the map at the top of the interface column, as the original does.
+    /// </summary>
+    /// <remarks>
+    /// It was floating clear of the column before, which left a gap the original does not have and
+    /// pushed everything else down a screen it did not need to be pushed down.
+    /// </remarks>
+    private void PlaceInColumn()
     {
         var viewport = GetViewportRect().Size;
-        Position = new Vector2(viewport.X - Diameter - Margin - PanelAllowance, Margin);
+        Position = new Vector2(viewport.X - ColumnWidth + ColumnInset, ColumnInset + Margin);
     }
 
     /// <summary>Records a revealed tile. Cheap enough to call for every tile of every Update.</summary>

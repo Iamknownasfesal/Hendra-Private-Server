@@ -33,6 +33,9 @@ public partial class HudView : Control
     /// slot size follows from it — four across with margins between.
     /// </remarks>
     private const int PanelWidth = 200;
+    /// <summary>Vertical space the minimap occupies at the top of the column.</summary>
+    private const int MinimapAllowance = 196;
+
     private const int SlotSize = 40;
     private const int SlotsPerRow = 4;
 
@@ -127,6 +130,11 @@ public partial class HudView : Control
         var column = new VBoxContainer();
         column.AddThemeConstantOverride("separation", 6);
         margin.AddChild(column);
+
+        // The minimap is drawn over the top of this column by its own node, so the column starts
+        // below it. Reserved rather than parented, because the map has to clip its own rotated
+        // drawing and a container would fight it for the size.
+        column.AddChild(new Control { CustomMinimumSize = new Vector2(0, MinimapAllowance) });
 
         _name = new Label { Text = "—" };
         column.AddChild(_name);
