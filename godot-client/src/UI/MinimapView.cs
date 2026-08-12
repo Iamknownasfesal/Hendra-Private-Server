@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Godot;
 using Hendra.Render;
 using Hendra.World;
@@ -160,10 +161,110 @@ public partial class MinimapView : Control
 
         DrawRect(frame, new Color(0.45f, 0.45f, 0.5f), filled: false, width: 2f);
 
+        DrawBlips(centre);
+
         // The player is always at the centre and always facing up, which is the point of rotating
         // the map rather than a marker.
-        DrawCircle(centre, 2.5f, Colors.White);
+        DrawCircle(centre, 3f, Colors.White);
     }
+
+    /// <summary>
+    /// Everything worth knowing the position of, as coloured squares.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Colour carries the kind, which is the whole point of a minimap: yellow for other players,
+    /// green for guildmates, red for anything hostile, blue for a way out. Read at a glance and
+    /// never legended.
+    /// </para>
+    /// <para>
+    /// Capped, and sorted by distance before the cap, so a crowded realm draws the twenty nearest
+    /// things rather than every entity the client knows about. The full list is walked once to
+    /// gather candidates, which is the cheap part; the drawing is what is bounded.
+    /// </para>
+    /// </remarks>
+    private void DrawBlips(Vector2 centre)
+    {
+        const int Most = 48;
+
+        var player = _map?.Player;
+        if (player == null)
+            return;
+
+        var transform = MapTransform(player, centre);
+        var frame = new Rect2(Vector2.Zero, Size);
+
+        _blips.Clear();
+
+        foreach (var entity in _map.Entities)
+        {
+            if (ReferenceEquals(entity, player) || entity.Dead || entity.Desc == null)
+                continue;
+
+            var kind = KindOf(entity, player);
+            if (kind == BlipKind.None)
+                continue;
+
+            float dx = entity.X - player.X;
+            float dy = entity.Y - player.Y;
+            _blips.Add((dx * dx + dy * dy, entity.X, entity.Y, kind));
+        }
+
+        _blips.Sort(static (a, b) => a.Distance.CompareTo(b.Distance));
+
+        int drawn = 0;
+        foreach (var blip in _blips)
+        {
+            if (drawn++ >= Most)
+                break;
+
+            var at = transform * new Vector2(blip.X, blip.Y);
+            if (!frame.HasPoint(at))
+                continue;
+
+            float size = blip.Kind == BlipKind.Portal ? 5f : 4f;
+            DrawRect(new Rect2(at - new Vector2(size, size) / 2f, new Vector2(size, size)),
+                ColourOf(blip.Kind));
+        }
+    }
+
+    private readonly List<(float Distance, float X, float Y, BlipKind Kind)> _blips = new(64);
+
+    private enum BlipKind : byte
+    {
+        None,
+        Player,
+        Guildmate,
+        Enemy,
+        Portal,
+    }
+
+    /// <summary>What an entity counts as, or None if it is not worth a mark.</summary>
+    private static BlipKind KindOf(Entity entity, LocalPlayer player)
+    {
+        var desc = entity.Desc;
+
+        if (desc.IsPlayer)
+        {
+            // Guild before player, so a guildmate is green rather than yellow.
+            return !string.IsNullOrEmpty(player.Guild) && entity.Guild == player.Guild
+                ? BlipKind.Guildmate
+                : BlipKind.Player;
+        }
+
+        if (desc.IsEnemy)
+            return entity.IsInvisible ? BlipKind.None : BlipKind.Enemy;
+
+        return desc.Class is "Portal" or "GuildHallPortal" ? BlipKind.Portal : BlipKind.None;
+    }
+
+    private static Color ColourOf(BlipKind kind) => kind switch
+    {
+        BlipKind.Guildmate => new Color("4cd137"),
+        BlipKind.Enemy => new Color("d02020"),
+        BlipKind.Portal => new Color("5b9bd5"),
+        _ => new Color("ffc83d"),
+    };
 
     /// <summary>
     /// Maps world tiles onto the minimap: centred on the player, scaled down, and turned so that

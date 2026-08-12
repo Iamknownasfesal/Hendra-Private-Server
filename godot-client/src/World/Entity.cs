@@ -74,6 +74,9 @@ public class Entity
     /// <summary>Heading in radians, used to pick the animation facing.</summary>
     public float Facing;
 
+    /// <summary>The guild this entity belongs to, or empty. Arrives as a stat.</summary>
+    public string Guild = string.Empty;
+
     public float AttackAngle;
     public int AttackStartMs = int.MinValue;
 

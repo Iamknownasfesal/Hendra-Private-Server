@@ -36,6 +36,13 @@ public partial class Boot : Control
         // arrive looking like an editor's.
         GetTree().Root.Theme = UI.Style.Build();
 
+        // The interface is laid out against 1920 by 1080 and scaled from there, so it holds its
+        // proportions from a laptop panel to an ultrawide instead of shrinking to a corner on one
+        // and swallowing the screen on the other. Clamped, because past about half again the
+        // chrome starts costing more play area than it is worth.
+        UI.Style.ApplyScale(GetTree().Root);
+        GetTree().Root.SizeChanged += () => UI.Style.ApplyScale(GetTree().Root);
+
         _status = new Label
         {
             HorizontalAlignment = HorizontalAlignment.Center,

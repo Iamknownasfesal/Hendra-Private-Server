@@ -58,6 +58,31 @@ public static class Style
     /// <summary>Borders, which are the accent held well back.</summary>
     public static readonly Color Edge = new("55505f");
 
+    /// <summary>The size the interface is measured against.</summary>
+    private static readonly Vector2 ReferenceSize = new(1920f, 1080f);
+
+    /// <summary>
+    /// Scales the interface for the window it is in.
+    /// </summary>
+    /// <remarks>
+    /// Every measurement in the layout is taken at 1920 by 1080. Rather than making each of them
+    /// resolution-aware, the whole interface is scaled by the smaller of the two ratios, so it
+    /// keeps its proportions on any shape of screen -- including an ultrawide, where scaling by
+    /// width alone would make everything enormous.
+    /// </remarks>
+    public static void ApplyScale(Window window)
+    {
+        if (window == null)
+            return;
+
+        var size = window.Size;
+        if (size.X <= 0 || size.Y <= 0)
+            return;
+
+        float scale = Mathf.Min(size.X / ReferenceSize.X, size.Y / ReferenceSize.Y);
+        window.ContentScaleFactor = Mathf.Clamp(scale, 0.75f, 1.5f);
+    }
+
     /// <summary>
     /// Builds the theme for the whole interface.
     /// </summary>

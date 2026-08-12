@@ -947,6 +947,9 @@ public partial class HudView : Control
                 CustomMinimumSize = new Vector2(SlotSize, SlotSize),
                 Address = new World.SlotAddress(World.SlotOwner.Player, slotIndex),
                 Draggable = true,
+
+                // Only the eight carried slots have a key; the backpack shares none.
+                Hotkey = firstIndex == 8 ? (i + 1).ToString(CultureInfo.InvariantCulture) : null,
             };
             slot.Activated += () => SlotActivated?.Invoke(slotIndex);
             slot.Dropped += (from, to) => SlotDropped?.Invoke(from, to);
@@ -1226,6 +1229,15 @@ public sealed partial class SlotView : Control
     public World.SlotAddress Address { get; set; }
 
     /// <summary>
+    /// The key that uses this slot, drawn in its corner. Null for slots with no key.
+    /// </summary>
+    /// <remarks>
+    /// The eight carried slots answer to 1 through 8. Showing the number is what turns a grid into
+    /// a keyboard layout you can learn without reading the options screen.
+    /// </remarks>
+    public string Hotkey { get; set; }
+
+    /// <summary>
     /// Whether this slot takes part in dragging.
     /// </summary>
     /// <remarks>
@@ -1404,6 +1416,24 @@ public sealed partial class SlotView : Control
         DrawTextureRectRegion(_sprite.Sheet, inset, _sprite.Region);
 
         DrawTierTag();
+        DrawHotkey();
+    }
+
+    /// <summary>The key that uses this slot, in its top-left corner.</summary>
+    private void DrawHotkey()
+    {
+        if (string.IsNullOrEmpty(Hotkey))
+            return;
+
+        var font = GetThemeDefaultFont();
+        const int FontSize = 11;
+
+        var at = new Vector2(3f, FontSize + 1f);
+
+        DrawString(font, at + Vector2.One, Hotkey, HorizontalAlignment.Left, -1, FontSize,
+            new Color(0f, 0f, 0f, 0.8f));
+        DrawString(font, at, Hotkey, HorizontalAlignment.Left, -1, FontSize,
+            new Color(1f, 1f, 1f, 0.55f));
     }
 
     /// <summary>
