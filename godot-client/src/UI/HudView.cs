@@ -86,6 +86,9 @@ public partial class HudView : Control
     /// <summary>Raised with the slot's index in the open container.</summary>
     public event Action<int> ContainerSlotActivated;
 
+    /// <summary>Raised when an item is dragged from one slot onto another.</summary>
+    public event Action<World.SlotAddress, World.SlotAddress> SlotDropped;
+
     /// <summary>Raised when the buy button is pressed at a vendor.</summary>
     public event Action BuyPressed;
 
@@ -276,8 +279,14 @@ public partial class HudView : Control
         for (int i = 0; i < count; i++)
         {
             int slotIndex = i;
-            var slot = new SlotView { CustomMinimumSize = new Vector2(SlotSize, SlotSize) };
+            var slot = new SlotView
+            {
+                CustomMinimumSize = new Vector2(SlotSize, SlotSize),
+                Address = new World.SlotAddress(World.SlotOwner.Container, slotIndex),
+                Draggable = true,
+            };
             slot.Activated += () => ContainerSlotActivated?.Invoke(slotIndex);
+            slot.Dropped += (from, to) => SlotDropped?.Invoke(from, to);
             grid.AddChild(slot);
             _container.Add(slot);
         }
@@ -596,8 +605,14 @@ public partial class HudView : Control
         for (int i = 0; i < count; i++)
         {
             int slotIndex = firstIndex + i;
-            var slot = new SlotView { CustomMinimumSize = new Vector2(SlotSize, SlotSize) };
+            var slot = new SlotView
+            {
+                CustomMinimumSize = new Vector2(SlotSize, SlotSize),
+                Address = new World.SlotAddress(World.SlotOwner.Player, slotIndex),
+                Draggable = true,
+            };
             slot.Activated += () => SlotActivated?.Invoke(slotIndex);
+            slot.Dropped += (from, to) => SlotDropped?.Invoke(from, to);
             grid.AddChild(slot);
             into.Add(slot);
         }
@@ -827,8 +842,98 @@ public sealed partial class SlotView : Control
     private Resources.ObjectDesc _desc;
     private Resources.GameData _data;
 
+    /// <summary>Which slot this is, so a drag can name where it came from and where it went.</summary>
+    public World.SlotAddress Address { get; set; }
+
+    /// <summary>
+    /// Whether this slot takes part in dragging.
+    /// </summary>
+    /// <remarks>
+    /// Off unless a slot has been given a real address. The trade screen uses the same view for
+    /// its offers, and a slot there dragging under the default address would move whatever happens
+    /// to be in the player's first equipment slot.
+    /// </remarks>
+    public bool Draggable { get; set; }
+
     /// <summary>Raised on a left click, whether or not the slot holds anything.</summary>
     public event Action Activated;
+
+    /// <summary>Raised when something is dropped on this slot, with where it came from.</summary>
+    public event Action<World.SlotAddress, World.SlotAddress> Dropped;
+
+    /// <summary>
+    /// Starts a drag, if there is anything here to drag.
+    /// </summary>
+    /// <remarks>
+    /// Godot only asks for this once the pointer has moved a little way with the button held, which
+    /// is the same threshold the original applies before it decides a press was a drag rather than
+    /// a click. So the two gestures do not fight: a press that goes nowhere is still a click.
+    /// </remarks>
+    public override Variant _GetDragData(Vector2 atPosition)
+    {
+        if (!Draggable || !_sprite.IsValid || _desc == null)
+            return default;
+
+        SetDragPreview(new DragPreview(_sprite));
+
+        return new Godot.Collections.Dictionary
+        {
+            ["hendra_slot"] = true,
+            ["owner"] = (int)Address.Owner,
+            ["index"] = Address.Index,
+        };
+    }
+
+    public override bool _CanDropData(Vector2 atPosition, Variant data) =>
+        Draggable && IsSlotPayload(data, out _);
+
+    public override void _DropData(Vector2 atPosition, Variant data)
+    {
+        if (IsSlotPayload(data, out var from))
+            Dropped?.Invoke(from, Address);
+    }
+
+    private static bool IsSlotPayload(Variant data, out World.SlotAddress address)
+    {
+        address = default;
+
+        if (data.VariantType != Variant.Type.Dictionary)
+            return false;
+
+        var payload = data.AsGodotDictionary();
+        if (!payload.ContainsKey("hendra_slot"))
+            return false;
+
+        address = new World.SlotAddress(
+            (World.SlotOwner)(int)payload["owner"], (int)payload["index"]);
+        return true;
+    }
+
+    /// <summary>The item riding the cursor while it is being dragged.</summary>
+    private sealed partial class DragPreview : Control
+    {
+        private const int Size = 40;
+
+        private readonly Assets.Sprite _sprite;
+
+        public DragPreview(Assets.Sprite sprite)
+        {
+            _sprite = sprite;
+            CustomMinimumSize = new Vector2(Size, Size);
+
+            // Centred on the pointer, so the item sits under the finger that picked it up.
+            Position = new Vector2(-Size / 2f, -Size / 2f);
+            MouseFilter = MouseFilterEnum.Ignore;
+        }
+
+        public override void _Draw()
+        {
+            if (!_sprite.IsValid)
+                return;
+
+            DrawTextureRectRegion(_sprite.Sheet, new Rect2(0f, 0f, Size, Size), _sprite.Region);
+        }
+    }
 
     public override void _Ready()
     {
@@ -852,8 +957,16 @@ public sealed partial class SlotView : Control
 
     public override void _GuiInput(InputEvent @event)
     {
-        if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
-            Activated?.Invoke();
+        // On release, and only if the press did not turn into a drag. Acting on the press would
+        // mean every drag also used the item it picked up. The original draws the same line: it
+        // dispatches its click on mouse-up and skips it while a drag is running.
+        if (@event is not InputEventMouseButton { Pressed: false, ButtonIndex: MouseButton.Left })
+            return;
+
+        if (GetViewport().GuiIsDragging())
+            return;
+
+        Activated?.Invoke();
     }
 
     public void SetItem(Assets.Sprite sprite, Resources.ObjectDesc desc, Resources.GameData data)

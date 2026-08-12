@@ -168,6 +168,81 @@ public sealed class Inventory
         container.Equipment[destination] = type;
     }
 
+    /// <summary>
+    /// Moves or swaps an item between any two slots, which is what a drag amounts to.
+    /// </summary>
+    /// <remarks>
+    /// One InvSwap either way. The wire has no notion of "move" -- it swaps two slots, and moving
+    /// into an empty one is a swap with nothing, which is why the destination's type is sent as it
+    /// is found rather than assumed to be empty.
+    /// </remarks>
+    public void Move(SlotAddress from, SlotAddress to)
+    {
+        var player = _map.Player;
+        if (player?.Equipment == null || from.Equals(to))
+            return;
+
+        var source = OwnerOf(from);
+        var destination = OwnerOf(to);
+        if (source?.Equipment == null || destination?.Equipment == null)
+            return;
+
+        if (from.Index < 0 || from.Index >= source.Equipment.Length ||
+            to.Index < 0 || to.Index >= destination.Equipment.Length)
+            return;
+
+        int moved = source.Equipment[from.Index];
+        if (moved == NoItem)
+            return;
+
+        int displaced = destination.Equipment[to.Index];
+
+        // An equipped slot only takes what fits it. The server refuses the rest anyway, but a
+        // refusal arrives as the item snapping back with no explanation, which reads as the drag
+        // having failed rather than as the item being wrong for the slot.
+        if (!Fits(player, to, moved) || (displaced != NoItem && !Fits(player, from, displaced)))
+            return;
+
+        _session.Send(new InvSwapPacket
+        {
+            Time = _clock.FrameMs,
+            Position = new WorldPos(player.X, player.Y),
+            Slot1 = new SlotObject(source.ObjectId, (byte)from.Index, moved),
+            Slot2 = new SlotObject(destination.ObjectId, (byte)to.Index, displaced),
+        });
+
+        // Applied at once rather than waiting for the server to confirm, so a slot does not stay
+        // empty for a round trip after something has been dropped into it.
+        source.Equipment[from.Index] = displaced;
+        destination.Equipment[to.Index] = moved;
+    }
+
+    private Entity OwnerOf(SlotAddress address) =>
+        address.Owner == SlotOwner.Player ? _map.Player : OpenContainer;
+
+    /// <summary>The container the player is standing over, set by whoever drives the interface.</summary>
+    public Entity OpenContainer { get; set; }
+
+    /// <summary>
+    /// Whether an item may go in a slot.
+    /// </summary>
+    /// <remarks>
+    /// Only the four equipped slots restrict what they hold; everything else is a bag. The class
+    /// descriptor lists which slot type each equipped slot takes, and an item names the type it is.
+    /// </remarks>
+    private bool Fits(LocalPlayer player, SlotAddress address, int objectType)
+    {
+        if (address.Owner != SlotOwner.Player || address.Index >= CarriedFirst)
+            return true;
+
+        var slotTypes = _data?.GetObject(player.ObjectType)?.SlotTypes;
+        if (slotTypes == null || address.Index >= slotTypes.Length)
+            return true;
+
+        var item = _data?.GetObject((ushort)objectType);
+        return item != null && item.SlotType == slotTypes[address.Index];
+    }
+
     private static int FirstFreeCarried(LocalPlayer player)
     {
         for (int i = CarriedFirst; i <= CarriedLast; i++)

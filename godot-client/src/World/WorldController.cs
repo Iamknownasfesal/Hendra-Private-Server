@@ -190,6 +190,7 @@ public partial class WorldController : Node
         {
             _hud.SlotActivated += OnSlotActivated;
             _hud.ContainerSlotActivated += OnContainerSlotActivated;
+            _hud.SlotDropped += OnSlotDropped;
             _hud.BuyPressed += OnBuyPressed;
         }
 
@@ -768,6 +769,20 @@ public partial class WorldController : Node
         }
 
         _inventory.Activate(slotIndex);
+    }
+
+    /// <summary>
+    /// An item was dragged from one slot onto another.
+    /// </summary>
+    /// <remarks>
+    /// The container has to be handed over each time rather than held, because which one is open
+    /// changes as the player walks around, and a drag that started over one chest should not land
+    /// in another.
+    /// </remarks>
+    private void OnSlotDropped(SlotAddress from, SlotAddress to)
+    {
+        _inventory.OpenContainer = OpenContainer;
+        _inventory.Move(from, to);
     }
 
     private void OnContainerSlotActivated(int slotIndex)
