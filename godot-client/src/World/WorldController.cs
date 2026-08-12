@@ -970,6 +970,18 @@ public partial class WorldController : Node
         _particles.Explode(target.X, target.Y, palette, target.Size, count: 10);
     }
 
+    /// <summary>
+    /// How far past the visible circle an entity is still drawn, in tiles.
+    /// </summary>
+    /// <remarks>
+    /// The radius is measured to the corner of the screen from the camera's focus, but a sprite is
+    /// anchored at its feet and can be several tiles tall, and a big one is wider than its tile.
+    /// This is the slack that keeps something enormous from popping in only once its feet cross the
+    /// edge -- cheap insurance against a visible mistake, where the cost of erring wide is one
+    /// entity's worth of work.
+    /// </remarks>
+    private const float OffscreenMargin = 6f;
+
     /// <summary>How long a struck sprite burns white for.</summary>
     /// <remarks>
     /// Short. Long enough to register on a hit that lands among many, brief enough that a stream of
@@ -1739,10 +1751,10 @@ public partial class WorldController : Node
             DrawGround(focus, radius, now);
 
         using (Phases.Measure("draw.sprites"))
-            DrawEntities(now, _cameraAngle);
+            DrawEntities(now, _cameraAngle, radius);
 
         using (Phases.Measure("draw.shots"))
-            DrawProjectiles(now);
+            DrawProjectiles(now, radius);
 
         using (Phases.Measure("draw.particles"))
             DrawParticles();
@@ -1881,12 +1893,30 @@ public partial class WorldController : Node
             (hash >>> 11 & (Texels - 1)) / (float)Texels);
     }
 
-    private void DrawEntities(int now, float cameraAngle)
+    private void DrawEntities(int now, float cameraAngle, float radius)
     {
         DropFinishedDepartures(now);
 
+        // The server streams a twenty-tile circle, which is a good deal more ground than the screen
+        // shows, so a large share of what the client knows about is off the edge of it. Resolving a
+        // texture, picking an animation frame and writing an instance for each of those is work
+        // whose only outcome is a quad the GPU clips away.
+        var focus = _focus ?? _map.Player;
+        float reach = radius + OffscreenMargin;
+        float reachSquared = reach * reach;
+
         foreach (var entity in _map.Entities)
+        {
+            if (focus != null && !ReferenceEquals(entity, focus))
+            {
+                float dx = entity.X - focus.X;
+                float dy = entity.Y - focus.Y;
+                if (dx * dx + dy * dy > reachSquared)
+                    continue;
+            }
+
             DrawEntity(entity, now, cameraAngle, Arriving(entity, now));
+        }
 
         // Things that have left. Drawn from a list of their own because the world no longer holds
         // them: they are pictures finishing a movement, and nothing can touch them while they do.
@@ -2352,12 +2382,26 @@ public partial class WorldController : Node
     /// quad rather than the texture, so no sprite has to be redrawn per angle -- which is what the
     /// original did, caching a bitmap per rotation step.
     /// </remarks>
-    private void DrawProjectiles(int now)
+    private void DrawProjectiles(int now, float radius)
     {
+        // Same reasoning as the entities: a bullet fired across the room is simulated whether or
+        // not it is on screen, but only the ones on screen are worth building a quad for.
+        var focus = _focus ?? _map.Player;
+        float reach = radius + OffscreenMargin;
+        float reachSquared = reach * reach;
+
         foreach (var projectile in _combat.Projectiles)
         {
             if (projectile.Desc == null)
                 continue;
+
+            if (focus != null)
+            {
+                float dx = projectile.X - focus.X;
+                float dy = projectile.Y - focus.Y;
+                if (dx * dx + dy * dy > reachSquared)
+                    continue;
+            }
 
             var resolved = _textures.Resolve(projectile.Desc.Texture, projectile.ObjectId);
             if (!resolved.Still.IsValid)
