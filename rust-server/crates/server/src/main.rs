@@ -143,8 +143,14 @@ async fn main() {
         })
         .collect();
 
+    // What may live outdoors, read from the content: every enemy that names a terrain.
+    let spawnable = hendra_sim::realm::spawnable(&catalog);
+    tracing::info!(kinds = spawnable.len(), "enemies that can populate a realm");
+
     let loadout = world_task::Loadout {
         bag_types,
+        spawnable,
+        is_realm: false,
         persistent: false,
         avatar: default_class.object_type,
         weapon: default_class

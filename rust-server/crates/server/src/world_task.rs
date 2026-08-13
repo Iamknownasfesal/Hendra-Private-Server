@@ -129,6 +129,14 @@ pub enum ToWorld {
         reply: tokio::sync::oneshot::Sender<Vec<TerrainStrip>>,
     },
 
+    /// The map's scenery, as one list of `(x, object)` per row.
+    ///
+    /// Asked for separately from the ground because it is a different thing arriving over the same
+    /// channel, and a map with no scenery should not pay for an empty list per row.
+    Scenery {
+        reply: tokio::sync::oneshot::Sender<Vec<SceneryRow>>,
+    },
+
     /// A line meant for one named player.
     Tell {
         to: String,
@@ -148,6 +156,9 @@ pub enum ToWorld {
 
 /// One row of the map: which row, and its squares run-length encoded as `(count, tile)`.
 pub type TerrainStrip = (u16, Vec<(u16, u16)>);
+
+/// One row's scenery: which row, and the objects standing in it as `(x, object, size)`.
+pub type SceneryRow = (u16, Vec<(u16, u16, u16)>);
 
 /// A character's live state, as the durable side needs it.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -206,6 +217,26 @@ pub async fn run(
     // When the world last became empty, or `None` while somebody is in it.
     let mut emptied: Option<Instant> = None;
 
+    // Only the realm populates itself and closes on a clock. Every other world is the map it was
+    // drawn as, which is what makes a dungeon a fixed set of rooms. The original decides the same
+    // way: a world definition named `Realm` gets an overseer and nothing else does.
+    let is_realm = loadout.is_realm && !loadout.spawnable.is_empty();
+
+    if is_realm {
+        let census = world.terrain().terrain_census();
+        world.realm_mut().measure(&census);
+
+        let opening = world.realm().opening();
+        let (placed, _) = world.populate(&catalog, &loadout.spawnable, &opening);
+
+        tracing::info!(
+            world = %world.name,
+            target = world.realm().population(),
+            placed,
+            "realm populated"
+        );
+    }
+
     loop {
         tokio::select! {
             command = inbox.recv() => {
@@ -232,6 +263,11 @@ pub async fn run(
                 }
 
                 world.advance(&catalog, elapsed_ms);
+
+                if is_realm {
+                    tend_realm(&mut world, &catalog, &loadout.spawnable, elapsed_ms as u64);
+                }
+
                 announce(&mut world, &catalog, &mut players).await;
                 broadcast(&mut world, &mut players).await;
 
@@ -265,6 +301,12 @@ pub struct Loadout {
     /// The object to use for each loot colour, in the content's own order.
     pub bag_types: Vec<ObjectType>,
 
+    /// What may live in a realm. The same list for every world; only a realm uses it.
+    pub spawnable: Vec<hendra_sim::realm::Spawn>,
+
+    /// Whether this world is the realm, and so fills itself and closes on a clock.
+    pub is_realm: bool,
+
     /// Whether this world keeps ticking with nobody in it.
     ///
     /// True for the world players arrive in, which has to exist before anyone is there. False for
@@ -293,6 +335,52 @@ pub struct Arrival {
     pub boosts: [i32; 8],
 }
 
+/// Keeps a realm's population up and runs its closing sequence.
+///
+/// Population is checked once a minute rather than every tick: placing an enemy is a search for a
+/// square of the right terrain with nobody near it, and doing that for a whole realm every tick
+/// would be the longest tick the world ever had.
+fn tend_realm(
+    world: &mut World,
+    catalog: &Catalog,
+    spawnable: &[hendra_sim::realm::Spawn],
+    elapsed_ms: u64,
+) {
+    use hendra_sim::realm::Event;
+
+    let Some(event) = world.realm_mut().advance(elapsed_ms) else {
+        return;
+    };
+
+    match event {
+        Event::Ensure => {
+            let alive = world.alive_by_terrain();
+            let wanted = world.realm().adjustments(&alive);
+            if wanted.is_empty() {
+                return;
+            }
+
+            let (added, removed) = world.populate(catalog, spawnable, &wanted);
+            tracing::debug!(world = %world.name, added, removed, "realm population checked");
+        }
+
+        Event::Warned => {
+            world.announce("Realm closing in 1 minute.");
+        }
+
+        Event::Closed => {
+            world.announce("I HAVE CLOSED THIS REALM!");
+            world.announce("YOU WILL NOT LIVE TO SEE THE LIGHT OF DAY!");
+        }
+
+        Event::Castle => {
+            world.announce("MY MINIONS HAVE FAILED ME!");
+            world.announce("BUT NOW YOU SHALL FEEL MY WRATH!");
+            world.announce("COME MEET YOUR DOOM AT THE WALLS OF MY CASTLE!");
+        }
+    }
+}
+
 fn handle(
     world: &mut World,
     catalog: &Catalog,
@@ -307,6 +395,14 @@ fn handle(
             sender,
             reply,
         } => {
+            // A closed realm is about to be emptied. Letting somebody in now would be putting them
+            // straight into the quake back out of it. Dropping the reply is how the session hears
+            // no, and it leaves the player where they were.
+            if !world.realm().admits() {
+                tracing::info!(world = %world.name, "refusing a join: the realm has closed");
+                return;
+            }
+
             let (x, y) = spawn_point(world);
 
             // The character decides all of this. The loadout is only what to do when it named a
@@ -414,6 +510,40 @@ fn handle(
             duration_ms,
         } => {
             world.open_portal(catalog, at, kind, duration_ms);
+        }
+
+        ToWorld::Scenery { reply } => {
+            let map = world.terrain().map();
+
+            let mut rows: Vec<SceneryRow> = Vec::new();
+            let mut current: Option<SceneryRow> = None;
+
+            // The map hands its objects back in row order, so the rows are gathered as they come
+            // rather than by scanning the map once per row.
+            for (x, y, square) in map.objects() {
+                if !World::is_scenery(catalog, square) {
+                    continue;
+                }
+
+                let placed = (
+                    x as u16,
+                    square.object.0,
+                    square.size().unwrap_or(0).clamp(0, u16::MAX as i32) as u16,
+                );
+
+                match current.as_mut() {
+                    Some((at, objects)) if *at == y as u16 => objects.push(placed),
+                    _ => {
+                        if let Some(row) = current.take() {
+                            rows.push(row);
+                        }
+                        current = Some((y as u16, vec![placed]));
+                    }
+                }
+            }
+            rows.extend(current);
+
+            let _ = reply.send(rows);
         }
 
         ToWorld::Terrain { reply } => {

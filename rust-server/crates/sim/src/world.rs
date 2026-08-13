@@ -20,7 +20,7 @@ use hendra_behavior::program::{
     Action, DeathEffect, EffectTarget, Nearby, Neighbour, Program, Programs, Senses,
 };
 use hendra_behavior::run::Mind;
-use hendra_content::{Catalog, ConditionSet, Map, ObjectType};
+use hendra_content::{Catalog, ConditionSet, Map, ObjectType, TERRAIN_COUNT};
 use hendra_net::{EntityId, EntityState, Tick, WorldSnapshot};
 
 use crate::grid::Grid;
@@ -68,6 +68,12 @@ impl Kind {
 pub struct Entity {
     pub object_type: ObjectType,
     pub kind: Kind,
+
+    /// Which of a realm's terrains this enemy was placed on.
+    ///
+    /// Carried rather than read from the ground, so an enemy that has chased somebody across a
+    /// border still counts against where it came from, and so anything it spawns counts there too.
+    pub terrain: hendra_content::Terrain,
 
     pub x: f32,
     pub y: f32,
@@ -166,6 +172,7 @@ impl Entity {
     pub fn fixture(object_type: ObjectType, x: f32, y: f32) -> Entity {
         Entity {
             object_type,
+            terrain: hendra_content::Terrain::None,
             kind: Kind::Fixture,
             x,
             y,
@@ -203,6 +210,7 @@ impl Entity {
     pub fn player(object_type: ObjectType, x: f32, y: f32, max_hp: i32) -> Entity {
         Entity {
             object_type,
+            terrain: hendra_content::Terrain::None,
             kind: Kind::Player,
             x,
             y,
@@ -357,6 +365,14 @@ pub struct World {
     /// Advanced for every child spawned, so two children of one parent do not move in lockstep.
     spawn_seed: u32,
 
+    /// How full this world is and whether it has been cleared. Only a realm uses it.
+    realm: crate::realm::Realm,
+
+    /// Where each terrain's walkable squares are, worked out on first use.
+    ///
+    /// Only a realm ever asks, and it asks once per terrain, so this stays empty everywhere else.
+    spawn_squares: std::collections::HashMap<hendra_content::Terrain, Vec<u32>>,
+
     /// Neighbours as behaviours see them, rebuilt per entity per tick and reused so the think
     /// loop allocates nothing.
     neighbours: Vec<Neighbour>,
@@ -372,10 +388,23 @@ impl World {
         let mut entities = Slab::new();
 
         for (x, y, square) in terrain.map().objects() {
-            // Static scenery that blocks a square is already in the collision bitmap, so putting it
-            // in the entity list too would cost a snapshot entry per wall for no gain.
+            // Scenery is not an entity. It never moves, never acts and never changes, so it is
+            // sent once with the ground and lives in the collision bitmap after that.
+            //
+            // This follows `Wmap.Load`, which keeps static objects on the tile rather than in the
+            // world, and it is not an optimisation: the realm map carries a quarter of a million
+            // trees and rocks. As entities they would fill a world four times over, leaving no room
+            // for a single enemy, and every one of them would take a place in every snapshot for
+            // the life of the world.
+            //
+            // The class is consulted as well as the flag, because the content marks the nexus
+            // fixtures static too. A money changer never moves either, but a player has to be able
+            // to name it to use it, and only an entity has a name to give.
+            //
+            // An object the map gave a name stays an entity as well: that is the map author saying
+            // this one is not scenery.
             let desc = catalog.object(square.object);
-            if desc.is_some_and(|desc| desc.full_occupy && desc.static_object && !desc.enemy) {
+            if World::is_scenery(catalog, square) {
                 continue;
             }
 
@@ -423,6 +452,8 @@ impl World {
             ground_changes: Vec::new(),
             falling: Vec::new(),
             spawn_seed: 0x2545_f491,
+            realm: crate::realm::Realm::new(),
+            spawn_squares: std::collections::HashMap::new(),
             visible: Vec::new(),
             hits: Vec::new(),
             actions: Vec::new(),
@@ -536,6 +567,10 @@ impl World {
 
     pub fn iter(&self) -> impl Iterator<Item = (Handle, &Entity)> {
         self.entities.iter()
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (Handle, &mut Entity)> {
+        self.entities.iter_mut()
     }
 
     /// Rebuilds the spatial index from current positions.
@@ -879,6 +914,28 @@ struct SenseScalars {
     damage_taken: i32,
 }
 
+/// Whether a class of object is there to be looked at rather than used.
+///
+/// Everything else static stays an entity, because a player has to be able to name what they use
+/// and only an entity has a name to give.
+fn is_decoration(class: &str) -> bool {
+    matches!(
+        class,
+        "GameObject"
+            | "Wall"
+            | "CaveWall"
+            | "ConnectedWall"
+            | "DoubleWall"
+            | "Stalagmite"
+            | "SpiderWeb"
+    )
+}
+
+/// How many squares are tried before giving up on finding one nobody is standing near.
+///
+/// Every square tried is already the right terrain, so this only has to outlast a crowd.
+const SPAWN_ATTEMPTS: usize = 20;
+
 /// The widest circle of ground one behaviour may change at once.
 ///
 /// The content asks for radii of ninety-nine in places, which as a circle is thirty thousand
@@ -949,6 +1006,9 @@ struct Falling {
     x: f32,
     y: f32,
     remaining_ms: u32,
+
+    /// The terrain of whoever threw it, so what lands is counted where the thrower was.
+    terrain: hendra_content::Terrain,
 }
 
 /// How many objects may be in the air at once.
@@ -1145,6 +1205,11 @@ impl World {
                             x: x + offset_x,
                             y: y + offset_y,
                             remaining_ms: *delay_ms,
+                            terrain: self
+                                .entities
+                                .get(handle)
+                                .map(|thrower| thrower.terrain)
+                                .unwrap_or_default(),
                         });
                     }
                     return;
@@ -1161,6 +1226,7 @@ impl World {
                         x + offset_x + spread,
                         y + offset_y,
                         state.as_deref(),
+                        Some(handle),
                     );
                 }
             }
@@ -1218,7 +1284,7 @@ impl World {
                     entity.dead = true;
                     entity.no_experience = true;
                 }
-                self.spawn_child(catalog, behaviours, kind, x, y, None);
+                self.spawn_child(catalog, behaviours, kind, x, y, None, Some(handle));
             }
 
             Action::Order {
@@ -1281,7 +1347,8 @@ impl World {
                 let Some((x, y)) = self.entities.get(handle).map(|e| (e.x, e.y)) else {
                     return;
                 };
-                if let Some(portal) = self.spawn_child(catalog, behaviours, kind, x, y, None)
+                if let Some(portal) =
+                    self.spawn_child(catalog, behaviours, kind, x, y, None, Some(handle))
                     && let Some(entity) = self.entities.get_mut(portal)
                 {
                     entity.expires_in_ms = Some(*duration_ms);
@@ -1391,6 +1458,11 @@ impl World {
     ///
     /// Everything a behaviour spawns comes through here, so a child gets its own behaviour, its
     /// own health and its own spawn point rather than inheriting the parent's.
+    ///
+    /// `from` is what asked for it, where anything did. A child inherits its parent's terrain, so
+    /// an enemy that breeds keeps its whole line counted against the ground it was placed on rather
+    /// than leaking out of the census.
+    #[allow(clippy::too_many_arguments)]
     fn spawn_child(
         &mut self,
         catalog: &Catalog,
@@ -1399,6 +1471,7 @@ impl World {
         x: f32,
         y: f32,
         state: Option<&str>,
+        from: Option<Handle>,
     ) -> Option<Handle> {
         let desc = catalog.object(kind)?;
 
@@ -1412,6 +1485,10 @@ impl World {
         entity.hp = entity.max_hp;
         entity.spawn_x = x;
         entity.spawn_y = y;
+        entity.terrain = from
+            .and_then(|parent| self.entities.get(parent))
+            .map(|parent| parent.terrain)
+            .unwrap_or_default();
 
         // Taken from the caller rather than from `self`, because the tick lifts the programs out
         // of the world while it runs. Reading them from `self` here found an empty set, and every
@@ -2234,7 +2311,7 @@ impl World {
             Effect::Create { child } => {
                 if let Some(kind) = catalog.type_of(child) {
                     let behaviours = std::mem::take(&mut self.behaviours);
-                    self.spawn_child(catalog, &behaviours, kind, aim.0, aim.1, None);
+                    self.spawn_child(catalog, &behaviours, kind, aim.0, aim.1, None, Some(handle));
                     self.behaviours = behaviours;
                 }
             }
@@ -2341,8 +2418,251 @@ impl World {
         self.falling = waiting;
 
         for landed in arrived {
-            self.spawn_child(catalog, behaviours, landed.kind, landed.x, landed.y, None);
+            if let Some(handle) = self.spawn_child(
+                catalog,
+                behaviours,
+                landed.kind,
+                landed.x,
+                landed.y,
+                None,
+                None,
+            ) && let Some(entity) = self.entities.get_mut(handle)
+            {
+                entity.terrain = landed.terrain;
+            }
         }
+    }
+
+    /// Whether a square's object is scenery rather than something the world has to hold.
+    ///
+    /// Asked both when the world is built and when a client is told what the map looks like, so the
+    /// two can never disagree and leave a tree that is drawn but not there, or there but not drawn.
+    pub fn is_scenery(catalog: &Catalog, square: &hendra_content::Composition) -> bool {
+        // A name is the map author saying this one is not a tree. A size is not: the realm map
+        // scales seventy thousand of its trees for variety, and that is drawing, not meaning.
+        if square.name().is_some() {
+            return false;
+        }
+
+        catalog.object(square.object).is_some_and(|desc| {
+            desc.static_object && !desc.enemy && is_decoration(desc.class.as_str())
+        })
+    }
+
+    /// Counts what is alive on each terrain.
+    ///
+    /// From the tag an enemy carries rather than from where it is standing, because an enemy that
+    /// has chased somebody across a border still belongs to the terrain it was placed on. That is
+    /// what stops a chase from emptying one terrain and overfilling the next.
+    pub fn alive_by_terrain(&self) -> [usize; TERRAIN_COUNT] {
+        let mut counts = [0usize; TERRAIN_COUNT];
+
+        for (_, entity) in self.entities.iter() {
+            if entity.kind != Kind::Enemy || entity.dead {
+                continue;
+            }
+            counts[entity.terrain as usize] += 1;
+        }
+
+        counts
+    }
+
+    /// Carries out what the realm asked for: fills terrains that are short, thins ones that are
+    /// over.
+    ///
+    /// Returns how many were added and how many removed.
+    pub fn populate(
+        &mut self,
+        catalog: &Catalog,
+        spawnable: &[crate::realm::Spawn],
+        wanted: &[crate::realm::Adjustment],
+    ) -> (usize, usize) {
+        let mut added = 0;
+        let mut removed = 0;
+
+        for adjustment in wanted {
+            if adjustment.remove > 0 {
+                removed += self.thin(adjustment.terrain, adjustment.remove);
+                continue;
+            }
+
+            added += self.fill(catalog, spawnable, adjustment.terrain, adjustment.add);
+        }
+
+        (added, removed)
+    }
+
+    /// Adds up to `wanted` enemies to one terrain.
+    fn fill(
+        &mut self,
+        catalog: &Catalog,
+        spawnable: &[crate::realm::Spawn],
+        terrain: hendra_content::Terrain,
+        wanted: usize,
+    ) -> usize {
+        if self.open_squares(terrain).is_empty() {
+            return 0;
+        }
+
+        // Lifted out for the same reason the tick lifts them: `spawn_child` needs them while the
+        // world is borrowed mutably.
+        let behaviours = std::mem::take(&mut self.behaviours);
+        let mut made = 0;
+
+        // A budget rather than a loop until done. The weights for a terrain do not always sum to
+        // one, so some rolls choose nothing, and a square can come back crowded; both are reasons
+        // to try again, not reasons to stop, but neither can be allowed to spin forever.
+        let mut tries = wanted * 4 + 64;
+
+        while made < wanted && tries > 0 {
+            tries -= 1;
+
+            let Some(spawn) = crate::realm::choose(spawnable, terrain, self.roll()) else {
+                continue;
+            };
+            let Some((x, y)) = self.open_square(terrain) else {
+                continue;
+            };
+
+            // A description that asks for a group brings its whole group, scattered around the
+            // point rather than stacked on it.
+            let size = match spawn.group {
+                Some(count) => count.size(crate::realm::normal(self.roll(), self.roll())),
+                None => 1,
+            };
+
+            for _ in 0..size {
+                let (at_x, at_y) = match spawn.group {
+                    Some(_) => (
+                        x + (self.roll() * 2.0 - 1.0) * crate::realm::GROUP_SPREAD,
+                        y + (self.roll() * 2.0 - 1.0) * crate::realm::GROUP_SPREAD,
+                    ),
+                    None => (x, y),
+                };
+
+                if !self.terrain.walkable_at(at_x, at_y) {
+                    continue;
+                }
+
+                if let Some(handle) =
+                    self.spawn_child(catalog, &behaviours, spawn.kind, at_x, at_y, None, None)
+                    && let Some(entity) = self.entities.get_mut(handle)
+                {
+                    // Tagged with the terrain it was placed on, which is what the next count reads
+                    // and what anything it spawns inherits.
+                    entity.terrain = terrain;
+                    made += 1;
+                }
+            }
+        }
+
+        self.behaviours = behaviours;
+        made
+    }
+
+    /// Removes up to `wanted` enemies from one terrain.
+    ///
+    /// Only ones nobody is near: despawning something a player is fighting reads as the server
+    /// eating their kill.
+    fn thin(&mut self, terrain: hendra_content::Terrain, wanted: usize) -> usize {
+        let players: Vec<(f32, f32)> = self
+            .entities
+            .iter()
+            .filter(|(_, entity)| entity.kind == Kind::Player && !entity.dead)
+            .map(|(_, entity)| (entity.x, entity.y))
+            .collect();
+
+        let doomed: Vec<Handle> = self
+            .entities
+            .iter()
+            .filter(|(_, entity)| {
+                entity.kind == Kind::Enemy && !entity.dead && entity.terrain == terrain
+            })
+            .filter(|(_, entity)| {
+                !players.iter().any(|(px, py)| {
+                    let (dx, dy) = (entity.x - px, entity.y - py);
+                    dx * dx + dy * dy < crate::realm::PLAYER_CLEARANCE.powi(2)
+                })
+            })
+            .map(|(handle, _)| handle)
+            .take(wanted)
+            .collect();
+
+        // Removed outright rather than killed: a thinned enemy is one the map never needed, and
+        // killing it would drop loot and hand out experience nobody earned.
+        for handle in &doomed {
+            self.despawn(*handle);
+        }
+
+        doomed.len()
+    }
+
+    /// Every walkable square of a terrain, worked out once and kept.
+    ///
+    /// A realm map is four million squares and a terrain can be a thousandth of it, so looking for
+    /// one by guessing at random finds nothing in any reasonable number of tries. Listing them once
+    /// turns every later search into a single pick.
+    fn open_squares(&mut self, terrain: hendra_content::Terrain) -> &[u32] {
+        if !self.spawn_squares.contains_key(&terrain) {
+            let mut squares = Vec::new();
+
+            for y in 0..self.terrain.height() {
+                for x in 0..self.terrain.width() {
+                    if self.terrain.terrain_at(x, y) == terrain && self.terrain.walkable(x, y) {
+                        squares.push((x << 16) | y);
+                    }
+                }
+            }
+
+            self.spawn_squares.insert(terrain, squares);
+        }
+
+        &self.spawn_squares[&terrain]
+    }
+
+    /// A walkable square of a terrain with nobody near it.
+    ///
+    /// Away from players, because an enemy appearing on top of somebody is not a spawn but an
+    /// ambush nobody could have avoided.
+    fn open_square(&mut self, terrain: hendra_content::Terrain) -> Option<(f32, f32)> {
+        let count = self.open_squares(terrain).len();
+        if count == 0 {
+            return None;
+        }
+
+        for _ in 0..SPAWN_ATTEMPTS {
+            let picked = ((self.roll() * count as f32) as usize).min(count - 1);
+            let packed = self.spawn_squares[&terrain][picked];
+            let (x, y) = (packed >> 16, packed & 0xffff);
+
+            let (at_x, at_y) = (x as f32 + 0.5, y as f32 + 0.5);
+            self.grid
+                .within(at_x, at_y, crate::realm::PLAYER_CLEARANCE, &mut self.nearby);
+            let nearby = std::mem::take(&mut self.nearby);
+
+            let crowded = nearby.iter().any(|handle| {
+                self.entities
+                    .get(*handle)
+                    .is_some_and(|entity| entity.kind == Kind::Player)
+            });
+            self.nearby = nearby;
+
+            if !crowded {
+                return Some((at_x, at_y));
+            }
+        }
+
+        None
+    }
+
+    /// How the realm is doing.
+    pub fn realm(&self) -> &crate::realm::Realm {
+        &self.realm
+    }
+
+    /// How the realm is doing, so a caller can advance its clock.
+    pub fn realm_mut(&mut self) -> &mut crate::realm::Realm {
+        &mut self.realm
     }
 
     /// Opens a portal where an entity is standing.
@@ -2356,7 +2676,7 @@ impl World {
         let (x, y) = self.entities.get(at).map(|entity| (entity.x, entity.y))?;
 
         let behaviours = std::mem::take(&mut self.behaviours);
-        let portal = self.spawn_child(catalog, &behaviours, kind, x, y, None);
+        let portal = self.spawn_child(catalog, &behaviours, kind, x, y, None, None);
         self.behaviours = behaviours;
 
         if let Some(portal) = portal
@@ -2455,6 +2775,7 @@ impl World {
                         square.object,
                         world_x as f32 + 0.5,
                         world_y as f32 + 0.5,
+                        None,
                         None,
                     );
                     self.behaviours = behaviours;
@@ -2707,13 +3028,21 @@ impl World {
                     return;
                 };
                 for index in 0..(*count).min(MAX_SPAWNED_AT_ONCE) {
-                    self.spawn_child(catalog, behaviours, kind, x + index as f32 * 0.35, y, None);
+                    self.spawn_child(
+                        catalog,
+                        behaviours,
+                        kind,
+                        x + index as f32 * 0.35,
+                        y,
+                        None,
+                        Some(handle),
+                    );
                 }
             }
 
             DeathEffect::TransformInto { child } => {
                 if let Some(kind) = program.kind_of(*child).map(ObjectType) {
-                    self.spawn_child(catalog, behaviours, kind, x, y, None);
+                    self.spawn_child(catalog, behaviours, kind, x, y, None, Some(handle));
                 }
             }
 
@@ -2728,7 +3057,8 @@ impl World {
                 let Some(kind) = program.kind_of(*name).map(ObjectType) else {
                     return;
                 };
-                if let Some(portal) = self.spawn_child(catalog, behaviours, kind, x, y, None)
+                if let Some(portal) =
+                    self.spawn_child(catalog, behaviours, kind, x, y, None, Some(handle))
                     && let Some(entity) = self.entities.get_mut(portal)
                 {
                     entity.expires_in_ms = Some(*duration_ms);
@@ -2868,7 +3198,7 @@ mod tests {
           <MaxHitPoints>200</MaxHitPoints><Defense>30</Defense></Object>
         <Object type="0x505" id="Spawnling"><Class>Character</Class><Enemy/>
           <MaxHitPoints>10</MaxHitPoints></Object>
-        <Object type="0x506" id="Doorway"><Class>Portal</Class><Static/></Object>
+        <Object type="0x506" id="Doorway"><Class>Portal</Class></Object>
         <Object type="0x600" id="Hero"><Class>Player</Class><Player/></Object>
         <Object type="0x030e" id="Wizard"><Class>Player</Class><Player/>
           <MaxHitPoints max="670">100</MaxHitPoints>
@@ -2881,8 +3211,8 @@ mod tests {
           <LevelIncrease min="2" max="8">MaxMagicPoints</LevelIncrease>
         </Object>
         <Object type="0x900" id="Bolt"><Class>Projectile</Class></Object>
-        <Object type="0x510" id="Loot Bag"><Class>Container</Class><Static/></Object>
-        <Object type="0x511" id="Loot Bag 5"><Class>Container</Class><Static/></Object>
+        <Object type="0x510" id="Loot Bag"><Class>Container</Class></Object>
+        <Object type="0x511" id="Loot Bag 5"><Class>Container</Class></Object>
         <Object type="0x904" id="Rare Blade">
           <Class>Equipment</Class><Item/><SlotType>1</SlotType><BagType>5</BagType>
         </Object>
@@ -2933,28 +3263,52 @@ mod tests {
     }
 
     #[test]
-    fn map_objects_become_entities_but_walls_do_not() {
+    fn scenery_stays_in_the_map_and_everything_else_becomes_an_entity() {
+        // The realm map carries a quarter of a million trees. As entities they would fill a world
+        // four times over and leave no room for a single enemy.
         let catalog = catalog();
         let mut squares: Vec<Composition> = (0..8 * 8)
             .map(|_| square(0x10, ObjectType::NONE.0))
             .collect();
-        squares[10] = square(0x10, 0x500); // wall, collision only
-        squares[20] = square(0x10, 0x501); // sign, an entity
-        squares[30] = square(0x10, 0x502); // slime, an entity
+        squares[10] = square(0x10, 0x500); // wall, scenery
+        squares[20] = square(0x10, 0x501); // sign, scenery
+        squares[30] = square(0x10, 0x502); // slime, an enemy
+        squares[40] = square(0x10, 0x506); // doorway, a portal somebody has to be able to use
 
         let map = Map::from_squares(8, 8, squares).unwrap();
         let world = World::new("Test", Terrain::build(map, &catalog), &catalog);
 
-        assert_eq!(
-            world.len(),
-            2,
-            "the wall belongs in the collision bitmap, not the entity list"
-        );
-        assert!(!world.terrain().walkable(2, 1), "but it still blocks");
+        assert_eq!(world.len(), 2, "only the slime and the doorway");
+        assert!(!world.terrain().walkable(2, 1), "but the wall still blocks");
 
         let kinds: Vec<Kind> = world.iter().map(|(_, entity)| entity.kind).collect();
-        assert!(kinds.contains(&Kind::Fixture));
         assert!(kinds.contains(&Kind::Enemy));
+        assert!(kinds.contains(&Kind::Portal));
+    }
+
+    #[test]
+    fn a_map_object_the_author_named_is_not_scenery() {
+        // Naming one is the map author saying this one is not a tree.
+        let catalog = catalog();
+        let mut squares: Vec<Composition> = (0..8 * 8)
+            .map(|_| square(0x10, ObjectType::NONE.0))
+            .collect();
+        squares[20] = Composition {
+            tile: TileType(0x10),
+            object: ObjectType(0x501),
+            region: Region::None,
+            terrain: hendra_content::Terrain::None,
+            config: "name:Welcome".to_string(),
+        };
+
+        let map = Map::from_squares(8, 8, squares).unwrap();
+        let world = World::new("Test", Terrain::build(map, &catalog), &catalog);
+
+        assert_eq!(world.len(), 1);
+        assert_eq!(
+            world.iter().next().unwrap().1.name.as_deref(),
+            Some("Welcome")
+        );
     }
 
     #[test]
@@ -4676,6 +5030,217 @@ mod tests {
         assert_eq!(world.enemy_count(), 2, "the dead one does not count");
         assert_eq!(world.count_of_kind(ObjectType(0x502)), 2);
         assert_eq!(world.count_of_kind(ObjectType(0x503)), 0);
+    }
+
+    /// A field of one terrain, so a realm has somewhere to put things.
+    fn terraced(catalog: &Catalog, terrain: hendra_content::Terrain) -> World {
+        let squares = (0..64 * 64).map(|_| Composition {
+            tile: TileType(0x10),
+            object: ObjectType::NONE,
+            region: Region::None,
+            terrain,
+            config: String::new(),
+        });
+        let map = Map::from_squares(64, 64, squares).unwrap();
+        World::new("Realm", Terrain::build(map, catalog), catalog)
+    }
+
+    fn slimes(terrain: hendra_content::Terrain) -> Vec<crate::realm::Spawn> {
+        vec![crate::realm::Spawn {
+            kind: ObjectType(0x502),
+            terrain,
+            weight: 1.0,
+            group: None,
+            per_enemy: 200,
+        }]
+    }
+
+    fn add(terrain: hendra_content::Terrain, count: usize) -> Vec<crate::realm::Adjustment> {
+        vec![crate::realm::Adjustment {
+            terrain,
+            add: count,
+            remove: 0,
+        }]
+    }
+
+    #[test]
+    fn a_realm_fills_the_terrain_it_was_asked_to_fill() {
+        let catalog = catalog();
+        let terrain = hendra_content::Terrain::MidPlains;
+        let mut world = terraced(&catalog, terrain);
+
+        let (added, removed) = world.populate(&catalog, &slimes(terrain), &add(terrain, 40));
+        world.reindex();
+
+        assert_eq!(added, 40);
+        assert_eq!(removed, 0);
+        assert_eq!(world.enemy_count(), 40);
+    }
+
+    #[test]
+    fn what_a_realm_places_is_tagged_with_the_ground_it_was_placed_on() {
+        // The tag is what the next count reads. Without it the population would be recounted as
+        // zero every minute and the realm would fill forever.
+        let catalog = catalog();
+        let terrain = hendra_content::Terrain::HighForest;
+        let mut world = terraced(&catalog, terrain);
+
+        world.populate(&catalog, &slimes(terrain), &add(terrain, 10));
+        world.reindex();
+
+        assert_eq!(world.alive_by_terrain()[terrain as usize], 10);
+        assert_eq!(
+            world.alive_by_terrain()[hendra_content::Terrain::MidPlains as usize],
+            0
+        );
+    }
+
+    #[test]
+    fn a_realm_places_nothing_on_ground_nothing_belongs_to() {
+        let catalog = catalog();
+        let mut world = terraced(&catalog, hendra_content::Terrain::MidPlains);
+
+        // Asked to fill the mountains, of which this map has none.
+        let (added, _) = world.populate(
+            &catalog,
+            &slimes(hendra_content::Terrain::Mountains),
+            &add(hendra_content::Terrain::Mountains, 20),
+        );
+
+        assert_eq!(added, 0);
+        assert_eq!(world.enemy_count(), 0);
+    }
+
+    #[test]
+    fn nothing_appears_on_top_of_a_player() {
+        // An enemy on top of somebody is not a spawn but an ambush nobody could have avoided.
+        let catalog = catalog();
+        let terrain = hendra_content::Terrain::MidPlains;
+        let mut world = terraced(&catalog, terrain);
+
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 32.0, 32.0, 500))
+            .unwrap();
+        world.reindex();
+
+        world.populate(&catalog, &slimes(terrain), &add(terrain, 200));
+        world.reindex();
+
+        let (px, py) = {
+            let entity = world.get(player).unwrap();
+            (entity.x, entity.y)
+        };
+
+        for (_, entity) in world.iter() {
+            if entity.kind != Kind::Enemy {
+                continue;
+            }
+            let (dx, dy) = (entity.x - px, entity.y - py);
+
+            // A literal rather than the constant, so shrinking the constant fails this instead of
+            // quietly moving the bar down with it.
+            assert!(
+                (dx * dx + dy * dy).sqrt() >= 9.0,
+                "something appeared beside the player"
+            );
+        }
+    }
+
+    #[test]
+    fn a_terrain_that_has_overfilled_is_thinned() {
+        let catalog = catalog();
+        let terrain = hendra_content::Terrain::LowSand;
+        let mut world = terraced(&catalog, terrain);
+
+        world.populate(&catalog, &slimes(terrain), &add(terrain, 30));
+        world.reindex();
+
+        let (added, removed) = world.populate(
+            &catalog,
+            &slimes(terrain),
+            &[crate::realm::Adjustment {
+                terrain,
+                add: 0,
+                remove: 12,
+            }],
+        );
+        world.reindex();
+
+        assert_eq!(added, 0);
+        assert_eq!(removed, 12);
+        assert_eq!(world.enemy_count(), 18);
+    }
+
+    #[test]
+    fn thinning_leaves_alone_what_somebody_is_fighting() {
+        // Despawning an enemy a player is on reads as the server eating their kill.
+        let catalog = catalog();
+        let terrain = hendra_content::Terrain::LowSand;
+        let mut world = terraced(&catalog, terrain);
+
+        world.populate(&catalog, &slimes(terrain), &add(terrain, 20));
+        world.reindex();
+
+        // Stand on one of them.
+        let (victim, x, y) = world
+            .iter()
+            .find(|(_, entity)| entity.kind == Kind::Enemy)
+            .map(|(handle, entity)| (handle, entity.x, entity.y))
+            .unwrap();
+        world
+            .spawn(Entity::player(ObjectType(0x600), x, y, 500))
+            .unwrap();
+        world.reindex();
+
+        world.populate(
+            &catalog,
+            &slimes(terrain),
+            &[crate::realm::Adjustment {
+                terrain,
+                add: 0,
+                remove: 20,
+            }],
+        );
+
+        assert!(
+            world.get(victim).is_some(),
+            "the one being fought was taken"
+        );
+    }
+
+    #[test]
+    fn what_an_enemy_spawns_is_counted_where_its_parent_was() {
+        // Otherwise a breeding enemy leaks out of the census, and the terrain it is filling reads
+        // as empty and gets filled again.
+        let catalog = catalog();
+        let terrain = hendra_content::Terrain::MidForest;
+        let mut world = terraced(&catalog, terrain);
+
+        world.populate(&catalog, &slimes(terrain), &add(terrain, 1));
+        world.reindex();
+
+        let parent = world
+            .iter()
+            .find(|(_, entity)| entity.kind == Kind::Enemy)
+            .map(|(handle, _)| handle)
+            .unwrap();
+
+        let behaviours = std::mem::take(&mut world.behaviours);
+        let child = world
+            .spawn_child(
+                &catalog,
+                &behaviours,
+                ObjectType(0x502),
+                5.0,
+                5.0,
+                None,
+                Some(parent),
+            )
+            .unwrap();
+        world.behaviours = behaviours;
+
+        assert_eq!(world.get(child).unwrap().terrain, terrain);
+        assert_eq!(world.alive_by_terrain()[terrain as usize], 2);
     }
 
     #[test]

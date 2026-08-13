@@ -139,8 +139,42 @@ written, tested and never called.
 
 ### 12.2 The realm — **S**
 
-- [ ] `crates/sim/src/realm.rs` is written and tested and nothing calls it. No world populates
+- [x] `crates/sim/src/realm.rs` is written and tested and nothing calls it. No world populates
       itself, so a realm is an empty map
+
+  Rewritten against `Oryx.cs` first: the version being wired had invented its rules. The real ones
+  are per terrain, not global. A terrain's population is the squares it covers divided by the
+  squares it gives each enemy, from a table Oryx keeps in code and not in the content. The
+  population is held in a band, topped up below three quarters and thinned above one and a half,
+  checked once a minute. The realm closes on a clock half an hour after it opens, not on a body
+  count, with a minute's warning and then the castle.
+
+- [x] Scenery is not an entity
+
+  Found by populating the real realm map and getting nothing. The world made an entity of every
+  object the map declared, and `world1.hmap` declares 245,916 trees. They filled the 65,536-entity
+  arena exactly, so a realm could never spawn a single enemy, and every tree would have taken a
+  place in every snapshot for the life of the world. `Wmap.Load` keeps static objects on the tile;
+  we now do too, with the class consulted as well as the flag so the nexus fixtures a player has to
+  name stay entities. Scenery goes to the client once with the ground, carrying its size, since the
+  realm scales seventy thousand of its trees for variety.
+
+- [x] Enemies carry the terrain they were placed on, and children inherit it
+
+  Counting an enemy by where it is standing would let a chase empty one terrain and overfill the
+  next, and would lose anything that bred. `Enemy.Terrain` does the same in the original.
+
+- [x] A closed realm refuses arrivals, so nobody is let in to be sent straight back out
+
+`cargo run -p hendra-sim --example realm_population` fills the real map from the real content:
+2,716 enemies against a target of 2,712, every terrain at its number.
+`cargo run -p hendra-sim --example map_entities` shows what every shipped map puts in a world.
+
+Still to do, and separate because it needs the protocol rather than the simulation:
+
+- [ ] The castle handoff. When a realm closes, the original quakes everybody to the castle. There
+      is no server-to-client "you are now somewhere else" message, so the world says the lines and
+      the players stay where they are until they walk out
 
 ### 12.3 Setpieces — **S**
 

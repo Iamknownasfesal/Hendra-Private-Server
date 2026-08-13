@@ -26,12 +26,12 @@ pub mod xml;
 pub use activate::{Appearance, Effect};
 pub use catalog::{Catalog, LoadProblem, LoadReport};
 pub use desc::{
-    ActivateDesc, ItemDesc, ObjectDesc, ObjectType, ProjectileDesc, SizeRange, StatBoost, TileDesc,
-    TileType,
+    ActivateDesc, ItemDesc, ObjectDesc, ObjectType, ProjectileDesc, SizeRange, SpawnCount,
+    StatBoost, TileDesc, TileType,
 };
 pub use effect::{AppliedEffect, ConditionEffect, ConditionSet};
 pub use map::{Composition, Map, MapError};
 pub use player::{PlayerDesc, STATS, Stat, StatGrowth, Unlock};
-pub use region::{Region, Terrain};
+pub use region::{Region, TERRAIN_COUNT, Terrain};
 pub use world::{WorldDef, WorldError};
 pub use xml::{Node, XmlError};

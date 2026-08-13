@@ -88,6 +88,15 @@ enum Event {
     /// Squares whose ground changed, as `(x, y, tile)`.
     Ground(Vec<(u16, u16, u16)>),
 
+    /// The scenery standing in one row of the map, as `(x, object, size)`.
+    ///
+    /// Not entities: scenery never moves and never acts, so it arrives once with the ground rather
+    /// than in every snapshot.
+    Scenery {
+        y: u16,
+        objects: Vec<(u16, u16, u16)>,
+    },
+
     /// One row of the map, expanded from the runs it arrived as.
     Terrain {
         x: u16,
@@ -363,6 +372,20 @@ impl HendraConnection {
 
                     let row: Vec<i32> = tiles.iter().map(|tile| *tile as i32).collect();
                     entry.set("tiles", &PackedInt32Array::from(row.as_slice()));
+                }
+                Event::Scenery { y, objects } => {
+                    entry.set("kind", "scenery");
+                    entry.set("y", y as i64);
+
+                    // Parallel arrays, as the ground changes use: one marshalled block per field
+                    // beats a dictionary per object.
+                    let xs: Vec<i32> = objects.iter().map(|(x, _, _)| *x as i32).collect();
+                    let types: Vec<i32> = objects.iter().map(|(_, kind, _)| *kind as i32).collect();
+                    let sizes: Vec<i32> = objects.iter().map(|(_, _, size)| *size as i32).collect();
+
+                    entry.set("x", &PackedInt32Array::from(xs.as_slice()));
+                    entry.set("objects", &PackedInt32Array::from(types.as_slice()));
+                    entry.set("sizes", &PackedInt32Array::from(sizes.as_slice()));
                 }
                 Event::Ground(changes) => {
                     entry.set("kind", "ground");
@@ -767,6 +790,8 @@ fn apply(
         ServerMessage::Refused { message } => shared.push(Event::Refused(message.to_owned())),
 
         ServerMessage::Ground { changes } => shared.push(Event::Ground(changes)),
+
+        ServerMessage::Scenery { y, objects } => shared.push(Event::Scenery { y, objects }),
 
         ServerMessage::Terrain { x, y, runs } => {
             // Expanded here rather than in the game, so a script sees a row of squares rather than

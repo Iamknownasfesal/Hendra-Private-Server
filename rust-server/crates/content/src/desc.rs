@@ -289,6 +289,37 @@ impl ItemDesc {
     }
 }
 
+/// How many of one enemy appear together when a realm places it.
+///
+/// The count is drawn from a normal distribution and clamped, so a group varies in size but never
+/// becomes one lone straggler or a hundred at once.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SpawnCount {
+    pub mean: i32,
+    pub std_dev: i32,
+    pub min: i32,
+    pub max: i32,
+}
+
+impl SpawnCount {
+    fn parse(node: &crate::xml::Node) -> SpawnCount {
+        SpawnCount {
+            mean: node.int("Mean").unwrap_or(1) as i32,
+            std_dev: node.int("StdDev").unwrap_or(0) as i32,
+            min: node.int("Min").unwrap_or(1) as i32,
+            max: node.int("Max").unwrap_or(1) as i32,
+        }
+    }
+
+    /// The size of one group, given a standard normal sample.
+    pub fn size(&self, normal: f32) -> usize {
+        let drawn = self.mean as f32 + self.std_dev as f32 * normal;
+        (drawn as i32)
+            .clamp(self.min.min(self.max), self.max.max(self.min))
+            .max(1) as usize
+    }
+}
+
 /// Everything the simulation knows about one object type.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ObjectDesc {
@@ -337,6 +368,9 @@ pub struct ObjectDesc {
     pub terrain: Option<String>,
     pub spawn_probability: f32,
     pub per_realm_max: Option<i32>,
+
+    /// How many of this appear at once when a realm places it. Absent means one.
+    pub spawn_count: Option<SpawnCount>,
 
     pub projectiles: Vec<ProjectileDesc>,
 
@@ -421,6 +455,7 @@ impl ObjectDesc {
             terrain: node.field("Terrain").map(str::to_owned),
             spawn_probability: node.float("SpawnProbability").unwrap_or(0.0) as f32,
             per_realm_max: node.int("PerRealmMax").map(|v| v as i32),
+            spawn_count: node.child("Spawn").map(SpawnCount::parse),
             projectiles,
             item: node.has("Item").then(|| ItemDesc::parse(node)),
             // `DungeonName` falls back to `DisplayId`, matching how portals are labelled.

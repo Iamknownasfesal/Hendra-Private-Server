@@ -28,6 +28,12 @@ use hendra_sim::{Terrain, World};
 
 use crate::world_task::{self, Loadout, WorldHandle};
 
+/// The world definition that fills itself with enemies and closes half an hour later.
+///
+/// Named rather than flagged because that is how the original decides: `DynamicWorld` matches a
+/// definition's name against a class, and only `Realm` gets an overseer.
+pub const REALM: &str = "Realm";
+
 /// Everything needed to bring a world into being.
 pub struct Worlds {
     catalog: Arc<Catalog>,
@@ -159,7 +165,14 @@ impl Worlds {
 
         let world = World::new(name.to_string(), terrain, &self.catalog);
         report_portals(&world, self);
-        let handle = world_task::spawn(world, Arc::clone(&self.catalog), self.loadout.clone());
+
+        // Only the world the original calls `Realm` fills itself and closes on a clock. Every other
+        // definition is the map it was drawn as.
+        let loadout = Loadout {
+            is_realm: name == REALM,
+            ..self.loadout.clone()
+        };
+        let handle = world_task::spawn(world, Arc::clone(&self.catalog), loadout);
 
         // Worlds that have closed since the last start are dropped here rather than by a sweeper,
         // because this is the only moment the registry is already locked and already being read.

@@ -397,6 +397,7 @@ mod tests {
         Entity {
             object_type: ObjectType(object_type),
             kind: Kind::Enemy,
+            terrain: hendra_content::Terrain::None,
             x,
             y,
             hp,

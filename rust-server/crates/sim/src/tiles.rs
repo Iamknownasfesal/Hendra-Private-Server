@@ -209,6 +209,30 @@ impl Terrain {
     }
 
     /// What one square is.
+    /// What terrain a square is, which is what decides who may be spawned on it.
+    pub fn terrain_at(&self, x: u32, y: u32) -> hendra_content::Terrain {
+        self.map
+            .at(x, y)
+            .map(|square| square.terrain)
+            .unwrap_or_default()
+    }
+
+    /// How many squares of each terrain the map has, counted once.
+    ///
+    /// A realm's population is drawn from this: a terrain gives each of its enemies a fixed number
+    /// of squares, so how much of the map is mountain decides how many gods live on it.
+    pub fn terrain_census(&self) -> [u32; hendra_content::TERRAIN_COUNT] {
+        let mut counts = [0u32; hendra_content::TERRAIN_COUNT];
+
+        for y in 0..self.height {
+            for x in 0..self.width {
+                counts[self.terrain_at(x, y) as usize] += 1;
+            }
+        }
+
+        counts
+    }
+
     pub fn tile_at(&self, x: u32, y: u32) -> TileType {
         if !self.contains(x, y) {
             return TileType(0);

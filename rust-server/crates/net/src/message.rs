@@ -40,6 +40,12 @@ pub mod client_id {
 /// A length prefix is attacker-controlled, so the capacity is bounded before anything is reserved.
 pub const MAX_TERRAIN_RUNS: usize = 4096;
 
+/// The most scenery one message may claim.
+///
+/// One message is one row of a map, and no row holds more objects than it has squares. A length
+/// prefix is attacker-controlled, so the capacity is bounded before anything is reserved.
+pub const MAX_SCENERY: usize = 4096;
+
 /// The most ground changes one message may claim.
 ///
 /// A length prefix is attacker-controlled, so the capacity is bounded before anything is reserved.
@@ -56,6 +62,7 @@ pub mod server_id {
     pub const REFUSED: u16 = 0x8008;
     pub const GROUND: u16 = 0x8009;
     pub const TERRAIN: u16 = 0x800a;
+    pub const SCENERY: u16 = 0x800b;
 }
 
 /// Why a connection was refused.
@@ -463,6 +470,22 @@ pub enum ServerMessage<'a> {
         runs: Vec<(u16, u16)>,
     },
 
+    /// The map's scenery: objects that never move and never act.
+    ///
+    /// Sent with the ground rather than as entities, because that is what they are. A realm map
+    /// carries a quarter of a million trees and rocks; as entities they would fill the world four
+    /// times over and leave no room for a single enemy, and every one of them would take a place in
+    /// the snapshot for the life of the world.
+    ///
+    /// One message per row, as `(x, object, size)`, for the same reason the ground goes in strips.
+    /// The size is a percentage of the object's natural size, and zero means natural: a realm map
+    /// scales seventy thousand of its trees for variety, and a tree drawn at one size everywhere
+    /// looks like a plantation.
+    Scenery {
+        y: u16,
+        objects: Vec<(u16, u16, u16)>,
+    },
+
     /// Squares whose ground has changed, as `(x, y, tile)`.
     ///
     /// Sent rather than folded into the snapshot because ground is not an entity: it has no id, it
@@ -489,6 +512,7 @@ impl ServerMessage<'_> {
             ServerMessage::Refused { .. } => server_id::REFUSED,
             ServerMessage::Ground { .. } => server_id::GROUND,
             ServerMessage::Terrain { .. } => server_id::TERRAIN,
+            ServerMessage::Scenery { .. } => server_id::SCENERY,
         }
     }
 
@@ -511,6 +535,15 @@ impl ServerMessage<'_> {
             ServerMessage::Chat { from, text } => {
                 w.string(from);
                 w.string(text);
+            }
+            ServerMessage::Scenery { y, objects } => {
+                w.varint(*y as u64);
+                w.varint(objects.len() as u64);
+                for (x, object, size) in objects {
+                    w.varint(*x as u64);
+                    w.varint(*object as u64);
+                    w.varint(*size as u64);
+                }
             }
             ServerMessage::Terrain { x, y, runs } => {
                 w.varint(*x as u64);
@@ -625,6 +658,20 @@ impl ServerMessage<'_> {
                     runs.push((r.varint_u32()? as u16, r.varint_u32()? as u16));
                 }
                 ServerMessage::Terrain { x, y, runs }
+            }
+            server_id::SCENERY => {
+                let y = r.varint_u32()? as u16;
+                let count = r.varint_u32()? as usize;
+
+                let mut objects = Vec::with_capacity(count.min(MAX_SCENERY));
+                for _ in 0..count {
+                    objects.push((
+                        r.varint_u32()? as u16,
+                        r.varint_u32()? as u16,
+                        r.varint_u32()? as u16,
+                    ));
+                }
+                ServerMessage::Scenery { y, objects }
             }
             server_id::GROUND => {
                 let count = r.varint_u32()? as usize;

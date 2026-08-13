@@ -930,6 +930,39 @@ async fn send_terrain(link: &mut Link, placement: &Placement) {
             return;
         }
     }
+
+    send_scenery(link, placement).await;
+}
+
+/// Tells a client where the scenery is.
+///
+/// Scenery is not an entity: it never moves, never acts and never changes. Sending it with the
+/// ground rather than in the snapshot is what keeps a realm's quarter of a million trees out of
+/// the world, where they would leave no room for a single enemy.
+async fn send_scenery(link: &mut Link, placement: &Placement) {
+    let (reply, answer) = tokio::sync::oneshot::channel();
+    placement.world.send(ToWorld::Scenery { reply }).await;
+
+    let Ok(rows) = answer.await else {
+        return;
+    };
+
+    for (y, objects) in rows {
+        // A row can hold more objects than one message may claim, so it goes in pieces of that
+        // size rather than being trusted to fit.
+        for piece in objects.chunks(hendra_net::MAX_SCENERY) {
+            let mut buffer = Vec::new();
+            ServerMessage::Scenery {
+                y,
+                objects: piece.to_vec(),
+            }
+            .encode(&mut Writer::new(&mut buffer));
+
+            if link.send(Delivery::Stream, &buffer).await.is_err() {
+                return;
+            }
+        }
+    }
 }
 
 /// Works out what a player meant and, if they may say it, says it.

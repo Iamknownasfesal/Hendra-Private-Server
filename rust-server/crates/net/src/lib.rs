@@ -32,7 +32,8 @@ pub use codec::{
 };
 pub use entity::{EntityId, EntityState, FieldMask};
 pub use message::{
-    ClientMessage, Input, PROTOCOL_VERSION, RejectReason, ServerMessage, begin_snapshot,
+    ClientMessage, Input, MAX_SCENERY, PROTOCOL_VERSION, RejectReason, ServerMessage,
+    begin_snapshot,
 };
 pub use snapshot::{Acknowledgement, Baseline, BaselineRing, SNAPSHOT_HISTORY, Tick};
 pub use world::{
