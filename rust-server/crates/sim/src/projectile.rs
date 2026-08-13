@@ -394,6 +394,9 @@ mod tests {
             speed: 0.0,
             weapon: None,
             cooldown_ms: 0,
+            spawn_x: x,
+            spawn_y: y,
+            mind: None,
             dead: false,
         }
     }

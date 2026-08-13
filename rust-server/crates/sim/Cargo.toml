@@ -7,5 +7,6 @@ license.workspace = true
 [dependencies]
 hendra-content = { path = "../content" }
 hendra-net = { path = "../net" }
+hendra-behavior = { path = "../behavior" }
 thiserror.workspace = true
 tracing.workspace = true

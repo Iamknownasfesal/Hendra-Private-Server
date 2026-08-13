@@ -16,6 +16,8 @@
 //!
 //! Snapshots are taken after all of that, per player, from the index.
 
+use hendra_behavior::program::{Action, Nearby, Programs, Senses};
+use hendra_behavior::run::Mind;
 use hendra_content::{Catalog, ConditionSet, ObjectType};
 use hendra_net::{EntityId, EntityState, Tick, WorldSnapshot};
 
@@ -76,6 +78,16 @@ pub struct Entity {
     /// How long until it may shoot again, in milliseconds.
     pub cooldown_ms: u32,
 
+    /// Where this entity came into being, which some behaviours keep it near.
+    pub spawn_x: f32,
+    pub spawn_y: f32,
+
+    /// This entity's behaviour, if it has one.
+    ///
+    /// Boxed because most entities are scenery and a `Mind` carries several vectors; paying for
+    /// one inside every wall would cost more memory than the enemies do.
+    pub mind: Option<Box<Mind>>,
+
     /// Set when the entity should be removed at the end of the tick.
     pub dead: bool,
 }
@@ -98,6 +110,9 @@ impl Entity {
             speed: 0.0,
             weapon: None,
             cooldown_ms: 0,
+            spawn_x: x,
+            spawn_y: y,
+            mind: None,
             dead: false,
         }
     }
@@ -118,6 +133,9 @@ impl Entity {
             speed: 5.0,
             weapon: None,
             cooldown_ms: 0,
+            spawn_x: x,
+            spawn_y: y,
+            mind: None,
             dead: false,
         }
     }
@@ -179,11 +197,15 @@ pub struct World {
     /// failing combat test reproducible.
     seed: u32,
 
+    /// Compiled enemy behaviour, by object id.
+    behaviours: Programs,
+
     /// Reused between ticks so a warm world allocates nothing.
     handles: Vec<Handle>,
     nearby: Vec<Handle>,
     visible: Vec<(EntityId, EntityState)>,
     hits: Vec<Hit>,
+    actions: Vec<Action>,
 }
 
 impl World {
@@ -234,13 +256,60 @@ impl World {
             grid,
             tick: Tick::ZERO,
             seed: 0x9e37_79b9,
+            behaviours: Programs::default(),
             handles: Vec::new(),
             nearby: Vec::new(),
             visible: Vec::new(),
             hits: Vec::new(),
+            actions: Vec::new(),
         };
         world.reindex();
         world
+    }
+
+    /// Installs compiled behaviours and gives every enemy already present a mind.
+    ///
+    /// An enemy with no matching program keeps `None` and simply stands there, which is what a
+    /// half-converted content directory should look like — most of the dungeon working.
+    pub fn set_behaviours(&mut self, catalog: &Catalog, behaviours: Programs) {
+        self.behaviours = behaviours;
+
+        self.handles.clear();
+        self.handles.extend(
+            self.entities
+                .iter()
+                .filter(|(_, entity)| entity.kind == Kind::Enemy)
+                .map(|(handle, _)| handle),
+        );
+
+        for index in 0..self.handles.len() {
+            let handle = self.handles[index];
+            let Some(entity) = self.entities.get(handle) else {
+                continue;
+            };
+            let Some(id) = catalog.object(entity.object_type).map(|desc| desc.id.clone()) else {
+                continue;
+            };
+
+            if self.behaviours.get(&id).is_some() {
+                let seed = handle.0.wrapping_mul(2654435761).wrapping_add(1);
+                let program = self.behaviours.get(&id).expect("checked");
+                let mind = Mind::new(program, seed);
+                if let Some(entity) = self.entities.get_mut(handle) {
+                    entity.mind = Some(Box::new(mind));
+                    // An enemy fires its own projectiles, so it is its own weapon.
+                    entity.weapon = Some(entity.object_type);
+                }
+            }
+        }
+    }
+
+    /// How many entities are running a behaviour.
+    pub fn thinking(&self) -> usize {
+        self.entities
+            .iter()
+            .filter(|(_, entity)| entity.mind.is_some())
+            .count()
     }
 
     pub fn tick_number(&self) -> Tick {
@@ -360,6 +429,35 @@ impl World {
         })
     }
 
+    /// Moves an entity to a position the server itself chose.
+    ///
+    /// Unlike [`World::resolve_move`] there is no speed limit, because there is no claim to check:
+    /// the distance was computed here from a behaviour's own speed, and clamping it again against
+    /// the entity's speed would be checking our own arithmetic. Terrain still applies — an enemy
+    /// walks through a wall no more than a player does — and it slides along one rather than
+    /// stopping dead.
+    pub fn step(&mut self, handle: Handle, to_x: f32, to_y: f32) {
+        let Some(entity) = self.entities.get(handle) else {
+            return;
+        };
+        let (from_x, from_y) = (entity.x, entity.y);
+
+        let (x, y) = if self.terrain.walkable_at(to_x, to_y) {
+            (to_x, to_y)
+        } else if self.terrain.walkable_at(to_x, from_y) {
+            (to_x, from_y)
+        } else if self.terrain.walkable_at(from_x, to_y) {
+            (from_x, to_y)
+        } else {
+            (from_x, from_y)
+        };
+
+        if let Some(entity) = self.entities.get_mut(handle) {
+            entity.x = x;
+            entity.y = y;
+        }
+    }
+
     /// Applies a resolved move.
     pub fn place(&mut self, handle: Handle, outcome: MoveOutcome) {
         if let Some(entity) = self.entities.get_mut(handle) {
@@ -442,10 +540,201 @@ impl World {
         self.tick = self.tick.next();
 
         self.cool_weapons(elapsed_ms);
+        self.think(catalog, elapsed_ms);
         self.apply_hazards(catalog, elapsed_ms);
         self.advance_projectiles(catalog, elapsed_ms);
         self.reap();
         self.reindex();
+    }
+
+    /// Runs every enemy's behaviour and applies what it asked for.
+    fn think(&mut self, catalog: &Catalog, elapsed_ms: u32) {
+        self.handles.clear();
+        self.handles.extend(
+            self.entities
+                .iter()
+                .filter(|(_, entity)| entity.mind.is_some() && !entity.dead)
+                .map(|(handle, _)| handle),
+        );
+
+        for index in 0..self.handles.len() {
+            let handle = self.handles[index];
+
+            let Some(senses) = self.senses_for(handle) else {
+                continue;
+            };
+
+            // The mind comes out of the entity for the duration of the tick, because running it
+            // needs the world that the entity is part of.
+            let Some(mut mind) = self.entities.get_mut(handle).and_then(|e| e.mind.take()) else {
+                continue;
+            };
+
+            let Some(program) = self
+                .entities
+                .get(handle)
+                .and_then(|entity| catalog.object(entity.object_type))
+                .and_then(|desc| self.behaviours.get(&desc.id))
+            else {
+                if let Some(entity) = self.entities.get_mut(handle) {
+                    entity.mind = Some(mind);
+                }
+                continue;
+            };
+
+            let mut actions = std::mem::take(&mut self.actions);
+            mind.tick(program, &senses, elapsed_ms, &mut actions);
+
+            for action in &actions {
+                self.apply(handle, catalog, action, elapsed_ms);
+            }
+
+            self.actions = actions;
+            if let Some(entity) = self.entities.get_mut(handle) {
+                entity.mind = Some(mind);
+            }
+        }
+    }
+
+    /// What an entity can perceive.
+    fn senses_for(&mut self, handle: Handle) -> Option<Senses> {
+        let entity = self.entities.get(handle)?;
+        let (x, y, hp, max_hp) = (entity.x, entity.y, entity.hp, entity.max_hp);
+        let (spawn_x, spawn_y) = (entity.spawn_x, entity.spawn_y);
+
+        self.grid.within(x, y, SIGHT_RADIUS, &mut self.nearby);
+
+        let mut nearest: Option<Nearby> = None;
+        for found in &self.nearby {
+            let Some(other) = self.entities.get(*found) else {
+                continue;
+            };
+            if other.kind != Kind::Player || other.dead {
+                continue;
+            }
+
+            let (dx, dy) = (other.x - x, other.y - y);
+            let distance = (dx * dx + dy * dy).sqrt();
+
+            // Behind a wall is not in sight, so an enemy does not chase or shoot through cover.
+            if !self.terrain.line_of_sight(x, y, other.x, other.y) {
+                continue;
+            }
+
+            if nearest.is_none_or(|closest| distance < closest.distance) {
+                nearest = Some(Nearby {
+                    x: other.x,
+                    y: other.y,
+                    distance,
+                });
+            }
+        }
+
+        Some(Senses {
+            x,
+            y,
+            hp,
+            max_hp,
+            spawn_x,
+            spawn_y,
+            nearest_player: nearest,
+        })
+    }
+
+    /// Carries out one thing a behaviour asked for.
+    fn apply(&mut self, handle: Handle, catalog: &Catalog, action: &Action, elapsed_ms: u32) {
+        match action {
+            Action::Move { angle, speed } => {
+                let Some(entity) = self.entities.get(handle) else {
+                    return;
+                };
+                // Behaviours quote speed the way the content does, in tenths of a tile per second.
+                let distance = speed * 10.0 * (elapsed_ms as f32 / 1000.0);
+                let (to_x, to_y) = (
+                    entity.x + angle.cos() * distance,
+                    entity.y + angle.sin() * distance,
+                );
+
+                // Terrain still applies, so an enemy cannot walk through a wall — but the speed
+                // limit does not, because this distance came from the server rather than a client.
+                let _ = catalog;
+                self.step(handle, to_x, to_y);
+            }
+
+            Action::Shoot {
+                angle,
+                count,
+                spread,
+                projectile,
+            } => {
+                self.fire_spread(handle, catalog, *angle, *count, *spread, *projectile);
+            }
+
+            Action::Heal { amount } => {
+                if let Some(entity) = self.entities.get_mut(handle) {
+                    entity.hp = (entity.hp + amount).min(entity.max_hp);
+                }
+            }
+
+            // Spawning children needs the catalog and a position; deliberately not implemented
+            // until the loot and spawn rules that go with it are.
+            Action::Spawn { .. } => {}
+
+            Action::Vanish => {
+                if let Some(entity) = self.entities.get_mut(handle) {
+                    entity.dead = true;
+                }
+            }
+        }
+    }
+
+    /// Fires a spread of projectiles from an entity's own weapon.
+    fn fire_spread(
+        &mut self,
+        handle: Handle,
+        catalog: &Catalog,
+        angle: f32,
+        count: u32,
+        spread: f32,
+        projectile: u8,
+    ) {
+        let Some(entity) = self.entities.get(handle) else {
+            return;
+        };
+        let Some(weapon) = entity.weapon else { return };
+        let Some(desc) = catalog.object(weapon) else {
+            return;
+        };
+        if desc.projectiles.is_empty() {
+            return;
+        }
+
+        let shot = desc
+            .projectiles
+            .get(projectile as usize)
+            .unwrap_or(&desc.projectiles[0])
+            .clone();
+
+        let (x, y) = (entity.x, entity.y);
+        let from_player = entity.kind == Kind::Player;
+
+        // A spread is centred on the aim: an odd count puts one straight down the middle.
+        let step = spread.to_radians();
+        let start = angle - step * (count.saturating_sub(1) as f32) / 2.0;
+
+        for index in 0..count.min(64) {
+            let roll = self.roll();
+            let projectile = Projectile::from_desc(
+                handle,
+                from_player,
+                &shot,
+                x,
+                y,
+                start + step * index as f32,
+                roll,
+            );
+            self.projectiles.fire(projectile);
+        }
     }
 
     fn cool_weapons(&mut self, elapsed_ms: u32) {
@@ -574,7 +863,13 @@ mod tests {
         <Ground type="0x12" id="Lava"><MinDamage>100</MinDamage><MaxDamage>100</MaxDamage></Ground>
         <Object type="0x500" id="Wall"><Class>GameObject</Class><FullOccupy/><Static/></Object>
         <Object type="0x501" id="Sign"><Class>GameObject</Class><Static/></Object>
-        <Object type="0x502" id="Slime"><Class>Character</Class><Enemy/><MaxHitPoints>200</MaxHitPoints></Object>
+        <Object type="0x504" id="Tree"><Class>GameObject</Class><BlocksSight/><Static/></Object>
+        <Object type="0x502" id="Slime"><Class>Character</Class><Enemy/>
+          <MaxHitPoints>200</MaxHitPoints>
+          <Projectile><ObjectId>Bolt</ObjectId><Speed>100</Speed>
+            <MinDamage>20</MinDamage><MaxDamage>20</MaxDamage>
+            <LifetimeMS>2000</LifetimeMS></Projectile>
+        </Object>
         <Object type="0x600" id="Hero"><Class>Player</Class><Player/></Object>
         <Object type="0x900" id="Bolt"><Class>Projectile</Class></Object>
         <Object type="0x901" id="Wand">
@@ -901,6 +1196,175 @@ mod tests {
             world.projectile_count(),
             0,
             "a world should not keep firing for someone who has gone"
+        );
+    }
+
+    /// An enemy with a behaviour, and a player standing in front of it.
+    fn confrontation(catalog: &Catalog, source: &str) -> (World, Handle, Handle) {
+        use hendra_behavior::compile::compile;
+        use hendra_behavior::parse::parse;
+
+        let squares = (0..32 * 32).map(|_| square(0x10, ObjectType::NONE.0));
+        let map = Map::from_squares(32, 32, squares).unwrap();
+        let mut world = World::new("Arena", Terrain::build(map, catalog), catalog);
+
+        let mut slime = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
+        slime.kind = Kind::Enemy;
+        slime.hp = 500;
+        slime.max_hp = 500;
+        let enemy = world.spawn(slime).unwrap();
+
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 14.0, 10.0, 800))
+            .unwrap();
+
+        let (programs, diagnostics) = compile(&parse(source).expect("behaviour should parse"));
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        world.set_behaviours(catalog, programs);
+
+        world.advance(catalog, 50);
+        (world, enemy, player)
+    }
+
+    #[test]
+    fn an_enemy_with_a_behaviour_gets_a_mind() {
+        let catalog = catalog();
+        let (world, enemy, _) = confrontation(
+            &catalog,
+            r#"enemy "Slime" { state idle { wander(0.4) } }"#,
+        );
+
+        assert_eq!(world.thinking(), 1);
+        assert!(world.get(enemy).unwrap().mind.is_some());
+    }
+
+    #[test]
+    fn an_enemy_with_no_behaviour_simply_stands_there() {
+        let catalog = catalog();
+        let (world, enemy, _) = confrontation(
+            &catalog,
+            r#"enemy "Something Else" { state idle { wander(0.4) } }"#,
+        );
+
+        assert_eq!(world.thinking(), 0, "a half-converted directory should still run");
+        assert!(world.get(enemy).unwrap().mind.is_none());
+    }
+
+    #[test]
+    fn an_enemy_chases_a_player() {
+        let catalog = catalog();
+        let (mut world, enemy, _) = confrontation(
+            &catalog,
+            r#"enemy "Slime" { state idle { follow(1.0, 20, 1) } }"#,
+        );
+
+        let start = world.get(enemy).unwrap().x;
+        for _ in 0..20 {
+            world.advance(&catalog, 50);
+        }
+
+        let now = world.get(enemy).unwrap().x;
+        assert!(now > start + 0.5, "it should have closed the distance: {start} -> {now}");
+    }
+
+    #[test]
+    fn an_enemy_shoots_the_player_and_hurts_them() {
+        let catalog = catalog();
+        let (mut world, _, player) = confrontation(
+            &catalog,
+            r#"enemy "Slime" { state idle { shoot(count: 1, cooldown: 200ms) } }"#,
+        );
+
+        let before = world.get(player).unwrap().hp;
+        for _ in 0..30 {
+            world.advance(&catalog, 50);
+        }
+
+        let after = world.get(player).map(|entity| entity.hp).unwrap_or(0);
+        assert!(after < before, "the player should have taken fire: {before} -> {after}");
+    }
+
+    #[test]
+    fn an_enemy_does_not_shoot_through_a_wall() {
+        use hendra_behavior::compile::compile;
+        use hendra_behavior::parse::parse;
+
+        let catalog = catalog();
+        let mut squares: Vec<Composition> = (0..32 * 32)
+            .map(|_| square(0x10, ObjectType::NONE.0))
+            .collect();
+        // A sight-blocking column between the two of them.
+        for y in 0..32 {
+            squares[y * 32 + 12] = square(0x10, 0x504);
+        }
+
+        let map = Map::from_squares(32, 32, squares).unwrap();
+        let mut world = World::new("Arena", Terrain::build(map, &catalog), &catalog);
+
+        let mut slime = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
+        slime.kind = Kind::Enemy;
+        slime.hp = 500;
+        slime.max_hp = 500;
+        world.spawn(slime).unwrap();
+
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 16.0, 10.0, 800))
+            .unwrap();
+
+        let (programs, _) = compile(
+            &parse(r#"enemy "Slime" { state idle { shoot(count: 1, cooldown: 100ms) } }"#).unwrap(),
+        );
+        world.set_behaviours(&catalog, programs);
+
+        let before = world.get(player).unwrap().hp;
+        for _ in 0..30 {
+            world.advance(&catalog, 50);
+        }
+
+        assert_eq!(
+            world.get(player).unwrap().hp,
+            before,
+            "an enemy that cannot see the player must not shoot them"
+        );
+    }
+
+    #[test]
+    fn an_enemy_cannot_walk_through_a_wall_either() {
+        use hendra_behavior::compile::compile;
+        use hendra_behavior::parse::parse;
+
+        let catalog = catalog();
+        let mut squares: Vec<Composition> = (0..32 * 32)
+            .map(|_| square(0x10, ObjectType::NONE.0))
+            .collect();
+        for y in 0..32 {
+            squares[y * 32 + 12] = square(0x11, ObjectType::NONE.0);
+        }
+
+        let map = Map::from_squares(32, 32, squares).unwrap();
+        let mut world = World::new("Arena", Terrain::build(map, &catalog), &catalog);
+
+        let mut slime = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
+        slime.kind = Kind::Enemy;
+        slime.hp = 500;
+        slime.max_hp = 500;
+        let enemy = world.spawn(slime).unwrap();
+        world
+            .spawn(Entity::player(ObjectType(0x600), 20.0, 10.0, 800))
+            .unwrap();
+
+        let (programs, _) = compile(
+            &parse(r#"enemy "Slime" { state idle { follow(2.0, 30, 1) } }"#).unwrap(),
+        );
+        world.set_behaviours(&catalog, programs);
+
+        for _ in 0..80 {
+            world.advance(&catalog, 50);
+        }
+
+        assert!(
+            world.get(enemy).unwrap().x < 12.0,
+            "it should have been stopped by the water, not walked over it"
         );
     }
 
