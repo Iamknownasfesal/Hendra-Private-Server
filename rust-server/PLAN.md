@@ -6,7 +6,7 @@ deliberately excluded and left until last.
 Phases 0–5 are done: workspace, content, protocol, transport, simulation, behaviour language,
 persistence, authentication. What follows is phases 6–11.
 
-**Where we are:** ~62% of the old server by subsystem. 539 tests.
+**Where we are:** ~64% of the old server by subsystem. 544 tests.
 
 **Sizing** is relative, not calendar: **S** is an afternoon, **M** is a day or two, **L** is
 several days, **XL** is a week or more.
@@ -138,8 +138,8 @@ an ability, 1,942 activates across 43 kinds.
 ### 7.1 The activate framework — **M**
 
 - [x] `ActivateDesc` compiles to an `Effect` enum, mirroring the behaviour crate's shape
-- [ ] A `use_item` client message
-- [ ] MP cost, cooldown and `Quiet` checks
+- [x] A `use_item` client message, naming a slot rather than an item
+- [x] MP cost, cooldown and `Quiet` checks, enforced by the world
 - [x] `activates.rs` reports the percentage implemented: **100% of 1,942 uses, 43 of 43 kinds**
 
 ### 7.2 The effects, in ranked order — **L**
@@ -153,7 +153,7 @@ an ability, 1,942 activates across 43 kinds.
 ### 7.3 Stacking, consumables and bags — **S/M**
 
 - [ ] Potions stack to a limit
-- [ ] Consumables decrement on use
+- [x] Consumables are taken from the slot after they are used
 - [ ] Bag type decides which colour bag loot drops in
 
 ### 7.4 Vendors and gift chests — **M**

@@ -130,6 +130,10 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
                 move_item(&mut link, &context, &player, &placement, from, to).await;
             }
 
+            Outcome::UseItem { slot, x, y } => {
+                use_item(&mut link, &context, &player, &placement, slot, (x, y)).await;
+            }
+
             Outcome::Travel(portal_type) => {
                 match travel(
                     &mut link,
@@ -192,6 +196,16 @@ enum Outcome {
     Move {
         from: SlotLocation,
         to: SlotLocation,
+    },
+
+    /// The player wants to use what is in a slot.
+    ///
+    /// Handled by the caller rather than sent straight to the world, because using an item can
+    /// consume it and the inventory is durable.
+    UseItem {
+        slot: u16,
+        x: f32,
+        y: f32,
     },
 }
 
@@ -783,6 +797,75 @@ async fn save_progress(
     .await
 }
 
+/// Uses what is in a slot.
+///
+/// The item is read from the durable side rather than taken from the client, which names a slot
+/// and nothing else: a client naming an item is making a claim, and a slot is a fact the server
+/// can check.
+async fn use_item(
+    link: &mut Link,
+    context: &Context,
+    player: &crate::accounts::Session,
+    placement: &Placement,
+    slot: u16,
+    aim: (f32, f32),
+) {
+    let Some(identity) = read_slot(
+        &context.store,
+        Location::Inventory {
+            character_id: player.character.id,
+            slot: slot as i16,
+        },
+    )
+    .await
+    else {
+        say(link, "there is nothing in that slot").await;
+        return;
+    };
+
+    let Some(kind) = context.catalog.type_of_uuid(identity) else {
+        say(link, "that is not something you can use").await;
+        return;
+    };
+
+    let (reply, answer) = tokio::sync::oneshot::channel();
+    placement
+        .world
+        .send(ToWorld::UseItem {
+            handle: placement.handle,
+            item: kind,
+            aim,
+            reply,
+        })
+        .await;
+
+    let Ok(ran) = answer.await else {
+        return;
+    };
+    if ran.is_empty() {
+        return;
+    }
+
+    // Anything the world could not carry out because it changes something durable is settled here.
+    let consumable = context
+        .catalog
+        .object(kind)
+        .and_then(|object| object.item.as_ref())
+        .is_some_and(|item| item.consumable);
+
+    if consumable {
+        let taken = context
+            .store
+            .take_item(player.character.id, slot as i16, identity)
+            .await;
+
+        if taken.is_ok() {
+            send_containers(link, &context.catalog, &context.store, player).await;
+            refresh_equipment(context, player, placement).await;
+        }
+    }
+}
+
 /// The runtime number an item identity currently has.
 ///
 /// Resolved on the way to the wire rather than stored, because a runtime number is assigned at load
@@ -924,6 +1007,10 @@ async fn dispatch(received: &Received, placement: &Placement) -> Outcome {
         }
 
         ClientMessage::Shoot { angle, .. } => world.send(ToWorld::Shoot { handle, angle }).await,
+
+        ClientMessage::UseItem { slot, x, y } => {
+            return Outcome::UseItem { slot, x, y };
+        }
 
         // Handled by the caller, which owns the connection and the store.
         ClientMessage::MoveItem { from, to } => return Outcome::Move { from, to },

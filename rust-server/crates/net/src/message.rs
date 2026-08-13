@@ -28,6 +28,7 @@ pub mod client_id {
     pub const INPUT: u16 = 0x0002;
     pub const CHAT: u16 = 0x0003;
     pub const USE_PORTAL: u16 = 0x0004;
+    pub const USE_ITEM: u16 = 0x0009;
     pub const PONG: u16 = 0x0005;
     pub const SHOOT: u16 = 0x0006;
     pub const MOVE_ITEM: u16 = 0x0007;
@@ -246,6 +247,16 @@ pub enum ClientMessage<'a> {
         entity: EntityId,
     },
 
+    /// Uses the item in a slot, aimed at a point.
+    ///
+    /// The slot rather than the item, because the server knows what is in a slot and a client
+    /// naming an item it does not hold is a claim rather than a fact.
+    UseItem {
+        slot: u16,
+        x: f32,
+        y: f32,
+    },
+
     Pong {
         serial: u32,
     },
@@ -280,6 +291,7 @@ impl ClientMessage<'_> {
             ClientMessage::Input(_) => client_id::INPUT,
             ClientMessage::Chat { .. } => client_id::CHAT,
             ClientMessage::UsePortal { .. } => client_id::USE_PORTAL,
+            ClientMessage::UseItem { .. } => client_id::USE_ITEM,
             ClientMessage::Pong { .. } => client_id::PONG,
             ClientMessage::Shoot { .. } => client_id::SHOOT,
             ClientMessage::MoveItem { .. } => client_id::MOVE_ITEM,
@@ -301,6 +313,11 @@ impl ClientMessage<'_> {
             ClientMessage::Input(input) => input.encode(w),
             ClientMessage::Chat { text } => w.string(text),
             ClientMessage::UsePortal { entity } => w.varint(entity.0 as u64),
+            ClientMessage::UseItem { slot, x, y } => {
+                w.varint(*slot as u64);
+                w.position(*x);
+                w.position(*y);
+            }
             ClientMessage::Pong { serial } => w.varint(*serial as u64),
             ClientMessage::Shoot {
                 angle,
@@ -326,6 +343,11 @@ impl ClientMessage<'_> {
             },
             client_id::INPUT => ClientMessage::Input(Input::decode(r)?),
             client_id::CHAT => ClientMessage::Chat { text: r.string()? },
+            client_id::USE_ITEM => ClientMessage::UseItem {
+                slot: r.varint_u32()? as u16,
+                x: r.position_value()?,
+                y: r.position_value()?,
+            },
             client_id::USE_PORTAL => ClientMessage::UsePortal {
                 entity: EntityId(r.varint_u32()?),
             },

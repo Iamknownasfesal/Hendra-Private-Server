@@ -109,6 +109,14 @@ pub enum ToWorld {
         handle: Handle,
     },
 
+    /// Uses an item, aimed at a point. The world answers with what it ran.
+    UseItem {
+        handle: Handle,
+        item: ObjectType,
+        aim: (f32, f32),
+        reply: tokio::sync::oneshot::Sender<Vec<hendra_content::Effect>>,
+    },
+
     /// What a character has become, so it can be written down.
     ///
     /// Asked for rather than sent on leaving, because a session also checkpoints while playing and
@@ -409,6 +417,16 @@ fn handle(
             if let Some(entity) = world.get_mut(handle) {
                 entity.stats.set_equipment(boosts);
             }
+        }
+
+        ToWorld::UseItem {
+            handle,
+            item,
+            aim,
+            reply,
+        } => {
+            let ran = world.use_item(handle, catalog, item, aim);
+            let _ = reply.send(ran);
         }
 
         ToWorld::Snapshot { handle, reply } => {

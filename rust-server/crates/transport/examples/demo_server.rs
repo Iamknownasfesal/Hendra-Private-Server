@@ -133,6 +133,8 @@ async fn handle(
     let message = ClientMessage::decode(&mut reader).map_err(|err| err.to_string())?;
 
     match message {
+        // The demo has no inventory, so there is nothing to use.
+        ClientMessage::UseItem { .. } => {}
         ClientMessage::Hello {
             protocol,
             token,

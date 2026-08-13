@@ -117,6 +117,9 @@ pub struct Entity {
     /// Whether killing this awards experience. Summons set this so they cannot be farmed.
     pub no_experience: bool,
 
+    /// Time before an ability may be used again.
+    pub ability_cooldown_ms: u32,
+
     /// Level, experience and fame. Only players advance.
     pub progress: crate::leveling::Progress,
 
@@ -175,6 +178,7 @@ impl Entity {
             resizing: None,
             no_experience: false,
             effects: Vec::new(),
+            ability_cooldown_ms: 0,
             progress: crate::leveling::Progress::new(),
             health_fraction: 0.0,
             magic_fraction: 0.0,
@@ -210,6 +214,7 @@ impl Entity {
             resizing: None,
             no_experience: false,
             effects: Vec::new(),
+            ability_cooldown_ms: 0,
             progress: crate::leveling::Progress::new(),
             health_fraction: 0.0,
             magic_fraction: 0.0,
@@ -866,6 +871,40 @@ const MAX_PENDING_ANNOUNCEMENTS: usize = 256;
 
 /// How many unsent ground changes are held before the rest is dropped.
 const MAX_PENDING_GROUND_CHANGES: usize = 4096;
+
+/// Which of the eight stats a number names.
+fn stat_of(index: u8) -> Option<hendra_content::Stat> {
+    hendra_content::STATS.get(index as usize).copied()
+}
+
+/// Whether an effect is one a player would want removed.
+///
+/// The set an enemy inflicts, which is the same set the immunities cover. Cleansing a beneficial
+/// effect would make a purifying item a punishment.
+fn is_harmful(effect: hendra_content::ConditionEffect) -> bool {
+    use hendra_content::ConditionEffect::*;
+    matches!(
+        effect,
+        Slowed
+            | Sick
+            | Dazed
+            | Stunned
+            | Blind
+            | Hallucinating
+            | Drunk
+            | Confused
+            | Paralyzed
+            | Weak
+            | Bleeding
+            | Quiet
+            | ArmorBroken
+            | Hexed
+            | Curse
+            | Petrify
+            | Darkness
+            | Unstable
+    )
+}
 
 /// Something thrown, waiting to arrive.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -1641,6 +1680,7 @@ impl World {
     fn cool_weapons(&mut self, elapsed_ms: u32) {
         for (_, entity) in self.entities.iter_mut() {
             entity.cooldown_ms = entity.cooldown_ms.saturating_sub(elapsed_ms);
+            entity.ability_cooldown_ms = entity.ability_cooldown_ms.saturating_sub(elapsed_ms);
         }
     }
 
@@ -1892,6 +1932,277 @@ impl World {
                 candidates.get(pick.min(candidates.len() - 1)).copied()
             }
         }
+    }
+
+    /// Uses the item worn in a slot, aimed at a point.
+    ///
+    /// The gate is the server's: magic, cooldown and whether the user is able to act at all. A
+    /// client that asks faster than the item allows is refused rather than believed, exactly as it
+    /// is for shooting.
+    pub fn use_item(
+        &mut self,
+        handle: Handle,
+        catalog: &Catalog,
+        item: ObjectType,
+        aim: (f32, f32),
+    ) -> Vec<hendra_content::Effect> {
+        let mut ran = Vec::new();
+
+        let Some(entity) = self.entities.get(handle) else {
+            return ran;
+        };
+        let rules = crate::effects::Rules::of(entity.conditions);
+        if entity.dead || rules.quiet {
+            return ran;
+        }
+
+        let Some(desc) = catalog.object(item).and_then(|object| object.item.as_ref()) else {
+            return ran;
+        };
+        if desc.activate.is_empty() {
+            return ran;
+        }
+
+        if entity.ability_cooldown_ms > 0 || entity.mp < desc.mp_cost {
+            return ran;
+        }
+
+        let (x, y) = (entity.x, entity.y);
+        let cooldown = (desc.cooldown * 1000.0).max(0.0) as u32;
+        let cost = desc.mp_cost;
+
+        for activate in &desc.activate {
+            ran.push(hendra_content::Effect::of(activate));
+        }
+
+        if let Some(entity) = self.entities.get_mut(handle) {
+            entity.mp = (entity.mp - cost).max(0);
+            entity.ability_cooldown_ms = cooldown;
+        }
+
+        let effects = std::mem::take(&mut ran);
+        for effect in &effects {
+            self.carry_out(handle, catalog, effect, (x, y), aim);
+        }
+
+        effects
+    }
+
+    /// Does what one ability asks for.
+    fn carry_out(
+        &mut self,
+        handle: Handle,
+        catalog: &Catalog,
+        effect: &hendra_content::Effect,
+        from: (f32, f32),
+        aim: (f32, f32),
+    ) {
+        use hendra_content::Effect;
+
+        match effect {
+            Effect::Heal { amount } => {
+                if let Some(entity) = self.entities.get_mut(handle)
+                    && !crate::effects::Rules::of(entity.conditions).sick
+                {
+                    entity.hp = (entity.hp + amount).min(entity.max_hp);
+                }
+            }
+
+            Effect::Magic { amount } => {
+                if let Some(entity) = self.entities.get_mut(handle) {
+                    entity.mp = (entity.mp + amount).min(entity.max_mp);
+                }
+            }
+
+            Effect::HealNova { amount, range } => {
+                let amount = *amount;
+                self.each_nearby(handle, *range, true, None, |world, other| {
+                    if let Some(entity) = world.entities.get_mut(other)
+                        && !crate::effects::Rules::of(entity.conditions).sick
+                    {
+                        entity.hp = (entity.hp + amount).min(entity.max_hp);
+                    }
+                });
+                if let Some(entity) = self.entities.get_mut(handle) {
+                    entity.hp = (entity.hp + amount).min(entity.max_hp);
+                }
+            }
+
+            Effect::MagicNova { amount, range } => {
+                let amount = *amount;
+                self.each_nearby(handle, *range, true, None, |world, other| {
+                    if let Some(entity) = world.entities.get_mut(other) {
+                        entity.mp = (entity.mp + amount).min(entity.max_mp);
+                    }
+                });
+            }
+
+            // A potion. The ceiling moves with the stat, so drinking one is worth something
+            // immediately rather than only after the next level.
+            Effect::IncrementStat { stat, amount } => {
+                let Some(stat) = stat_of(*stat) else { return };
+                let class = self
+                    .entities
+                    .get(handle)
+                    .and_then(|entity| catalog.class(entity.object_type))
+                    .cloned();
+
+                if let Some(entity) = self.entities.get_mut(handle) {
+                    match &class {
+                        Some(class) => entity.stats.raise(class, stat, *amount),
+                        None => entity.stats.boost(stat, *amount),
+                    }
+                    entity.max_hp = entity.stats.max_hp().max(1);
+                    entity.max_mp = entity.stats.max_mp().max(0);
+                }
+            }
+
+            Effect::StatBoost {
+                stat,
+                amount,
+                duration_ms,
+                range,
+            } => {
+                let Some(stat) = stat_of(*stat) else { return };
+                let _ = (duration_ms, range);
+                if let Some(entity) = self.entities.get_mut(handle) {
+                    entity.stats.boost(stat, *amount);
+                }
+            }
+
+            Effect::ConditionSelf {
+                effect,
+                duration_ms,
+            } => self.give_effect(handle, effect.index() as u8, *duration_ms),
+
+            Effect::ConditionAura {
+                effect,
+                duration_ms,
+                range,
+            } => {
+                let (index, duration) = (effect.index() as u8, *duration_ms);
+                self.give_effect(handle, index, duration);
+                self.each_nearby(handle, *range, true, None, |world, other| {
+                    world.give_effect(other, index, duration);
+                });
+            }
+
+            Effect::Cleanse { range } => match range {
+                Some(range) => self.each_nearby(handle, *range, true, None, |world, other| {
+                    world.cleanse(other);
+                }),
+                None => self.cleanse(handle),
+            },
+
+            Effect::Shoot { count, spread } => {
+                let angle = (aim.1 - from.1).atan2(aim.0 - from.0);
+                self.fire_spread(handle, catalog, angle, *count, *spread, 0);
+            }
+
+            Effect::BulletNova { count } => {
+                // A ring outward rather than a spread, so the whole circle is covered whatever the
+                // count is.
+                let step = std::f32::consts::TAU / (*count).max(1) as f32;
+                for shot in 0..*count {
+                    self.fire_spread(handle, catalog, shot as f32 * step, 1, 0.0, 0);
+                }
+            }
+
+            Effect::Blast {
+                radius,
+                damage,
+                effect,
+                effect_ms,
+            } => {
+                self.explode(
+                    catalog,
+                    aim,
+                    Blast {
+                        radius: *radius,
+                        damage: *damage,
+                        effect: effect.map(|found| found.index() as u8),
+                        effect_ms: *effect_ms,
+                    },
+                );
+            }
+
+            Effect::VampireBlast {
+                radius,
+                damage,
+                heal,
+            } => {
+                self.explode(
+                    catalog,
+                    aim,
+                    Blast {
+                        radius: *radius,
+                        damage: *damage,
+                        effect: None,
+                        effect_ms: 0,
+                    },
+                );
+                if let Some(entity) = self.entities.get_mut(handle) {
+                    entity.hp = (entity.hp + heal).min(entity.max_hp);
+                }
+            }
+
+            Effect::Create { child } => {
+                if let Some(kind) = catalog.type_of(child) {
+                    let behaviours = std::mem::take(&mut self.behaviours);
+                    self.spawn_child(catalog, &behaviours, kind, aim.0, aim.1, None);
+                    self.behaviours = behaviours;
+                }
+            }
+
+            Effect::Teleport { max_distance } => {
+                let (dx, dy) = (aim.0 - from.0, aim.1 - from.1);
+                let distance = (dx * dx + dy * dy).sqrt();
+
+                // Clamped rather than refused, so a long click moves as far as the item allows
+                // instead of doing nothing.
+                let (to_x, to_y) = if distance > *max_distance && distance > 0.0 {
+                    let scale = max_distance / distance;
+                    (from.0 + dx * scale, from.1 + dy * scale)
+                } else {
+                    aim
+                };
+                self.step(handle, to_x, to_y);
+            }
+
+            Effect::Placed { .. }
+            | Effect::Pet { .. }
+            | Effect::Currency { .. }
+            | Effect::Boost { .. }
+            | Effect::Unlock { .. }
+            | Effect::Portal { .. }
+            | Effect::Appearance { .. }
+            | Effect::Generic { .. }
+            | Effect::Unsupported { .. } => {
+                // These change something the world does not own: an account's currency, a player's
+                // wardrobe, a pet that outlives the room. The caller carries them out, which is why
+                // `use_item` hands back what it ran.
+            }
+        }
+    }
+
+    /// Removes every harmful effect an entity is carrying.
+    fn cleanse(&mut self, handle: Handle) {
+        let Some(entity) = self.entities.get_mut(handle) else {
+            return;
+        };
+
+        entity.effects.retain(|(held, _)| {
+            hendra_content::ConditionEffect::from_index(*held as u16)
+                .is_none_or(|effect| !is_harmful(effect))
+        });
+
+        let mut conditions = hendra_content::ConditionSet::EMPTY;
+        for (held, _) in &entity.effects {
+            if let Some(known) = hendra_content::ConditionEffect::from_index(*held as u16) {
+                conditions.insert(known);
+            }
+        }
+        entity.conditions = conditions;
     }
 
     /// Lands whatever has finished falling.
@@ -2249,6 +2560,15 @@ mod tests {
           <LevelIncrease min="2" max="8">MaxMagicPoints</LevelIncrease>
         </Object>
         <Object type="0x900" id="Bolt"><Class>Projectile</Class></Object>
+        <Object type="0x902" id="Health Potion">
+          <Class>Equipment</Class><Item/><SlotType>4</SlotType><Consumable/>
+          <Activate amount="100">Heal</Activate>
+        </Object>
+        <Object type="0x903" id="Spell of Fire">
+          <Class>Equipment</Class><Item/><SlotType>5</SlotType>
+          <MpCost>60</MpCost><Cooldown>0.5</Cooldown>
+          <Activate radius="3" totalDamage="200">PoisonGrenade</Activate>
+        </Object>
         <Object type="0x901" id="Wand">
           <Class>Equipment</Class><Item/><SlotType>8</SlotType><RateOfFire>1</RateOfFire>
           <Projectile><ObjectId>Bolt</ObjectId><Speed>100</Speed>
@@ -3562,6 +3882,127 @@ mod tests {
 
         world.advance(&catalog, 50);
         assert_eq!(count_of(&world, 0x505), 1);
+    }
+
+    #[test]
+    fn a_potion_heals_and_a_spell_costs_magic() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut player = Entity::player(ObjectType(0x600), 10.0, 10.0, 500);
+        player.hp = 100;
+        player.mp = 100;
+        player.max_mp = 100;
+        let player = world.spawn(player).unwrap();
+        world.reindex();
+
+        let ran = world.use_item(player, &catalog, ObjectType(0x902), (10.0, 10.0));
+        assert_eq!(ran.len(), 1);
+        assert_eq!(world.get(player).unwrap().hp, 200, "healed for a hundred");
+
+        // One ability cooldown covers everything, so the spell waits for the potion's.
+        for _ in 0..12 {
+            world.advance(&catalog, 50);
+        }
+
+        let ran = world.use_item(player, &catalog, ObjectType(0x903), (14.0, 10.0));
+        assert_eq!(ran.len(), 1);
+        assert_eq!(world.get(player).unwrap().mp, 40, "sixty magic spent");
+    }
+
+    #[test]
+    fn an_ability_is_refused_without_the_magic_for_it() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut player = Entity::player(ObjectType(0x600), 10.0, 10.0, 500);
+        player.mp = 10;
+        player.max_mp = 100;
+        let player = world.spawn(player).unwrap();
+        world.reindex();
+
+        assert!(
+            world
+                .use_item(player, &catalog, ObjectType(0x903), (14.0, 10.0))
+                .is_empty()
+        );
+        assert_eq!(world.get(player).unwrap().mp, 10, "and nothing was spent");
+    }
+
+    #[test]
+    fn the_cooldown_stops_an_ability_being_used_as_fast_as_a_client_likes() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut player = Entity::player(ObjectType(0x600), 10.0, 10.0, 500);
+        player.mp = 1000;
+        player.max_mp = 1000;
+        let player = world.spawn(player).unwrap();
+        world.reindex();
+
+        assert!(
+            !world
+                .use_item(player, &catalog, ObjectType(0x903), (14.0, 10.0))
+                .is_empty()
+        );
+        for _ in 0..5 {
+            assert!(
+                world
+                    .use_item(player, &catalog, ObjectType(0x903), (14.0, 10.0))
+                    .is_empty(),
+                "still cooling down"
+            );
+        }
+
+        for _ in 0..12 {
+            world.advance(&catalog, 50);
+        }
+        assert!(
+            !world
+                .use_item(player, &catalog, ObjectType(0x903), (14.0, 10.0))
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn a_quiet_player_cannot_use_an_ability_at_all() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut player = Entity::player(ObjectType(0x600), 10.0, 10.0, 500);
+        player.mp = 1000;
+        player.max_mp = 1000;
+        let player = world.spawn(player).unwrap();
+        world.reindex();
+
+        give(&mut world, player, hendra_content::ConditionEffect::Quiet);
+        assert!(
+            world
+                .use_item(player, &catalog, ObjectType(0x903), (14.0, 10.0))
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn an_ability_reaches_what_it_is_aimed_at() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut player = Entity::player(ObjectType(0x600), 10.0, 10.0, 500);
+        player.mp = 1000;
+        player.max_mp = 1000;
+        let player = world.spawn(player).unwrap();
+
+        let mut near = Entity::player(ObjectType(0x600), 20.0, 10.0, 500);
+        near.hp = 500;
+        let victim = world.spawn(near).unwrap();
+        world.reindex();
+
+        world.use_item(player, &catalog, ObjectType(0x903), (20.0, 10.0));
+        assert!(
+            world.get(victim).unwrap().hp < 500,
+            "the blast should have landed where it was aimed"
+        );
     }
 
     #[test]
