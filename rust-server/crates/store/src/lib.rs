@@ -21,6 +21,7 @@ mod moves;
 pub mod news;
 pub mod social;
 mod trade;
+pub mod wardrobe;
 
 pub use extras::{Offer as CreditOffer, Quest};
 pub use guild::{Guild, Member, Rank};
@@ -30,6 +31,7 @@ pub use moves::{Location, MoveOutcome, Placed, Purchase};
 pub use news::{Calendar, News};
 pub use social::{Friend, Message};
 pub use trade::{Offer, TradeOutcome};
+pub use wardrobe::{Boost, DyeSlot, Pet};
 
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;

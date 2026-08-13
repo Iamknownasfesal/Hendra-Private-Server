@@ -2345,6 +2345,32 @@ impl World {
         }
     }
 
+    /// Opens a portal where an entity is standing.
+    pub fn open_portal(
+        &mut self,
+        catalog: &Catalog,
+        at: Handle,
+        kind: ObjectType,
+        duration_ms: u32,
+    ) -> Option<Handle> {
+        let (x, y) = self.entities.get(at).map(|entity| (entity.x, entity.y))?;
+
+        let behaviours = std::mem::take(&mut self.behaviours);
+        let portal = self.spawn_child(catalog, &behaviours, kind, x, y, None);
+        self.behaviours = behaviours;
+
+        if let Some(portal) = portal
+            && let Some(entity) = self.entities.get_mut(portal)
+        {
+            entity.kind = Kind::Portal;
+            // A portal with no lifetime is a permanent change to a room somebody else has to live
+            // in, so one opened by an item always has one.
+            entity.expires_in_ms = Some(duration_ms.max(1_000));
+        }
+
+        portal
+    }
+
     /// How many enemies are alive.
     pub fn enemy_count(&self) -> usize {
         self.entities

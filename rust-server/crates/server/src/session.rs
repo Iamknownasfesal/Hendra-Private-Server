@@ -1049,6 +1049,13 @@ async fn use_item(
         return;
     }
 
+    // What the world handed back. It carries out what belongs to the room and returns what does
+    // not, so this is the other half of using an item rather than an afterthought: without it a
+    // dye is read, returned and dropped.
+    for effect in &ran {
+        settle(link, context, player, placement, effect).await;
+    }
+
     // Anything the world could not carry out because it changes something durable is settled here.
     let consumable = context
         .catalog
@@ -1066,6 +1073,157 @@ async fn use_item(
             send_containers(link, &context.catalog, &context.store, player).await;
             refresh_equipment(context, player, placement).await;
         }
+    }
+}
+
+/// Carries out one effect the world handed back.
+///
+/// These change something no world owns: an account's currency, a character's wardrobe, a pet that
+/// outlives the room. Each is durable, which is why the world refuses to guess at them.
+async fn settle(
+    link: &mut Link,
+    context: &Context,
+    player: &crate::accounts::Session,
+    placement: &Placement,
+    effect: &hendra_content::Effect,
+) {
+    use hendra_content::Effect;
+    use hendra_content::activate::{Appearance, Boost, Currency, Unlock};
+
+    match effect {
+        Effect::Currency { kind, amount } => {
+            let currency = match kind {
+                Currency::Fame => hendra_store::Currency::Fame,
+                Currency::Token => hendra_store::Currency::Tokens,
+            };
+            let _ = context
+                .store
+                .credit(player.account.id, currency, *amount)
+                .await;
+        }
+
+        Effect::Appearance { kind, value } => match kind {
+            Appearance::Dye => {
+                let _ = context.store.set_dye(player.character.id, *value).await;
+            }
+            Appearance::Skin => {
+                // Granted before it is worn, because using a skin item is how it is obtained.
+                let skin = uuid::Uuid::from_u128(*value as u128);
+                let _ = context.store.grant_skin(player.account.id, skin).await;
+                let _ = context
+                    .store
+                    .wear_skin(player.account.id, player.character.id, *value as i32)
+                    .await;
+            }
+            Appearance::PetSkin => {
+                // Applied to the first pet, which is the one a player has out.
+                if let Ok(pets) = context.store.pets(player.account.id).await
+                    && let Some(pet) = pets.first()
+                {
+                    let _ = context
+                        .store
+                        .set_pet_skin(player.account.id, pet.id, *value as i32)
+                        .await;
+                }
+            }
+        },
+
+        Effect::Pet { name, permanent } => {
+            let kind = name
+                .as_deref()
+                .and_then(|name| context.catalog.type_of(name))
+                .and_then(|found| context.catalog.object(found))
+                .map(|desc| desc.uuid);
+
+            if let Some(kind) = kind {
+                match context
+                    .store
+                    .add_pet(player.account.id, kind, *permanent)
+                    .await
+                {
+                    Ok(_) => {}
+                    Err(hendra_store::StoreError::Refused(why)) => say(link, why).await,
+                    Err(_) => {}
+                }
+            }
+        }
+
+        Effect::Boost {
+            kind,
+            duration_ms,
+            multiplier,
+        } => {
+            let name = match kind {
+                Boost::Experience => "experience",
+                Boost::LootDrop => "loot_drop",
+                Boost::LootTier => "loot_tier",
+            };
+            let _ = context
+                .store
+                .add_boost(
+                    player.account.id,
+                    name,
+                    *multiplier,
+                    (*duration_ms / 1000).max(1) as i64,
+                )
+                .await;
+        }
+
+        Effect::Unlock { kind, value } => match kind {
+            Unlock::Backpack => match context.store.grant_backpack(player.character.id).await {
+                Ok(true) => send_containers(link, &context.catalog, &context.store, player).await,
+                Ok(false) => say(link, "you already have a backpack").await,
+                Err(_) => {}
+            },
+            Unlock::Class => {
+                if let Some(class) = context
+                    .catalog
+                    .type_of(value)
+                    .and_then(|found| context.catalog.object(found))
+                {
+                    let _ = context
+                        .store
+                        .purchase_class(player.account.id, class.uuid)
+                        .await;
+                }
+            }
+            Unlock::Portal => {
+                let _ = context.store.unlock_portal(player.account.id, value).await;
+            }
+            Unlock::LootBox | Unlock::MysteryDye => {
+                // What is inside is decided by content that names it, and nothing names one yet.
+                say(link, "there is nothing inside").await;
+            }
+        },
+
+        Effect::Portal { name, duration_ms } => {
+            // Opened where the player stands, which is what a portal item means.
+            let kind = context.catalog.type_of(name).unwrap_or(ObjectType::NONE);
+            if !kind.is_none() {
+                placement
+                    .world
+                    .send(ToWorld::OpenPortal {
+                        at: placement.handle,
+                        kind,
+                        duration_ms: *duration_ms,
+                    })
+                    .await;
+            }
+        }
+
+        // Dispatched on an id in the original, and nothing here reads one yet. Reported rather
+        // than ignored, so an item that does nothing says so instead of looking broken.
+        Effect::Generic { id } => {
+            tracing::debug!(%id, "an item asked for something this server does not do");
+            say(link, "nothing happens").await;
+        }
+
+        Effect::Unsupported { name } => {
+            tracing::debug!(%name, "an unimplemented activate was used");
+        }
+
+        // Everything else was the world's, and it has already done it.
+        _ => {}
     }
 }
 

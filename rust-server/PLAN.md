@@ -123,6 +123,37 @@ runtime number from the content's identity, deterministically and independent of
 
 ---
 
+## Phase 12 — Connect what was built but not wired
+
+Found by asking whether "plan complete" meant "server complete". It did not: four things were
+written, tested and never called.
+
+### 12.1 Abilities that change something durable — **M**
+
+- [x] The session carries out what the world hands back. It returned `Dye`, `UnlockSkin`, `Pet`,
+      `Currency`, `Boost`, `Unlock`, `Portal` and `Generic` with a comment saying the caller would
+      settle them, and the caller only checked whether the item was consumable. Roughly 893 of the
+      1,942 activate uses parsed and then did nothing, which is the exact failure phase 6 existed
+      to eliminate, reintroduced in phase 7
+- [x] Storage for each: two dye slots, a worn skin, a backpack, pets, boosts and unlocked portals
+
+### 12.2 The realm — **S**
+
+- [ ] `crates/sim/src/realm.rs` is written and tested and nothing calls it. No world populates
+      itself, so a realm is an empty map
+
+### 12.3 Setpieces — **S**
+
+- [ ] `World::stamp` is only called by tests, so `apply_setpiece` still reports unsupported. Those
+      are the last 4 of 8,631 behaviour uses
+
+### 12.4 Trade — **M**
+
+- [ ] The store's trade is dupe-proof and tested, and there are no protocol messages for it, so no
+      client can reach it
+
+---
+
 ## Phase 7 — Items and abilities
 
 Measured with `cargo run --release -p hendra-content --example activates`: 1,609 items, 1,393 with
@@ -149,7 +180,7 @@ an ability, 1,942 activates across 43 kinds.
 ### 7.2 The effects, in ranked order — **L**
 
 - [x] `IncrementStat` (35%, depends on 6.2)
-- [x] `Dye` and `UnlockSkin` read; storage and the snapshot field are still to come
+- [x] `Dye` and `UnlockSkin`, read and carried out. See 12.1
 - [x] `ConditionEffectSelf`, `ConditionEffectAura`, `Create`, `Heal`, `Shoot` (reuse phase 6)
 - [x] `CreatePet`, `Pet`, `PermaPet`, `PetSkin` read as an `Effect::Pet`; the pet subsystem itself is 8.4
 - [x] The remaining 25 kinds to 100%

@@ -117,6 +117,13 @@ pub enum ToWorld {
         reply: tokio::sync::oneshot::Sender<Vec<hendra_content::Effect>>,
     },
 
+    /// Opens a portal where an entity is standing.
+    OpenPortal {
+        at: Handle,
+        kind: ObjectType,
+        duration_ms: u32,
+    },
+
     /// The whole map, as one run-length encoded strip per row.
     Terrain {
         reply: tokio::sync::oneshot::Sender<Vec<TerrainStrip>>,
@@ -399,6 +406,14 @@ fn handle(
                     let _ = player.sender.try_send(Delivery::Stream, &buf);
                 }
             }
+        }
+
+        ToWorld::OpenPortal {
+            at,
+            kind,
+            duration_ms,
+        } => {
+            world.open_portal(catalog, at, kind, duration_ms);
         }
 
         ToWorld::Terrain { reply } => {

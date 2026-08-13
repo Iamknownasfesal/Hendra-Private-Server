@@ -8,7 +8,7 @@
 //! machine with no Postgres can still run the rest of the suite.
 
 use hendra_store::{
-    Admin, Currency, Location, MarketPurchase, Offer, Purchase, Rank, Store, StoreError,
+    Admin, Currency, DyeSlot, Location, MarketPurchase, Offer, Purchase, Rank, Store, StoreError,
 };
 
 /// A store with a schema of its own, or `None` when no database is configured.
@@ -1977,4 +1977,207 @@ async fn an_age_confirmation_is_recorded_without_the_date() {
 
     store.set_age_verified(account.id, true).await.unwrap();
     assert!(store.age_verified(account.id).await.unwrap());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_dye_lands_in_the_slot_it_belongs_to() {
+    let Some(store) = store("t_dye").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    let character = store
+        .create_character(account.id, WIZARD, "Wizard", 800)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        store.set_dye(character.id, 0x0000_0011).await.unwrap(),
+        DyeSlot::Cloth
+    );
+    assert_eq!(
+        store.set_dye(character.id, 0x0100_0022).await.unwrap(),
+        DyeSlot::Accessory
+    );
+
+    let (cloth, accessory): (i32, i32) =
+        sqlx::query_as("SELECT dye_cloth, dye_accessory FROM character WHERE id = $1")
+            .bind(character.id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+
+    assert_eq!(cloth, 0x0000_0011);
+    assert_eq!(accessory, 0x0100_0022, "one did not overwrite the other");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_skin_cannot_be_worn_without_owning_it() {
+    let Some(store) = store("t_wear_skin").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    let character = store
+        .create_character(account.id, WIZARD, "Wizard", 800)
+        .await
+        .unwrap();
+
+    assert!(store.wear_skin(account.id, character.id, 7).await.is_err());
+
+    store
+        .grant_skin(account.id, uuid::Uuid::from_u128(7))
+        .await
+        .unwrap();
+    store.wear_skin(account.id, character.id, 7).await.unwrap();
+
+    // And going back to the class's own appearance never needs owning anything.
+    store.wear_skin(account.id, character.id, 0).await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_backpack_is_granted_once() {
+    let Some(store) = store("t_backpack").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    let character = store
+        .create_character(account.id, WIZARD, "Wizard", 800)
+        .await
+        .unwrap();
+
+    assert!(store.grant_backpack(character.id).await.unwrap());
+    assert!(
+        !store.grant_backpack(character.id).await.unwrap(),
+        "a second one is not another row of slots"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn boosts_extend_rather_than_stacking() {
+    // Two of the same kind at once is a multiplier nobody wrote down, and a number that grows
+    // every time somebody buys another.
+    let Some(store) = store("t_boosts").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+
+    store
+        .add_boost(account.id, "experience", 2.0, 3600)
+        .await
+        .unwrap();
+    store
+        .add_boost(account.id, "experience", 2.0, 3600)
+        .await
+        .unwrap();
+
+    let running = store.boosts(account.id).await.unwrap();
+    assert_eq!(running.len(), 1, "one boost, not two");
+    assert!((running[0].multiplier - 2.0).abs() < 0.01);
+
+    // A different kind is its own row.
+    store
+        .add_boost(account.id, "loot_drop", 1.5, 3600)
+        .await
+        .unwrap();
+    assert_eq!(store.boosts(account.id).await.unwrap().len(), 2);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_expired_boost_is_not_running() {
+    let Some(store) = store("t_boosts_expiry").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    sqlx::query(
+        "INSERT INTO account_boost (account_id, kind, multiplier, expires_at)
+         VALUES ($1, 'experience', 2.0, now() - interval '1 minute')",
+    )
+    .bind(account.id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    assert!(store.boosts(account.id).await.unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn pets_are_bounded_and_belong_to_the_account() {
+    let Some(store) = store("t_pets").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+
+    for n in 0..hendra_store::wardrobe::MAX_PETS {
+        store
+            .add_pet(account.id, uuid::Uuid::from_u128(n as u128), false)
+            .await
+            .unwrap();
+    }
+    assert!(
+        store
+            .add_pet(account.id, uuid::Uuid::from_u128(999), false)
+            .await
+            .is_err(),
+        "a player with four hundred pets is a player nobody can render"
+    );
+
+    let pets = store.pets(account.id).await.unwrap();
+    assert_eq!(pets.len() as i64, hendra_store::wardrobe::MAX_PETS);
+
+    assert!(store.set_pet_skin(account.id, pets[0].id, 4).await.unwrap());
+    assert_eq!(store.pets(account.id).await.unwrap()[0].skin, 4);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_pet_belonging_to_somebody_else_cannot_be_recoloured() {
+    let Some(store) = store("t_pets_theirs").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let one = store.create_account("Fesal").await.unwrap();
+    let two = store.create_account("Someone").await.unwrap();
+
+    let pet = store
+        .add_pet(one.id, uuid::Uuid::from_u128(1), false)
+        .await
+        .unwrap();
+
+    assert!(!store.set_pet_skin(two.id, pet, 4).await.unwrap());
+    assert_eq!(store.pets(one.id).await.unwrap()[0].skin, 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_unlocked_portal_is_recorded_once() {
+    let Some(store) = store("t_portals").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+
+    store
+        .unlock_portal(account.id, "The Shatters")
+        .await
+        .unwrap();
+    store
+        .unlock_portal(account.id, "The Shatters")
+        .await
+        .unwrap();
+
+    assert_eq!(
+        store.unlocked_portals(account.id).await.unwrap(),
+        vec!["The Shatters".to_string()]
+    );
 }
