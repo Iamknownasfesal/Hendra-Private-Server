@@ -68,12 +68,18 @@ impl WorldSnapshot {
     }
 }
 
-/// The usable payload of a QUIC datagram on a path that has not told us otherwise.
+/// A conservative default for how much snapshot fits in one datagram.
 ///
-/// QUIC does not fragment datagrams: anything larger than the path MTU is refused outright rather
-/// than split. 1200 bytes is the conservative floor every QUIC implementation assumes before path
-/// discovery has run.
-pub const DATAGRAM_BUDGET: usize = 1200;
+/// QUIC does not fragment datagrams: anything over the limit is refused outright rather than split.
+/// The number is *not* the path MTU. 1200 bytes is the floor QUIC assumes for a whole packet, and a
+/// datagram's payload is what remains after connection ids, packet number, frame header and the
+/// AEAD tag. Before path discovery runs that came to 1162 bytes on a measured connection — under
+/// the 1200 this was originally, and wrongly, set to.
+///
+/// It is only a default, and a deliberately pessimistic one. The real limit is negotiated per
+/// connection and rises once MTU discovery learns what the path carries, so a server should take it
+/// from the live connection via [`SnapshotEncoder::with_budget`] rather than encode to this.
+pub const DATAGRAM_BUDGET: usize = 1100;
 
 /// How an encoded snapshot has to reach the client.
 ///
@@ -104,15 +110,45 @@ struct Record {
 ///
 /// One of these lives per connection. After the first few ticks its buffers have grown to the size
 /// a sight radius needs and encoding stops allocating entirely.
-#[derive(Default)]
 pub struct SnapshotEncoder {
     despawns: Vec<EntityId>,
     records: Vec<Record>,
+
+    /// The most this encoder will put in a datagram before routing to the stream instead.
+    budget: usize,
+}
+
+impl Default for SnapshotEncoder {
+    fn default() -> SnapshotEncoder {
+        SnapshotEncoder::new()
+    }
 }
 
 impl SnapshotEncoder {
+    /// An encoder using the conservative [`DATAGRAM_BUDGET`].
     pub fn new() -> SnapshotEncoder {
-        SnapshotEncoder::default()
+        SnapshotEncoder::with_budget(DATAGRAM_BUDGET)
+    }
+
+    /// An encoder that knows what this particular connection will carry.
+    ///
+    /// The limit is negotiated per connection and can shrink when path discovery finds a smaller
+    /// MTU, so a server should take it from the live connection rather than trusting the default.
+    pub fn with_budget(budget: usize) -> SnapshotEncoder {
+        SnapshotEncoder {
+            despawns: Vec::new(),
+            records: Vec::new(),
+            budget,
+        }
+    }
+
+    /// Updates the budget, for a path whose limit has changed since the connection opened.
+    pub fn set_budget(&mut self, budget: usize) {
+        self.budget = budget;
+    }
+
+    pub fn budget(&self) -> usize {
+        self.budget
     }
 
     /// Writes `current` as a delta against `baseline`, or in full when there is none.
@@ -184,7 +220,7 @@ impl SnapshotEncoder {
 
         // A full snapshot goes on the stream whatever its size: losing one strands the client with
         // no baseline, and every delta after it would be measured from something it does not have.
-        if baseline.is_none() || w.len() - started > DATAGRAM_BUDGET {
+        if baseline.is_none() || w.len() - started > self.budget {
             Delivery::Stream
         } else {
             Delivery::Datagram
