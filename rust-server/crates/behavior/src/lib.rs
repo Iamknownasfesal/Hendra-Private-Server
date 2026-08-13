@@ -16,9 +16,17 @@
 //! grammar.
 
 pub mod ast;
+pub mod compile;
 pub mod lex;
 pub mod parse;
+pub mod program;
+pub mod run;
 
 pub use ast::{Argument, Behaviours, Call, Enemy, Item, Loot, State, Transition, Value};
 pub use lex::{LexError, Span, Token, tokenize};
+pub use compile::{Diagnostic, compile};
 pub use parse::{ParseError, parse};
+pub use run::Mind;
+pub use program::{
+    Action, CompiledState, Condition, LootEntry, Nearby, Primitive, Program, Programs, Senses,
+};
