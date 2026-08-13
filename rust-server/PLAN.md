@@ -6,7 +6,7 @@ deliberately excluded and left until last.
 Phases 0–5 are done: workspace, content, protocol, transport, simulation, behaviour language,
 persistence, authentication. What follows is phases 6–11.
 
-**Where we are:** ~82% of the old server by subsystem. 599 tests.
+**Where we are:** ~84% of the old server by subsystem. 602 tests.
 
 **Sizing** is relative, not calendar: **S** is an afternoon, **M** is a day or two, **L** is
 several days, **XL** is a week or more.
@@ -179,8 +179,8 @@ an ability, 1,942 activates across 43 kinds.
 
 ### 8.3 Setpieces — **M**
 
-- [ ] A setpiece format, reusing HMAP
-- [ ] A stamp operation, which fixes the wrong `apply_setpiece` from 6.4
+- [x] A setpiece is an HMAP like any other map, so no new format was needed
+- [x] `World::stamp` writes every square a piece names, centred on the point and clearing what stood there. Wiring `apply_setpiece` back to it needs the content's setpiece files, which are not in this tree
 
 ### 8.4 The remaining entity kinds — **M**
 

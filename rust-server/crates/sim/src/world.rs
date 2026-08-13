@@ -20,7 +20,7 @@ use hendra_behavior::program::{
     Action, DeathEffect, EffectTarget, Nearby, Neighbour, Program, Programs, Senses,
 };
 use hendra_behavior::run::Mind;
-use hendra_content::{Catalog, ConditionSet, ObjectType};
+use hendra_content::{Catalog, ConditionSet, Map, ObjectType};
 use hendra_net::{EntityId, EntityState, Tick, WorldSnapshot};
 
 use crate::grid::Grid;
@@ -2340,6 +2340,86 @@ impl World {
         }
     }
 
+    /// Stamps a prefab map into the world.
+    ///
+    /// A setpiece is a small map placed at a point, not a circle of one tile painted over the
+    /// ground. Every square it names is written, including the ground and whatever stands on it,
+    /// so a room built this way is the room the author drew rather than an approximation of it.
+    ///
+    /// Anything already standing where it lands is removed. A setpiece that appeared around the
+    /// existing furniture would leave a wall through the middle of a boss's arena.
+    pub fn stamp(&mut self, catalog: &Catalog, piece: &Map, at: (f32, f32)) {
+        // Centred on the point rather than starting there, which is what "place it here" means to
+        // whoever wrote the content.
+        let left = at.0 as i32 - piece.width() as i32 / 2;
+        let top = at.1 as i32 - piece.height() as i32 / 2;
+
+        // Cleared first, so the two passes cannot fight: an object spawned by the stamp must not
+        // be removed by the clearing of a later square.
+        self.clear_area(
+            left as f32,
+            top as f32,
+            piece.width() as f32,
+            piece.height() as f32,
+        );
+
+        for y in 0..piece.height() {
+            for x in 0..piece.width() {
+                let Some(square) = piece.at(x, y) else {
+                    continue;
+                };
+
+                let (world_x, world_y) = (left + x as i32, top + y as i32);
+                if world_x < 0 || world_y < 0 {
+                    continue;
+                }
+                let (world_x, world_y) = (world_x as u32, world_y as u32);
+
+                if let Some(tile) = catalog.tile(square.tile) {
+                    self.terrain
+                        .set_square(world_x, world_y, !tile.no_walk, false);
+                    if self.ground_changes.len() < MAX_PENDING_GROUND_CHANGES {
+                        self.ground_changes
+                            .push((world_x as u16, world_y as u16, square.tile.0));
+                    }
+                }
+
+                if !square.object.is_none() {
+                    let behaviours = std::mem::take(&mut self.behaviours);
+                    self.spawn_child(
+                        catalog,
+                        &behaviours,
+                        square.object,
+                        world_x as f32 + 0.5,
+                        world_y as f32 + 0.5,
+                        None,
+                    );
+                    self.behaviours = behaviours;
+                }
+            }
+        }
+    }
+
+    /// Removes everything standing in a rectangle, except players.
+    ///
+    /// Players are spared because a setpiece landing on somebody should move the room around them,
+    /// not delete them from it.
+    fn clear_area(&mut self, left: f32, top: f32, width: f32, height: f32) {
+        for (_, entity) in self.entities.iter_mut() {
+            if entity.kind == Kind::Player {
+                continue;
+            }
+            if entity.x >= left
+                && entity.x < left + width
+                && entity.y >= top
+                && entity.y < top + height
+            {
+                entity.dead = true;
+                entity.no_experience = true;
+            }
+        }
+    }
+
     /// Sets off any trap something has walked into.
     fn spring_traps(&mut self, catalog: &Catalog) {
         self.handles.clear();
@@ -4429,6 +4509,73 @@ mod tests {
             1,
             "a player standing beside it is not what sets it off"
         );
+    }
+
+    #[test]
+    fn a_setpiece_stamps_a_room_rather_than_painting_a_circle() {
+        // The wrong version of this painted one tile over a radius, which left the room looking
+        // roughly right and nothing where the author had drawn it.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        // A three by three piece: water all round, a sign in the middle.
+        let mut squares: Vec<Composition> =
+            (0..9).map(|_| square(0x11, ObjectType::NONE.0)).collect();
+        squares[4] = square(0x11, 0x501);
+        let piece = Map::from_squares(3, 3, squares).unwrap();
+
+        world.stamp(&catalog, &piece, (10.0, 10.0));
+        world.reindex();
+
+        // Centred on the point rather than starting there: a three by three at (10, 10) covers
+        // nine through eleven, so the corner before it is the square that tells them apart.
+        assert!(!world.terrain().walkable(9, 9), "the piece is centred");
+        assert!(!world.terrain().walkable(11, 11));
+        assert!(world.terrain().walkable(12, 12), "and no further");
+        assert!(world.terrain().walkable(20, 20), "and only where it landed");
+        assert_eq!(count_of(&world, 0x501), 1, "the sign is there");
+    }
+
+    #[test]
+    fn a_setpiece_clears_what_was_standing_where_it_lands() {
+        // A setpiece that appeared around the existing furniture would leave a wall through the
+        // middle of a boss's arena.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut old = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
+        old.kind = Kind::Enemy;
+        old.max_hp = 200;
+        old.hp = 200;
+        world.spawn(old).unwrap();
+        world.reindex();
+
+        let squares: Vec<Composition> = (0..25).map(|_| square(0x10, ObjectType::NONE.0)).collect();
+        let piece = Map::from_squares(5, 5, squares).unwrap();
+
+        world.stamp(&catalog, &piece, (10.0, 10.0));
+        world.advance(&catalog, 50);
+
+        assert_eq!(count_of(&world, 0x502), 0, "what was there is gone");
+    }
+
+    #[test]
+    fn a_setpiece_moves_the_room_around_a_player_rather_than_deleting_them() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 10.0, 10.0, 500))
+            .unwrap();
+        world.reindex();
+
+        let squares: Vec<Composition> = (0..25).map(|_| square(0x10, ObjectType::NONE.0)).collect();
+        let piece = Map::from_squares(5, 5, squares).unwrap();
+
+        world.stamp(&catalog, &piece, (10.0, 10.0));
+        world.advance(&catalog, 50);
+
+        assert!(world.get(player).is_some(), "the player is still there");
     }
 
     #[test]
