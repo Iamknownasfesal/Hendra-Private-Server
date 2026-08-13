@@ -13,11 +13,13 @@
 //!
 //! # What a stat is worth
 //!
-//! The conversions here are the game's, not inventions: attack and dexterity fold into damage and
-//! rate of fire through the formulas the client has always drawn with, and a server that used
-//! different ones would disagree with every number a player can see.
+//! Every formula and constant below is read from the original server's `StatsManager`. The
+//! condition effects that change them are applied inside the same expression that reads the stat,
+//! as they are there: Weak does not halve damage, it holds attack at its minimum.
 
-use hendra_content::{PlayerDesc, Stat, STATS};
+use hendra_content::{PlayerDesc, STATS, Stat};
+
+use crate::effects::Rules;
 
 /// One character's stats, in three layers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -33,6 +35,13 @@ pub struct Stats {
 }
 
 impl Stats {
+    /// Something that cannot move under its own power, such as a wall or a sign.
+    pub fn still() -> Stats {
+        let mut stats = Stats::default();
+        stats.base[Stat::Speed.index()] = NO_MOVEMENT;
+        stats
+    }
+
     /// A character at the start of its class.
     pub fn starting(class: &PlayerDesc) -> Stats {
         let mut base = [0i32; 8];
@@ -99,30 +108,97 @@ impl Stats {
 
     /// Multiplies weapon damage.
     ///
-    /// Attack scales damage rather than adding to it, so a stronger weapon benefits more from the
-    /// same attack, which is what makes both worth pursuing.
-    pub fn damage_multiplier(&self) -> f32 {
-        (self.total(Stat::Attack) as f32) * ATTACK_PER_POINT + BASE_MULTIPLIER
+    /// `MinAttackMult + (attack / 75) * (MaxAttackMult - MinAttackMult)`, held at the minimum by
+    /// Weak and multiplied by Damaging.
+    pub fn damage_multiplier(&self, rules: &Rules) -> f32 {
+        if rules.weak {
+            return MIN_ATTACK_MULT;
+        }
+
+        let attack = self.total(Stat::Attack) as f32;
+        let mult = MIN_ATTACK_MULT + (attack / STAT_SCALE) * (MAX_ATTACK_MULT - MIN_ATTACK_MULT);
+
+        if rules.damaging { mult * 1.5 } else { mult }
     }
 
-    /// Multiplies weapon cooldown. Below one is faster.
-    pub fn rate_of_fire(&self) -> f32 {
-        1.0 / ((self.total(Stat::Dexterity) as f32) * DEXTERITY_PER_POINT + BASE_MULTIPLIER)
+    /// Shots per millisecond.
+    ///
+    /// A frequency rather than a cooldown, matching `GetAttackFrequency`. Dazed holds it at the
+    /// minimum and Berserk multiplies it.
+    pub fn attack_frequency(&self, rules: &Rules) -> f32 {
+        if rules.dazed {
+            return MIN_ATTACK_FREQ;
+        }
+
+        let dexterity = self.total(Stat::Dexterity) as f32;
+        let frequency =
+            MIN_ATTACK_FREQ + (dexterity / STAT_SCALE) * (MAX_ATTACK_FREQ - MIN_ATTACK_FREQ);
+
+        if rules.berserk {
+            frequency * 1.5
+        } else {
+            frequency
+        }
+    }
+
+    /// Milliseconds between shots from a weapon of a given rate of fire.
+    ///
+    /// The weapon's own rate is a multiplier on the character's frequency, so a fast weapon in a
+    /// dextrous hand compounds rather than replacing it.
+    pub fn shot_cooldown_ms(&self, rules: &Rules, weapon_rate: f32) -> u32 {
+        let frequency = self.attack_frequency(rules) * weapon_rate.max(0.01);
+        if frequency <= 0.0 {
+            return u32::MAX;
+        }
+        (1.0 / frequency).clamp(1.0, 60_000.0) as u32
     }
 
     /// Tiles per second.
-    pub fn movement_speed(&self) -> f32 {
-        (self.total(Stat::Speed) as f32) * SPEED_PER_POINT + BASE_SPEED
+    ///
+    /// `4 + 5.6 * (speed / 75)`. Slowed holds it at the base rather than scaling it, and Paralyzed
+    /// is handled by the caller refusing the move outright.
+    pub fn movement_speed(&self, rules: &Rules) -> f32 {
+        if rules.rooted {
+            return 0.0;
+        }
+        if rules.slowed {
+            return BASE_SPEED;
+        }
+
+        let speed = (self.base(Stat::Speed) + self.layers(Stat::Speed)) as f32;
+        let ret = BASE_SPEED + SPEED_RANGE * (speed / STAT_SCALE);
+
+        if rules.speedy {
+            (ret * 1.5).max(0.0)
+        } else {
+            ret.max(0.0)
+        }
     }
 
-    /// Health regained per second while not recently hurt.
-    pub fn health_regen(&self) -> f32 {
-        BASE_REGEN + (self.total(Stat::HpRegen) as f32) * REGEN_PER_POINT
+    /// Equipment plus boosts, which may be negative.
+    fn layers(&self, stat: Stat) -> i32 {
+        self.equipment[stat.index()] + self.boosts[stat.index()]
     }
 
-    /// Magic regained per second.
-    pub fn magic_regen(&self) -> f32 {
-        BASE_REGEN + (self.total(Stat::MpRegen) as f32) * REGEN_PER_POINT
+    /// Health regained per second.
+    ///
+    /// `6 + vitality * 0.12`. Sick zeroes the vitality but not the base, so a sick character still
+    /// recovers slowly rather than not at all.
+    pub fn health_regen(&self, rules: &Rules) -> f32 {
+        let vitality = if rules.sick {
+            0.0
+        } else {
+            self.total(Stat::HpRegen) as f32
+        };
+        BASE_HP_REGEN + vitality * HP_REGEN_PER_POINT
+    }
+
+    /// Magic regained per second. Quiet stops it entirely.
+    pub fn magic_regen(&self, rules: &Rules) -> f32 {
+        if rules.no_magic_regen {
+            return 0.0;
+        }
+        BASE_MP_REGEN + (self.total(Stat::MpRegen) as f32) * MP_REGEN_PER_POINT
     }
 
     pub fn max_hp(&self) -> i32 {
@@ -138,34 +214,39 @@ impl Stats {
     }
 }
 
-/// The multiplier a character with nothing in a stat still has.
-const BASE_MULTIPLIER: f32 = 0.5;
+/// The stat value every formula is scaled against.
+const STAT_SCALE: f32 = 75.0;
 
-/// What one point of attack adds to the damage multiplier.
-const ATTACK_PER_POINT: f32 = 0.02;
+/// The damage multiplier at zero attack, and at the scale value.
+const MIN_ATTACK_MULT: f32 = 0.5;
+const MAX_ATTACK_MULT: f32 = 2.0;
 
-/// What one point of dexterity adds to the rate-of-fire multiplier.
-const DEXTERITY_PER_POINT: f32 = 0.02;
+/// Shots per millisecond at zero dexterity, and at the scale value.
+const MIN_ATTACK_FREQ: f32 = 0.0015;
+const MAX_ATTACK_FREQ: f32 = 0.008;
 
-/// Tiles per second with no speed at all.
+/// Tiles per second at zero speed, and how much the scale value adds.
 const BASE_SPEED: f32 = 4.0;
+const SPEED_RANGE: f32 = 5.6;
 
-/// What one point of speed adds, in tiles per second.
-const SPEED_PER_POINT: f32 = 0.04;
+/// Health per second at zero vitality, and what one point adds.
+const BASE_HP_REGEN: f32 = 6.0;
+const HP_REGEN_PER_POINT: f32 = 0.12;
 
-/// Health or magic per second with no vitality or wisdom.
-const BASE_REGEN: f32 = 1.0;
+/// Magic per second at zero wisdom, and what one point adds.
+const BASE_MP_REGEN: f32 = 0.5;
+const MP_REGEN_PER_POINT: f32 = 0.06;
 
-/// What one point of vitality or wisdom adds, per second.
-const REGEN_PER_POINT: f32 = 0.12;
+/// The speed value that means "does not move".
+///
+/// Below the point where the formula returns zero, so a wall cannot drift.
+const NO_MOVEMENT: i32 = -((BASE_SPEED / SPEED_RANGE * STAT_SCALE) as i32) - 1;
 
 /// What a set of worn items contributes, summed.
 ///
 /// Taken from what is worn rather than accumulated as items move, so the answer never depends on
 /// having seen every change. A missed equip cannot leave a stat permanently wrong.
-pub fn equipment_boosts<'a>(
-    worn: impl Iterator<Item = &'a hendra_content::ItemDesc>,
-) -> [i32; 8] {
+pub fn equipment_boosts<'a>(worn: impl Iterator<Item = &'a hendra_content::ItemDesc>) -> [i32; 8] {
     let mut out = [0i32; 8];
     for item in worn {
         for boost in &item.stat_boosts {
@@ -299,29 +380,134 @@ mod tests {
 
     #[test]
     fn more_attack_means_more_damage_and_more_dexterity_means_faster() {
+        let none = Rules::NONE;
         let class = wizard();
-        let weak = Stats::starting(&class);
+        let plain = Stats::starting(&class);
 
-        let mut strong = weak;
+        let mut strong = plain;
         strong.boost(Stat::Attack, 50);
-        assert!(strong.damage_multiplier() > weak.damage_multiplier());
+        assert!(strong.damage_multiplier(&none) > plain.damage_multiplier(&none));
 
-        let mut quick = weak;
+        let mut quick = plain;
         quick.boost(Stat::Dexterity, 50);
         assert!(
-            quick.rate_of_fire() < weak.rate_of_fire(),
-            "a lower cooldown multiplier is faster"
+            quick.shot_cooldown_ms(&none, 1.0) < plain.shot_cooldown_ms(&none, 1.0),
+            "a shorter wait between shots is faster"
         );
+    }
+
+    #[test]
+    fn the_damage_multiplier_spans_the_range_the_original_uses() {
+        let none = Rules::NONE;
+        let mut stats = Stats::default();
+
+        assert!((stats.damage_multiplier(&none) - MIN_ATTACK_MULT).abs() < 0.001);
+
+        stats.boost(Stat::Attack, STAT_SCALE as i32);
+        assert!((stats.damage_multiplier(&none) - MAX_ATTACK_MULT).abs() < 0.001);
+    }
+
+    #[test]
+    fn being_weak_holds_attack_at_the_minimum_rather_than_halving_it() {
+        // `return MinAttackMult`, not a multiplier. On a character with high attack the difference
+        // is large, and halving would leave it far above where the original puts it.
+        let mut stats = Stats::default();
+        stats.boost(Stat::Attack, 75);
+
+        let weakened = Rules {
+            weak: true,
+            ..Rules::NONE
+        };
+        assert!((stats.damage_multiplier(&weakened) - MIN_ATTACK_MULT).abs() < 0.001);
+        assert!(stats.damage_multiplier(&Rules::NONE) > MIN_ATTACK_MULT * 2.0);
+    }
+
+    #[test]
+    fn being_dazed_holds_rate_of_fire_at_the_minimum() {
+        let mut stats = Stats::default();
+        stats.boost(Stat::Dexterity, 75);
+
+        let dazed = Rules {
+            dazed: true,
+            ..Rules::NONE
+        };
+        assert!(stats.shot_cooldown_ms(&dazed, 1.0) > stats.shot_cooldown_ms(&Rules::NONE, 1.0));
+        assert_eq!(
+            stats.shot_cooldown_ms(&dazed, 1.0),
+            (1.0 / MIN_ATTACK_FREQ) as u32
+        );
+    }
+
+    #[test]
+    fn being_slowed_holds_speed_at_the_base_rather_than_scaling_it() {
+        // `ret = 4`, not `ret *= 0.5`. A fast character slowed drops to the same speed as a slow
+        // one slowed, which is what the original does and what the content is balanced against.
+        let mut fast = Stats::default();
+        fast.boost(Stat::Speed, 75);
+        let slow = Stats::default();
+
+        let slowed = Rules {
+            slowed: true,
+            ..Rules::NONE
+        };
+        assert_eq!(fast.movement_speed(&slowed), BASE_SPEED);
+        assert_eq!(slow.movement_speed(&slowed), BASE_SPEED);
+        assert!(fast.movement_speed(&Rules::NONE) > BASE_SPEED);
+    }
+
+    #[test]
+    fn a_rooted_character_has_no_speed_at_all() {
+        let mut stats = Stats::default();
+        stats.boost(Stat::Speed, 75);
+
+        let rooted = Rules {
+            rooted: true,
+            ..Rules::NONE
+        };
+        assert_eq!(stats.movement_speed(&rooted), 0.0);
+    }
+
+    #[test]
+    fn being_sick_zeroes_vitality_without_stopping_regeneration_entirely() {
+        // `vit = 0` leaves the base of six. A sick character recovers slowly rather than not at all.
+        let mut stats = Stats::default();
+        stats.boost(Stat::HpRegen, 60);
+
+        let sick = Rules {
+            sick: true,
+            ..Rules::NONE
+        };
+        assert_eq!(stats.health_regen(&sick), BASE_HP_REGEN);
+        assert!(stats.health_regen(&Rules::NONE) > BASE_HP_REGEN);
+    }
+
+    #[test]
+    fn quiet_stops_magic_returning_entirely() {
+        let mut stats = Stats::default();
+        stats.boost(Stat::MpRegen, 60);
+
+        let quiet = Rules {
+            no_magic_regen: true,
+            ..Rules::NONE
+        };
+        assert_eq!(stats.magic_regen(&quiet), 0.0);
+        assert!(stats.magic_regen(&Rules::NONE) > 0.0);
     }
 
     #[test]
     fn a_character_with_nothing_in_a_stat_is_not_useless() {
         // Zero attack must not mean zero damage, or a fresh character could not kill anything.
+        let none = Rules::NONE;
         let empty = Stats::default();
 
-        assert!(empty.damage_multiplier() > 0.0);
-        assert!(empty.rate_of_fire() > 0.0 && empty.rate_of_fire().is_finite());
-        assert!(empty.movement_speed() > 0.0);
+        assert!(empty.damage_multiplier(&none) > 0.0);
+        assert!(empty.shot_cooldown_ms(&none, 1.0) > 0);
+        assert!(empty.movement_speed(&none) > 0.0);
+    }
+
+    #[test]
+    fn something_that_cannot_move_stays_where_it_is() {
+        assert_eq!(Stats::still().movement_speed(&Rules::NONE), 0.0);
     }
 
     #[test]

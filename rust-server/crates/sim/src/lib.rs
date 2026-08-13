@@ -10,6 +10,7 @@ pub mod inventory;
 pub mod metrics;
 pub mod projectile;
 pub mod slab;
+pub mod stats;
 pub mod tiles;
 pub mod world;
 

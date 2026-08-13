@@ -293,18 +293,17 @@ impl Projectiles {
                 continue;
             }
 
-            let base = catalog
+            let defence = catalog
                 .object(entity.object_type)
                 .map(|desc| desc.defense)
                 .unwrap_or(0);
 
-            // Armour and curses are the target's; a weakened or berserk shooter has already had its
-            // multiplier applied when the projectile was made, because the shooter's state at the
-            // moment of firing is what should decide the shot.
+            // Armour and curses belong to the target. The shooter's own multipliers were applied
+            // when the projectile was made, because its state at the moment of firing is what
+            // should decide the shot.
             let rules = crate::effects::Rules::of(entity.conditions);
-            let defence = base + rules.defence;
-            let raw = (projectile.damage as f32 * rules.damage_taken).round() as i32;
-            let damage = after_defence(raw, defence, projectile.armor_piercing);
+            let damage =
+                rules.damage_after_defence(projectile.damage, defence, projectile.armor_piercing);
 
             hits.push(Hit {
                 projectile: handle,
@@ -344,9 +343,10 @@ fn can_hit(projectile: &Projectile, target: Handle, entity: &Entity) -> bool {
         return false;
     }
 
-    // Refused here rather than by dealing zero damage, so an invulnerable target is passed through
-    // rather than stopping the shot for everyone behind it.
-    if crate::effects::Rules::of(entity.conditions).invulnerable {
+    // An untouchable target is not hit at all: the shot passes through and none of the effects it
+    // carries land. A target that merely takes no damage is still hit, which is a different thing
+    // and is decided later.
+    if crate::effects::Rules::of(entity.conditions).untouchable {
         return false;
     }
 
@@ -404,7 +404,7 @@ mod tests {
             conditions: ConditionSet::EMPTY,
             size: 100,
             name: None,
-            speed: 0.0,
+            stats: crate::stats::Stats::still(),
             weapon: None,
             cooldown_ms: 0,
             spawn_x: x,
@@ -419,6 +419,7 @@ mod tests {
             no_experience: false,
             effects: Vec::new(),
             health_fraction: 0.0,
+            magic_fraction: 0.0,
             flash: None,
             base_max_hp: None,
         }
@@ -712,8 +713,8 @@ mod tests {
 
         assert_eq!(hits.len(), 1);
         assert_eq!(
-            hits[0].damage, 15,
-            "1000 defence, and the floor still applies"
+            hits[0].damage, 25,
+            "1000 defence, and a quarter of the hit still lands"
         );
     }
 

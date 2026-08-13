@@ -46,16 +46,16 @@ Things that are recorded but not acted on.
 ### 6.1 Condition effects — **M**
 
 - [x] `Rules` derived from a `ConditionSet`, so hot paths do arithmetic rather than bit tests
-- [x] Invulnerable and Invincible refuse damage at `can_hit` and in explosions
-- [x] Armored and ArmorBroken change defence
+- [x] Invincible refuses the hit entirely; Invulnerable takes the hit and its effects but no damage
+- [x] Armored doubles defence and ArmorBroken removes it, matching `StatsManager`
 - [x] Paralyzed, Petrify and Stasis refuse movement, with their own `MoveRefusal`
 - [x] Slowed, Speedy and NinjaSpeedy scale movement
-- [x] Stunned refuses shooting; Sick refuses healing; Paused skips thinking entirely
+- [x] Stunned refuses shooting; Sick refuses healing and zeroes vitality; Paused and Stasis refuse damage and thinking
 - [x] Bleeding and Healing move health per second, carrying a fraction between ticks
 - [x] Immunities refuse their effect at `give_effect`
-- [x] Weak, Damaging, Berserk, Curse, Hexed and Dazed scale damage and cooldown in `Rules`
-- [ ] Weak, Damaging and Berserk applied to outgoing damage at the point a shot is fired
-- [ ] Dazed applied to weapon cooldown
+- [x] Petrify and Curse scale damage taken; Hexed does nothing in the original and so does nothing here
+- [x] Weak, Damaging and Berserk read by the stat formulas, as the original applies them
+- [x] Dazed applied to rate of fire
 - [ ] Invisible drops the entity from other players' snapshots
 - [ ] Quiet refuses ability use (needs 7.1)
 
@@ -67,13 +67,13 @@ here.
 - [x] `Stats` with base, equipment and boost layers kept apart
 - [x] Base capped at the class ceiling; equipment and boosts reach past it
 - [x] `equipment_boosts` sums what is worn, ignoring boosts that name no real stat
-- [x] Derived values: damage, rate of fire, movement, regeneration
-- [ ] `Stats` on `Entity`, replacing the bare `speed` field
+- [x] Derived values read from `StatsManager` rather than invented
+- [x] `Stats` on `Entity`, replacing the bare `speed` field
 - [ ] Recompute the equipment layer whenever a worn slot changes
-- [ ] Movement uses `movement_speed()` rather than a constant
-- [ ] Weapon cooldown uses `rate_of_fire()`
-- [ ] Damage uses `damage_multiplier()`
-- [ ] Health and magic regenerate between fights
+- [x] Movement uses `movement_speed()` rather than a constant
+- [x] Weapon cooldown uses `shot_cooldown_ms()`, compounding the weapon's rate with dexterity
+- [x] Damage uses `damage_multiplier()`, applied when the shot is made
+- [x] Health and magic regenerate between fights
 - [ ] Stats reach the client in the snapshot
 
 ### 6.3 Experience, levels and fame — **M**
@@ -248,6 +248,11 @@ is not listening yet, so changing one costs nothing today.
 
 **Mutation checks.** Every protection gets one: break it, watch exactly the right test fail, restore
 it. Nineteen so far have caught real bugs, several after the work looked finished.
+
+**Read the original before writing a rule.** Every constant that governs combat comes from
+`wServer`, not from judgement. An earlier pass invented armour as `+20` where the original doubles
+defence, a damage floor of 15% where it is 25%, and Slowed as a multiplier where it holds speed at
+the base. All of it looked reasonable and all of it was wrong.
 
 **Silence is the enemy.** Every converter and loader reports what it could not handle. The four
 parser bugs cost 119 enemies and went unnoticed because the total looked like success.

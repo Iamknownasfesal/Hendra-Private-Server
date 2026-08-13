@@ -28,7 +28,7 @@ pub use desc::{
 };
 pub use effect::{AppliedEffect, ConditionEffect, ConditionSet};
 pub use map::{Composition, Map, MapError};
-pub use player::{PlayerDesc, Stat, StatGrowth, Unlock};
+pub use player::{PlayerDesc, STATS, Stat, StatGrowth, Unlock};
 pub use region::{Region, Terrain};
 pub use world::{WorldDef, WorldError};
 pub use xml::{Node, XmlError};

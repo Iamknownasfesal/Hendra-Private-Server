@@ -72,8 +72,11 @@ pub struct Entity {
     pub size: u16,
     pub name: Option<Box<str>>,
 
-    /// Base movement, in tiles per second, before ground and conditions.
-    pub speed: f32,
+    /// The eight stats, which decide movement, damage and rate of fire.
+    ///
+    /// Enemies keep the default, which gives them the base values every derived figure falls back
+    /// to. Only players level, wear equipment or take boosts.
+    pub stats: crate::stats::Stats,
 
     /// The object whose projectile this entity fires, if it can shoot.
     pub weapon: Option<ObjectType>,
@@ -120,6 +123,9 @@ pub struct Entity {
     /// independently would round it to nothing.
     pub health_fraction: f32,
 
+    /// The same, for magic.
+    pub magic_fraction: f32,
+
     /// A colour to blink, its period and how many times, for a phase change the eye can catch.
     pub flash: Option<(u32, u32, u32)>,
 
@@ -152,7 +158,7 @@ impl Entity {
             conditions: ConditionSet::EMPTY,
             size: 100,
             name: None,
-            speed: 0.0,
+            stats: crate::stats::Stats::still(),
             weapon: None,
             cooldown_ms: 0,
             spawn_x: x,
@@ -167,6 +173,7 @@ impl Entity {
             no_experience: false,
             effects: Vec::new(),
             health_fraction: 0.0,
+            magic_fraction: 0.0,
             flash: None,
             base_max_hp: None,
         }
@@ -185,7 +192,7 @@ impl Entity {
             conditions: ConditionSet::EMPTY,
             size: 100,
             name: None,
-            speed: 5.0,
+            stats: crate::stats::Stats::default(),
             weapon: None,
             cooldown_ms: 0,
             spawn_x: x,
@@ -200,6 +207,7 @@ impl Entity {
             no_experience: false,
             effects: Vec::new(),
             health_fraction: 0.0,
+            magic_fraction: 0.0,
             flash: None,
             base_max_hp: None,
         }
@@ -531,8 +539,10 @@ impl World {
         }
 
         let ground = self.terrain.speed_at(catalog, entity.x, entity.y);
-        let allowed =
-            entity.speed * rules.speed * ground * (elapsed_ms as f32 / 1000.0) * MOVE_TOLERANCE;
+        let allowed = entity.stats.movement_speed(&rules)
+            * ground
+            * (elapsed_ms as f32 / 1000.0)
+            * MOVE_TOLERANCE;
 
         let (mut dx, mut dy) = (claimed_x - entity.x, claimed_y - entity.y);
         let distance = (dx * dx + dy * dy).sqrt();
@@ -666,11 +676,19 @@ impl World {
             .as_ref()
             .map(|item| item.rate_of_fire.max(0.1))
             .unwrap_or(1.0);
-        let cooldown = (500.0 / rate) as u32;
+        let cooldown = entity.stats.shot_cooldown_ms(&rules, rate);
+
+        // Applied when the shot is made rather than when it lands, so the shooter's state at the
+        // moment of firing is what decides the shot. A projectile in flight is not affected by its
+        // owner being weakened afterwards.
+        let power = entity.stats.damage_multiplier(&rules);
 
         for shot in &desc.projectiles {
             let roll = self.roll();
-            let projectile = Projectile::from_desc(handle, from_player, shot, x, y, angle, roll);
+            let mut projectile =
+                Projectile::from_desc(handle, from_player, shot, x, y, angle, roll);
+            projectile.damage = ((projectile.damage as f32) * power).round().max(1.0) as i32;
+
             if let Some(handle) = self.projectiles.fire(projectile) {
                 fired.push(handle);
             }
@@ -701,6 +719,7 @@ impl World {
         self.think(catalog, elapsed_ms);
         self.apply_hazards(catalog, elapsed_ms);
         self.apply_effect_health(elapsed_ms);
+        self.regenerate(elapsed_ms);
         self.advance_projectiles(catalog, elapsed_ms);
         self.expire(elapsed_ms);
         self.drop_loot(catalog);
@@ -935,14 +954,20 @@ impl World {
                     return;
                 };
 
-                // Behaviours do not go through `resolve_move`, so the same rules have to be
-                // applied here or a paralysed enemy would keep walking while a paralysed player
-                // could not.
+                // Behaviours do not go through `resolve_move`, so the same rules apply here or a
+                // paralysed enemy would keep walking while a paralysed player could not.
                 let rules = crate::effects::Rules::of(entity.conditions);
                 if rules.rooted {
                     return;
                 }
-                let speed = &(speed * rules.speed);
+                let scale = if rules.slowed {
+                    0.5
+                } else if rules.speedy {
+                    1.5
+                } else {
+                    1.0
+                };
+                let speed = &(speed * scale);
                 // Behaviours quote speed the way the content does, in tenths of a tile per second.
                 let distance = speed * 10.0 * (elapsed_ms as f32 / 1000.0);
                 let (to_x, to_y) = (
@@ -1629,6 +1654,40 @@ impl World {
         }
     }
 
+    /// Regenerates health and magic.
+    ///
+    /// Vitality and wisdom are worth nothing without this, and it is what makes the walk between
+    /// fights part of the game rather than dead time. Fractions are carried between ticks for the
+    /// same reason the effects carry theirs: one point a second is less than one point a tick.
+    fn regenerate(&mut self, elapsed_ms: u32) {
+        let seconds = elapsed_ms as f32 / 1000.0;
+
+        for (_, entity) in self.entities.iter_mut() {
+            if entity.dead || entity.kind != Kind::Player {
+                continue;
+            }
+
+            if entity.hp < entity.max_hp {
+                let rules = crate::effects::Rules::of(entity.conditions);
+                if rules.no_health_regen {
+                    continue;
+                }
+                entity.health_fraction += entity.stats.health_regen(&rules) * seconds;
+                let whole = entity.health_fraction.trunc();
+                entity.health_fraction -= whole;
+                entity.hp = (entity.hp + whole as i32).min(entity.max_hp);
+            }
+
+            if entity.mp < entity.max_mp {
+                let rules = crate::effects::Rules::of(entity.conditions);
+                entity.magic_fraction += entity.stats.magic_regen(&rules) * seconds;
+                let whole = entity.magic_fraction.trunc();
+                entity.magic_fraction -= whole;
+                entity.mp = (entity.mp + whole as i32).min(entity.max_mp);
+            }
+        }
+    }
+
     /// Applies the effects that move health over time.
     ///
     /// Kept apart from the ground because the two answer different questions. One is where you are
@@ -2107,7 +2166,8 @@ mod tests {
 
         // Trimmed to speed × time × tolerance, not rejected outright.
         let travelled = outcome.x - 16.0;
-        let allowed = 5.0 * 0.05 * MOVE_TOLERANCE;
+        // Four tiles a second at zero speed, over fifty milliseconds, plus the tolerance.
+        let allowed = 4.0 * 0.05 * MOVE_TOLERANCE;
         assert!(
             (travelled - allowed).abs() < 1e-3,
             "travelled {travelled}, allowed {allowed}"
@@ -2173,11 +2233,18 @@ mod tests {
             .spawn(Entity::player(ObjectType(0x600), 4.0, 4.0, 300))
             .unwrap();
 
+        // A hundred a second from the ground against six a second of regeneration, so the loss is
+        // most of the hundred rather than all of it.
         world.advance(&catalog, 1000);
-        assert_eq!(world.get(player).unwrap().hp, 200, "100 damage per second");
+        let after_a_second = world.get(player).unwrap().hp;
+        assert!(
+            (200..=210).contains(&after_a_second),
+            "about a hundred a second, less regeneration: {after_a_second}"
+        );
 
-        world.advance(&catalog, 1000);
-        world.advance(&catalog, 1000);
+        for _ in 0..5 {
+            world.advance(&catalog, 1000);
+        }
 
         assert!(world.get(player).is_none(), "the player should have died");
         assert_eq!(world.len(), 0);
@@ -2862,9 +2929,11 @@ mod tests {
         // a disconnection rather than an effect.
         let catalog = catalog();
         let mut world = field(&catalog);
-        let player = world
-            .spawn(Entity::player(ObjectType(0x600), 10.0, 10.0, 500))
-            .unwrap();
+        // Speed is held at the base when slowed rather than scaled, so the difference only shows
+        // on a character that has speed to lose.
+        let mut fast = Entity::player(ObjectType(0x600), 10.0, 10.0, 500);
+        fast.stats.boost(hendra_content::Stat::Speed, 75);
+        let player = world.spawn(fast).unwrap();
         world.reindex();
 
         let reach = |world: &World| {
@@ -2955,7 +3024,9 @@ mod tests {
         let hurt = world.get(player).unwrap().hp;
         assert!(hurt < 500 && hurt > 400, "one second of bleeding: {hurt}");
 
-        for _ in 0..2000 {
+        // Long enough to run the health out, and inside the effect's own lifetime: once bleeding
+        // lapses the player starts recovering again, which is correct and not what this measures.
+        for _ in 0..400 {
             world.advance(&catalog, 50);
         }
         assert_eq!(world.get(player).unwrap().hp, 1, "left alive at one");
@@ -3098,8 +3169,9 @@ mod tests {
         }
         assert_eq!(world.projectile_count(), 1);
 
-        // After the cooldown has elapsed it may fire again.
-        for _ in 0..12 {
+        // After the cooldown has elapsed it may fire again. A character with no dexterity fires
+        // slowly, so this waits out the full minimum rather than a fixed 500ms.
+        for _ in 0..20 {
             world.advance(&catalog, 50);
         }
         assert_eq!(world.shoot(shooter, &catalog, 0.0).len(), 1);
@@ -3110,8 +3182,9 @@ mod tests {
         let catalog = catalog();
         let (mut world, shooter, target) = duel(&catalog);
 
-        // 100 damage a shot against 10 defence and 200 hit points: three shots is plenty.
-        for _ in 0..40 {
+        // A hundred a shot, halved by an attack of zero and reduced again by defence, against two
+        // hundred hit points. Slower than it used to be, so this allows more attempts.
+        for _ in 0..200 {
             world.shoot(shooter, &catalog, 0.0);
             world.advance(&catalog, 50);
             if world.get(target).is_none() {
