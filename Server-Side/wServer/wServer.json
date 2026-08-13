@@ -8,7 +8,7 @@
   "serverInfo": {
     "type": "World",
     "name": "Server",
-    "address": "37.123.96.189",
+    "address": "127.0.0.1",
     "port": "2050",
     "coordinates": {
       "latitude": "0",

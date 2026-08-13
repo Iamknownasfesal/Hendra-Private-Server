@@ -259,8 +259,12 @@ Eight of 48 endpoints are done, and they are the ones that matter.
 
 Only once every phase above is done and the client has been cut over.
 
-- [ ] **Scrub the production IP `37.123.96.189` from `Server-Side/server/server.json`.** Do this
-      before the repository goes anywhere public, not at the end
+- [x] **Scrubbed the production IP from the working tree.** It appeared three times, not once:
+      `Server-Side/server/server.json`, `Server-Side/wServer/wServer.json` and
+      `Client-Side/.../ProductionSetup.as`. All now say `127.0.0.1`.
+- [ ] **The IP is still in git history.** Removing it needs a history rewrite, which rewrites
+      shared commits and is not a call to make without asking. If the repository is going public,
+      do this before it does; if the address has changed since, it may not be worth the disruption
 - [ ] Delete `Server-Side/`, keeping `XmlDatas` until the content pipeline needs nothing from it
 - [ ] Move deployment, the Dockerfile and CI to the Rust tree
 
