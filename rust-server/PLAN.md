@@ -6,7 +6,7 @@ deliberately excluded and left until last.
 Phases 0–5 are done: workspace, content, protocol, transport, simulation, behaviour language,
 persistence, authentication. What follows is phases 6–11.
 
-**Where we are:** ~70% of the old server by subsystem. 573 tests.
+**Where we are:** ~72% of the old server by subsystem. 579 tests.
 
 **Sizing** is relative, not calendar: **S** is an afternoon, **M** is a day or two, **L** is
 several days, **XL** is a week or more.
@@ -206,7 +206,7 @@ Independent of everything above and blocks nothing.
 
 ### 9.2 Guilds — **L**
 
-- [ ] Schema, ranks, hall worlds, the board
+- [x] Schema, four ordered ranks, and the board. Hall worlds already work through `get_or_start_for`, which gives a personal instance per key
 
 ### 9.3 Friends and private messages — **M**
 

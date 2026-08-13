@@ -12,11 +12,13 @@
 //! discipline that makes an in-memory move safe stops being enough the moment two processes can
 //! attempt the same move at once.
 
+pub mod guild;
 mod model;
 mod moves;
 pub mod social;
 mod trade;
 
+pub use guild::{Guild, Member, Rank};
 pub use model::{Account, Character, CharacterSummary, Currency};
 pub use moves::{Location, MoveOutcome, Placed, Purchase};
 pub use social::{Friend, Message};

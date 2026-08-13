@@ -7,7 +7,7 @@
 //! Set `HENDRA_TEST_DATABASE` to point at one. Without it the tests skip rather than fail, so a
 //! machine with no Postgres can still run the rest of the suite.
 
-use hendra_store::{Currency, Location, Offer, Purchase, Store, StoreError};
+use hendra_store::{Currency, Location, Offer, Purchase, Rank, Store, StoreError};
 
 /// A store with a schema of its own, or `None` when no database is configured.
 ///
@@ -1188,5 +1188,145 @@ async fn an_empty_message_is_refused_and_a_long_one_is_cut() {
     assert_eq!(
         inbox[0].body.chars().count(),
         hendra_store::social::MAX_MESSAGE_LENGTH
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn founding_a_guild_makes_you_its_founder() {
+    let Some(store) = store("t_guild").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let one = store.create_account("Fesal").await.unwrap();
+    let guild = store.found_guild(one.id, "The Quiet").await.unwrap();
+
+    let members = store.guild_members(guild.id).await.unwrap();
+    assert_eq!(members.len(), 1);
+    assert_eq!(members[0].rank, Rank::Founder);
+    assert!(members[0].rank.may_rank());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_guild_name_is_taken_once_however_it_is_shouted() {
+    let Some(store) = store("t_guild_name").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let one = store.create_account("Fesal").await.unwrap();
+    let two = store.create_account("Someone").await.unwrap();
+
+    store.found_guild(one.id, "The Quiet").await.unwrap();
+    assert!(store.found_guild(two.id, "THE QUIET").await.is_err());
+    assert!(store.found_guild(two.id, "the quiet").await.is_err());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn nobody_is_in_two_guilds() {
+    // Leaving one to found another is two decisions, and doing both silently is how someone leaves
+    // a guild they meant to keep.
+    let Some(store) = store("t_guild_two").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let one = store.create_account("Fesal").await.unwrap();
+    let two = store.create_account("Someone").await.unwrap();
+
+    let first = store.found_guild(one.id, "The Quiet").await.unwrap();
+    assert!(store.found_guild(one.id, "The Loud").await.is_err());
+
+    let second = store.found_guild(two.id, "The Loud").await.unwrap();
+    assert!(store.join_guild(one.id, second.id).await.is_err());
+
+    store.leave_guild(one.id).await.unwrap();
+    store.join_guild(one.id, second.id).await.unwrap();
+    assert!(store.guild_members(first.id).await.unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn nobody_can_rank_somebody_at_or_above_themselves() {
+    // Promoting somebody above yourself is how a guild loses its founder, and demoting somebody
+    // who outranks you is how it loses one to a mutiny.
+    let Some(store) = store("t_guild_rank").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let founder = store.create_account("Fesal").await.unwrap();
+    let officer = store.create_account("Someone").await.unwrap();
+    let guild = store.found_guild(founder.id, "The Quiet").await.unwrap();
+    store.join_guild(officer.id, guild.id).await.unwrap();
+
+    store
+        .set_guild_rank(founder.id, officer.id, Rank::Officer)
+        .await
+        .unwrap();
+
+    // An officer cannot rank anyone at all.
+    assert!(
+        store
+            .set_guild_rank(officer.id, founder.id, Rank::Initiate)
+            .await
+            .is_err()
+    );
+
+    // And a founder cannot make somebody a founder beside them.
+    assert!(
+        store
+            .set_guild_rank(founder.id, officer.id, Rank::Founder)
+            .await
+            .is_err()
+    );
+
+    let members = store.guild_members(guild.id).await.unwrap();
+    assert_eq!(members[0].rank, Rank::Founder);
+    assert_eq!(members[0].name, "Fesal");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn only_an_officer_may_change_the_board() {
+    let Some(store) = store("t_guild_board").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let founder = store.create_account("Fesal").await.unwrap();
+    let initiate = store.create_account("Someone").await.unwrap();
+    let guild = store.found_guild(founder.id, "The Quiet").await.unwrap();
+    store.join_guild(initiate.id, guild.id).await.unwrap();
+
+    assert!(
+        store
+            .set_guild_board(initiate.id, "mine now")
+            .await
+            .is_err()
+    );
+    store
+        .set_guild_board(founder.id, "be excellent")
+        .await
+        .unwrap();
+
+    assert_eq!(store.guild(guild.id).await.unwrap().board, "be excellent");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn ranking_somebody_in_another_guild_is_refused() {
+    let Some(store) = store("t_guild_outsider").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let one = store.create_account("Fesal").await.unwrap();
+    let two = store.create_account("Someone").await.unwrap();
+    store.found_guild(one.id, "The Quiet").await.unwrap();
+    store.found_guild(two.id, "The Loud").await.unwrap();
+
+    assert!(
+        store
+            .set_guild_rank(one.id, two.id, Rank::Initiate)
+            .await
+            .is_err()
     );
 }
