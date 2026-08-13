@@ -104,6 +104,13 @@ pub enum SlotLocation {
 
     /// A bag or chest in the world.
     Bag { entity: EntityId, slot: u8 },
+
+    /// The ground at the player's feet.
+    ///
+    /// Distinct from a bag rather than a bag with a reserved id, because "drop this" and "put this
+    /// in that bag" are different requests and a magic entity number would make them look like the
+    /// same one.
+    Ground,
 }
 
 impl SlotLocation {
@@ -113,6 +120,7 @@ impl SlotLocation {
             SlotLocation::Equipment { .. } => 1,
             SlotLocation::Vault { .. } => 2,
             SlotLocation::Bag { .. } => 3,
+            SlotLocation::Ground => 4,
         }
     }
 
@@ -125,6 +133,7 @@ impl SlotLocation {
                 w.varint(entity.0 as u64);
                 w.u8(*slot);
             }
+            SlotLocation::Ground => {}
         }
     }
 
@@ -140,6 +149,7 @@ impl SlotLocation {
                 entity: EntityId(r.varint_u32()?),
                 slot: r.u8()?,
             },
+            4 => SlotLocation::Ground,
             other => {
                 return Err(CodecError::InvalidValue {
                     what: "slot location",
@@ -579,6 +589,10 @@ mod tests {
         round_trip_client(ClientMessage::MoveItem {
             from: SlotLocation::Inventory { slot: 3 },
             to: SlotLocation::Vault { slot: 200 },
+        });
+        round_trip_client(ClientMessage::MoveItem {
+            from: SlotLocation::Inventory { slot: 2 },
+            to: SlotLocation::Ground,
         });
         round_trip_client(ClientMessage::MoveItem {
             from: SlotLocation::Bag {

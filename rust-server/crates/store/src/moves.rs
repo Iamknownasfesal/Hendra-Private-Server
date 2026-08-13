@@ -41,6 +41,12 @@ impl Location {
 }
 
 /// What a move did.
+/// Where an item went when it entered a container.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Placed {
+    pub slot: i16,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MoveOutcome {
     /// What ended up in the source slot. Zero means empty.
@@ -98,6 +104,93 @@ impl Store {
             source: destination_item,
             destination: source_item,
         })
+    }
+}
+
+impl Store {
+    /// Puts an item into the first free slot of a character's inventory.
+    ///
+    /// The search and the write happen inside one transaction with the rows locked, so two
+    /// simultaneous pickups cannot both choose the same slot and one of them silently overwrite the
+    /// other's item.
+    pub async fn give_item(
+        &self,
+        character_id: i64,
+        item: i32,
+        first_slot: i16,
+        last_slot: i16,
+    ) -> Result<Placed> {
+        let mut transaction = self.pool().begin().await?;
+
+        // Lock every candidate row that exists, so a concurrent pickup waits rather than racing.
+        // Rows that do not exist cannot be locked, which is why the insert below is conditional on
+        // the slot still being free.
+        sqlx::query(
+            "SELECT slot FROM inventory_slot
+             WHERE character_id = $1 AND slot BETWEEN $2 AND $3
+             FOR UPDATE",
+        )
+        .bind(character_id)
+        .bind(first_slot)
+        .bind(last_slot)
+        .fetch_all(&mut *transaction)
+        .await?;
+
+        let taken = sqlx::query_as::<_, (i16,)>(
+            "SELECT slot FROM inventory_slot WHERE character_id = $1 AND slot BETWEEN $2 AND $3",
+        )
+        .bind(character_id)
+        .bind(first_slot)
+        .bind(last_slot)
+        .fetch_all(&mut *transaction)
+        .await?;
+
+        let free = (first_slot..=last_slot)
+            .find(|slot| !taken.iter().any(|(used,)| used == slot))
+            .ok_or(StoreError::Refused("there is no room for that"))?;
+
+        // `ON CONFLICT DO NOTHING` with a checked row count: if another transaction inserted the
+        // same slot between the scan and here, this affects nothing and the pickup is refused
+        // rather than overwriting what they put there.
+        let written = sqlx::query(
+            "INSERT INTO inventory_slot (character_id, slot, item_type) VALUES ($1, $2, $3)
+             ON CONFLICT (character_id, slot) DO NOTHING",
+        )
+        .bind(character_id)
+        .bind(free)
+        .bind(item)
+        .execute(&mut *transaction)
+        .await?;
+
+        if written.rows_affected() == 0 {
+            return Err(StoreError::Refused("there is no room for that"));
+        }
+
+        transaction.commit().await?;
+        Ok(Placed { slot: free })
+    }
+
+    /// Removes an item from a slot, but only if that slot still holds what the caller expects.
+    ///
+    /// The condition is the point: it is what makes two simultaneous requests to drop the same item
+    /// resolve to one drop rather than two.
+    pub async fn take_item(&self, character_id: i64, slot: i16, expected: i32) -> Result<()> {
+        let removed = sqlx::query(
+            "DELETE FROM inventory_slot
+             WHERE character_id = $1 AND slot = $2 AND item_type = $3",
+        )
+        .bind(character_id)
+        .bind(slot)
+        .bind(expected)
+        .execute(self.pool())
+        .await?;
+
+        if removed.rows_affected() == 0 {
+            return Err(StoreError::Refused(
+                "that item is no longer where you left it",
+            ));
+        }
+        Ok(())
     }
 }
 

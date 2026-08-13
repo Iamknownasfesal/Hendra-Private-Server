@@ -335,6 +335,113 @@ async fn futures_join<T>(
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn giving_an_item_finds_the_first_free_slot() {
+    let Some(store) = store("t_give").await else {
+        return;
+    };
+
+    let account = store.create_account("Giver").await.unwrap();
+    let character = store
+        .create_character(account.id, 0x0300, "Wizard", 800)
+        .await
+        .unwrap();
+
+    store.set_inventory(character.id, &[(4, WAND), (6, ROBE)]).await.unwrap();
+
+    assert_eq!(store.give_item(character.id, WAND, 4, 11).await.unwrap().slot, 5);
+    assert_eq!(store.give_item(character.id, WAND, 4, 11).await.unwrap().slot, 7);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_full_inventory_refuses_an_item() {
+    let Some(store) = store("t_full").await else {
+        return;
+    };
+
+    let account = store.create_account("Full").await.unwrap();
+    let character = store
+        .create_character(account.id, 0x0300, "Wizard", 800)
+        .await
+        .unwrap();
+
+    let packed: Vec<(i16, i32)> = (4..=11).map(|slot| (slot, WAND)).collect();
+    store.set_inventory(character.id, &packed).await.unwrap();
+
+    assert!(matches!(
+        store.give_item(character.id, ROBE, 4, 11).await,
+        Err(StoreError::Refused(_))
+    ));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn two_pickups_cannot_claim_the_same_slot() {
+    // Two bags looted at once with one slot free. Without locking the scan, both would find the
+    // same free slot and the second would overwrite the first.
+    let Some(store) = store("t_pickup_race").await else {
+        return;
+    };
+
+    let account = store.create_account("Picker").await.unwrap();
+    let character = store
+        .create_character(account.id, 0x0300, "Wizard", 800)
+        .await
+        .unwrap();
+
+    for _ in 0..20 {
+        // Everything full except slot 11.
+        let packed: Vec<(i16, i32)> = (4..=10).map(|slot| (slot, WAND)).collect();
+        store.set_inventory(character.id, &packed).await.unwrap();
+
+        let one = {
+            let store = store.clone();
+            let id = character.id;
+            tokio::spawn(async move { store.give_item(id, ROBE, 4, 11).await })
+        };
+        let two = {
+            let store = store.clone();
+            let id = character.id;
+            tokio::spawn(async move { store.give_item(id, ROBE, 4, 11).await })
+        };
+
+        let (first, second) = (one.await.unwrap(), two.await.unwrap());
+        let winners = [first.is_ok(), second.is_ok()].iter().filter(|ok| **ok).count();
+
+        assert_eq!(winners, 1, "one free slot can only take one item");
+        assert_eq!(
+            store.character(character.id).await.unwrap().inventory.len(),
+            8,
+            "and the inventory is full, not overfull"
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn taking_an_item_that_moved_is_refused() {
+    let Some(store) = store("t_take").await else {
+        return;
+    };
+
+    let account = store.create_account("Taker").await.unwrap();
+    let character = store
+        .create_character(account.id, 0x0300, "Wizard", 800)
+        .await
+        .unwrap();
+
+    store.set_inventory(character.id, &[(4, WAND)]).await.unwrap();
+
+    // The condition is what makes two simultaneous drops of the same item resolve to one.
+    assert!(matches!(
+        store.take_item(character.id, 4, ROBE).await,
+        Err(StoreError::Refused(_))
+    ));
+    store.take_item(character.id, 4, WAND).await.unwrap();
+    assert!(matches!(
+        store.take_item(character.id, 4, WAND).await,
+        Err(StoreError::Refused(_))
+    ));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_character_saves_and_dies() {
     let Some(store) = store("t_save").await else {
         return;

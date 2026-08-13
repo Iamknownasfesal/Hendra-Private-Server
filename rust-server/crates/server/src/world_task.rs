@@ -63,10 +63,32 @@ pub enum ToWorld {
         reply: tokio::sync::oneshot::Sender<Option<u16>>,
     },
 
+    /// Takes an item out of a bag, if it is still there and the player can reach it.
+    ///
+    /// The world answers with what it removed. Removing before the durable write is deliberate —
+    /// see the note on ordering in the session.
+    TakeFromBag {
+        player: Handle,
+        bag: hendra_net::EntityId,
+        slot: u8,
+        reply: tokio::sync::oneshot::Sender<Option<u16>>,
+    },
+
+    /// Puts an item into a bag, or makes a new one at the player's feet.
+    PutInBag {
+        player: Handle,
+        bag: Option<hendra_net::EntityId>,
+        item: u16,
+        reply: tokio::sync::oneshot::Sender<bool>,
+    },
+
     Leave {
         handle: Handle,
     },
 }
+
+/// How close a player must be to reach into a bag, in tiles.
+pub const BAG_REACH: f32 = 2.0;
 
 /// How close a player must be to a portal to use it, in tiles.
 ///
@@ -276,12 +298,119 @@ fn handle(
             let _ = reply.send(resolve_portal(world, handle, portal));
         }
 
+        ToWorld::TakeFromBag {
+            player,
+            bag,
+            slot,
+            reply,
+        } => {
+            let _ = reply.send(take_from_bag(world, player, bag, slot));
+        }
+
+        ToWorld::PutInBag {
+            player,
+            bag,
+            item,
+            reply,
+        } => {
+            let _ = reply.send(put_in_bag(world, catalog, player, bag, item));
+        }
+
         ToWorld::Leave { handle } => {
             players.retain(|player| player.handle != handle);
             world.despawn(handle);
             tracing::info!(world = %world.name, ?handle, "player left");
         }
     }
+}
+
+/// Removes an item from a bag the player can reach.
+fn take_from_bag(
+    world: &mut World,
+    player: Handle,
+    bag: hendra_net::EntityId,
+    slot: u8,
+) -> Option<u16> {
+    let handle = Handle::from_entity_id(bag);
+    if !within_reach(world, player, handle) {
+        return None;
+    }
+
+    let entity = world.get_mut(handle)?;
+    if entity.kind != hendra_sim::Kind::Container {
+        return None;
+    }
+
+    let container = entity.container.as_mut()?;
+    let item = container.item(slot as usize);
+    if item.is_none() {
+        return None;
+    }
+
+    container.set(slot as usize, hendra_content::ObjectType::NONE);
+
+    // An emptied bag goes rather than sitting there inviting a second look.
+    if container.occupied() == 0 {
+        entity.dead = true;
+    }
+
+    Some(item.0)
+}
+
+/// Puts an item into a bag, creating one at the player's feet if none was named.
+fn put_in_bag(
+    world: &mut World,
+    catalog: &Catalog,
+    player: Handle,
+    bag: Option<hendra_net::EntityId>,
+    item: u16,
+) -> bool {
+    let item = hendra_content::ObjectType(item);
+
+    if let Some(bag) = bag {
+        let handle = Handle::from_entity_id(bag);
+        if !within_reach(world, player, handle) {
+            return false;
+        }
+
+        let Some(entity) = world.get_mut(handle) else {
+            return false;
+        };
+        if entity.kind != hendra_sim::Kind::Container {
+            return false;
+        }
+        let Some(container) = entity.container.as_mut() else {
+            return false;
+        };
+        return container.insert(item, catalog).is_some();
+    }
+
+    // Nothing named: drop it where the player stands.
+    let Some(player) = world.get(player) else {
+        return false;
+    };
+    let (x, y) = (player.x, player.y);
+
+    let mut container =
+        hendra_sim::Container::new(hendra_sim::ContainerKind::Bag, 8);
+    if container.insert(item, catalog).is_none() {
+        return false;
+    }
+
+    let mut dropped = hendra_sim::world::Entity::fixture(hendra_content::ObjectType(0x0500), x, y);
+    dropped.kind = hendra_sim::Kind::Container;
+    dropped.container = Some(Box::new(container));
+    dropped.expires_in_ms = Some(60_000);
+    world.spawn(dropped).is_some()
+}
+
+/// Whether a player is close enough to reach something.
+fn within_reach(world: &World, player: Handle, target: Handle) -> bool {
+    let (Some(player), Some(target)) = (world.get(player), world.get(target)) else {
+        return false;
+    };
+    let (dx, dy) = (target.x - player.x, target.y - player.y);
+    dx * dx + dy * dy <= BAG_REACH * BAG_REACH
 }
 
 /// Checks that a player really is standing at the portal they named, and reports its type.

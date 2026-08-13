@@ -168,6 +168,13 @@ enum Command {
         from: (u8, u16),
         to: (u8, u16),
     },
+    PickUp {
+        bag: u32,
+        slot: u8,
+    },
+    Drop {
+        slot: u16,
+    },
     Chat(String),
     UsePortal(u32),
     Disconnect,
@@ -437,6 +444,23 @@ impl HendraConnection {
         });
     }
 
+    /// Takes an item out of a bag on the ground.
+    #[func]
+    fn pick_up(&self, bag: i64, slot: i64) {
+        self.send(Command::PickUp {
+            bag: bag.max(0) as u32,
+            slot: slot.max(0) as u8,
+        });
+    }
+
+    /// Drops a carried item at the player's feet.
+    #[func]
+    fn drop_item(&self, slot: i64) {
+        self.send(Command::Drop {
+            slot: slot.max(0) as u16,
+        });
+    }
+
     /// Fires in the given direction, in radians.
     ///
     /// Only the aim is sent. Whether the weapon is ready, where the shot travels and what it hits
@@ -596,6 +620,30 @@ async fn handle(
             ClientMessage::MoveItem {
                 from: place(from),
                 to: place(to),
+            }
+            .encode(&mut Writer::new(&mut buf));
+            return link.send(Delivery::Stream, &buf).await.is_ok();
+        }
+
+        Command::PickUp { bag, slot } => {
+            let mut buf = Vec::new();
+            ClientMessage::MoveItem {
+                from: hendra_net::message::SlotLocation::Bag {
+                    entity: EntityId(bag),
+                    slot,
+                },
+                // The server chooses the slot; naming one here would only be a guess.
+                to: hendra_net::message::SlotLocation::Inventory { slot: 0 },
+            }
+            .encode(&mut Writer::new(&mut buf));
+            return link.send(Delivery::Stream, &buf).await.is_ok();
+        }
+
+        Command::Drop { slot } => {
+            let mut buf = Vec::new();
+            ClientMessage::MoveItem {
+                from: hendra_net::message::SlotLocation::Inventory { slot: slot as u8 },
+                to: hendra_net::message::SlotLocation::Ground,
             }
             .encode(&mut Writer::new(&mut buf));
             return link.send(Delivery::Stream, &buf).await.is_ok();

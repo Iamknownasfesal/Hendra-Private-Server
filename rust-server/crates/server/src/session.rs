@@ -12,8 +12,19 @@
 //! one container — so it goes through the same transactional path a vault move does rather than
 //! needing a second mechanism.
 //!
-//! Bags are not durable and are handled separately; a move touching one is refused for now rather
-//! than done unsafely.
+//! # Bags cross a boundary
+//!
+//! A bag lives in the world — in memory, gone in a minute — while an inventory lives in the
+//! database. A move between them cannot be one transaction, so it is two, and the order they happen
+//! in decides what a crash between them costs.
+//!
+//! Removing from the ephemeral side first means a crash loses the item. Writing to the durable side
+//! first means a crash duplicates it. Both are bad and they are not equally bad: a lost item is one
+//! player's bad evening, and a duplicated one is an economy. So the ephemeral side always goes
+//! first, and if the second step fails the first is undone.
+//!
+//! The window is a few milliseconds, on an item that was free and would have expired in a minute
+//! regardless.
 //!
 //! # Changing world
 //!
@@ -76,7 +87,8 @@ fn locate(where_: SlotLocation, character_id: i64, account_id: i64) -> Option<Lo
             slot: slot as i16,
         },
 
-        SlotLocation::Bag { .. } => return None,
+        // Neither a bag nor the ground is durable; both are handled before this is reached.
+        SlotLocation::Bag { .. } | SlotLocation::Ground => return None,
     })
 }
 
@@ -111,7 +123,7 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
             Outcome::Stop => break,
 
             Outcome::Move { from, to } => {
-                move_item(&mut link, &context, &player, from, to).await;
+                move_item(&mut link, &context, &player, &placement, from, to).await;
             }
 
             Outcome::Travel(portal_type) => {
@@ -291,17 +303,39 @@ async fn move_item(
     link: &mut Link,
     context: &Context,
     player: &crate::accounts::Session,
+    placement: &Placement,
     from: SlotLocation,
     to: SlotLocation,
 ) {
     let character_id = player.character.id;
     let account_id = player.account.id;
 
+    // Bags are not durable, so a move touching one is two steps rather than one transaction.
+    match (from, to) {
+        (SlotLocation::Bag { entity, slot }, destination) => {
+            take_from_bag(link, context, player, placement, entity, slot, destination).await;
+            return;
+        }
+        (source, SlotLocation::Bag { entity, .. }) => {
+            put_in_bag(link, context, player, placement, source, Some(entity)).await;
+            return;
+        }
+        (source, SlotLocation::Ground) => {
+            put_in_bag(link, context, player, placement, source, None).await;
+            return;
+        }
+        (SlotLocation::Ground, _) => {
+            say(link, "there is nothing at your feet to take").await;
+            return;
+        }
+        _ => {}
+    }
+
     let (Some(source), Some(destination)) = (
         locate(from, character_id, account_id),
         locate(to, character_id, account_id),
     ) else {
-        say(link, "that cannot be moved yet").await;
+        say(link, "that cannot be moved").await;
         return;
     };
 
@@ -332,6 +366,141 @@ async fn move_item(
         }
     }
 }
+
+/// Takes an item out of a bag and into the player's inventory.
+///
+/// The bag gives it up first. If the durable write then fails the item goes back, and if the server
+/// dies in between it is lost — which is the trade this order buys, and the right way round.
+async fn take_from_bag(
+    link: &mut Link,
+    context: &Context,
+    player: &crate::accounts::Session,
+    placement: &Placement,
+    bag: EntityId,
+    slot: u8,
+    destination: SlotLocation,
+) {
+    let (reply, answer) = tokio::sync::oneshot::channel();
+    if !placement
+        .world
+        .send(ToWorld::TakeFromBag {
+            player: placement.handle,
+            bag,
+            slot,
+            reply,
+        })
+        .await
+    {
+        return;
+    }
+
+    let Some(item) = answer.await.ok().flatten() else {
+        say(link, "there is nothing there to take").await;
+        return;
+    };
+
+    let outcome = match locate(destination, player.character.id, player.account.id) {
+        // A named durable slot: it has to be free, because there is nothing to swap with.
+        Some(Location::Inventory { character_id, slot }) => context
+            .store
+            .give_item(character_id, item as i32, slot, slot)
+            .await
+            .map(|_| ()),
+
+        Some(Location::Vault { .. }) | None => {
+            // Anywhere else, or nowhere in particular: the first free carried slot.
+            context
+                .store
+                .give_item(
+                    player.character.id,
+                    item as i32,
+                    EQUIPPED_SLOTS as i16,
+                    LAST_CARRIED_SLOT,
+                )
+                .await
+                .map(|_| ())
+        }
+    };
+
+    if let Err(err) = outcome {
+        // Undo the first step. The bag may have gone if it emptied, in which case this makes a new
+        // one where the player stands — the item comes back either way.
+        let (reply, _) = tokio::sync::oneshot::channel();
+        let _ = placement
+            .world
+            .send(ToWorld::PutInBag {
+                player: placement.handle,
+                bag: Some(bag),
+                item,
+                reply,
+            })
+            .await;
+
+        tracing::debug!(%err, "returned an item to its bag");
+        say(link, "there is no room for that").await;
+        return;
+    }
+
+    send_containers(link, &context.store, player).await;
+}
+
+/// Puts an item from the player's inventory into a bag.
+async fn put_in_bag(
+    link: &mut Link,
+    context: &Context,
+    player: &crate::accounts::Session,
+    placement: &Placement,
+    source: SlotLocation,
+    bag: Option<EntityId>,
+) {
+    let Some(location) = locate(source, player.character.id, player.account.id) else {
+        say(link, "that cannot be dropped").await;
+        return;
+    };
+
+    let Location::Inventory { character_id, slot } = location else {
+        say(link, "things cannot be dropped straight from the vault").await;
+        return;
+    };
+
+    let Some(item) = read_slot(&context.store, location).await else {
+        say(link, "there is nothing there").await;
+        return;
+    };
+
+    // The durable side gives it up first here too, for the same reason in reverse: the alternative
+    // is an item that exists in a bag and in the database at once.
+    if let Err(err) = context.store.take_item(character_id, slot, item).await {
+        say(link, &err.to_string()).await;
+        return;
+    }
+
+    let (reply, answer) = tokio::sync::oneshot::channel();
+    let sent = placement
+        .world
+        .send(ToWorld::PutInBag {
+            player: placement.handle,
+            bag,
+            item: item as u16,
+            reply,
+        })
+        .await;
+
+    let accepted = sent && answer.await.unwrap_or(false);
+    if !accepted {
+        // Put it back where it came from.
+        let _ = context
+            .store
+            .give_item(character_id, item, slot, slot)
+            .await;
+        say(link, "there is nowhere to put that").await;
+    }
+
+    send_containers(link, &context.store, player).await;
+}
+
+/// The highest carried slot a player has.
+const LAST_CARRIED_SLOT: i16 = 11;
 
 /// What is currently in a durable slot.
 async fn read_slot(store: &Store, at: Location) -> Option<i32> {
