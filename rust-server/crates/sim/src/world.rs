@@ -22,6 +22,7 @@ use hendra_content::{Catalog, ConditionSet, ObjectType};
 use hendra_net::{EntityId, EntityState, Tick, WorldSnapshot};
 
 use crate::grid::Grid;
+use crate::inventory::{Container, ContainerKind};
 use crate::projectile::{Hit, Projectile, Projectiles};
 use crate::slab::{Handle, Slab};
 use crate::tiles::Terrain;
@@ -88,6 +89,12 @@ pub struct Entity {
     /// one inside every wall would cost more memory than the enemies do.
     pub mind: Option<Box<Mind>>,
 
+    /// What this entity holds, for players and loot bags.
+    pub container: Option<Box<Container>>,
+
+    /// How long until this entity removes itself, for bags.
+    pub expires_in_ms: Option<u32>,
+
     /// Set when the entity should be removed at the end of the tick.
     pub dead: bool,
 }
@@ -113,6 +120,8 @@ impl Entity {
             spawn_x: x,
             spawn_y: y,
             mind: None,
+            container: None,
+            expires_in_ms: None,
             dead: false,
         }
     }
@@ -136,6 +145,8 @@ impl Entity {
             spawn_x: x,
             spawn_y: y,
             mind: None,
+            container: None,
+            expires_in_ms: None,
             dead: false,
         }
     }
@@ -177,6 +188,22 @@ pub struct MoveOutcome {
     pub refused: Option<MoveRefusal>,
 }
 
+/// The slot type an item-kind name refers to.
+///
+/// The content's loot tables say `weapon` or `ring`, which are the `ItemType` enum the C# used.
+/// These are the slot numbers those correspond to; an unrecognised name means "anything of this
+/// tier", which is a wider drop rather than no drop.
+fn slot_type_of(kind: &str) -> Option<i32> {
+    Some(match kind {
+        "weapon" => 1,
+        "ability" => 4,
+        "armor" | "armour" => 14,
+        "ring" => 9,
+        "potion" => 0,
+        _ => return None,
+    })
+}
+
 /// How much further than the rules allow a claim may travel before it is trimmed.
 ///
 /// Not generosity toward cheating — the claim is clamped either way. It absorbs the ordinary
@@ -199,6 +226,9 @@ pub struct World {
 
     /// Compiled enemy behaviour, by object id.
     behaviours: Programs,
+
+    /// What a loot bag looks like.
+    bag_type: ObjectType,
 
     /// Reused between ticks so a warm world allocates nothing.
     handles: Vec<Handle>,
@@ -257,6 +287,7 @@ impl World {
             tick: Tick::ZERO,
             seed: 0x9e37_79b9,
             behaviours: Programs::default(),
+            bag_type: ObjectType(0x0500),
             handles: Vec::new(),
             nearby: Vec::new(),
             visible: Vec::new(),
@@ -543,6 +574,8 @@ impl World {
         self.think(catalog, elapsed_ms);
         self.apply_hazards(catalog, elapsed_ms);
         self.advance_projectiles(catalog, elapsed_ms);
+        self.expire(elapsed_ms);
+        self.drop_loot(catalog);
         self.reap();
         self.reindex();
     }
@@ -804,6 +837,120 @@ impl World {
                 if entity.hp <= 0 {
                     entity.dead = true;
                 }
+            }
+        }
+    }
+
+    /// Counts down anything with a lifetime, such as a loot bag.
+    fn expire(&mut self, elapsed_ms: u32) {
+        for (_, entity) in self.entities.iter_mut() {
+            let Some(remaining) = entity.expires_in_ms else {
+                continue;
+            };
+            let left = remaining.saturating_sub(elapsed_ms);
+            entity.expires_in_ms = Some(left);
+            if left == 0 {
+                entity.dead = true;
+            }
+        }
+    }
+
+    /// Turns what the dead were carrying into bags on the ground.
+    ///
+    /// Runs before the reap, because the loot table belongs to an entity that is about to stop
+    /// existing.
+    fn drop_loot(&mut self, catalog: &Catalog) {
+        self.handles.clear();
+        self.handles.extend(
+            self.entities
+                .iter()
+                .filter(|(_, entity)| entity.dead && entity.kind == Kind::Enemy)
+                .map(|(handle, _)| handle),
+        );
+
+        for index in 0..self.handles.len() {
+            let handle = self.handles[index];
+            let Some(entity) = self.entities.get(handle) else {
+                continue;
+            };
+            let (x, y) = (entity.x, entity.y);
+
+            let Some(id) = catalog.object(entity.object_type).map(|desc| desc.id.clone()) else {
+                continue;
+            };
+            let Some(program) = self.behaviours.get(&id) else {
+                continue;
+            };
+
+            let mut dropped = Vec::new();
+            for entry in program.loot.clone() {
+                if let Some(item) = self.roll_loot(&entry, catalog) {
+                    dropped.push(item);
+                }
+            }
+
+            if dropped.is_empty() {
+                continue;
+            }
+
+            let mut container = Container::new(ContainerKind::Bag, 8);
+            for item in dropped {
+                container.insert(item, catalog);
+            }
+
+            let mut bag = Entity::fixture(self.bag_type, x, y);
+            bag.kind = Kind::Container;
+            bag.container = Some(Box::new(container));
+            // Long enough to walk back for, short enough that a dungeon does not fill with bags.
+            bag.expires_in_ms = Some(60_000);
+            self.spawn(bag);
+        }
+    }
+
+    /// Decides whether one loot entry drops, and what.
+    fn roll_loot(
+        &mut self,
+        entry: &hendra_behavior::program::LootEntry,
+        catalog: &Catalog,
+    ) -> Option<ObjectType> {
+        use hendra_behavior::program::LootEntry;
+
+        match entry {
+            LootEntry::Item { name, chance } => {
+                if self.roll() > *chance {
+                    return None;
+                }
+                catalog.type_of(name)
+            }
+
+            LootEntry::Tier {
+                tier,
+                kind,
+                chance,
+            } => {
+                if self.roll() > *chance {
+                    return None;
+                }
+
+                // Every item of that tier and kind, one of which is chosen. A scan rather than an
+                // index because this runs when something dies, not every tick.
+                let wanted = slot_type_of(kind);
+                let candidates: Vec<ObjectType> = catalog
+                    .items()
+                    .filter(|desc| {
+                        desc.item.as_ref().is_some_and(|item| {
+                            item.tier == Some(*tier as i32)
+                                && wanted.is_none_or(|slot| item.slot_type == slot)
+                        })
+                    })
+                    .map(|desc| desc.object_type)
+                    .collect();
+
+                if candidates.is_empty() {
+                    return None;
+                }
+                let pick = (self.roll() * candidates.len() as f32) as usize;
+                candidates.get(pick.min(candidates.len() - 1)).copied()
             }
         }
     }
@@ -1365,6 +1512,106 @@ mod tests {
         assert!(
             world.get(enemy).unwrap().x < 12.0,
             "it should have been stopped by the water, not walked over it"
+        );
+    }
+
+    #[test]
+    fn a_dying_enemy_leaves_a_bag() {
+        use hendra_behavior::compile::compile;
+        use hendra_behavior::parse::parse;
+
+        let catalog = catalog();
+        let squares = (0..16 * 16).map(|_| square(0x10, ObjectType::NONE.0));
+        let map = Map::from_squares(16, 16, squares).unwrap();
+        let mut world = World::new("Arena", Terrain::build(map, &catalog), &catalog);
+
+        let mut slime = Entity::fixture(ObjectType(0x502), 8.0, 8.0);
+        slime.kind = Kind::Enemy;
+        slime.hp = 10;
+        slime.max_hp = 200;
+        let enemy = world.spawn(slime).unwrap();
+
+        // A certainty rather than a chance, so the test does not depend on a roll.
+        let (programs, _) = compile(
+            &parse(r#"enemy "Slime" { state idle { } loot { item("Wand", 1.0) } }"#).unwrap(),
+        );
+        world.set_behaviours(&catalog, programs);
+
+        world.get_mut(enemy).unwrap().dead = true;
+        world.advance(&catalog, 50);
+
+        assert!(world.get(enemy).is_none(), "the slime is gone");
+
+        let bag = world
+            .iter()
+            .find(|(_, entity)| entity.kind == Kind::Container)
+            .map(|(_, entity)| entity.clone())
+            .expect("a bag should have been left behind");
+
+        let container = bag.container.as_ref().expect("the bag holds something");
+        assert_eq!(container.occupied(), 1);
+        assert_eq!(container.item(0), catalog.type_of("Wand").unwrap());
+        assert!((bag.x - 8.0).abs() < 1e-4, "and it is where the slime died");
+    }
+
+    #[test]
+    fn a_bag_expires() {
+        use hendra_behavior::compile::compile;
+        use hendra_behavior::parse::parse;
+
+        let catalog = catalog();
+        let squares = (0..16 * 16).map(|_| square(0x10, ObjectType::NONE.0));
+        let map = Map::from_squares(16, 16, squares).unwrap();
+        let mut world = World::new("Arena", Terrain::build(map, &catalog), &catalog);
+
+        let mut slime = Entity::fixture(ObjectType(0x502), 8.0, 8.0);
+        slime.kind = Kind::Enemy;
+        slime.hp = 1;
+        slime.max_hp = 200;
+        let enemy = world.spawn(slime).unwrap();
+
+        let (programs, _) = compile(
+            &parse(r#"enemy "Slime" { state idle { } loot { item("Wand", 1.0) } }"#).unwrap(),
+        );
+        world.set_behaviours(&catalog, programs);
+
+        world.get_mut(enemy).unwrap().dead = true;
+        world.advance(&catalog, 50);
+        assert_eq!(world.iter().filter(|(_, e)| e.kind == Kind::Container).count(), 1);
+
+        // A minute later there is nothing left, so a cleared dungeon does not fill with bags.
+        for _ in 0..(61_000 / 50) {
+            world.advance(&catalog, 50);
+        }
+        assert_eq!(world.iter().filter(|(_, e)| e.kind == Kind::Container).count(), 0);
+    }
+
+    #[test]
+    fn an_enemy_with_no_loot_leaves_nothing() {
+        use hendra_behavior::compile::compile;
+        use hendra_behavior::parse::parse;
+
+        let catalog = catalog();
+        let squares = (0..16 * 16).map(|_| square(0x10, ObjectType::NONE.0));
+        let map = Map::from_squares(16, 16, squares).unwrap();
+        let mut world = World::new("Arena", Terrain::build(map, &catalog), &catalog);
+
+        let mut slime = Entity::fixture(ObjectType(0x502), 8.0, 8.0);
+        slime.kind = Kind::Enemy;
+        slime.hp = 1;
+        slime.max_hp = 200;
+        let enemy = world.spawn(slime).unwrap();
+
+        let (programs, _) = compile(&parse(r#"enemy "Slime" { state idle { } }"#).unwrap());
+        world.set_behaviours(&catalog, programs);
+
+        world.get_mut(enemy).unwrap().dead = true;
+        world.advance(&catalog, 50);
+
+        assert_eq!(
+            world.iter().filter(|(_, e)| e.kind == Kind::Container).count(),
+            0,
+            "an empty bag is worse than no bag"
         );
     }
 

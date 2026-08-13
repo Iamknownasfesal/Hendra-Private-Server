@@ -397,6 +397,8 @@ mod tests {
             spawn_x: x,
             spawn_y: y,
             mind: None,
+            container: None,
+            expires_in_ms: None,
             dead: false,
         }
     }
