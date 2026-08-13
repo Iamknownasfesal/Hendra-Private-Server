@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+uuid = { version = "1", features = ["v4", "v5"] }
 quick-xml.workspace = true
 thiserror.workspace = true
 tracing.workspace = true

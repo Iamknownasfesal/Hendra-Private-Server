@@ -61,6 +61,21 @@ pub enum LoadProblem {
         dropped: String,
     },
 
+    /// The type space is full, which needs sixty thousand pieces of unnumbered content.
+    NoSpaceLeft {
+        id: String,
+    },
+
+    /// Two pieces of content wanted the same number, so one was moved.
+    ///
+    /// Harmless on its own, and worth reporting because a probed number depends on what else is
+    /// loaded: adding content can move it again. Anything durable must refer to the identity.
+    NumberProbed {
+        id: String,
+        wanted: u16,
+        assigned: u16,
+    },
+
     DuplicateTile {
         tile_type: TileType,
         kept: String,
@@ -78,6 +93,18 @@ impl std::fmt::Display for LoadProblem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             LoadProblem::File(err) => write!(f, "{err}"),
+            LoadProblem::NoSpaceLeft { id } => {
+                write!(f, "no runtime number left to give {id}")
+            }
+            LoadProblem::NumberProbed {
+                id,
+                wanted,
+                assigned,
+            } => write!(
+                f,
+                "{id} wanted 0x{wanted:x} and was given 0x{assigned:x}; \
+                 a probed number moves when other content is added"
+            ),
             LoadProblem::DuplicateObject {
                 object_type,
                 kept,
@@ -224,7 +251,34 @@ impl Catalog {
         }
     }
 
-    fn insert_object(&mut self, desc: ObjectDesc, problems: &mut Vec<LoadProblem>) {
+    fn insert_object(&mut self, mut desc: ObjectDesc, problems: &mut Vec<LoadProblem>) {
+        // Content that did not number itself is numbered here, from its identity rather than from a
+        // counter, so the same object gets the same number whatever order the files are read in.
+        if !desc.object_type.is_assigned() {
+            let wanted = crate::identity::preferred_slot(desc.uuid);
+            match self.free_slot(wanted) {
+                Some(assigned) => {
+                    // A number reached by probing is not a function of this object alone: adding
+                    // other content can move it. Anything durable that refers to it by number
+                    // rather than by identity would break, so the load says so.
+                    if assigned != wanted {
+                        problems.push(LoadProblem::NumberProbed {
+                            id: desc.id.clone(),
+                            wanted,
+                            assigned,
+                        });
+                    }
+                    desc.object_type = ObjectType(assigned);
+                }
+                None => {
+                    problems.push(LoadProblem::NoSpaceLeft {
+                        id: desc.id.clone(),
+                    });
+                    return;
+                }
+            }
+        }
+
         let index = desc.object_type.0 as usize;
         if self.objects.len() <= index {
             self.objects.resize_with(index + 1, || None);
@@ -244,6 +298,53 @@ impl Catalog {
             self.items.push(desc.object_type);
         }
         self.objects[index] = Some(desc);
+    }
+
+    /// The same, for ground.
+    fn free_tile_slot(&self, wanted: u16) -> Option<u16> {
+        let span = u16::MAX as u32 - crate::identity::FIRST_ASSIGNED as u32;
+
+        for step in 0..=span {
+            let candidate = crate::identity::FIRST_ASSIGNED
+                + ((wanted - crate::identity::FIRST_ASSIGNED) as u32 + step) as u16
+                    % (span as u16 + 1);
+
+            let taken = self
+                .tiles
+                .get(candidate as usize)
+                .is_some_and(Option::is_some);
+            if !taken && TileType(candidate).is_assigned() {
+                return Some(candidate);
+            }
+        }
+
+        None
+    }
+
+    /// The first free number at or after `wanted`.
+    ///
+    /// Linear probing rather than a counter: the preferred slot is already spread across the range
+    /// by the identity hash, so a probe almost never runs, and when it does it keeps the numbering
+    /// a function of the content rather than of the load order.
+    fn free_slot(&self, wanted: u16) -> Option<u16> {
+        let span = u16::MAX as u32 - crate::identity::FIRST_ASSIGNED as u32;
+
+        for step in 0..=span {
+            let candidate = crate::identity::FIRST_ASSIGNED
+                + ((wanted - crate::identity::FIRST_ASSIGNED) as u32 + step) as u16
+                    % (span as u16 + 1);
+
+            let taken = self
+                .objects
+                .get(candidate as usize)
+                .is_some_and(Option::is_some);
+
+            if !taken && ObjectType(candidate).is_assigned() && !ObjectType(candidate).is_none() {
+                return Some(candidate);
+            }
+        }
+
+        None
     }
 
     /// Every playable class, in the order the files list them.
@@ -282,7 +383,19 @@ impl Catalog {
             .map(|(_, object_type)| object_type)
     }
 
-    fn insert_tile(&mut self, tile: TileDesc, problems: &mut Vec<LoadProblem>) {
+    fn insert_tile(&mut self, mut tile: TileDesc, problems: &mut Vec<LoadProblem>) {
+        if !tile.tile_type.is_assigned() {
+            match self.free_tile_slot(crate::identity::preferred_slot(tile.uuid)) {
+                Some(assigned) => tile.tile_type = TileType(assigned),
+                None => {
+                    problems.push(LoadProblem::NoSpaceLeft {
+                        id: tile.id.clone(),
+                    });
+                    return;
+                }
+            }
+        }
+
         let index = tile.tile_type.0 as usize;
         if self.tiles.len() <= index {
             self.tiles.resize_with(index + 1, || None);
@@ -384,6 +497,115 @@ impl Catalog {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn content_without_a_written_number_is_numbered_at_load() {
+        // The point of the change: an author writes a name, not a free hex value found by reading
+        // every other file first.
+        let (catalog, report) = Catalog::load_str(&[r#"<Objects>
+            <Object id="Wand of Dawn"><Class>Equipment</Class><Item/><SlotType>8</SlotType></Object>
+            <Object id="Robe of Dusk"><Class>Equipment</Class><Item/><SlotType>6</SlotType></Object>
+            <Ground id="Warm Grass"><Speed>1</Speed></Ground>
+        </Objects>"#]);
+
+        assert!(report.problems.is_empty(), "{:?}", report.problems);
+
+        let wand = catalog.type_of("Wand of Dawn").expect("numbered");
+        let robe = catalog.type_of("Robe of Dusk").expect("numbered");
+
+        assert_ne!(wand, robe);
+        assert!(wand.is_assigned() && !wand.is_none());
+        assert!(catalog.tile_type_of("Warm Grass").is_some());
+    }
+
+    #[test]
+    fn an_assigned_number_is_the_same_on_every_run() {
+        // A number that moved between runs would orphan every saved inventory that referred to it.
+        let source = r#"<Objects>
+            <Object id="Wand of Dawn"><Class>Equipment</Class><Item/></Object>
+        </Objects>"#;
+
+        let first = Catalog::load_str(&[source]).0.type_of("Wand of Dawn");
+        let second = Catalog::load_str(&[source]).0.type_of("Wand of Dawn");
+
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn an_assigned_number_does_not_depend_on_the_order_files_are_read() {
+        let wand =
+            r#"<Objects><Object id="Wand"><Class>Equipment</Class><Item/></Object></Objects>"#;
+        let robe =
+            r#"<Objects><Object id="Robe"><Class>Equipment</Class><Item/></Object></Objects>"#;
+
+        let forwards = Catalog::load_str(&[wand, robe]).0;
+        let backwards = Catalog::load_str(&[robe, wand]).0;
+
+        assert_eq!(forwards.type_of("Wand"), backwards.type_of("Wand"));
+        assert_eq!(forwards.type_of("Robe"), backwards.type_of("Robe"));
+    }
+
+    #[test]
+    fn an_assigned_number_never_lands_on_one_the_legacy_files_use() {
+        let (catalog, _) = Catalog::load_str(&[r#"<Objects>
+            <Object type="0x0a00" id="Old Wand"><Class>Equipment</Class><Item/></Object>
+            <Object id="New Wand"><Class>Equipment</Class><Item/></Object>
+        </Objects>"#]);
+
+        assert_eq!(catalog.type_of("Old Wand"), Some(ObjectType(0x0a00)));
+        assert!(catalog.type_of("New Wand").unwrap().0 >= crate::identity::FIRST_ASSIGNED);
+    }
+
+    #[test]
+    fn an_identity_written_by_hand_survives_a_rename() {
+        // What the UUID is for: the number follows the identity, so renaming an item leaves every
+        // saved inventory pointing at the same thing.
+        let before = Catalog::load_str(&[r#"<Objects>
+            <Object uuid="0f8fad5b-d9cb-469f-a165-70867728950e" id="Wand of Dawn">
+              <Class>Equipment</Class><Item/></Object>
+        </Objects>"#])
+        .0;
+
+        let after = Catalog::load_str(&[r#"<Objects>
+            <Object uuid="0f8fad5b-d9cb-469f-a165-70867728950e" id="Wand of Morning">
+              <Class>Equipment</Class><Item/></Object>
+        </Objects>"#])
+        .0;
+
+        assert_eq!(
+            before.type_of("Wand of Dawn"),
+            after.type_of("Wand of Morning")
+        );
+    }
+
+    #[test]
+    fn two_objects_wanting_the_same_number_both_get_one() {
+        // Probing has to work, or the second of a colliding pair would silently vanish.
+        let mut source = String::from("<Objects>");
+        for n in 0..500 {
+            source.push_str(&format!(
+                r#"<Object id="Item {n}"><Class>Equipment</Class><Item/></Object>"#
+            ));
+        }
+        source.push_str("</Objects>");
+
+        let (catalog, report) = Catalog::load_str(&[&source]);
+
+        let numbers: std::collections::HashSet<_> = (0..500)
+            .filter_map(|n| catalog.type_of(&format!("Item {n}")))
+            .collect();
+        assert_eq!(numbers.len(), 500, "every one got a distinct number");
+
+        // Five hundred names in sixty thousand slots collide a handful of times, and each one is
+        // reported: a probed number depends on what else is loaded, so nothing durable may use it.
+        let probed = report
+            .problems
+            .iter()
+            .filter(|problem| matches!(problem, LoadProblem::NumberProbed { .. }))
+            .count();
+        assert_eq!(probed, report.problems.len(), "{:?}", report.problems);
+        assert!(probed < 50, "{probed} collisions is more than chance");
+    }
+
     use super::*;
 
     fn catalog_from(files: &[&str]) -> (Catalog, LoadReport) {

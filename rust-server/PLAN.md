@@ -85,6 +85,23 @@ here.
 - [x] Call `hendra_characters::record_progress` so class unlocks advance through play
 - [x] Persist level, experience and fame at the checkpoint, read from the world rather than remembered
 
+### 6.5 Content identity — **M**
+
+Content no longer needs a hand-picked hex number. An author writes a name; the catalog assigns the
+runtime number from the content's identity, deterministically and independent of load order.
+
+- [x] A UUID identity per object and tile, written as `uuid="..."` or derived from the name
+- [x] `type="0x..."` is optional, so the legacy files keep working unedited
+- [x] The catalog assigns unwritten numbers from 0x1000 upward, clear of everything the legacy
+      files use
+- [x] `cargo run -p hendra-content --example new_id` prints a fresh identity for new content
+- [x] A number reached by probing is reported, because it depends on what else is loaded
+- [ ] **Store identities rather than numbers in the database.** An assigned number is stable only
+      while nothing collides with it; adding content can move a probed one, which would silently
+      orphan saved inventories. `inventory_slot`, `vault_slot` and `character` hold `integer` today
+      and must hold the UUID, with the server translating through the catalog. Until this lands,
+      content may be added freely but a probe report is a warning that some item moved
+
 ### 6.4 Loose ends — **S**
 
 - [x] `toss_object`'s telegraph: a delayed spawn queue on `World`, so thrown attacks are dodgeable

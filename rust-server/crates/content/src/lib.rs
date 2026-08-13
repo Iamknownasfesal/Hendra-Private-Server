@@ -14,6 +14,7 @@
 pub mod catalog;
 pub mod desc;
 pub mod effect;
+pub mod identity;
 pub mod legacy;
 pub mod map;
 pub mod player;

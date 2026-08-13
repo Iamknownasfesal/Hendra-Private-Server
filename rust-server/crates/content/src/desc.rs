@@ -23,8 +23,27 @@ impl ObjectType {
     /// The absence of an item. The wire uses -1 and the catalog never holds it.
     pub const NONE: ObjectType = ObjectType(0xffff);
 
+    /// Content that has not been numbered yet.
+    ///
+    /// Distinct from [`ObjectType::NONE`], which means "no object at all". This one means "an
+    /// object whose number the catalog has not assigned", and it never survives loading.
+    pub const UNASSIGNED: ObjectType = ObjectType(0xfffe);
+
     pub fn is_none(self) -> bool {
         self == Self::NONE
+    }
+
+    pub fn is_assigned(self) -> bool {
+        self != Self::UNASSIGNED
+    }
+}
+
+impl TileType {
+    /// Ground that has not been numbered yet.
+    pub const UNASSIGNED: TileType = TileType(0xfffe);
+
+    pub fn is_assigned(self) -> bool {
+        self != Self::UNASSIGNED
     }
 }
 
@@ -273,7 +292,12 @@ impl ItemDesc {
 /// Everything the simulation knows about one object type.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ObjectDesc {
+    /// The runtime number, assigned at load. Not durable; see [`crate::identity`].
     pub object_type: ObjectType,
+
+    /// What a saved inventory refers to. Survives renaming and renumbering.
+    pub uuid: uuid::Uuid,
+
     pub id: String,
     pub display_id: Option<String>,
     pub dungeon_name: Option<String>,
@@ -329,7 +353,15 @@ impl Default for ObjectType {
 impl ObjectDesc {
     pub fn parse(node: &Node) -> Option<ObjectDesc> {
         let id = node.attr("id")?.to_owned();
-        let object_type = ObjectType(node.attr_int("type")? as u16);
+
+        // A written number is honoured so the legacy files keep working unedited. Without one the
+        // catalog assigns it, which is what lets new content be written without picking a free hex
+        // value by hand.
+        let object_type = node
+            .attr_int("type")
+            .map(|written| ObjectType(written as u16))
+            .unwrap_or(ObjectType::UNASSIGNED);
+        let uuid = crate::identity::identity(node.attr("uuid"), &id);
 
         let size = match node.int("Size") {
             Some(fixed) => SizeRange {
@@ -361,6 +393,7 @@ impl ObjectDesc {
 
         Some(ObjectDesc {
             object_type,
+            uuid,
             class: node.field("Class").unwrap_or_default().to_owned(),
             character: node.field("Class") == Some("Character"),
             player: node.has("Player"),
@@ -429,7 +462,12 @@ const IMMUNITY_FLAGS: [(&str, crate::effect::ConditionEffect); 8] = {
 /// A ground tile type.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TileDesc {
+    /// The runtime number, assigned at load.
     pub tile_type: TileType,
+
+    /// What a saved map refers to.
+    pub uuid: uuid::Uuid,
+
     pub id: String,
 
     /// Movement multiplier. 1.0 is normal ground.
@@ -458,7 +496,11 @@ impl TileDesc {
 
     pub fn parse(node: &Node) -> Option<TileDesc> {
         Some(TileDesc {
-            tile_type: TileType(node.attr_int("type")? as u16),
+            tile_type: node
+                .attr_int("type")
+                .map(|written| TileType(written as u16))
+                .unwrap_or(TileType::UNASSIGNED),
+            uuid: crate::identity::identity(node.attr("uuid"), node.attr("id")?),
             id: node.attr("id")?.to_owned(),
             speed: node.float("Speed").unwrap_or(1.0) as f32,
             no_walk: node.has("NoWalk"),
