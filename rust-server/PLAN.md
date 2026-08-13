@@ -6,7 +6,7 @@ deliberately excluded and left until last.
 Phases 0–5 are done: workspace, content, protocol, transport, simulation, behaviour language,
 persistence, authentication. What follows is phases 6–11.
 
-**Where we are:** ~64% of the old server by subsystem. 546 tests.
+**Where we are:** ~65% of the old server by subsystem. 549 tests.
 
 **Sizing** is relative, not calendar: **S** is an afternoon, **M** is a day or two, **L** is
 several days, **XL** is a week or more.
@@ -152,7 +152,7 @@ an ability, 1,942 activates across 43 kinds.
 
 ### 7.3 Stacking, consumables and bags — **S/M**
 
-- [ ] Potions stack to a limit
+- [x] Potions stack to a limit, held on the character rather than in a slot, with the ceiling enforced in the statement so two pickups cannot both take the last place
 - [x] Consumables are taken from the slot after they are used
 - [x] Bag type decides which colour bag loot drops in, taking the best thing in the bag
 

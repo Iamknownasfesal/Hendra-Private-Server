@@ -32,6 +32,10 @@ pub struct Character {
 
     /// Slot index to item identity, only for occupied slots.
     pub inventory: Vec<(i16, uuid::Uuid)>,
+
+    /// Potions carried outside the inventory, which is where the game has always kept them.
+    pub health_potions: i32,
+    pub magic_potions: i32,
 }
 
 /// Enough to draw a character-select screen without loading inventories.
@@ -163,10 +167,12 @@ impl Store {
                 i32,
                 i32,
                 bool,
+                i32,
+                i32,
             ),
         >(
             "SELECT id, account_id, class, name, hp, max_hp, mp, max_mp,
-                    level, experience, fame, alive
+                    level, experience, fame, alive, health_potions, magic_potions
              FROM character WHERE id = $1",
         )
         .bind(id)
@@ -195,6 +201,8 @@ impl Store {
             experience: row.9,
             fame: row.10,
             alive: row.11,
+            health_potions: row.12,
+            magic_potions: row.13,
             inventory,
         })
     }
@@ -424,6 +432,50 @@ impl Store {
         .execute(self.pool())
         .await?;
         Ok(())
+    }
+
+    /// The most potions of one kind a character may carry.
+    pub const POTION_LIMIT: i32 = 6;
+
+    /// Adds a potion to a stack, refusing once it is full.
+    ///
+    /// The ceiling is enforced in the statement rather than by reading first, so two pickups
+    /// arriving together cannot both see room for the last one.
+    pub async fn add_potion(&self, character_id: i64, magic: bool) -> Result<bool> {
+        let column = if magic {
+            "magic_potions"
+        } else {
+            "health_potions"
+        };
+
+        let updated = sqlx::query(&format!(
+            "UPDATE character SET {column} = {column} + 1
+             WHERE id = $1 AND {column} < $2"
+        ))
+        .bind(character_id)
+        .bind(Self::POTION_LIMIT)
+        .execute(self.pool())
+        .await?;
+
+        Ok(updated.rows_affected() > 0)
+    }
+
+    /// Takes a potion from a stack, refusing when it is empty.
+    pub async fn take_potion(&self, character_id: i64, magic: bool) -> Result<bool> {
+        let column = if magic {
+            "magic_potions"
+        } else {
+            "health_potions"
+        };
+
+        let updated = sqlx::query(&format!(
+            "UPDATE character SET {column} = {column} - 1 WHERE id = $1 AND {column} > 0"
+        ))
+        .bind(character_id)
+        .execute(self.pool())
+        .await?;
+
+        Ok(updated.rows_affected() > 0)
     }
 
     /// Empties a vault slot. For tests and administration.

@@ -793,3 +793,86 @@ fn futures_block(
     tokio::task::block_in_place(|| tokio::runtime::Handle::current().block_on(future))
         .expect("the character should load")
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_potion_stack_fills_to_its_limit_and_no_further() {
+    let Some(store) = store("t_potions").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    let character = store
+        .create_character(account.id, WIZARD, "Wizard", 800)
+        .await
+        .unwrap();
+
+    for taken in 0..Store::POTION_LIMIT {
+        assert!(
+            store.add_potion(character.id, false).await.unwrap(),
+            "room for potion {taken}"
+        );
+    }
+    assert!(
+        !store.add_potion(character.id, false).await.unwrap(),
+        "and no room for one more"
+    );
+
+    let held = store.character(character.id).await.unwrap();
+    assert_eq!(held.health_potions, Store::POTION_LIMIT);
+    assert_eq!(held.magic_potions, 0, "the two stacks are separate");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_potion_cannot_be_taken_from_an_empty_stack() {
+    let Some(store) = store("t_potions_empty").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    let character = store
+        .create_character(account.id, WIZARD, "Wizard", 800)
+        .await
+        .unwrap();
+
+    assert!(!store.take_potion(character.id, false).await.unwrap());
+
+    store.add_potion(character.id, false).await.unwrap();
+    assert!(store.take_potion(character.id, false).await.unwrap());
+    assert!(!store.take_potion(character.id, false).await.unwrap());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn two_pickups_racing_for_the_last_place_in_a_stack_cannot_both_win() {
+    // The ceiling is in the statement rather than checked before it, so both cannot read room for
+    // the same last potion.
+    let Some(store) = store("t_potions_race").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    let character = store
+        .create_character(account.id, WIZARD, "Wizard", 800)
+        .await
+        .unwrap();
+
+    for _ in 0..Store::POTION_LIMIT - 1 {
+        store.add_potion(character.id, false).await.unwrap();
+    }
+
+    let (first, second) = tokio::join!(
+        store.add_potion(character.id, false),
+        store.add_potion(character.id, false)
+    );
+
+    let winners = [first.unwrap(), second.unwrap()]
+        .iter()
+        .filter(|won| **won)
+        .count();
+    assert_eq!(winners, 1, "exactly one of two may take the last place");
+
+    let held = store.character(character.id).await.unwrap();
+    assert_eq!(held.health_potions, Store::POTION_LIMIT);
+}
