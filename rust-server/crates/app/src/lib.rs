@@ -12,6 +12,13 @@
 //!   DELETE /characters/:id (Bearer)               ->  {}
 //!   POST   /password       (Bearer) {old, new}    ->  {}
 //!   GET    /servers                               ->  [{name, host, port}]
+//!   GET    /init                                  ->  {protocol, servers, classes}
+//!   POST   /name           (Bearer) {name}        ->  {}
+//!   GET    /friends        (Bearer)               ->  {friends, requests}
+//!   POST   /friends        (Bearer) {name}        ->  {mutual}
+//!   DELETE /friends/:id    (Bearer)               ->  {}
+//!   GET    /messages       (Bearer)               ->  [{message}]
+//!   GET    /fame           (Bearer)               ->  [{name, fame}]
 //!   GET    /classes        (Bearer)               ->  [{class, locked}]
 //!   POST   /characters     (Bearer) {class, name} ->  {character}
 //! ```
@@ -622,6 +629,206 @@ fn class_number(catalog: &hendra_content::Catalog, class: uuid::Uuid) -> i32 {
         .unwrap_or(0)
 }
 
+#[derive(Serialize)]
+pub struct Init {
+    /// What the game socket expects. A client that does not match is told before it tries.
+    pub protocol: u32,
+    pub servers: Vec<GameServer>,
+    pub classes: usize,
+}
+
+/// Everything a client needs before it has an account.
+///
+/// One request rather than three, because a client at the title screen has nothing else to do and
+/// three round trips is three chances to be halfway configured.
+pub async fn init(State(app): State<Arc<App>>) -> Json<Init> {
+    Json(Init {
+        protocol: hendra_net::message::PROTOCOL_VERSION,
+        servers: app.servers.clone(),
+        classes: app.catalog.classes().len(),
+    })
+}
+
+#[derive(Deserialize)]
+pub struct NewName {
+    pub name: String,
+}
+
+/// Renames an account.
+pub async fn set_name(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Json(body): Json<NewName>,
+) -> Answer<serde_json::Value> {
+    let claims = authenticate(&app, &headers)?;
+
+    let name = body.name.trim();
+    if name.is_empty() || name.chars().count() > 32 {
+        return Err(refuse(
+            StatusCode::BAD_REQUEST,
+            "a name must be between one and thirty-two characters",
+        ));
+    }
+
+    match app.store.rename_account(claims.account_id, name).await {
+        Ok(()) => Ok(Json(serde_json::json!({}))),
+        Err(StoreError::NameTaken) => Err(refuse(StatusCode::CONFLICT, "that name is taken")),
+        Err(err) => {
+            tracing::error!(%err, "could not rename an account");
+            Err(refuse(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "try again shortly",
+            ))
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub struct FriendList {
+    pub friends: Vec<Person>,
+    pub requests: Vec<Person>,
+}
+
+#[derive(Serialize)]
+pub struct Person {
+    pub account_id: i64,
+    pub name: String,
+    pub accepted: bool,
+}
+
+/// Who an account knows, and who is waiting for an answer.
+pub async fn friends(State(app): State<Arc<App>>, headers: HeaderMap) -> Answer<FriendList> {
+    let claims = authenticate(&app, &headers)?;
+
+    let (friends, requests) = tokio::join!(
+        app.store.friends(claims.account_id),
+        app.store.friend_requests(claims.account_id)
+    );
+
+    let listed = |people: Vec<hendra_store::Friend>| {
+        people
+            .into_iter()
+            .map(|person| Person {
+                account_id: person.account_id,
+                name: person.name,
+                accepted: person.accepted,
+            })
+            .collect()
+    };
+
+    Ok(Json(FriendList {
+        friends: listed(friends.unwrap_or_default()),
+        requests: listed(requests.unwrap_or_default()),
+    }))
+}
+
+/// Asks somebody to be a friend, or accepts their asking.
+pub async fn add_friend(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Json(body): Json<NewName>,
+) -> Answer<serde_json::Value> {
+    let claims = authenticate(&app, &headers)?;
+
+    let Ok(other) = app.store.account_by_name(body.name.trim()).await else {
+        // The same answer as a name that exists but has blocked you would be, so this is not a way
+        // to find out which accounts exist.
+        return Err(refuse(StatusCode::NOT_FOUND, "no such player"));
+    };
+
+    match app.store.befriend(claims.account_id, other.id).await {
+        Ok(mutual) => Ok(Json(serde_json::json!({ "mutual": mutual }))),
+        Err(StoreError::Refused(why)) => Err(refuse(StatusCode::BAD_REQUEST, why)),
+        Err(err) => {
+            tracing::error!(%err, "could not add a friend");
+            Err(refuse(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "try again shortly",
+            ))
+        }
+    }
+}
+
+/// Removes a friend, from both sides.
+pub async fn remove_friend(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<i64>,
+) -> Answer<serde_json::Value> {
+    let claims = authenticate(&app, &headers)?;
+
+    app.store
+        .unfriend(claims.account_id, id)
+        .await
+        .map_err(|err| {
+            tracing::error!(%err, "could not remove a friend");
+            refuse(StatusCode::INTERNAL_SERVER_ERROR, "try again shortly")
+        })?;
+
+    Ok(Json(serde_json::json!({})))
+}
+
+#[derive(Serialize)]
+pub struct Note {
+    pub id: i64,
+    pub from: String,
+    pub body: String,
+    pub read: bool,
+}
+
+/// Messages waiting for an account.
+pub async fn messages(State(app): State<Arc<App>>, headers: HeaderMap) -> Answer<Vec<Note>> {
+    let claims = authenticate(&app, &headers)?;
+
+    let held = app
+        .store
+        .messages(claims.account_id, 50)
+        .await
+        .map_err(|err| {
+            tracing::error!(%err, "could not read messages");
+            refuse(StatusCode::INTERNAL_SERVER_ERROR, "try again shortly")
+        })?;
+
+    Ok(Json(
+        held.into_iter()
+            .map(|message| Note {
+                id: message.id,
+                from: message.from,
+                body: message.body,
+                read: message.read,
+            })
+            .collect(),
+    ))
+}
+
+#[derive(Serialize)]
+pub struct FameEntry {
+    pub name: String,
+    pub fame: i32,
+    pub level: i16,
+}
+
+/// An account's characters by fame, which is what a fame list is for one player.
+pub async fn fame(State(app): State<Arc<App>>, headers: HeaderMap) -> Answer<Vec<FameEntry>> {
+    let claims = authenticate(&app, &headers)?;
+
+    let mut listed: Vec<FameEntry> = app
+        .store
+        .characters(claims.account_id)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|summary| FameEntry {
+            name: summary.name,
+            fame: summary.fame,
+            level: summary.level,
+        })
+        .collect();
+
+    listed.sort_by_key(|entry| std::cmp::Reverse(entry.fame));
+    Ok(Json(listed))
+}
+
 async fn health() -> &'static str {
     "ok"
 }
@@ -634,6 +841,12 @@ pub fn router(app: Arc<App>) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/servers", get(servers))
+        .route("/init", get(init))
+        .route("/name", post(set_name))
+        .route("/fame", get(fame))
+        .route("/messages", get(messages))
+        .route("/friends", get(friends).post(add_friend))
+        .route("/friends/{id}", axum::routing::delete(remove_friend))
         .route("/register", post(register))
         .route("/login", post(login))
         .route("/characters", get(characters))

@@ -534,6 +534,26 @@ impl Store {
         Ok(())
     }
 
+    /// Renames an account, or reports that the name is taken.
+    ///
+    /// The unique index decides it, not a prior lookup: a check-then-rename has a window in which
+    /// somebody else takes the name.
+    pub async fn rename_account(&self, account_id: i64, name: &str) -> Result<()> {
+        let renamed = sqlx::query("UPDATE account SET name = $2 WHERE id = $1")
+            .bind(account_id)
+            .bind(name)
+            .execute(self.pool())
+            .await;
+
+        match renamed {
+            Ok(_) => Ok(()),
+            Err(sqlx::Error::Database(err)) if err.is_unique_violation() => {
+                Err(StoreError::NameTaken)
+            }
+            Err(err) => Err(err.into()),
+        }
+    }
+
     /// Silences an account until a time, or lifts a mute when given `None`.
     pub async fn mute(
         &self,

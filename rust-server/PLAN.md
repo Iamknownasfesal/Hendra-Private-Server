@@ -6,7 +6,7 @@ deliberately excluded and left until last.
 Phases 0–5 are done: workspace, content, protocol, transport, simulation, behaviour language,
 persistence, authentication. What follows is phases 6–11.
 
-**Where we are:** ~76% of the old server by subsystem. 586 tests.
+**Where we are:** ~79% of the old server by subsystem. 592 tests.
 
 **Sizing** is relative, not calendar: **S** is an afternoon, **M** is a day or two, **L** is
 several days, **XL** is a week or more.
@@ -229,13 +229,19 @@ Eight of 48 endpoints are done, and they are the ones that matter.
 ### Needed to play — **M**
 
 - [x] A server list at `GET /servers`, unauthenticated because a client needs it before it has anywhere to send a password. Read from `HENDRA_GAME_SERVERS` so moving a server is configuration, not a new client
-- [ ] `app/init` and `app/getServerXmls`
-- [ ] `char/list` extensions and `account/purchaseCharSlot`
+- [x] `GET /init`, which answers protocol, servers and class count in one request. `getServerXmls` is not needed: the client reads content from its own assets and the server reads the same files
+- [x] `char/list` already returns what a select screen needs. Character slots are a currency purchase, which 7.4 built
 
 ### Expected — **M**
 
-- [ ] `account/verify`, `sendVerifyEmail`, `forgotPassword`, `resetPassword`, `setName`
-- [ ] `char/fame` and `fame/list`
+- [x] `POST /name`. Email verification and password reset need a mail sender, which is deployment rather than server work and is recorded below
+- [x] `GET /fame`, an account's characters best first
+
+### Needs something outside the server
+
+- [ ] Email verification and password reset need a mail sender configured. The endpoints are a
+      morning's work once there is somewhere to send to; without one they would be a button that
+      silently does nothing
 
 ### Optional — **L**
 

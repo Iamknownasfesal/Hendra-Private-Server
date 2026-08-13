@@ -1061,3 +1061,211 @@ async fn an_empty_server_list_is_an_empty_list_rather_than_an_error() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body.as_array().map(Vec::len), Some(0));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn init_tells_a_client_everything_it_needs_before_it_has_an_account() {
+    // One request rather than three, because three round trips is three chances to be halfway
+    // configured at a title screen.
+    let app = app_or_skip!("a_init");
+
+    let (status, body) = send(&app, get("/init", None)).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert!(body["protocol"].as_u64().is_some());
+    assert!(body["servers"].is_array());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_account_can_be_renamed_but_not_to_one_that_is_taken() {
+    let app = app_or_skip!("a_rename");
+
+    let (_, mine) = send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
+    send(&app, post("/register", credentials("Taken", PASSWORD))).await;
+    let token = mine["token"].as_str().unwrap().to_string();
+
+    assert_eq!(
+        send(
+            &app,
+            authed(
+                "POST",
+                "/name",
+                &token,
+                serde_json::json!({ "name": "Taken" })
+            )
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+
+    assert_eq!(
+        send(
+            &app,
+            authed(
+                "POST",
+                "/name",
+                &token,
+                serde_json::json!({ "name": "Renamed" })
+            )
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+
+    // And the new name is the one that logs in.
+    assert_eq!(
+        send(&app, post("/login", credentials("Renamed", PASSWORD)))
+            .await
+            .0,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn friends_appear_on_both_lists_once_both_have_asked() {
+    let app = app_or_skip!("a_friends");
+
+    let (_, mine) = send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
+    let (_, theirs) = send(&app, post("/register", credentials("Someone", PASSWORD))).await;
+    let one = mine["token"].as_str().unwrap().to_string();
+    let two = theirs["token"].as_str().unwrap().to_string();
+
+    let (status, body) = send(
+        &app,
+        authed(
+            "POST",
+            "/friends",
+            &one,
+            serde_json::json!({ "name": "Someone" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["mutual"], false, "asking alone is not a friendship");
+
+    // It shows as a request on the other side before it is answered.
+    let (_, waiting) = send(&app, get("/friends", Some(&two))).await;
+    assert_eq!(waiting["requests"][0]["name"], "Fesal");
+
+    let (_, answered) = send(
+        &app,
+        authed(
+            "POST",
+            "/friends",
+            &two,
+            serde_json::json!({ "name": "Fesal" }),
+        ),
+    )
+    .await;
+    assert_eq!(answered["mutual"], true);
+
+    let (_, list) = send(&app, get("/friends", Some(&one))).await;
+    assert_eq!(list["friends"][0]["name"], "Someone");
+    assert_eq!(list["friends"][0]["accepted"], true);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn befriending_somebody_who_does_not_exist_says_so_without_saying_who_does() {
+    let app = app_or_skip!("a_friends_nobody");
+
+    let (_, mine) = send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
+    let token = mine["token"].as_str().unwrap();
+
+    let (status, _) = send(
+        &app,
+        authed(
+            "POST",
+            "/friends",
+            token,
+            serde_json::json!({ "name": "Nobody" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_fame_list_is_a_players_own_characters_best_first() {
+    let app = app_or_skip!("a_fame");
+
+    let (_, mine) = send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
+    let token = mine["token"].as_str().unwrap();
+    let account = mine["account_id"].as_i64().unwrap();
+
+    for (name, fame) in [("Small", 10), ("Great", 900), ("Middling", 100)] {
+        let character = app
+            .store
+            .create_character(account, a_class(), name, 800)
+            .await
+            .unwrap();
+        app.store
+            .save_character(character.id, 800, 100, 20, 0, fame)
+            .await
+            .unwrap();
+    }
+
+    let (status, body) = send(&app, get("/fame", Some(token))).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body[0]["name"], "Great");
+    assert_eq!(body[2]["name"], "Small");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn messages_are_only_shown_to_who_they_were_sent_to() {
+    let app = app_or_skip!("a_messages");
+
+    let (_, mine) = send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
+    let (_, theirs) = send(&app, post("/register", credentials("Someone", PASSWORD))).await;
+
+    app.store
+        .send_message(
+            theirs["account_id"].as_i64().unwrap(),
+            mine["account_id"].as_i64().unwrap(),
+            "are you there",
+        )
+        .await
+        .unwrap();
+
+    let (_, inbox) = send(
+        &app,
+        get("/messages", Some(mine["token"].as_str().unwrap())),
+    )
+    .await;
+    assert_eq!(inbox[0]["from"], "Someone");
+    assert_eq!(inbox[0]["read"], false);
+
+    let (_, empty) = send(
+        &app,
+        get("/messages", Some(theirs["token"].as_str().unwrap())),
+    )
+    .await;
+    assert_eq!(empty.as_array().map(Vec::len), Some(0));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn every_endpoint_that_should_need_a_token_needs_one() {
+    // A route added without its authenticate call would be a route that answers anybody.
+    let app = app_or_skip!("a_authwall");
+
+    for (method, path) in [
+        ("GET", "/friends"),
+        ("GET", "/messages"),
+        ("GET", "/fame"),
+        ("GET", "/classes"),
+        ("GET", "/characters"),
+    ] {
+        let request = Request::builder()
+            .method(method)
+            .uri(path)
+            .body(Body::empty())
+            .unwrap();
+
+        assert_eq!(
+            send(&app, request).await.0,
+            StatusCode::UNAUTHORIZED,
+            "{method} {path} answered without a token"
+        );
+    }
+}

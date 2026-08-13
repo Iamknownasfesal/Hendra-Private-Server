@@ -739,6 +739,7 @@ dependencies = [
  "hendra-auth",
  "hendra-characters",
  "hendra-content",
+ "hendra-net",
  "hendra-store",
  "http-body-util",
  "serde",

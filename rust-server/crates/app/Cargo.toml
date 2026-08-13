@@ -15,6 +15,7 @@ path = "src/main.rs"
 [dependencies]
 hendra-auth = { path = "../auth" }
 hendra-store = { path = "../store" }
+hendra-net = { path = "../net" }
 hendra-characters = { path = "../characters" }
 hendra-content = { path = "../content" }
 axum = "0.8"
