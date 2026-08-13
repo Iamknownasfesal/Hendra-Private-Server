@@ -203,22 +203,22 @@ public partial class WorldController : Node
         // Subscribed after construction, not alongside the field assignments above: these forward
         // to objects that do not exist until the map does.
         if (_chat != null)
-            _chat.Submitted += OnChatSubmitted;
+            _chat.Submitted += Alive<string>(OnChatSubmitted);
 
         if (_hud != null)
         {
-            _hud.SlotActivated += OnSlotActivated;
-            _hud.ContainerSlotActivated += OnContainerSlotActivated;
-            _hud.VaultSlotActivated += OnVaultSlotActivated;
-            _hud.VaultPurchaseRequested += () => _vault.Buy();
-            _hud.SlotDropped += OnSlotDropped;
-            _hud.SlotDroppedOutside += OnSlotDroppedOutside;
-            _hud.PotionRequested += health => _inventory.UsePotion(health);
+            _hud.SlotActivated += Alive<int>(OnSlotActivated);
+            _hud.ContainerSlotActivated += Alive<int>(OnContainerSlotActivated);
+            _hud.VaultSlotActivated += Alive<SlotAddress>(OnVaultSlotActivated);
+            _hud.VaultPurchaseRequested += Alive(() => _vault.Buy());
+            _hud.SlotDropped += Alive<SlotAddress, SlotAddress>(OnSlotDropped);
+            _hud.SlotDroppedOutside += Alive<SlotAddress>(OnSlotDroppedOutside);
+            _hud.PotionRequested += Alive<bool>(health => _inventory.UsePotion(health));
 
             // Dropping a potion on its counter stacks it. The question and the answer are separate
             // because the first is asked while the drag is still in the air.
-            _hud.PotionAccepted += (from, health) => CanStack(from, health);
-            _hud.PotionStacked += (from, health) =>
+            _hud.PotionAccepted += (from, health) => IsInsideTree() && CanStack(from, health);
+            _hud.PotionStacked += Alive<SlotAddress, bool>((from, health) =>
             {
                 // The vault speaks its own protocol for the same reason it always has: an InvSwap
                 // names its slots by the object that owns them, and a vault chest is not an object.
@@ -230,21 +230,21 @@ public partial class WorldController : Node
 
                 _inventory.OpenContainer = OpenContainer;
                 _inventory.Stack(from, health);
-            };
-            _hud.OptionsPressed += () => OptionsToggled?.Invoke();
-            _hud.BuyPressed += OnBuyPressed;
+            });
+            _hud.OptionsPressed += Alive(() => OptionsToggled?.Invoke());
+            _hud.BuyPressed += Alive(OnBuyPressed);
 
             // The card's own buttons open the panels they name. Routed through the controller
             // rather than wired straight to a panel inside the view, so what a button does is
             // decided in one place and can be changed without opening the interface.
-            _hud.AccountPressed += () => AccountToggled?.Invoke();
-            _hud.StatsPressed += () => CharacterToggled?.Invoke();
-            _hud.PartyMemberActivated += who => _chat?.BeginTyping($"/tell {who} ");
+            _hud.AccountPressed += Alive(() => AccountToggled?.Invoke());
+            _hud.StatsPressed += Alive(() => CharacterToggled?.Invoke());
+            _hud.PartyMemberActivated += Alive<string>(who => _chat?.BeginTyping($"/tell {who} "));
 
             // Four buttons the reference has and this server does not answer. Saying so is better
             // than a button that swallows a click and does nothing, which reads as a broken client.
-            _hud.ShopPressed += () => Unavailable("The shop");
-            _hud.NewsPressed += () => Unavailable("News");
+            _hud.ShopPressed += Alive(() => Unavailable("The shop"));
+            _hud.NewsPressed += Alive(() => Unavailable("News"));
         }
 
         _session.MapLoaded += OnMapLoaded;
@@ -254,6 +254,33 @@ public partial class WorldController : Node
         _session.Entered += OnEntered;
         _session.PacketReceived += OnPacket;
     }
+
+    /// <summary>
+    /// Wraps a handler so a controller that has been taken down stops answering.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Changing world frees the controller and builds a new one, but the interface survives the
+    /// trip -- it is the same HUD from the login screen to the last dungeon. So every handler this
+    /// controller hangs on the HUD is still hanging there after it dies, and the next controller
+    /// adds its own beside it. One press of the stats button then toggled the panel twice, which
+    /// looks exactly like a button that does nothing: it opened in the first world and stopped
+    /// working the moment you went anywhere.
+    /// </para>
+    /// <para>
+    /// Guarding rather than unsubscribing because the subscriptions are lambdas over this
+    /// controller's own fields and there is nothing to hand back to a minus-equals. A dead
+    /// controller's handlers stay on the list and answer nothing.
+    /// </para>
+    /// </remarks>
+    private Action Alive(Action handler) =>
+        () => { if (IsInsideTree()) handler(); };
+
+    private Action<T> Alive<T>(Action<T> handler) =>
+        value => { if (IsInsideTree()) handler(value); };
+
+    private Action<T1, T2> Alive<T1, T2>(Action<T1, T2> handler) =>
+        (one, two) => { if (IsInsideTree()) handler(one, two); };
 
     public override void _ExitTree()
     {

@@ -31,7 +31,6 @@ public partial class CharacterPanel : Control
     private const float IdentityHeight = 96f;
     private const float PortraitSize = 64f;
     private const float AttributeRowHeight = 48f;
-    private const float TabHeight = 36f;
     private const float SectionHeight = 28f;
     private const float RowHeight = 26f;
     private const float FooterHeight = 40f;
@@ -51,7 +50,6 @@ public partial class CharacterPanel : Control
     private Label _created;
     private Label _fame;
     private Control _grid;
-    private TabStrip _tabs;
     private RowList _rows;
     private Label _footerValue;
 
@@ -153,9 +151,9 @@ public partial class CharacterPanel : Control
 
     private void BuildTabs()
     {
-        _tabs = new TabStrip(new[] { "Stats", "Dungeons" });
-        _tabs.Selected += OnTabSelected;
-        _shell.Body.AddChild(_tabs);
+        // No tabs. There were two pages and the second listed a dungeon completion count per
+        // dungeon, which is a table nobody opened this panel to read -- the panel is for the
+        // attributes at the top of it, and the tallies below are what you glance at afterwards.
     }
 
     private void BuildRows()
@@ -259,10 +257,7 @@ public partial class CharacterPanel : Control
         _grid.Size = new Vector2(width, GridHeight());
         LayoutGrid();
 
-        _tabs.Position = new Vector2(0f, _grid.Position.Y + _grid.Size.Y);
-        _tabs.Size = new Vector2(width, TabHeight);
-
-        float rowsTop = _tabs.Position.Y + TabHeight;
+        float rowsTop = _grid.Position.Y + _grid.Size.Y;
         float rowsHeight = Mathf.Max(0f, body.Size.Y - rowsTop - FooterHeight);
 
         _rows.Position = new Vector2(0f, rowsTop);
@@ -519,8 +514,6 @@ public partial class CharacterPanel : Control
         return resolved.Still;
     }
 
-    private void OnTabSelected(int tab) => FillRows();
-
     /// <summary>
     /// Fills the list for whichever tab is showing.
     /// </summary>
@@ -534,116 +527,15 @@ public partial class CharacterPanel : Control
         if (_rows == null)
             return;
 
-        _rows.Begin(_tabs.Current);
+        _rows.Begin(0);
 
         if (_stats == null)
             return;
 
-        if (_tabs.Current == 0)
-        {
-            foreach (var entry in _stats.Statistics)
-                _rows.Add(CharacterStats.Label(entry.Id), entry.Value, dim: false, group: null);
-
-            _rows.End();
-            return;
-        }
-
-        // Grouped by tier, and a dungeon that has never been finished still gets a row -- the gaps
-        // are the information.
-        foreach (string tier in new[] { "Low", "Mid", "High" })
-        {
-            bool wrote = false;
-
-            foreach (var entry in _stats.Dungeons)
-            {
-                if (CharacterStats.Tier(entry.Id) != tier)
-                    continue;
-
-                if (!wrote)
-                {
-                    _rows.Group($"{tier} tier");
-                    wrote = true;
-                }
-
-                _rows.Add(CharacterStats.Label(entry.Id), entry.Value, entry.Value == 0, tier);
-            }
-        }
+        foreach (var entry in _stats.Statistics)
+            _rows.Add(CharacterStats.Label(entry.Id), entry.Value, dim: false, group: null);
 
         _rows.End();
-    }
-
-    /// <summary>The two tabs over the list.</summary>
-    private sealed partial class TabStrip : Control
-    {
-        private readonly string[] _labels;
-
-        private int _current;
-        private int _hovered = -1;
-
-        public TabStrip(string[] labels)
-        {
-            _labels = labels;
-            MouseFilter = MouseFilterEnum.Stop;
-            FocusMode = FocusModeEnum.None;
-        }
-
-        public event Action<int> Selected;
-
-        public int Current => _current;
-
-        public override void _Ready() => MouseExited += () => { _hovered = -1; QueueRedraw(); };
-
-        public override void _GuiInput(InputEvent @event)
-        {
-            switch (@event)
-            {
-                case InputEventMouseMotion motion:
-                    int over = (int)(motion.Position.X / (Size.X / _labels.Length));
-                    if (over != _hovered)
-                    {
-                        _hovered = over;
-                        QueueRedraw();
-                    }
-
-                    return;
-
-                case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } button:
-                    int picked = Mathf.Clamp((int)(button.Position.X / (Size.X / _labels.Length)), 0, _labels.Length - 1);
-                    AcceptEvent();
-
-                    if (picked == _current)
-                        return;
-
-                    _current = picked;
-                    QueueRedraw();
-                    Selected?.Invoke(picked);
-                    return;
-            }
-        }
-
-        public override void _Draw()
-        {
-            float width = Size.X / _labels.Length;
-
-            for (int i = 0; i < _labels.Length; i++)
-            {
-                var box = new Rect2(Mathf.Round(i * width), 0f, Mathf.Round(width), Size.Y);
-                bool active = i == _current;
-
-                DrawRect(box, active ? Style.TabActive : _hovered == i ? Style.TabIdle.Lightened(0.15f) : Style.TabIdle);
-
-                // The active tab shares its bottom edge with the body under it; the inactive one
-                // keeps a rule, which is what puts it behind.
-                if (!active)
-                    DrawRect(new Rect2(box.Position.X, box.End.Y - 1f, box.Size.X, 1f), Style.ModalFrameDark);
-
-                float baseline = Style.BaselineIn(Size.Y, Style.FontHeader);
-
-                this.DrawText(
-                    new Vector2(Mathf.Round(box.Position.X + (box.Size.X - Style.Measure(_labels[i], Style.FontHeader)) / 2f), baseline),
-                    _labels[i], Style.FontHeader, active ? Style.ModalHeader : Style.TextDim);
-            }
-        }
     }
 
     /// <summary>
