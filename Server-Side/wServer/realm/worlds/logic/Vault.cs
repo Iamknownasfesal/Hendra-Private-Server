@@ -165,22 +165,41 @@ namespace wServer.realm.worlds.logic
 
         private readonly Random _crackle = new Random();
 
+        /// <summary>Accounts already handed their vault, so it goes out once and not every tick.</summary>
+        private readonly HashSet<int> _sent = new HashSet<int>();
+
         /// <summary>
         /// Hands a player arriving in the vault the whole of it.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// The panel has nothing to draw until this lands: the contents no longer arrive as the
         /// equipment of eight objects the player can see, because there are no longer eight objects.
+        /// </para>
+        /// <para>
+        /// On the tick, and not in EnterWorld, which is where this was and where it did not work.
+        /// EnterWorld runs inside the load handler one line above <c>client.State =
+        /// ProtocolState.Ready</c>, and before the CreateSuccess that tells the client which object
+        /// it is -- so the snapshot went out to a connection that was not yet listening and the
+        /// vault drew itself empty every time. Waiting for Ready costs one tick and cannot be got
+        /// wrong again by something else reordering the handshake.
+        /// </para>
         /// </remarks>
-        public override int EnterWorld(Entity entity)
+        public override void Tick(RealmTime time)
         {
-            var id = base.EnterWorld(entity);
+            base.Tick(time);
 
-            var player = entity as Player;
-            if (player?.Client?.Account != null)
-                player.Client.SendPacket(VaultState.Of(Manager, player.Client.Account).Snapshot());
+            foreach (var player in Players.Values)
+            {
+                var client = player.Client;
+                if (client == null || client.State != ProtocolState.Ready || client.Account == null)
+                    continue;
 
-            return id;
+                if (!_sent.Add(client.Account.AccountId))
+                    continue;
+
+                client.SendPacket(VaultState.Of(Manager, client.Account).Snapshot());
+            }
         }
 
     }

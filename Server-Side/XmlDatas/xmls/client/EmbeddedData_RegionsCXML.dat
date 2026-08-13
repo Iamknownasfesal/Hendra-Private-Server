@@ -135,6 +135,7 @@
    </Region>
    <Region type="0x3c" id="Biome3">
       <Color>0x980000</Color>
+   </Region>
    <Region type="0x3d" id="Biome4">
       <Color>0x980000</Color>
    </Region>
