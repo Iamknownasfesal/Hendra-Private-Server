@@ -144,6 +144,7 @@ async fn main() {
 
     let loadout = world_task::Loadout {
         bag_types,
+        persistent: false,
         avatar: default_class.object_type,
         weapon: default_class
             .slot_type(0)
@@ -236,7 +237,15 @@ async fn main() {
         }
     }
 
-    let entry = world_task::spawn(world, Arc::clone(&catalog), loadout.clone());
+    // The entry world has to exist before anyone is in it, so it is the one that never closes.
+    let entry = world_task::spawn(
+        world,
+        Arc::clone(&catalog),
+        world_task::Loadout {
+            persistent: true,
+            ..loadout.clone()
+        },
+    );
 
     let identity = match &options.certificate {
         Some((cert, key)) => match ServerIdentity::from_pem_files(cert, key) {

@@ -174,8 +174,8 @@ an ability, 1,942 activates across 43 kinds.
 
 ### 8.2 Portals and dungeon lifecycle — **M**
 
-- [ ] Portal lifetime and player count
-- [ ] Close a dungeon when it empties
+- [x] Portal lifetime, which the death-effect portals already carry as `expires_in_ms`
+- [x] Close a dungeon when it empties, after a minute so walking out and back returns you to the same room. The entry world is exempt, and closed worlds are dropped from the registry when the next one starts
 
 ### 8.3 Setpieces — **M**
 

@@ -161,6 +161,10 @@ impl Worlds {
         report_portals(&world, self);
         let handle = world_task::spawn(world, Arc::clone(&self.catalog), self.loadout.clone());
 
+        // Worlds that have closed since the last start are dropped here rather than by a sweeper,
+        // because this is the only moment the registry is already locked and already being read.
+        running.retain(|_, held| !held.inbox.is_closed());
+
         running.insert(key.to_string(), handle.clone());
         tracing::info!(running = running.len(), "worlds now ticking");
         Some(handle)

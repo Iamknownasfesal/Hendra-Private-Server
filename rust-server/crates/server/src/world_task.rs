@@ -16,7 +16,7 @@
 //! while doing it.
 
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use hendra_content::{Catalog, ObjectType};
 use hendra_net::snapshot::{Acknowledgement, Baseline, BaselineRing};
@@ -179,6 +179,10 @@ pub async fn run(
     let mut reported = Instant::now();
 
     let loadout = &loadout;
+    let persistent = loadout.persistent;
+
+    // When the world last became empty, or `None` while somebody is in it.
+    let mut emptied: Option<Instant> = None;
 
     loop {
         tokio::select! {
@@ -189,6 +193,21 @@ pub async fn run(
 
             _ = ticker.tick() => {
                 let started = Instant::now();
+
+                // A world nobody is in stops, so a night of dungeon-running does not leave a
+                // hundred of them ticking. The entry world is exempt: it is where players arrive,
+                // and a world that has to exist before anyone is in it cannot wait for one.
+                if players.is_empty() {
+                    if !persistent && emptied.is_none_or(|at: Instant| at.elapsed() >= IDLE_TIMEOUT)
+                    {
+                        if emptied.is_some() {
+                            break;
+                        }
+                        emptied = Some(Instant::now());
+                    }
+                } else {
+                    emptied = None;
+                }
 
                 world.advance(&catalog, elapsed_ms);
                 announce(&mut world, &catalog, &mut players).await;
@@ -211,7 +230,7 @@ pub async fn run(
         }
     }
 
-    tracing::info!(world = %world.name, "world stopped");
+    tracing::info!(world = %world.name, players = players.len(), "world stopped");
 }
 
 /// What the server falls back to when a character says nothing useful.
@@ -223,6 +242,12 @@ pub async fn run(
 pub struct Loadout {
     /// The object to use for each loot colour, in the content's own order.
     pub bag_types: Vec<ObjectType>,
+
+    /// Whether this world keeps ticking with nobody in it.
+    ///
+    /// True for the world players arrive in, which has to exist before anyone is there. False for
+    /// everything else, which closes when it empties.
+    pub persistent: bool,
 
     pub avatar: ObjectType,
     pub weapon: Option<ObjectType>,
@@ -809,6 +834,12 @@ pub fn portals_in(world: &World) -> Vec<(Handle, u16)> {
 }
 
 /// Starts a world on its own task.
+/// How long a world with nobody in it keeps ticking before it stops.
+///
+/// Long enough that walking out and back in returns you to the same room rather than a fresh one,
+/// short enough that a night of dungeon-running does not leave a hundred empty worlds ticking.
+pub const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
+
 pub fn spawn(mut world: World, catalog: Arc<Catalog>, loadout: Loadout) -> WorldHandle {
     world.set_bag_types(loadout.bag_types.clone());
 
