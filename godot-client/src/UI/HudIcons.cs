@@ -466,4 +466,90 @@ public static class HudIcons
         into.DrawRect(new Rect2(At(box, 0.44f, 0.66f), new Vector2(Mathf.Max(1f, box.Size.X * 0.12f),
             box.Size.Y * 0.20f)), dark);
     }
+
+    // ─── the vault's filter rail ──────────────────────────────────────────────────────────────
+    //
+    // One mark per item category. They are silhouettes rather than pictures of items: the rail is
+    // read at a glance and out of the corner of the eye, and a shape with two tones and a highlight
+    // on it stops being legible at fifty-six pixels next to seven of its neighbours.
+
+    /// <summary>Weapons: a blade on the diagonal, with a guard and a pommel.</summary>
+    public static void Sword(CanvasItem into, Rect2 box, Color colour)
+    {
+        float thick = Mathf.Max(2f, Span(box) * 0.10f);
+
+        // Blade, tip at the top right. Drawn as a quad so the point is a point rather than a
+        // rounded line cap.
+        into.DrawColoredPolygon(Map(box,
+            0.86f, 0.14f,
+            0.72f, 0.16f,
+            0.34f, 0.54f,
+            0.44f, 0.64f), colour);
+
+        // Guard across it, and a short grip below.
+        into.DrawLine(At(box, 0.20f, 0.56f), At(box, 0.46f, 0.82f), colour, thick);
+        into.DrawLine(At(box, 0.24f, 0.74f), At(box, 0.16f, 0.86f), colour, thick);
+    }
+
+    /// <summary>Light armour: a robe, narrow at the shoulders and flared below.</summary>
+    public static void Robe(CanvasItem into, Rect2 box, Color colour)
+    {
+        into.DrawColoredPolygon(Map(box,
+            0.34f, 0.16f,
+            0.66f, 0.16f,
+            0.74f, 0.34f,
+            0.66f, 0.40f,
+            0.78f, 0.84f,
+            0.22f, 0.84f,
+            0.34f, 0.40f,
+            0.26f, 0.34f), colour);
+    }
+
+    /// <summary>Heavy armour: a shield, because a heavier robe is not a distinguishable shape.</summary>
+    public static void Shield(CanvasItem into, Rect2 box, Color colour)
+    {
+        into.DrawColoredPolygon(Map(box,
+            0.50f, 0.12f,
+            0.84f, 0.26f,
+            0.84f, 0.54f,
+            0.50f, 0.88f,
+            0.16f, 0.54f,
+            0.16f, 0.26f), colour);
+    }
+
+    /// <summary>Rings: a band, and a stone set into the top of it.</summary>
+    public static void Ring(CanvasItem into, Rect2 box, Color colour)
+    {
+        float radius = Span(box) * 0.26f;
+        into.DrawArc(At(box, 0.5f, 0.58f), radius, 0f, Mathf.Tau, 32, colour,
+            Mathf.Max(2f, Span(box) * 0.11f));
+
+        into.DrawColoredPolygon(Map(box,
+            0.50f, 0.10f,
+            0.64f, 0.24f,
+            0.50f, 0.38f,
+            0.36f, 0.24f), colour);
+    }
+
+    /// <summary>Abilities: an orb, with the bite out of it that says it is being cast.</summary>
+    public static void Orb(CanvasItem into, Rect2 box, Color colour)
+    {
+        into.DrawArc(At(box, 0.5f, 0.5f), Span(box) * 0.30f, 0f, Mathf.Tau, 32, colour,
+            Mathf.Max(2f, Span(box) * 0.11f));
+        into.DrawCircle(At(box, 0.5f, 0.5f), Span(box) * 0.12f, colour);
+    }
+
+    /// <summary>Everything else: a spark, for the things that are one of a kind.</summary>
+    public static void Spark(CanvasItem into, Rect2 box, Color colour)
+    {
+        into.DrawColoredPolygon(Map(box,
+            0.50f, 0.08f,
+            0.60f, 0.40f,
+            0.92f, 0.50f,
+            0.60f, 0.60f,
+            0.50f, 0.92f,
+            0.40f, 0.60f,
+            0.08f, 0.50f,
+            0.40f, 0.40f), colour);
+    }
 }

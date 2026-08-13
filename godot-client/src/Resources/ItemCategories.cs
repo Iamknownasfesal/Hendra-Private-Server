@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Hendra.Resources;
 
@@ -22,7 +23,13 @@ public static class ItemCategories
 {
     public const string All = "ALL";
 
-    /// <summary>Every category, in the order the rail stacks them.</summary>
+    /// <summary>Every category this build knows how to name, in the order the rail stacks them.</summary>
+    /// <remarks>
+    /// Not every one of these necessarily exists: the rail is built from <see cref="Emblems"/>,
+    /// which only reports the categories the loaded data actually has items in. A button that can
+    /// never match anything is worse than a missing one -- it reads as a filter that is broken
+    /// rather than as a category this game does not have.
+    /// </remarks>
     public static readonly string[] Order =
     {
         "Weapon", "Armor", "Heavy", "Ring", "Ability", "Consumable", "Pet", "Special",
@@ -56,6 +63,30 @@ public static class ItemCategories
         [10] = "Consumable",
         [26] = "Pet",
     };
+
+    /// <summary>
+    /// The categories the loaded data actually has items in, in the order the rail stacks them.
+    /// </summary>
+    /// <remarks>
+    /// A filter that can never match anything reads as broken rather than as a category this game
+    /// does not have, so the rail is built from this instead of from <see cref="Order"/> directly.
+    /// The test for "is an item" -- equipment or a consumable -- is as close as this data gets: the
+    /// object table holds walls and monsters too, and the odds-and-ends category would otherwise
+    /// happily count a wall as one of its own.
+    /// </remarks>
+    public static List<string> Present(GameData data)
+    {
+        var present = new List<string>();
+        if (data == null)
+            return present;
+
+        foreach (string category in Order)
+            if (data.Objects.Values.Any(
+                    o => o != null && (o.SlotType >= 0 || o.Consumable) && Of(o) == category))
+                present.Add(category);
+
+        return present;
+    }
 
     /// <summary>Which category an item belongs to. Never null for a real item.</summary>
     public static string Of(ObjectDesc desc)

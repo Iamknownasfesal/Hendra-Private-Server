@@ -283,16 +283,40 @@ public sealed partial class VaultView : ModalPanel
 
     // ─── the filter rail ──────────────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// The mark on each filter button.
+    /// </summary>
+    /// <remarks>
+    /// A silhouette, in the same geometry the rest of the interface draws its icons in -- not a
+    /// picture of an item. The rail is read out of the corner of the eye at fifty-six pixels, and a
+    /// sword sprite with a wooden hilt and a steel highlight stops being a sword down there; a
+    /// sword-shaped hole in the plate never does. Which category gets which mark is a question about
+    /// the interface, so it is answered here and not in the item data.
+    /// </remarks>
+    private static Action<CanvasItem, Rect2, Color> GlyphFor(string category) => category switch
+    {
+        "Weapon" => HudIcons.Sword,
+        "Armor" => HudIcons.Robe,
+        "Heavy" => HudIcons.Shield,
+        "Ring" => HudIcons.Ring,
+        "Ability" => HudIcons.Orb,
+        "Consumable" => HudIcons.Flask,
+        "Pet" => HudIcons.Paw,
+        _ => HudIcons.Spark,
+    };
+
     private void BuildRail()
     {
-        Add(null, ItemCategories.All);
+        // Text for the one that filters nothing, and a glyph for each of the rest. Only the
+        // categories the loaded data actually has items in: see ItemCategories.Present.
+        Add(null, ItemCategories.All, null);
 
-        foreach (string category in ItemCategories.Order)
-            Add(category, category);
+        foreach (string category in ItemCategories.Present(_data))
+            Add(category, category, GlyphFor(category));
 
-        void Add(string category, string label)
+        void Add(string category, string label, Action<CanvasItem, Rect2, Color> glyph)
         {
-            var button = new RailButton(label) { Category = category };
+            var button = new RailButton(label, glyph) { Category = category };
             button.Pressed += () =>
             {
                 _store.Filter = button.Category;
@@ -769,11 +793,13 @@ public sealed partial class VaultView : ModalPanel
     private sealed partial class RailButton : Control
     {
         private readonly string _label;
+        private readonly Action<CanvasItem, Rect2, Color> _glyph;
         private bool _hover;
 
-        public RailButton(string label)
+        public RailButton(string label, Action<CanvasItem, Rect2, Color> glyph)
         {
             _label = label;
+            _glyph = glyph;
             MouseFilter = MouseFilterEnum.Stop;
             TooltipText = label;
 
@@ -816,10 +842,20 @@ public sealed partial class VaultView : ModalPanel
                 : Style.Slot);
             DrawRect(full, Style.SlotBorder.Darkened(0.3f), filled: false, width: 1f);
 
-            // Three letters is what fits in fifty-six pixels of this face at tag size.
-            string text = _label.Length <= 3
-                ? _label
-                : _label.Substring(0, 3).ToUpperInvariant();
+            if (_glyph != null)
+            {
+                // Square and centred, inset so the plate still reads as a button around it. Dim
+                // until the filter is on, which is the language the sort tabs already use.
+                float side = Mathf.Round(Mathf.Min(Size.X, Size.Y) - 20f);
+                var box = new Rect2(
+                    Mathf.Round((Size.X - side) / 2f), Mathf.Round((Size.Y - side) / 2f), side, side);
+
+                _glyph(this, box, _active ? Style.Text : Style.TextDim);
+                return;
+            }
+
+            // No artwork: the all-items button. Three letters is what fits across this face.
+            string text = _label.Length <= 3 ? _label : _label.Substring(0, 3).ToUpperInvariant();
 
             float width = Style.Measure(text, Style.FontTag);
             float baseline = Mathf.Round(
