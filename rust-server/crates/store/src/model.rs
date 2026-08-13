@@ -24,6 +24,9 @@ pub struct Account {
 
     /// What this account may do to others. Zero is an ordinary player.
     pub admin_rank: i16,
+
+    /// What it may spend on skins and the like.
+    pub credits: i32,
 }
 
 /// What a moderator may do.
@@ -131,9 +134,10 @@ impl Store {
                 i32,
                 Option<chrono::DateTime<chrono::Utc>>,
                 i16,
+                i32,
             ),>(
             "INSERT INTO account (name) VALUES ($1)
-             RETURNING id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until, admin_rank",
+             RETURNING id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until, admin_rank, credits",
         )
         .bind(name)
         .fetch_one(self.pool())
@@ -151,6 +155,7 @@ impl Store {
                 tokens,
                 muted_until,
                 admin_rank,
+                credits,
             )) => Ok(Account {
                 id,
                 name,
@@ -162,6 +167,7 @@ impl Store {
                 tokens,
                 muted_until,
                 admin_rank,
+                credits,
             }),
             // The unique index is what decides this, not a prior lookup. A check-then-insert has a
             // window between the two in which someone else inserts the same name.
@@ -187,9 +193,10 @@ impl Store {
                 i32,
                 Option<chrono::DateTime<chrono::Utc>>,
                 i16,
+                i32,
             ),
         >(
-            "SELECT id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until, admin_rank
+            "SELECT id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until, admin_rank, credits
              FROM account WHERE lower(name) = lower($1)",
         )
         .bind(name)
@@ -208,6 +215,7 @@ impl Store {
                 tokens,
                 muted_until,
                 admin_rank,
+                credits,
             )| {
                 Account {
                     id,
@@ -220,6 +228,7 @@ impl Store {
                     tokens,
                     muted_until,
                     admin_rank,
+                    credits,
                 }
             },
         )
@@ -253,9 +262,10 @@ impl Store {
                 i32,
                 Option<chrono::DateTime<chrono::Utc>>,
                 i16,
+                i32,
             ),
         >(
-            "SELECT id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until, admin_rank
+            "SELECT id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until, admin_rank, credits
              FROM account WHERE id = $1",
         )
         .bind(id)
@@ -274,6 +284,7 @@ impl Store {
                 tokens,
                 muted_until,
                 admin_rank,
+                credits,
             )| {
                 Account {
                     id,
@@ -286,6 +297,7 @@ impl Store {
                     tokens,
                     muted_until,
                     admin_rank,
+                    credits,
                 }
             },
         )

@@ -6,7 +6,7 @@ deliberately excluded and left until last.
 Phases 0–5 are done: workspace, content, protocol, transport, simulation, behaviour language,
 persistence, authentication. What follows is phases 6–11.
 
-**Where we are:** ~95% of the old server by subsystem. 638 tests.
+**Where we are:** ~97% of the old server by subsystem. 646 tests.
 
 **Sizing** is relative, not calendar: **S** is an afternoon, **M** is a day or two, **L** is
 several days, **XL** is a week or more.
@@ -247,13 +247,14 @@ Eight of 48 endpoints are done, and they are the ones that matter.
 ### Optional — **L**
 
 - [x] Global news, in-game news and the daily calendar. `endpoints` now reports **26 of 40**.
-- [ ] **The last thirteen are not server work, and are recorded rather than done.** Discord and
-      credits need third-party accounts nobody has set up; `getTextures` and `getLanguageStrings`
-      serve assets the client already ships with; `picture/get` needs image storage;
-      `security/gameData` and `security/securityProtocols` served the old anti-cheat, which this
-      server replaced by not trusting the client at all; `verifyage`, `purchaseSkin`,
-      `checkQuestIsDone` and `weekQuest` are features the game does not have. Building any of them
-      would be building the wrong thing, so this box stays open on purpose
+- [x] Language strings, credit offers, quests and weekly quests, age confirmation, skins and
+      pictures. `endpoints` reports **35 of 40**.
+- [ ] **The last five need something this server cannot provide.** `registerDiscord` and
+      `unregisterDiscord` need a Discord application and OAuth secrets; `getTextures` serves sprite
+      sheets the client ships and the server has no copy of; `security/gameData` and
+      `security/securityProtocols` served the old client-side anti-cheat, which this server
+      replaced by not trusting the client at all, so implementing them would mean reintroducing the
+      thing they existed to support
 
 ### Operations
 

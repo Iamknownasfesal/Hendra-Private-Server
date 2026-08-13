@@ -1797,3 +1797,184 @@ async fn a_streak_survives_not_having_claimed_yet_today() {
     assert_eq!(calendar.streak, 3);
     assert!(!calendar.claimed_today, "but today is still available");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn strings_are_kept_per_language_and_replaced_rather_than_duplicated() {
+    let Some(store) = store("t_strings").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    store.set_string("en", "greeting", "Hello").await.unwrap();
+    store.set_string("fr", "greeting", "Bonjour").await.unwrap();
+    store.set_string("en", "greeting", "Hi").await.unwrap();
+
+    let english = store.strings("en").await.unwrap();
+    assert_eq!(english.len(), 1, "replaced, not duplicated");
+    assert_eq!(english[0].1, "Hi");
+    assert_eq!(store.strings("fr").await.unwrap()[0].1, "Bonjour");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn credits_come_from_the_offer_rather_than_from_whoever_is_asking() {
+    let Some(store) = store("t_offers").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    let (offer,): (i64,) = sqlx::query_as(
+        "INSERT INTO credit_offer (name, credits, price_cents) VALUES ($1, $2, $3) RETURNING id",
+    )
+    .bind("A handful")
+    .bind(500)
+    .bind(199)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+
+    assert_eq!(store.grant_offer(account.id, offer).await.unwrap(), 500);
+    assert_eq!(store.account(account.id).await.unwrap().credits, 500);
+
+    assert!(
+        store.grant_offer(account.id, 99999).await.is_err(),
+        "an offer that does not exist grants nothing"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_quest_advances_to_its_goal_and_finishes_once() {
+    let Some(store) = store("t_quests").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    store
+        .define_quest("slay", "Slay ten slimes", 10, false)
+        .await
+        .unwrap();
+
+    assert!(!store.advance_quest(account.id, "slay", 4).await.unwrap());
+    assert!(!store.advance_quest(account.id, "slay", 4).await.unwrap());
+    assert!(store.advance_quest(account.id, "slay", 4).await.unwrap());
+
+    let quests = store.quests(account.id, None).await.unwrap();
+    assert_eq!(quests.len(), 1);
+    assert!(quests[0].finished);
+    assert_eq!(quests[0].progress, 10, "and never past the goal");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn weekly_quests_can_be_asked_for_on_their_own() {
+    let Some(store) = store("t_quests_weekly").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    store
+        .define_quest("always", "A standing task", 1, false)
+        .await
+        .unwrap();
+    store
+        .define_quest("thisweek", "A weekly task", 1, true)
+        .await
+        .unwrap();
+
+    assert_eq!(store.quests(account.id, None).await.unwrap().len(), 2);
+    let weekly = store.quests(account.id, Some(true)).await.unwrap();
+    assert_eq!(weekly.len(), 1);
+    assert_eq!(weekly[0].key, "thisweek");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_skin_is_paid_for_once_and_cannot_be_bought_twice() {
+    let Some(store) = store("t_skins").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    let skin = uuid::Uuid::from_u128(0x5111);
+
+    sqlx::query("UPDATE account SET credits = 1000 WHERE id = $1")
+        .bind(account.id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+
+    store.buy_skin(account.id, skin, 400).await.unwrap();
+    assert_eq!(store.account(account.id).await.unwrap().credits, 600);
+    assert_eq!(store.owned_skins(account.id).await.unwrap(), vec![skin]);
+
+    // Buying it again is refused, and costs nothing.
+    assert!(store.buy_skin(account.id, skin, 400).await.is_err());
+    assert_eq!(
+        store.account(account.id).await.unwrap().credits,
+        600,
+        "the second attempt must not have been charged for"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_skin_nobody_can_afford_is_refused_and_costs_nothing() {
+    let Some(store) = store("t_skins_poor").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    assert!(
+        store
+            .buy_skin(account.id, uuid::Uuid::from_u128(1), 400)
+            .await
+            .is_err()
+    );
+    assert!(store.owned_skins(account.id).await.unwrap().is_empty());
+    assert_eq!(store.account(account.id).await.unwrap().credits, 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_picture_is_bounded_and_replaced_rather_than_accumulated() {
+    let Some(store) = store("t_pictures").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+
+    assert!(store.set_picture(account.id, "png", &[]).await.is_err());
+
+    let huge = vec![0u8; hendra_store::extras::MAX_PICTURE_BYTES + 1];
+    assert!(store.set_picture(account.id, "png", &huge).await.is_err());
+
+    store
+        .set_picture(account.id, "png", &[1, 2, 3])
+        .await
+        .unwrap();
+    store
+        .set_picture(account.id, "jpeg", &[4, 5])
+        .await
+        .unwrap();
+
+    let (kind, bytes) = store.picture(account.id).await.unwrap().unwrap();
+    assert_eq!(kind, "jpeg", "the newer one replaced it");
+    assert_eq!(bytes, vec![4, 5]);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_age_confirmation_is_recorded_without_the_date() {
+    // What the server needs to know is whether somebody said yes. Keeping the date would be
+    // keeping something it has no use for.
+    let Some(store) = store("t_age").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    assert!(!store.age_verified(account.id).await.unwrap());
+
+    store.set_age_verified(account.id, true).await.unwrap();
+    assert!(store.age_verified(account.id).await.unwrap());
+}

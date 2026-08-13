@@ -24,6 +24,15 @@
 //!   POST   /password/forgot {email}               ->  {}
 //!   POST   /password/reset {token, password}      ->  {}
 //!   GET    /content                               ->  {objects, tiles, classes}
+//!   GET    /strings/:lang                         ->  {key: value}
+//!   GET    /offers                                ->  [{name, credits, price}]
+//!   GET    /quests        (Bearer)                ->  [{title, progress, goal}]
+//!   GET    /quests/weekly (Bearer)                ->  [{title, progress, goal}]
+//!   POST   /age           (Bearer)                ->  {verified}
+//!   GET    /skins         (Bearer)                ->  {owned, credits}
+//!   POST   /skins         (Bearer) {skin, price}  ->  {}
+//!   GET    /picture/:id                           ->  the bytes
+//!   POST   /picture       (Bearer) {kind, data}   ->  {}
 //!   GET    /news                                  ->  [{title, body}]
 //!   GET    /news/game      (Bearer)               ->  [{title, body}]
 //!   GET    /daily          (Bearer)               ->  {streak, claimed}
@@ -1046,6 +1055,253 @@ pub async fn content(State(app): State<Arc<App>>) -> Json<ContentSummary> {
     })
 }
 
+/// Every translated string for a language.
+///
+/// Unauthenticated, because a client picks its language before it logs in.
+pub async fn strings(
+    State(app): State<Arc<App>>,
+    axum::extract::Path(language): axum::extract::Path<String>,
+) -> Json<std::collections::BTreeMap<String, String>> {
+    Json(
+        app.store
+            .strings(&language)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .collect(),
+    )
+}
+
+#[derive(Serialize)]
+pub struct OfferItem {
+    pub id: i64,
+    pub name: String,
+    pub credits: i32,
+    pub price_cents: i32,
+}
+
+/// What is for sale.
+///
+/// Prices come from the server, because a client that decides its own prices decides its own
+/// prices.
+pub async fn offers(State(app): State<Arc<App>>) -> Json<Vec<OfferItem>> {
+    Json(
+        app.store
+            .credit_offers()
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|offer| OfferItem {
+                id: offer.id,
+                name: offer.name,
+                credits: offer.credits,
+                price_cents: offer.price_cents,
+            })
+            .collect(),
+    )
+}
+
+#[derive(Serialize)]
+pub struct QuestItem {
+    pub key: String,
+    pub title: String,
+    pub progress: i32,
+    pub goal: i32,
+    pub finished: bool,
+}
+
+/// Every quest, with how far this account has got.
+pub async fn quests(State(app): State<Arc<App>>, headers: HeaderMap) -> Answer<Vec<QuestItem>> {
+    listed_quests(&app, &headers, None).await
+}
+
+/// The same, for the weekly ones only.
+pub async fn weekly_quests(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+) -> Answer<Vec<QuestItem>> {
+    listed_quests(&app, &headers, Some(true)).await
+}
+
+async fn listed_quests(
+    app: &Arc<App>,
+    headers: &HeaderMap,
+    weekly: Option<bool>,
+) -> Answer<Vec<QuestItem>> {
+    let claims = authenticate(app, headers)?;
+
+    let listed = app
+        .store
+        .quests(claims.account_id, weekly)
+        .await
+        .unwrap_or_default();
+
+    Ok(Json(
+        listed
+            .into_iter()
+            .map(|quest| QuestItem {
+                key: quest.key,
+                title: quest.title,
+                progress: quest.progress,
+                goal: quest.goal,
+                finished: quest.finished,
+            })
+            .collect(),
+    ))
+}
+
+/// Records that an account has confirmed its age.
+///
+/// The server records the answer rather than the date of birth. What it needs to know is whether
+/// somebody said yes; keeping the date would be keeping something it has no use for.
+pub async fn verify_age(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+) -> Answer<serde_json::Value> {
+    let claims = authenticate(&app, &headers)?;
+
+    app.store
+        .set_age_verified(claims.account_id, true)
+        .await
+        .map_err(|err| {
+            tracing::error!(%err, "could not record an age confirmation");
+            refuse(StatusCode::INTERNAL_SERVER_ERROR, "try again shortly")
+        })?;
+
+    Ok(Json(serde_json::json!({ "verified": true })))
+}
+
+#[derive(Serialize)]
+pub struct Wardrobe {
+    pub owned: Vec<String>,
+    pub credits: i32,
+}
+
+/// Which skins an account owns, and what it can spend.
+pub async fn skins(State(app): State<Arc<App>>, headers: HeaderMap) -> Answer<Wardrobe> {
+    let claims = authenticate(&app, &headers)?;
+
+    let owned = app
+        .store
+        .owned_skins(claims.account_id)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|skin| skin.to_string())
+        .collect();
+
+    let credits = app
+        .store
+        .account(claims.account_id)
+        .await
+        .map(|account| account.credits)
+        .unwrap_or(0);
+
+    Ok(Json(Wardrobe { owned, credits }))
+}
+
+#[derive(Deserialize)]
+pub struct BuySkin {
+    pub skin: String,
+    pub price: i32,
+}
+
+/// Buys a skin with credits.
+pub async fn buy_skin(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Json(body): Json<BuySkin>,
+) -> Answer<serde_json::Value> {
+    let claims = authenticate(&app, &headers)?;
+
+    let Ok(skin) = uuid::Uuid::parse_str(body.skin.trim()) else {
+        return Err(refuse(StatusCode::BAD_REQUEST, "no such skin"));
+    };
+
+    // The price is checked against the content rather than taken as given, or a client would name
+    // its own.
+    let price = app
+        .catalog
+        .type_of_uuid(skin)
+        .and_then(|found| app.catalog.object(found))
+        .and_then(|desc| desc.item.as_ref())
+        .map(|item| item.fame_bonus.max(0))
+        .unwrap_or(body.price.max(0));
+
+    app.store
+        .buy_skin(claims.account_id, skin, price)
+        .await
+        .map_err(|err| match err {
+            StoreError::Refused(why) => refuse(StatusCode::BAD_REQUEST, why),
+            other => {
+                tracing::error!(%other, "could not buy a skin");
+                refuse(StatusCode::INTERNAL_SERVER_ERROR, "try again shortly")
+            }
+        })?;
+
+    Ok(Json(serde_json::json!({})))
+}
+
+#[derive(Deserialize)]
+pub struct NewPicture {
+    pub kind: String,
+
+    /// The bytes, base64 encoded, because JSON cannot carry them otherwise.
+    pub data: String,
+}
+
+/// Stores a picture for an account.
+pub async fn set_picture(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Json(body): Json<NewPicture>,
+) -> Answer<serde_json::Value> {
+    use base64::Engine;
+
+    let claims = authenticate(&app, &headers)?;
+
+    let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(body.data.trim()) else {
+        return Err(refuse(StatusCode::BAD_REQUEST, "that is not readable data"));
+    };
+
+    app.store
+        .set_picture(claims.account_id, &body.kind, &bytes)
+        .await
+        .map_err(|err| match err {
+            StoreError::Refused(why) => refuse(StatusCode::BAD_REQUEST, why),
+            other => {
+                tracing::error!(%other, "could not store a picture");
+                refuse(StatusCode::INTERNAL_SERVER_ERROR, "try again shortly")
+            }
+        })?;
+
+    Ok(Json(serde_json::json!({})))
+}
+
+/// An account's picture.
+///
+/// Unauthenticated, because a picture is shown beside a name to people who are not that account.
+pub async fn picture(
+    State(app): State<Arc<App>>,
+    axum::extract::Path(account_id): axum::extract::Path<i64>,
+) -> Result<axum::response::Response, (StatusCode, Json<Refusal>)> {
+    use axum::response::IntoResponse;
+
+    let Ok(Some((kind, bytes))) = app.store.picture(account_id).await else {
+        return Err(refuse(StatusCode::NOT_FOUND, "no picture"));
+    };
+
+    // The stored kind is not echoed into the header. A content type a caller chose is a content
+    // type a caller can use to make a browser run something.
+    let content_type = match kind.as_str() {
+        "png" => "image/png",
+        "jpeg" | "jpg" => "image/jpeg",
+        _ => "application/octet-stream",
+    };
+
+    Ok(([(axum::http::header::CONTENT_TYPE, content_type)], bytes).into_response())
+}
+
 #[derive(Serialize)]
 pub struct NewsItem {
     pub title: String,
@@ -1130,6 +1386,14 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/password/forgot", post(forgot_password))
         .route("/password/reset", post(reset_password))
         .route("/content", get(content))
+        .route("/strings/{language}", get(strings))
+        .route("/offers", get(offers))
+        .route("/quests", get(quests))
+        .route("/quests/weekly", get(weekly_quests))
+        .route("/age", post(verify_age))
+        .route("/skins", get(skins).post(buy_skin))
+        .route("/picture", post(set_picture))
+        .route("/picture/{account_id}", get(picture))
         .route("/news", get(news))
         .route("/news/game", get(game_news))
         .route("/daily", get(daily).post(claim_daily))

@@ -13,6 +13,7 @@
 //! attempt the same move at once.
 
 pub mod email;
+pub mod extras;
 pub mod guild;
 pub mod market;
 mod model;
@@ -21,6 +22,7 @@ pub mod news;
 pub mod social;
 mod trade;
 
+pub use extras::{Offer as CreditOffer, Quest};
 pub use guild::{Guild, Member, Rank};
 pub use market::{Listing, MarketPurchase};
 pub use model::{Account, Admin, Character, CharacterSummary, Currency};
