@@ -372,13 +372,6 @@ public static class HudIcons
             1f, outline.Size.Y * 0.40f), colour);
     }
 
-    /// <summary>The loadout cycle: two arrows chasing each other.</summary>
-    public static void SwapArrows(CanvasItem into, Rect2 box, Color colour)
-    {
-        Arrow(into, box, colour, 0.30f, pointsRight: true);
-        Arrow(into, box, colour, 0.70f, pointsRight: false);
-    }
-
     private static void Arrow(CanvasItem into, in Rect2 box, Color colour, float y, bool pointsRight)
     {
         float shaftLeft = pointsRight ? 0.10f : 0.34f;
@@ -390,21 +383,6 @@ public static class HudIcons
         into.DrawColoredPolygon(pointsRight
             ? Map(box, 0.62f, y - 0.26f, 0.94f, y, 0.62f, y + 0.26f)
             : Map(box, 0.38f, y - 0.26f, 0.06f, y, 0.38f, y + 0.26f), colour);
-    }
-
-    /// <summary>The way home: the Nexus, as the temple the original draws it.</summary>
-    public static void Temple(CanvasItem into, Rect2 box, Color colour)
-    {
-        into.DrawColoredPolygon(Map(box, 0.5f, 0.06f, 0.96f, 0.34f, 0.04f, 0.34f), colour);
-        into.DrawRect(new Rect2(At(box, 0.06f, 0.36f), new Vector2(box.Size.X * 0.88f, box.Size.Y * 0.08f)), colour);
-
-        for (int i = 0; i < 4; i++)
-        {
-            into.DrawRect(new Rect2(At(box, 0.14f + i * 0.21f, 0.46f),
-                new Vector2(box.Size.X * 0.11f, box.Size.Y * 0.36f)), colour);
-        }
-
-        into.DrawRect(new Rect2(At(box, 0.04f, 0.84f), new Vector2(box.Size.X * 0.92f, box.Size.Y * 0.10f)), colour);
     }
 
     /// <summary>A chevron, for the minimap's zoom and the chat's scroll arrows.</summary>

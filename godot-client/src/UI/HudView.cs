@@ -94,7 +94,6 @@ public partial class HudView : Control
     private PotionCounter _healthPotions;
     private HudBar _mana;
     private PotionCounter _manaPotions;
-    private NexusButton _nexus;
 
     private ContainerPanel _containerPanel;
     private VaultView _vaultView;
@@ -103,7 +102,6 @@ public partial class HudView : Control
     private Control _hotbarTabs;
     private readonly HotbarTab[] _tabs = new HotbarTab[2];
     private Control _equipmentPanel;
-    private HudIconButton _swap;
 
 
 
@@ -135,8 +133,6 @@ public partial class HudView : Control
     /// <summary>Raised by a potion counter, with true for health.</summary>
     public event Action<bool> PotionRequested;
 
-    public event Action NexusPressed;
-
     public event Action OptionsPressed;
 
     /// <summary>The buttons on the card, wired as named events rather than to panels.</summary>
@@ -148,9 +144,6 @@ public partial class HudView : Control
 
     public event Action NewsPressed;
 
-    /// <summary>Raised when the loadout cycle beside the equipment row is pressed.</summary>
-    public event Action SwapPressed;
-
     /// <summary>Raised with the name of the party member whose row was clicked.</summary>
     public event Action<string> PartyMemberActivated;
 
@@ -158,6 +151,10 @@ public partial class HudView : Control
     {
         _data = data;
         _textures = new TextureResolver(assets);
+
+        // The vitals may already be built, depending on which happens first.
+        _healthPotions?.UseSprite(SpriteOf("Health Potion"));
+        _manaPotions?.UseSprite(SpriteOf("Magic Potion"));
     }
 
     public override void _Ready()
@@ -234,7 +231,6 @@ public partial class HudView : Control
         LayoutTabs(layout.HotbarTabs.Size);
         Place(_hotbarPanel, layout.Hotbar);
         Place(_equipmentPanel, layout.EquipmentRow);
-        Place(_swap, layout.Swap);
 
         // The panels that are not part of the reference are hung off the ones that are, so they
         // move with them rather than needing their own corner.
@@ -836,15 +832,16 @@ public partial class HudView : Control
         _mana = Bar(Style.MpFill, barLeft, Row * 2f);
         _manaPotions = Potions(false, potionLeft, Row * 2f);
 
-        // The way out, next to the bars, because reaching for it is the same reflex as watching
-        // them -- and labelled with the key that does the same thing.
-        _nexus = new NexusButton(NexusKey())
-        {
-            Position = new Vector2(abilityLeft, Mathf.Round((HudLayout.VitalsHeight - HudLayout.AbilityHeight) / 2f)),
-            Size = new Vector2(HudLayout.AbilityWidth, HudLayout.AbilityHeight),
-        };
-        _nexus.Pressed += () => NexusPressed?.Invoke();
-        _vitals.AddChild(_nexus);
+        // No button back to the Nexus. It was a plate with a temple drawn on it, and that temple
+        // was a mark invented for one button. Escaping to the Nexus is a key, it has always been a
+        // key, and the button never did anything the key did not.
+    }
+
+    /// <summary>An item's still, by the name the data files give it, or nothing if it has none.</summary>
+    private Assets.Sprite SpriteOf(string id)
+    {
+        var desc = _data?.GetObject(id ?? string.Empty);
+        return desc == null ? default : (_textures?.Resolve(desc.Texture) ?? default).Still;
     }
 
     private HudBar Bar(Color fill, float x, float y)
@@ -868,6 +865,7 @@ public partial class HudView : Control
         };
 
         counter.Pressed += () => PotionRequested?.Invoke(health);
+        counter.UseSprite(SpriteOf(health ? "Health Potion" : "Magic Potion"));
         _vitals.AddChild(counter);
         return counter;
     }
@@ -887,6 +885,15 @@ public partial class HudView : Control
 
         private int _count;
         private bool _hovered;
+
+        /// <summary>The item this counts, so the plate shows the thing rather than a shape.</summary>
+        private Assets.Sprite _bottle;
+
+        public void UseSprite(Assets.Sprite sprite)
+        {
+            _bottle = sprite;
+            QueueRedraw();
+        }
 
         public PotionCounter(bool health)
         {
@@ -943,8 +950,15 @@ public partial class HudView : Control
             DrawRect(full, _hovered ? Style.SlotBorderHi : Style.SlotBorder,
                 filled: false, width: SlotView.Border);
 
-            var bottle = new Rect2(3f, 3f, 14f, Size.Y - 6f);
-            HudIcons.Potion(this, bottle, _health ? Style.HpFill : Style.MpFill);
+            // The game's own potion, not a drawing of one. The bottle here used to be geometry --
+            // a circle, a neck and a cork -- which is a picture of the idea of a potion sitting
+            // next to a bag full of the actual things.
+            if (_bottle.IsValid)
+            {
+                float side = Mathf.Min(Size.Y - 6f, Size.X * 0.42f);
+                this.DrawSprite(_bottle,
+                    new Rect2(3f, Mathf.Round((Size.Y - side) / 2f), side, side));
+            }
 
             string text = $"{_count}/{PotionStackMax}";
             float baseline = Style.BaselineIn(Size.Y, Style.FontSmall);
@@ -955,66 +969,6 @@ public partial class HudView : Control
         }
     }
 
-    /// <summary>
-    /// The way back to the Nexus, in the ability slot's place.
-    /// </summary>
-    /// <remarks>
-    /// The same visual language as the hotbar -- a dark plate with the key in its corner -- because
-    /// it is used the same way and sits in the same row of the eye. The key is bracketed, as every
-    /// key hint in the interface now is.
-    /// </remarks>
-    private sealed partial class NexusButton : Control
-    {
-        private readonly string _key;
-
-        private bool _hovered;
-
-        public NexusButton(string key)
-        {
-            _key = $"[{key}]";
-            MouseFilter = MouseFilterEnum.Stop;
-            FocusMode = FocusModeEnum.None;
-            TooltipText = $"Return to the Nexus [{key}]";
-        }
-
-        public event Action Pressed;
-
-        public override void _Ready()
-        {
-            MouseEntered += () => { _hovered = true; QueueRedraw(); };
-            MouseExited += () => { _hovered = false; QueueRedraw(); };
-        }
-
-        public override void _GuiInput(InputEvent @event)
-        {
-            if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
-            {
-                Pressed?.Invoke();
-                AcceptEvent();
-            }
-        }
-
-        public override void _Draw()
-        {
-            var full = new Rect2(Vector2.Zero, Size);
-
-            DrawRect(full, _hovered ? Style.Slot.Lightened(0.12f) : Style.Slot);
-            DrawRect(full, _hovered ? Style.SlotBorderHi : Style.SlotBorder, filled: false, width: 1f);
-
-            HudIcons.Temple(this,
-                new Rect2(Mathf.Round(Size.X * 0.24f), Mathf.Round(Size.Y * 0.26f),
-                    Mathf.Round(Size.X * 0.52f), Mathf.Round(Size.Y * 0.48f)),
-                Style.TextDim);
-
-            this.DrawText(
-                new Vector2(Size.X - Style.Measure(_key, Style.FontTag) - 3f, Style.FontTag + 4f),
-                _key, Style.FontTag, Style.TextDim);
-        }
-    }
-
-    // ---------------------------------------------------------------------------------------------
-    // 2.8 / 2.9 Hotbar and equipment
-    // ---------------------------------------------------------------------------------------------
 
     private void BuildHotbar()
     {
@@ -1204,10 +1158,8 @@ public partial class HudView : Control
             _equipment.Add(slot);
         }
 
-        _swap = new HudIconButton(HudIcons.SwapArrows, "Cycle the equipped loadout", inset: 4f);
-        _swap.Tint = Style.TextDim;
-        _swap.Pressed += () => SwapPressed?.Invoke();
-        AddChild(_swap);
+        // No loadout cycle. Its two arrows were drawn for it and nothing else, and behind them was
+        // a message saying the feature does not exist on this server.
     }
 
     private SlotView NewSlot(SlotAddress address)
@@ -1535,8 +1487,6 @@ public partial class HudView : Control
     // ---------------------------------------------------------------------------------------------
 
     /// <summary>The key that returns to the Nexus, as it is currently bound.</summary>
-    private static string NexusKey() => BoundKey("nexus", "R");
-
     /// <summary>
     /// The key that works the thing in front of the player, as it is currently bound.
     /// </summary>

@@ -214,7 +214,6 @@ public partial class WorldController : Node
             _hud.SlotDropped += OnSlotDropped;
             _hud.SlotDroppedOutside += OnSlotDroppedOutside;
             _hud.PotionRequested += health => _inventory.UsePotion(health);
-            _hud.NexusPressed += () => NexusRequested?.Invoke();
             _hud.OptionsPressed += () => OptionsToggled?.Invoke();
             _hud.BuyPressed += OnBuyPressed;
 
@@ -229,7 +228,6 @@ public partial class WorldController : Node
             // than a button that swallows a click and does nothing, which reads as a broken client.
             _hud.ShopPressed += () => Unavailable("The shop");
             _hud.NewsPressed += () => Unavailable("News");
-            _hud.SwapPressed += () => Unavailable("Swapping loadouts");
         }
 
         _session.MapLoaded += OnMapLoaded;
