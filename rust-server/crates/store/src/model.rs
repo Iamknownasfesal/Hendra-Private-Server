@@ -64,7 +64,7 @@ impl Store {
                 banned,
                 password_hash,
             }),
-            // The unique index is what decides this, not a prior lookup — a check-then-insert has a
+            // The unique index is what decides this, not a prior lookup. A check-then-insert has a
             // window between the two in which someone else inserts the same name.
             Err(sqlx::Error::Database(err)) if err.is_unique_violation() => {
                 Err(StoreError::NameTaken)
@@ -272,7 +272,7 @@ impl Store {
     /// which is what stops this being a way to find out which ids exist.
     ///
     /// Inventory rows go with it through the foreign key. The items are gone rather than dropped
-    /// somewhere, which is the point of deleting a character.
+    /// somewhere, which is what deleting a character means.
     pub async fn delete_character(&self, account_id: i64, id: i64) -> Result<bool> {
         let deleted = sqlx::query("DELETE FROM character WHERE id = $1 AND account_id = $2")
             .bind(id)
@@ -297,7 +297,7 @@ impl Store {
 
     /// The best level and fame this account has reached with each class.
     ///
-    /// Returned as a map because the caller asks about several classes at once — deciding which of
+    /// Returned as a map because the caller asks about several classes at once. Deciding which of
     /// fourteen are playable is one question, not fourteen.
     pub async fn class_progress(
         &self,
@@ -373,7 +373,7 @@ impl Store {
 
     /// Replaces a character's whole inventory.
     ///
-    /// For giving a new character its starting kit, not for saving one mid-play — see
+    /// For giving a new character its starting kit, not for saving one mid-play. See
     /// [`Store::move_item`] for that.
     pub async fn set_inventory(&self, character_id: i64, slots: &[(i16, i32)]) -> Result<()> {
         let mut transaction = self.pool().begin().await?;

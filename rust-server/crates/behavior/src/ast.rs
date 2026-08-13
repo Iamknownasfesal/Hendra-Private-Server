@@ -3,12 +3,12 @@
 //! # Why calls are generic
 //!
 //! There are seventy-five behaviour primitives and twenty transitions, and the content uses them in
-//! wildly uneven proportion — `Shoot` appears 4,498 times and a dozen others appear once each.
+//! wildly uneven proportion: `Shoot` appears 4,498 times and a dozen others appear once each.
 //! Giving each its own syntax would be seventy-five pieces of grammar to write, test and keep in
 //! step with the runtime.
 //!
 //! So a behaviour is a name and some arguments, and the parser neither knows nor cares which ones
-//! exist. An unknown name is a *compile* error with a suggestion, not a *parse* error — which means
+//! exist. An unknown name is a *compile* error with a suggestion, not a *parse* error, which means
 //! adding a primitive is a change to one table rather than to the grammar.
 
 use std::fmt;

@@ -9,7 +9,7 @@
 //!
 //! # Why not fixed-width integers
 //!
-//! Almost every number the game sends is small — entity ids in the low thousands, hit points in
+//! Almost every number the game sends is small: entity ids in the low thousands, hit points in
 //! the hundreds, positional deltas of a fraction of a tile. Fixed 32-bit fields spend four bytes on
 //! all of them. LEB128 spends one byte below 128 and two below 16,384, which covers the
 //! overwhelming majority of values in a snapshot.
@@ -18,7 +18,7 @@ use std::fmt;
 
 /// Tiles are quantised to this many steps for transmission.
 ///
-/// A quarter-tile of movement — a typical step at 20 ticks per second — becomes 64 units, which is
+/// A quarter-tile of movement, a typical step at 20 ticks per second, becomes 64 units, which is
 /// one varint byte after zigzag. Finer scales push common deltas into two bytes for precision no
 /// renderer can show: at 1/256 tile the error is under a hundredth of a pixel at any sane zoom.
 pub const POSITION_SCALE: f32 = 256.0;
@@ -111,7 +111,7 @@ pub fn unzigzag(value: u64) -> i64 {
 
 /// Appends encoded values to a caller-owned buffer.
 ///
-/// Borrowing the buffer rather than owning one is deliberate: the connection keeps a single scratch
+/// The buffer is borrowed rather than owned so the connection can keep a single scratch
 /// buffer and clears it per packet, so encoding a tick allocates nothing once it is warm.
 pub struct Writer<'a> {
     buf: &'a mut Vec<u8>,
@@ -186,7 +186,7 @@ impl<'a> Writer<'a> {
     /// Writes a length-prefixed UTF-8 string.
     ///
     /// Strings longer than [`MAX_STRING_BYTES`] are truncated on a character boundary rather than
-    /// rejected — the caller is our own code, and losing the tail of an over-long chat line is
+    /// rejected. The caller is our own code, and losing the tail of an over-long chat line is
     /// preferable to failing to encode a packet mid-tick.
     pub fn string(&mut self, value: &str) {
         let mut bytes = value.as_bytes();
@@ -472,7 +472,7 @@ mod tests {
         let bytes = write(|w| w.position_delta(10.25, 10.0));
         assert_eq!(bytes.len(), 2, "64 units needs two bytes after zigzag");
 
-        // An eighth of a tile — the common case for most entities — fits in one.
+        // An eighth of a tile, the common case for most entities, fits in one.
         let bytes = write(|w| w.position_delta(10.125, 10.0));
         assert_eq!(bytes.len(), 1);
 

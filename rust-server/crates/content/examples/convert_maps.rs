@@ -127,7 +127,7 @@ fn main() {
         }
 
         if let Some(dir) = &out {
-            // Two of these exist as both `.jm` and `.wmap` — snakepit and tomb — and dropping the
+            // Two of these exist as both `.jm` and `.wmap`, snakepit and tomb, and dropping the
             // extension made them the same output file, so one silently overwrote the other and
             // which one won depended on the order the directory happened to be read in. The first
             // writer keeps the plain name and the rest are qualified, so both survive and the

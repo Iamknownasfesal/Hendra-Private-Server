@@ -7,8 +7,8 @@
 //!
 //! # Ids
 //!
-//! Client and server messages occupy separate numeric ranges. Nothing requires this — the reader
-//! always knows which direction it is decoding — but it means a message delivered to the wrong
+//! Client and server messages occupy separate numeric ranges. Nothing requires this, since the
+//! reader always knows which direction it is decoding, but it means a message delivered to the wrong
 //! handler fails immediately and obviously, instead of decoding as whatever unrelated message
 //! shares its number.
 
@@ -195,7 +195,7 @@ pub struct Input {
     /// have travelled.
     pub client_time_ms: u32,
 
-    /// Where the client believes it is. Advisory — the server validates it against the tiles and
+    /// Where the client believes it is. Advisory only: the server validates it against the tiles and
     /// the player's speed, and its own answer wins.
     pub x: f32,
     pub y: f32,
@@ -246,7 +246,7 @@ pub enum ClientMessage<'a> {
 
     /// A request to fire, carrying only where the player is aiming.
     ///
-    /// Aim is the one thing taken from the client as given — where someone points is genuinely
+    /// Aim is the one thing taken from the client as given, because where someone points is genuinely
     /// theirs to decide, and there is nothing to check it against. Everything downstream is the
     /// server's: whether the weapon is off cooldown, where the shot travels, what it strikes, and
     /// what that costs. Notably there is no hit report anywhere in this protocol.
@@ -379,7 +379,7 @@ pub enum ServerMessage<'a> {
     /// A projectile came into being.
     ///
     /// Sent so clients can draw the shot. Its flight is entirely predictable from these fields, so
-    /// nothing further is sent per tick — a projectile costs one message for its whole life rather
+    /// nothing further is sent per tick. A projectile costs one message for its whole life rather
     /// than a snapshot entry every tick.
     Shot {
         projectile: EntityId,
@@ -405,7 +405,7 @@ pub enum ServerMessage<'a> {
         ///
         /// Owned rather than borrowed like the rest of this enum, because decoding varints cannot
         /// hand back a slice of the input. That costs one allocation, which is fine here and would
-        /// not be on the snapshot path — a container changes when a player moves something, not
+        /// not be on the snapshot path. A container changes when a player moves something, not
         /// twenty times a second.
         slots: Vec<(u16, u16)>,
     },
@@ -549,7 +549,7 @@ impl ServerMessage<'_> {
 /// Writes the header a snapshot message needs, so the encoder can write its body straight after.
 ///
 /// This exists so a snapshot never has to be encoded into a scratch buffer and copied into the
-/// message — the tick's bytes are written once, into the buffer that goes to the transport.
+/// message: the tick's bytes are written once, into the buffer that goes to the transport.
 pub fn begin_snapshot(w: &mut Writer<'_>) {
     w.u16(server_id::SNAPSHOT);
 }

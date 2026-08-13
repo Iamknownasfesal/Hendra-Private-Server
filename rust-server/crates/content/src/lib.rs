@@ -1,7 +1,7 @@
 //! Game content: objects, items, projectiles and tiles.
 //!
 //! Everything here runs once, at startup, and is immutable afterwards. The simulation only ever
-//! sees [`Catalog`], where every lookup is an array index — no parsing, no hashing and no string
+//! sees [`Catalog`], where every lookup is an array index, with no parsing, no hashing and no string
 //! comparison happens on a tick.
 //!
 //! The source files are hand-maintained and irregular, so [`xml`] is built to survive them:

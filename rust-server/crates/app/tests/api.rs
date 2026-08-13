@@ -135,8 +135,8 @@ async fn registering_then_logging_in_gives_a_usable_token() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_token_from_this_server_is_not_valid_at_a_server_with_another_key() {
-    // The failure this guards against is two deployments configured with different secrets, which
-    // otherwise shows up as players who log in successfully and are then refused by the game.
+    // Two deployments configured with different secrets show up as players who log in
+    // successfully and are then refused by the game.
     let app = app_or_skip!("a_otherkey");
 
     let (_, body) = send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
@@ -394,7 +394,7 @@ async fn a_body_that_is_not_what_the_endpoint_expects_is_a_refusal_rather_than_a
 
 #[tokio::test(flavor = "multi_thread")]
 async fn an_enormous_body_is_rejected_without_hashing_it() {
-    // Argon2 is deliberately slow, so an unauthenticated endpoint that hashes whatever it is sent
+    // Argon2 is slow by design, so an unauthenticated endpoint that hashes whatever it is sent
     // is a way to spend the server's time cheaply.
     let app = app_or_skip!("a_huge");
 

@@ -5,7 +5,7 @@
 //! server needs it because a player who connects with no living character is given one, and an
 //! unlock enforced only at the front door is one a direct connection walks past.
 //!
-//! Keeping it in one place is the point. Two implementations of "which classes are open" is how a
+//! It lives in one place because two implementations of "which classes are open" is how a
 //! class ends up playable through one route and locked through the other.
 
 use std::collections::HashMap;
@@ -35,7 +35,7 @@ impl CommonItems {
 
 /// How many slots are worn rather than carried.
 ///
-/// Weapon, ability, armour, ring — the four the game has always had. Everything past them is the
+/// Weapon, ability, armour and ring, the four the game has always had. Everything past them is the
 /// backpack, held in the same table so a move between them is one statement.
 pub const EQUIPPED_SLOTS: i16 = 4;
 
@@ -220,7 +220,7 @@ pub fn starting_slots(
 /// old server did not check this at all, so a wizard could equip a sword and shoot with it, which
 /// is not a balance problem so much as fourteen classes quietly collapsing into one.
 ///
-/// Slots past the worn four are the backpack and take anything. An empty item is always allowed —
+/// Slots past the worn four are the backpack and take anything. An empty item is always allowed,
 /// that is not putting something somewhere, it is taking it away.
 pub fn slot_accepts(
     catalog: &Catalog,

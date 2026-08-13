@@ -11,7 +11,7 @@ use hendra_store::{Location, Offer, Store, StoreError};
 
 /// A store with a schema of its own, or `None` when no database is configured.
 ///
-/// Each test gets a distinct schema so they can run in parallel without seeing each other's rows —
+/// Each test gets a distinct schema so they can run in parallel without seeing each other's rows;
 /// sharing one would make every test depend on the order the others ran in.
 async fn store(schema: &str) -> Option<Store> {
     let url = std::env::var("HENDRA_TEST_DATABASE").ok()?;

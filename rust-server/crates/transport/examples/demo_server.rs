@@ -3,9 +3,9 @@
 //! Run with: `cargo run -p hendra-transport --example demo_server -- [port]`
 //!
 //! It accepts connections, answers a hello with a welcome, and then ticks a small world at 20 per
-//! second so a client has something to move and something to render. There is no simulation here —
-//! that is phase two — only the protocol, so that the Godot extension can be exercised end to end
-//! against something real rather than a mock.
+//! second so a client has something to move and something to render. There is no simulation here,
+//! only the protocol, so that the Godot extension can be exercised end to end against something
+//! real rather than a mock.
 
 use std::time::{Duration, Instant};
 
@@ -27,7 +27,7 @@ async fn main() {
         .unwrap_or(2050);
 
     // Self-signed, paired with Trust::AnyCertificate on the client. A deployed server loads a real
-    // chain instead — see ServerIdentity::from_pem_files.
+    // chain instead. See ServerIdentity::from_pem_files.
     let identity = ServerIdentity::self_signed(&["localhost"]).expect("a development certificate");
     let listener = Listener::bind(
         format!("0.0.0.0:{port}").parse().expect("a valid address"),
@@ -36,7 +36,7 @@ async fn main() {
     .expect("a listener");
 
     println!(
-        "demo server listening on {} — {TPS} ticks per second, {ENTITIES} entities",
+        "demo server listening on {}: {TPS} ticks per second, {ENTITIES} entities",
         listener.local_address().expect("a bound address")
     );
     println!("clients must connect with allow_any_certificate = true\n");

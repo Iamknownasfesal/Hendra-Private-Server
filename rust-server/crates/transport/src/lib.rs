@@ -45,7 +45,7 @@ pub enum TransportError {
 
     /// The payload exceeds what this path will carry in one datagram.
     ///
-    /// The caller has usually got the routing wrong — anything this large belongs on the stream,
+    /// The caller has usually got the routing wrong. Anything this large belongs on the stream,
     /// which is why [`hendra_net::Delivery`] exists.
     #[error("datagram of {len} bytes exceeds the {limit}-byte path limit")]
     DatagramTooLarge { len: usize, limit: usize },

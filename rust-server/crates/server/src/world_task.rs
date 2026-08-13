@@ -1,7 +1,7 @@
 //! The task that owns a world and drives it.
 //!
 //! Exactly one task owns one world, and it is the only thing that touches it. There is no lock
-//! anywhere in here, and there does not need to be — sessions do not reach into the world, they
+//! anywhere in here, and there does not need to be. Sessions do not reach into the world, they
 //! send it messages, and the world writes back through each player's connection directly.
 //!
 //! ```text
@@ -82,7 +82,7 @@ pub enum ToWorld {
 
     /// Takes an item out of a bag, if it is still there and the player can reach it.
     ///
-    /// The world answers with what it removed. Removing before the durable write is deliberate —
+    /// The world answers with what it removed. Removing before the durable write is intentional:
     /// see the note on ordering in the session.
     TakeFromBag {
         player: Handle,
@@ -181,7 +181,7 @@ pub async fn run(
 /// What the server falls back to when a character says nothing useful.
 ///
 /// A character carries its own class, health and weapon, so this is only reached when the catalog
-/// has no class at all — a content directory too broken to name an avatar should still let someone
+/// has no class at all. A content directory too broken to name an avatar should still let someone
 /// connect and see the problem.
 #[derive(Debug, Clone, Copy)]
 pub struct Loadout {
@@ -192,7 +192,7 @@ pub struct Loadout {
 /// The character that is arriving, as the world needs it.
 ///
 /// Separate from the database row because the world has no business with experience, fame or the
-/// account behind it — it needs a body, and this is the body.
+/// account behind it. It needs a body, and this is the body.
 #[derive(Debug, Clone, Copy)]
 pub struct Arrival {
     pub avatar: ObjectType,
@@ -385,7 +385,7 @@ pub const CHEST_SLOTS: u16 = 8;
 /// Rebuilds the vault chests from an account's stored items.
 ///
 /// The map marks where chests stand, and the vault map marks exactly one square. So one chest holds
-/// the whole vault rather than eight slots of it — which is also how the vault reads to a player:
+/// the whole vault rather than eight slots of it, which is also how the vault reads to a player:
 /// one place you go, with everything in it. When a map marks several the vault is split across them
 /// in order, so a map that wants a row of chests gets one.
 ///

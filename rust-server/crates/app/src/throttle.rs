@@ -3,7 +3,7 @@
 //! Two separate problems share this file because the same request causes both.
 //!
 //! The first is guessing. Argon2 makes one attempt expensive for the attacker, but nothing about
-//! it makes a million attempts impossible — it makes them slow, and slow is a budget rather than a
+//! it makes a million attempts impossible. It makes them slow, and slow is a budget rather than a
 //! wall. A limit per account name turns that budget into a hard ceiling.
 //!
 //! The second is that the expense lands on this server too. A few hundred concurrent registrations
@@ -19,7 +19,7 @@
 //! means sending that account's name, whatever address it comes from.
 //!
 //! The cost is that someone can lock a name they do not own out of logging in. That is why the
-//! window is short — minutes, not hours — and why the limit counts failures rather than attempts,
+//! window is short, minutes rather than hours, and why the limit counts failures rather than attempts,
 //! so a player typing their own password correctly is never locked out by someone else's guessing.
 
 use std::collections::HashMap;
@@ -118,7 +118,7 @@ impl Throttle {
     /// Drops names whose failures have all expired.
     ///
     /// Without this the map only grows, and it is filled by unauthenticated requests naming
-    /// whatever they like — which makes it a way to spend the server's memory.
+    /// whatever they like, which makes it a way to spend the server's memory.
     pub fn forget_old(&self, now: Instant) {
         let mut failures = self.failures.lock().unwrap_or_else(|err| err.into_inner());
         failures.retain(|_, recent| {
@@ -291,7 +291,7 @@ mod tests {
 
     #[test]
     fn an_unknown_name_is_tracked_the_same_as_a_real_one() {
-        // Otherwise the limiter answers a question the login endpoint deliberately does not:
+        // Otherwise the limiter answers a question the login endpoint refuses to:
         // whether the account exists.
         let throttle = Throttle::new();
         let start = Instant::now();

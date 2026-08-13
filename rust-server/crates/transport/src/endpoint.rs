@@ -21,7 +21,7 @@ impl Listener {
     /// Binds to an address, presenting `identity` to anyone who connects.
     pub fn bind(address: SocketAddr, identity: ServerIdentity) -> Result<Listener, TransportError> {
         if identity.chain_len() == 1 {
-            // Not fatal — a self-signed development certificate is legitimately one deep — but for
+            // Not fatal, since a self-signed development certificate is legitimately one deep, but for
             // a real certificate it means the issuer was left out, and the failure it causes shows
             // up as an opaque handshake rejection on clients rather than anything pointing here.
             tracing::warn!(
@@ -65,7 +65,7 @@ impl Listener {
     /// Waits for the next fully established connection.
     ///
     /// Returns `None` when the endpoint is closed. A connection that fails during setup is reported
-    /// as an error and the listener stays open — one peer failing a handshake is not a reason to
+    /// as an error and the listener stays open. One peer failing a handshake is not a reason to
     /// stop serving everyone else.
     pub async fn accept(&self) -> Option<Result<Link, TransportError>> {
         let incoming = self.endpoint.accept().await?;
@@ -97,7 +97,7 @@ impl Listener {
 /// Connects to a server.
 ///
 /// `server_name` is checked against the certificate under [`Trust::Roots`], so it must be the
-/// hostname the certificate was issued for — not an address. Passing an IP literal here works only
+/// hostname the certificate was issued for, not an address. Passing an IP literal here works only
 /// with [`Trust::AnyCertificate`], and that is the intended asymmetry.
 pub async fn connect(
     address: SocketAddr,
@@ -128,8 +128,8 @@ pub async fn connect(
         .await
         .map_err(|source| TransportError::Handshake(source.to_string()))?;
 
-    // Open the control stream now, and put a byte through it. QUIC creates a stream lazily — the
-    // peer learns of it only when data arrives — so without this the server's `accept_bi` would
+    // Open the control stream now, and put a byte through it. QUIC creates a stream lazily and the
+    // peer learns of it only when data arrives, so without this the server's `accept_bi` would
     // block until the first reliable message, which may be seconds away.
     let (mut send, recv) = connection
         .open_bi()

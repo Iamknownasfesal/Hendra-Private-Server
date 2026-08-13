@@ -1,8 +1,8 @@
 //! World snapshots and the diff between two of them.
 //!
 //! A snapshot is what one client can see at one tick. Encoding one against an earlier snapshot
-//! reduces to a merge of two id-sorted lists, which yields the three things the receiver needs —
-//! entities that appeared, entities that changed, entities that left — in a single pass with no
+//! reduces to a merge of two id-sorted lists. That yields the three things the receiver needs,
+//! entities that appeared, entities that changed and entities that left, in a single pass with no
 //! lookups and no allocation.
 //!
 //! Entities that exist in both snapshots and changed in no field are omitted entirely, not written
@@ -15,7 +15,7 @@ use crate::snapshot::Tick;
 /// The visible world at one tick, sorted by entity id.
 ///
 /// Sorted because the diff is a merge and merges want order. The simulation hands entities over in
-/// whatever order it stores them, so [`WorldSnapshot::from_unsorted`] sorts once per tick — a few
+/// whatever order it stores them, so [`WorldSnapshot::from_unsorted`] sorts once per tick. A few
 /// microseconds for the hundred-odd entities a sight radius holds.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct WorldSnapshot {
@@ -73,10 +73,10 @@ impl WorldSnapshot {
 /// QUIC does not fragment datagrams: anything over the limit is refused outright rather than split.
 /// The number is *not* the path MTU. 1200 bytes is the floor QUIC assumes for a whole packet, and a
 /// datagram's payload is what remains after connection ids, packet number, frame header and the
-/// AEAD tag. Before path discovery runs that came to 1162 bytes on a measured connection — under
+/// AEAD tag. Before path discovery runs that came to 1162 bytes on a measured connection, under
 /// the 1200 this was originally, and wrongly, set to.
 ///
-/// It is only a default, and a deliberately pessimistic one. The real limit is negotiated per
+/// It is only a default, and a pessimistic one. The real limit is negotiated per
 /// connection and rises once MTU discovery learns what the path carries, so a server should take it
 /// from the live connection via [`SnapshotEncoder::with_budget`] rather than encode to this.
 pub const DATAGRAM_BUDGET: usize = 1100;
@@ -86,7 +86,7 @@ pub const DATAGRAM_BUDGET: usize = 1100;
 /// Measured, not guessed: a delta for 120 visible entities all moving at once comes to about 540
 /// bytes, while a full snapshot of the same world is roughly 2,600. Deltas fit a datagram with room
 /// to spare; full snapshots never will, and they are also the one kind of snapshot that must not be
-/// lost — everything after one is encoded against it.
+/// lost, since everything after one is encoded against it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[must_use = "a snapshot sent on the wrong transport either fails silently or arrives too late"]
 pub enum Delivery {
@@ -154,7 +154,7 @@ impl SnapshotEncoder {
     /// Writes `current` as a delta against `baseline`, or in full when there is none.
     ///
     /// Returns how the result has to be sent. Returning it rather than leaving the caller to work
-    /// it out is deliberate: sending a full snapshot on a datagram fails silently — QUIC refuses
+    /// it out is intentional: sending a full snapshot on a datagram fails silently, because QUIC refuses
     /// the oversized payload and the client simply never converges.
     pub fn encode(
         &mut self,
@@ -191,7 +191,7 @@ impl SnapshotEncoder {
 
         // Name the baseline explicitly. The receiver cannot infer it: whether a position is
         // absolute or a delta depends on which snapshot this was measured against, and "the newest
-        // one I hold" is not the same thing — datagrams reorder, and a full snapshot sent to a
+        // one I hold" is not the same thing. Datagrams reorder, and a full snapshot sent to a
         // client that already knows these entities would otherwise be read as a delta from a value
         // the server never used.
         match baseline {
@@ -293,7 +293,7 @@ impl SnapshotEncoder {
 /// What a snapshot says about itself, before any of its entities are read.
 ///
 /// Read this first. It names the baseline the sender used, which is the only way to know whether
-/// the body can be decoded at all — and, if the receiver has fallen behind or packets arrived out
+/// the body can be decoded at all, and, if the receiver has fallen behind or packets arrived out
 /// of order, whether it should be dropped instead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SnapshotHeader {
@@ -323,8 +323,8 @@ pub fn read_header(r: &mut Reader<'_>) -> Result<SnapshotHeader, CodecError> {
 
 /// Reconstructs the world from a snapshot body.
 ///
-/// `baseline` must be the snapshot the header names — `Some` for a delta, `None` for a full
-/// snapshot — and passing the wrong one is an error rather than a silent misread. Getting this
+/// `baseline` must be the snapshot the header names, `Some` for a delta and `None` for a full
+/// snapshot. Passing the wrong one is an error rather than a silent misread. Getting this
 /// wrong produces entities at plausible but incorrect positions, which is far harder to notice than
 /// a refused packet.
 pub fn decode_body(
@@ -628,7 +628,7 @@ mod tests {
 
     #[test]
     fn full_snapshots_take_the_stream_and_deltas_take_datagrams() {
-        // A crowd large enough that the full snapshot cannot fit a datagram — the case measured in
+        // A crowd large enough that the full snapshot cannot fit a datagram, the case measured in
         // the bandwidth example, where 120 entities came to roughly 2,600 bytes.
         let crowd: Vec<(u32, EntityState)> = (0..120)
             .map(|n| (n, entity(0x100 + n as u16, n as f32, n as f32, 500)))

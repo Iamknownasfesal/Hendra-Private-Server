@@ -1,7 +1,7 @@
 //! The Godot side of the protocol.
 //!
 //! This is the whole reason the protocol lives in a shared crate. The extension links the same
-//! `hendra-net` the server does, so the client never decodes a byte of the wire format itself —
+//! `hendra-net` the server does, so the client never decodes a byte of the wire format itself.
 //! what crosses into Godot is decoded state.
 //!
 //! # Threads
@@ -60,7 +60,7 @@ impl Status {
     }
 }
 
-/// Something worth telling the game about. Snapshots are not here — they land in the world view,
+/// Something worth telling the game about. Snapshots are not here; they land in the world view,
 /// because the client wants the current state rather than a history of changes to it.
 enum Event {
     Connected,
@@ -215,7 +215,7 @@ impl HendraConnection {
     /// Opens a connection and sends the opening message.
     ///
     /// `token` comes from the app server over HTTPS; no password ever reaches this socket.
-    /// `allow_any_certificate` exists for local development and turns off server verification —
+    /// `allow_any_certificate` exists for local development and turns off server verification.
     /// a released client must leave it false.
     #[func]
     fn connect_to_server(
@@ -417,7 +417,7 @@ impl HendraConnection {
         self.with_world(|world| PackedInt32Array::from(world.types.as_slice()))
     }
 
-    /// Positions as interleaved x, y — two entries per entity, in the same order as the ids.
+    /// Positions as interleaved x, y: two entries per entity, in the same order as the ids.
     #[func]
     fn entity_positions(&self) -> PackedFloat32Array {
         self.with_world(|world| PackedFloat32Array::from(world.positions.as_slice()))
@@ -703,7 +703,7 @@ fn apply(
         } => {
             // A second welcome means a different world, and a different world means everything
             // held about the last one is void. Its snapshots were measured against a history that
-            // no longer applies, and its ticks started again from zero — so without this every
+            // no longer applies, and its ticks started again from zero, so without this every
             // snapshot from the new world reads as older than what is already held and is
             // discarded. The symptom is a player who arrives somewhere and never appears.
             history.clear();

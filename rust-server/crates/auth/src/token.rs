@@ -6,14 +6,14 @@
 //!   <account>.<character>.<expiry>.<signature>
 //! ```
 //!
-//! The claims are readable, which is deliberate — there is nothing secret in them, and a token
+//! The claims are readable by design. There is nothing secret in them, and a token
 //! whose contents can be read is one whose problems can be diagnosed. What matters is that they
 //! cannot be *changed*, which the signature provides.
 //!
 //! # Why not a library format
 //!
 //! A JWT would carry an algorithm field that the verifier is expected to read, which is the source
-//! of the best-known authentication failure of the last decade — a token that names `none` as its
+//! of the best-known authentication failure of the last decade: a token that names `none` as its
 //! algorithm and is accepted. There is one algorithm here, the verifier does not ask the token what
 //! it is, and the token has no way to suggest one.
 
@@ -54,7 +54,7 @@ pub struct TokenKey {
 /// The shortest key accepted.
 ///
 /// Thirty-two bytes, matching the output of the hash it keys. A shorter key does not make the HMAC
-/// break in an obvious way — it just quietly lowers the work needed to forge a token, which is
+/// break in an obvious way. It quietly lowers the work needed to forge a token, which is
 /// exactly the kind of weakness that stays unnoticed.
 pub const MINIMUM_KEY_BYTES: usize = 32;
 
@@ -111,7 +111,7 @@ pub fn mint(key: &TokenKey, claims: Claims) -> Token {
 /// Checks a token and returns what it says.
 ///
 /// `now` is passed in rather than read from the clock so that expiry is testable and so that the
-/// caller decides what time means — a server whose clock has jumped should not silently start
+/// caller decides what time means. A server whose clock has jumped should not silently start
 /// accepting or rejecting everything.
 pub fn verify(key: &TokenKey, token: &str, now: u64) -> Result<Claims, TokenError> {
     let mut parts = token.rsplitn(2, '.');

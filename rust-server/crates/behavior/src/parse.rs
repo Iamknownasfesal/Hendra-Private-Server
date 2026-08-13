@@ -1,7 +1,7 @@
 //! Turning tokens into a behaviour tree.
 //!
 //! Recursive descent, because the grammar is small and nested, and because a hand-written parser
-//! can say what it expected — which is most of the value a content language gives its authors.
+//! can say what it expected, which is most of the value a content language gives its authors.
 
 use crate::ast::*;
 use crate::lex::{LexError, Span, Spanned, Token, tokenize};
@@ -168,7 +168,7 @@ impl Parser {
                 self.advance();
                 let call = self.call(name, at)?;
 
-                // A behaviour followed by a block contains others — `prioritize { … }`. Nothing
+                // A behaviour followed by a block contains others, as in `prioritize { … }`. Nothing
                 // distinguishes the two at the call site, which is why the block decides.
                 if self.peek() == &Token::OpenBrace {
                     self.advance();

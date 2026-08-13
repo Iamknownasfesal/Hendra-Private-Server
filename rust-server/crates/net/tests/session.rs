@@ -1,12 +1,12 @@
 //! A whole session, both ends, with no transport underneath.
 //!
 //! The unit tests check each layer in isolation. These drive the layers together the way a real
-//! connection does — handshake, then a tick loop where the server encodes against whatever the
-//! client last acknowledged — and then start dropping and reordering packets, which is what the
+//! connection does, being a handshake and then a tick loop where the server encodes against
+//! whatever the client last acknowledged, and then start dropping and reordering packets, which is what the
 //! acknowledged baseline design exists for and what a transport would otherwise have to reproduce
 //! to test.
 //!
-//! Both halves keep a [`BaselineRing`]. That symmetry is the point: the server records what it
+//! Both halves keep a [`BaselineRing`], and the symmetry is what makes the test meaningful: the server records what it
 //! sent, the client records what it received, and a snapshot names which entry it was measured
 //! against so neither side has to guess.
 
@@ -99,7 +99,7 @@ impl Client {
         let mut body = Reader::new(body);
         let header = read_header(&mut body).expect("a snapshot header");
 
-        // Look up exactly the baseline the sender named — never "the newest one I hold".
+        // Look up exactly the baseline the sender named, never "the newest one I hold".
         let world = {
             let baseline = match header.baseline {
                 Some(tick) => match self.history.get(tick) {
@@ -404,7 +404,7 @@ fn a_snapshot_whose_baseline_never_arrived_is_discarded_not_misread() {
     );
     assert_eq!(client.unusable, 1);
 
-    // Nothing was corrupted by the refusal — the client still holds what it had.
+    // Nothing was corrupted by the refusal; the client still holds what it had.
     assert!(client.sees(EntityId(3)).is_some());
 }
 

@@ -1,6 +1,6 @@
 //! Tile regions and terrain bands.
 //!
-//! A region marks a square as meaning something to the simulation beyond its artwork — where
+//! A region marks a square as meaning something to the simulation beyond its artwork: where
 //! players arrive, where a shop stands, where loot may drop. The numbering is not cosmetic: the
 //! binary map format stores it as a single byte, so these ordinals are a file format and reordering
 //! them silently reinterprets every map on disk.
@@ -142,8 +142,8 @@ impl Region {
 
 /// Maps a store region to its zero-based position in [`STORE_NAMES`].
 ///
-/// The store numbers are not contiguous in the enum — Vault through Hallway_3 and several others
-/// were inserted between them over the years — so the mapping is a lookup rather than arithmetic.
+/// The store numbers are not contiguous in the enum, because Vault through Hallway_3 and several
+/// others were inserted between them over the years, so the mapping is a lookup rather than arithmetic.
 fn store_slot(region: Region) -> usize {
     STORE_ORDINALS
         .iter()

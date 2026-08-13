@@ -11,8 +11,8 @@
 //! sits inside; checking before acting means the tick a state is entered on is spent in the new
 //! state rather than the old one.
 //!
-//! At most one movement takes effect per tick. Several behaviours may want to move — a `follow`
-//! inside a state that also wanders — and applying both would produce a diagonal neither asked
+//! At most one movement takes effect per tick. Several behaviours may want to move, such as a
+//! `follow` inside a state that also wanders, and applying both would produce a diagonal neither asked
 //! for. The innermost one wins, which is the same precedence transitions use.
 
 use crate::program::*;
@@ -26,8 +26,8 @@ const RENEWAL_MS: u32 = 250;
 
 /// How often an `order` is repeated.
 ///
-/// Orders are not one-shot — an entity that wanders into range afterwards should get the order too
-/// — but repeating one every tick would hold its targets at the start of the state they were sent
+/// Orders are not one-shot, because an entity that wanders into range afterwards should get the
+/// order too, but repeating one every tick would hold its targets at the start of the state they were sent
 /// to, and they would never progress out of it.
 const ORDER_INTERVAL_MS: u32 = 1000;
 
@@ -173,7 +173,7 @@ impl Mind {
         self.deadline_ms = 0;
 
         // A behaviour that was mid-cooldown when its state was left should not still be waiting
-        // when the state is entered again — otherwise a boss re-entering an attack phase stands
+        // when the state is entered again. Otherwise a boss re-entering an attack phase stands
         // there doing nothing for the remainder of a cooldown it started minutes ago.
         program.ancestry(landing, &mut self.chain);
         for index in &self.chain {
@@ -1229,7 +1229,7 @@ mod tests {
             other => panic!("expected a shot, got {other:?}"),
         }
 
-        // Nine more ticks of 50ms is 450ms — still inside the cooldown.
+        // Nine more ticks of 50ms is 450ms, still inside the cooldown.
         for _ in 0..9 {
             mind.tick(&program, &with_player_at(14.0, 10.0), 50, &mut out);
             assert!(out.is_empty(), "should still be reloading");

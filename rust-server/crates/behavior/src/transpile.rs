@@ -1,7 +1,7 @@
 //! Converting the C# behaviour database into this language.
 //!
 //! Runs once, over 23,000 lines. Hand-porting that much content would dominate the schedule and
-//! drift silently — a mistyped cooldown in one dungeon is invisible until someone plays it — so the
+//! drift silently, since a mistyped cooldown in one dungeon is invisible until someone plays it, so the
 //! conversion is mechanical and the output is checked by parsing it back.
 //!
 //! # What the mapping is
@@ -317,7 +317,7 @@ fn emit_item(
 /// `TimedRandomTransition(time, randomised, params states)` both take a variadic tail, so the last
 /// string is an entity name or an alternative rather than the destination.
 ///
-/// Reading "the last string" for those produced transitions pointing at entity names — which the
+/// Reading "the last string" for those produced transitions pointing at entity names, which the
 /// parser then rejected as unknown states, in eight separate dungeons. It would otherwise have been
 /// a boss that simply never changed phase.
 fn emit_transition(
@@ -393,9 +393,9 @@ fn emit_argument(argument: &crate::csharp::CsArgument) -> Option<String> {
 /// The language's name for an argument.
 ///
 /// Most convert mechanically, but a few C# names would snake-case into something this language does
-/// not use — `coolDown` becomes `cool_down`, not `cooldown` — and a silently misspelled argument is
-/// worse than a loud one: it falls back to a default, so the enemy works and is simply wrong. That
-/// is exactly how this surfaced, as a shot with a 1000ms cooldown where the content said 1200.
+/// not use. `coolDown` becomes `cool_down`, not `cooldown`. A misspelled argument falls back to a
+/// default, so the enemy still works and is simply wrong: a shot fires every 1000ms where the
+/// content asked for 1200.
 fn argument_name(csharp: &str) -> String {
     match csharp {
         "coolDown" => "cooldown".to_string(),
@@ -426,7 +426,7 @@ fn emit_value(value: &CsValue) -> Option<String> {
             snake(tail)
         }
 
-        // A nested call as an argument — a Cooldown, mostly — has no representation, so it is
+        // A nested call as an argument, usually a Cooldown, has no representation, so it is
         // dropped and the default applies.
         CsValue::Call(_) | CsValue::List(_) => return None,
     })
@@ -451,8 +451,8 @@ fn is_transition(name: &str) -> bool {
 
 /// The language's name for a transition.
 ///
-/// The C# names describe their implementation — `HpLessTransition` tests a *fraction*, not an
-/// amount — so a few are renamed to say what they mean.
+/// The C# names describe their implementation. `HpLessTransition` tests a *fraction*, not an
+/// amount, so a few are renamed to say what they mean.
 fn transition_name(csharp: &str) -> String {
     let trimmed = csharp
         .trim_end_matches("Transitions")
@@ -485,7 +485,7 @@ fn snake(name: &str) -> String {
 
 /// Makes a state name usable as an identifier.
 ///
-/// State names in the C# are free text — `"ring 1"`, `"phase-2"`, `"1"` all occur — and this
+/// State names in the C# are free text, with `"ring 1"`, `"phase-2"` and `"1"` all occurring, so this
 /// language's identifiers are not.
 fn identifier(name: &str) -> String {
     let mut out = String::new();

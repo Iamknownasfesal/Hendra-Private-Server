@@ -135,7 +135,7 @@ fn measure(label: &str, map: Map, players: u32, catalog: &Catalog) {
         0
     };
 
-    println!("{label} — {width}×{height}, {walkable} walkable, {fixtures} fixtures");
+    println!("{label}: {width}x{height}, {walkable} walkable, {fixtures} fixtures");
     println!(
         "  {players} players, {per_tick} entities encoded per tick, {peak_projectiles} projectiles at peak"
     );

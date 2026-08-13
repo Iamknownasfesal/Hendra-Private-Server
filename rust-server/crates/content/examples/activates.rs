@@ -1,4 +1,4 @@
-//! What abilities the content actually uses, ranked. Drives the order phase 7 is built in.
+//! What abilities the content actually uses, ranked by how often each appears.
 
 use std::collections::BTreeMap;
 use std::path::Path;

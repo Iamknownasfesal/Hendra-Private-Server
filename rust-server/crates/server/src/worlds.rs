@@ -7,7 +7,7 @@
 //!
 //! # Personal worlds
 //!
-//! A world marked `isLimbo` is a place rather than a destination — the vault, the shop — and each
+//! A world marked `isLimbo` is a place rather than a destination, such as the vault or the shop, and each
 //! account gets its own. Sharing one would mean everybody's vault chests standing in the same room,
 //! which is both wrong and a way to show one player another's belongings.
 //!
@@ -15,7 +15,7 @@
 //!
 //! # Where a portal leads
 //!
-//! The mapping is inverted from what it looks like. A portal object does not name its destination —
+//! The mapping is inverted from what it looks like. A portal object does not name its destination.
 //! each world definition lists the portal object types that lead *to* it. So the table is built by
 //! reading every definition once and turning it inside out.
 
@@ -132,7 +132,7 @@ impl Worlds {
     }
 
     fn start(&self, name: &str, key: &str) -> Option<WorldHandle> {
-        // Held across the build deliberately: two players stepping into the same unopened dungeon
+        // Held across the build, so that two players stepping into the same unopened dungeon
         // in the same tick must get the same world, not two of them.
         let mut running = self.running.lock().ok()?;
 

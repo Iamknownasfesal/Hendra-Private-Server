@@ -1,4 +1,4 @@
-//! Condition effects — the status flags an entity can carry.
+//! Condition effects: the status flags an entity can carry.
 //!
 //! The numbering is protocol-visible: the client keeps its own copy in `src/Data/ConditionEffects.cs`
 //! and the two must agree, because effects travel as a bitmask keyed by these indices. Adding one
@@ -69,7 +69,7 @@ pub const CONDITION_EFFECT_COUNT: usize = 51;
 
 /// How many effects a [`ConditionSet`] can hold.
 ///
-/// Vanilla uses 51 of these, so a `u64` set would have left thirteen for our own content — enough
+/// Vanilla uses 51 of these, so a `u64` set would have left thirteen for our own content, enough
 /// to run out of, and widening it after the client ships is a protocol break. A `u128` is still a
 /// single value the compiler keeps in two registers, so set operations remain two instructions and
 /// the room stops being a concern.
@@ -230,7 +230,7 @@ impl fmt::Display for ConditionEffect {
 /// A set of condition effects, as the bitmask the wire carries.
 ///
 /// Effects are read and written every tick for every visible entity, so this is a plain integer
-/// rather than a collection — a set operation is a couple of instructions and copying it is free.
+/// rather than a collection. A set operation is a couple of instructions and copying it is free.
 ///
 /// On the wire this is never sent as sixteen fixed bytes. Almost every entity carries no effects
 /// at all, so it is written as a leading byte count followed by only the non-zero bytes, and it is
@@ -262,7 +262,7 @@ impl ConditionSet {
         self.0 & other.0 != 0
     }
 
-    /// Effects in this set but not in `other` — what turned on since the last tick.
+    /// Effects in this set but not in `other`: what turned on since the last tick.
     pub fn gained(self, other: ConditionSet) -> ConditionSet {
         ConditionSet(self.0 & !other.0)
     }

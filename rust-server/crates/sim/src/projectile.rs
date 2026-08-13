@@ -10,12 +10,12 @@
 //!
 //! So there is no hit report. The server advances every projectile itself and decides what it
 //! struck. That removes the class of bug rather than tightening the check, and it makes the
-//! question "is this client lying?" not arise — a client that claims anything about a hit is simply
+//! question "is this client lying?" not arise. A client that claims anything about a hit is simply
 //! not asked.
 //!
 //! The cost is honest: a client draws its shot connecting slightly before the server agrees, and
 //! very occasionally the server disagrees. Every authoritative shooter has that trade, and it is
-//! preferable to the alternative, which is trusting the one participant with a motive to lie.
+//! preferable to trusting the one participant with a motive to lie.
 //!
 //! # Movement
 //!
@@ -32,7 +32,7 @@ use crate::world::{Entity, Kind};
 
 /// How many segments a projectile's path is divided into per tick when testing for hits.
 ///
-/// Four is enough that the fastest projectile in the content — around 1.6 tiles per tick — tests at
+/// Four is enough that the fastest projectile in the content, around 1.6 tiles per tick, tests at
 /// least once every 0.4 tiles, comfortably inside any hitbox.
 const PATH_STEPS: u32 = 4;
 
@@ -323,7 +323,7 @@ impl Projectiles {
 
     /// Removes every projectile fired by an entity that has gone.
     ///
-    /// Not strictly required — an orphaned projectile still flies and still hits — but a world that
+    /// Not strictly required, since an orphaned projectile still flies and still hits, but a world that
     /// keeps firing on a player's behalf after they disconnect is surprising.
     pub fn drop_orphans(&mut self, entities: &Slab<Entity>) {
         self.live

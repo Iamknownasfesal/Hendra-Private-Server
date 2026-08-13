@@ -2,7 +2,7 @@
 //!
 //! A map square carries a ground type, which carries a descriptor, which says whether it can be
 //! walked on. Following that chain during movement means two indirections and a branch for every
-//! step of every entity, every tick — for an answer that cannot change while the world is running.
+//! step of every entity, every tick, for an answer that cannot change while the world is running.
 //!
 //! So it is answered once, at load, into bitsets: one bit per square for walkable, one for blocks
 //! sight. A 2048×2048 realm costs 512 KB per bitset and turns the movement check into a shift and a
@@ -238,7 +238,7 @@ impl Terrain {
         !self.contains(x, y) || self.blocks_sight.get(x, y)
     }
 
-    /// Whether a position — which is continuous, not a square — can be occupied.
+    /// Whether a position, which is continuous rather than a square, can be occupied.
     #[inline]
     pub fn walkable_at(&self, x: f32, y: f32) -> bool {
         if x < 0.0 || y < 0.0 {
@@ -271,10 +271,10 @@ impl Terrain {
     /// Whether one point can see another.
     ///
     /// Walks the squares between the two and stops at the first that blocks. The endpoints are
-    /// deliberately excluded: standing on a sight-blocking square must not hide you from yourself,
+    /// excluded: standing on a sight-blocking square must not hide you from yourself,
     /// and something standing *on* a tree is visible even though the tree blocks what is behind it.
     ///
-    /// This is a supercover walk rather than a Bresenham line — it visits every square the segment
+    /// This is a supercover walk rather than a Bresenham line, so it visits every square the segment
     /// touches, including the ones it merely clips at a corner. A thin Bresenham line slips
     /// diagonally between two walls that meet at a corner, which players notice immediately because
     /// it lets them see and be seen through what is visibly a solid join.
@@ -358,7 +358,7 @@ impl Terrain {
     /// The sight walk with the coarse short-circuit skipped.
     ///
     /// Exists so a test can check that the optimisation only ever saves work, never changes an
-    /// answer — the failure mode of a conservative filter that turns out not to be.
+    /// answer, which is the failure mode of a conservative filter that turns out not to be.
     #[cfg(test)]
     fn line_of_sight_walked(&self, from_x: f32, from_y: f32, to_x: f32, to_y: f32) -> bool {
         let (mut x, mut y) = (from_x.floor() as i64, from_y.floor() as i64);

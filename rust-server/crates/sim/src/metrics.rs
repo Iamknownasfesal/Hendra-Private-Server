@@ -5,7 +5,7 @@
 //! never needs that kind of archaeology.
 //!
 //! The budget is what one tick may take: 50 ms at 20 ticks per second. The number worth watching is
-//! not the mean — a mean hides the tick that stuttered — but the high percentiles, because those
+//! not the mean, which hides the tick that stuttered, but the high percentiles, because those
 //! are what a player actually feels.
 
 use std::time::Duration;
@@ -108,7 +108,7 @@ impl TickMetrics {
     /// An upper bound on the given percentile.
     ///
     /// Bucketed, so this reports the top of the bucket the percentile falls in rather than an exact
-    /// figure — it answers "no worse than" rather than "exactly", which is the honest thing a
+    /// figure. It answers "no worse than" rather than "exactly", which is the honest thing a
     /// histogram can say and the thing an alarm should be set against.
     pub fn percentile(&self, percentile: f64) -> Duration {
         if self.count == 0 {
@@ -125,7 +125,7 @@ impl TickMetrics {
                 // unbounded bucket, which would otherwise report u64::MAX. Without the cap a bucket
                 // bound can
                 // read higher than the maximum, which is arithmetically defensible and reads as
-                // nonsense — "p99 1.6ms, max 1.0ms" invites the reader to distrust both numbers.
+                // nonsense: "p99 1.6ms, max 1.0ms" invites the reader to distrust both numbers.
                 return Duration::from_micros(BOUNDS[index].min(self.max_us));
             }
         }
@@ -154,7 +154,7 @@ impl std::fmt::Display for TickMetrics {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{} ticks — mean {:.2?}, p50 {:.2?}, p99 {:.2?}, max {:.2?}, budget {:.2?}, over {}",
+            "{} ticks: mean {:.2?}, p50 {:.2?}, p99 {:.2?}, max {:.2?}, budget {:.2?}, over {}",
             self.count,
             self.mean(),
             self.percentile(0.50),

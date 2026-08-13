@@ -5,7 +5,7 @@
 //! The C# server keyed entities by a plain integer that was reused as soon as an entity died. That
 //! is the shape behind the hit-validation bug: a client reports hitting bullet 47, the bullet that
 //! was 47 has expired, slot 47 now holds an unrelated bullet, and the lookup succeeds against the
-//! wrong thing. Nothing detects it, because nothing can — a bare index carries no evidence of which
+//! wrong thing. Nothing detects it, because nothing can: a bare index carries no evidence of which
 //! occupant it meant.
 //!
 //! A handle here carries the slot *and* how many times that slot has been reused. Looking up a
@@ -174,9 +174,9 @@ impl<T> Slab<T> {
         }
 
         let value = slot.value.take()?;
-        // Wrapping is deliberate. After 65,536 reuses a handle could alias again, which is
-        // astronomically unlikely to be held that long, and the alternative — refusing to reuse the
-        // slot — leaks it forever.
+        // Wrapping is intended. After 65,536 reuses a handle could alias again, which is
+        // astronomically unlikely to be held that long, and refusing to reuse the slot instead
+        // leaks it forever.
         slot.generation = slot.generation.wrapping_add(1);
         self.free.push(handle.index());
         self.live -= 1;

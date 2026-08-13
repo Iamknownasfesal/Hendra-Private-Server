@@ -14,11 +14,11 @@
 //!     new ItemLoot("Health Potion", 0.02))
 //! ```
 //!
-//! Constructor calls, literals, named arguments and nesting. Everything else in those files —
-//! classes, fields, lambdas, `using` lines — is scenery, so the scanner finds each `.Init(` and
+//! Constructor calls, literals, named arguments and nesting. Everything else in those files,
+//! meaning classes, fields, lambdas and `using` lines, is scenery, so the scanner finds each `.Init(` and
 //! parses the balanced argument list after it, ignoring the rest entirely.
 //!
-//! That narrowness is the point. Anything wider would be a project of its own, and this runs once.
+//! Anything wider would be a project of its own, and this runs once.
 
 /// A constructor call, or the argument list of an `.Init`.
 #[derive(Debug, Clone, PartialEq)]
@@ -293,7 +293,7 @@ impl CsParser {
     }
 
     fn argument(&mut self) -> Result<CsArgument, CsError> {
-        // A name followed by a colon — but not `::` and not a dotted path — is a named argument.
+        // A name followed by a colon, but not `::` and not a dotted path, is a named argument.
         let saved = self.at;
         if let Some(word) = self.word()
             && self.peek() == Some(':')
@@ -432,10 +432,10 @@ impl CsParser {
             }
         }
 
-        // A path followed by parentheses is a static call — `LootTemplates.DefaultLoot(5)`. Its
+        // A path followed by parentheses is a static call, such as `LootTemplates.DefaultLoot(5)`. Its
         // arguments have to be consumed even though nothing reads them, because leaving `(5)`
         // sitting there makes the enclosing argument list fail at the very next token. Harmless at
-        // the top level and fatal one layer in, which is exactly how it went unnoticed.
+        // the top level and fatal one layer in.
         if self.peek() == Some('(') {
             let arguments = self.list('(', ')')?;
             return Ok(CsValue::Call(CsCall {
@@ -597,7 +597,7 @@ impl CsParser {
 
         // Hex, which the content writes for colours: `new Flash(0x00FF0C, .25, 8)`. Reading it as
         // a decimal made the whole enemy unparseable, and an enemy that fails to parse is dropped
-        // — three dungeons were lost to this one literal.
+        // An unreadable literal costs the whole enemy, not one argument.
         let hex = self.characters.get(self.at) == Some(&'0')
             && matches!(self.characters.get(self.at + 1), Some('x') | Some('X'));
 
@@ -674,8 +674,8 @@ mod tests {
 
     #[test]
     fn a_hex_literal_is_a_number() {
-        // `new Flash(0x00FF0C, .25, 8)` — reading this as a decimal failed the whole argument
-        // list, which drops the enemy. Three files were lost to it, and the loss was silent.
+        // `new Flash(0x00FF0C, .25, 8)`: reading this as a decimal failed the whole argument
+        // list, which drops the enemy.
         let (enemies, unreadable) =
             read_enemies_reporting(r#".Init("X", new State(new Flash(0x00FF0C, .25, 8)))"#);
 
@@ -686,7 +686,7 @@ mod tests {
     #[test]
     fn a_nested_static_call_is_consumed_rather_than_left_behind() {
         // `LootTemplates.DefaultLoot(5)` parses as a path and leaves `(5)` sitting there. Harmless
-        // at the top level and fatal one layer in, which is why it went unnoticed.
+        // at the top level and fatal one layer in.
         let (enemies, unreadable) = read_enemies_reporting(
             r#".Init("X", new State(new Wander(0.4)), new Threshold(0.05, LootTemplates.Loot(5)))"#,
         );
@@ -717,7 +717,7 @@ mod tests {
 
     #[test]
     fn an_unreadable_entry_is_counted_rather_than_swallowed() {
-        // The reason all of the above went unnoticed: a total that looked exactly like success.
+        // Without a count, a dropped entry leaves a total that looks exactly like success.
         let (enemies, unreadable) = read_enemies_reporting(r#".Init("X", new State(@@@))"#);
 
         assert!(enemies.is_empty());

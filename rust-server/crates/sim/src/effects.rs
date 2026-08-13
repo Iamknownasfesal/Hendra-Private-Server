@@ -1,8 +1,7 @@
 //! What a condition effect does.
 //!
-//! Effects were stored, expired and sent to clients, and nothing in the simulation read them. That
-//! made `conditional_effect(invulnerable)` — the most used behaviour in the game's content — mark a
-//! boss invulnerable while leaving it perfectly killable, and paralysis a word rather than a state.
+//! An entity carries a set of condition effects. This turns that set into the arithmetic the
+//! simulation acts on: what refuses damage, what stops movement, what scales a multiplier.
 //!
 //! # Why a struct rather than bit tests
 //!
@@ -110,7 +109,7 @@ impl Rules {
         // as well as damage. Both stop damage, which is what this path is deciding.
         rules.invulnerable = conditions.contains(Invulnerable) || conditions.contains(Invincible);
 
-        // Stasis is not just immobility — a thing in stasis is out of the fight entirely.
+        // Stasis is not just immobility. A thing in stasis is out of the fight entirely.
         rules.paused = conditions.contains(Paused) || conditions.contains(Stasis);
         rules.rooted =
             rules.paused || conditions.contains(Paralyzed) || conditions.contains(Petrify);
@@ -120,7 +119,7 @@ impl Rules {
         rules.sick = conditions.contains(Sick);
         rules.invisible = conditions.contains(Invisible);
 
-        // Speed. Slowed and Speedy can be held at once — the content does apply both — and the
+        // Speed. Slowed and Speedy can be held at once, since the content does apply both, and the
         // result is that they cancel, which is what multiplying gives without a special case.
         if conditions.contains(Slowed) {
             rules.speed *= 0.5;

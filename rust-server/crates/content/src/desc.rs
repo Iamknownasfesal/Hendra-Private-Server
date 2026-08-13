@@ -1,8 +1,8 @@
 //! Typed descriptors read off the content tree.
 //!
 //! These are the runtime shape of the game's content: what an object is, what an item does, what a
-//! projectile carries, what a tile costs to walk on. They are deliberately plain data with no
-//! behaviour attached — the simulation reads them, the importer writes them, and the baked format
+//! projectile carries, what a tile costs to walk on. They are plain data with no
+//! behaviour attached. The simulation reads them, the importer writes them, and the baked format
 //! is their serialised form.
 
 use crate::effect::{AppliedEffect, ConditionSet};

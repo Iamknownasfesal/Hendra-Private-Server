@@ -2,7 +2,7 @@
 //!
 //! # Where this sits
 //!
-//! Nothing here is read during a tick. Live state — positions, health, projectiles — belongs to a
+//! Nothing here is read during a tick. Live state such as positions, health and projectiles belongs to a
 //! world task in memory, and this is touched at boundaries: login, logout, death, and the periodic
 //! checkpoint. A local round trip is a fraction of a millisecond against a 50 ms tick budget, and
 //! it happens off the tick anyway.
@@ -56,8 +56,8 @@ impl Store {
     /// Connects and brings the schema up to date.
     pub async fn connect(url: &str) -> Result<Store> {
         let pool = PgPoolOptions::new()
-            // Sized for the number of things that talk to it at once — sessions logging in and out,
-            // and the checkpoint task — not for the number of players, because players do not each
+            // Sized for the number of things that talk to it at once, meaning sessions logging in
+            // and out and the checkpoint task, not for the number of players, because players do not each
             // hold a connection.
             .max_connections(16)
             .acquire_timeout(std::time::Duration::from_secs(5))

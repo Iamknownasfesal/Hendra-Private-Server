@@ -27,7 +27,8 @@ async fn main() {
     let database = std::env::var("HENDRA_DATABASE")
         .unwrap_or_else(|_| "postgres://localhost/hendra".to_string());
 
-    // The signing key is shared with the game server. Refusing to invent one is deliberate: a
+    // The signing key is shared with the game server. Inventing one here would be worse than
+    // refusing, because a
     // generated default would work perfectly until the two processes were restarted separately and
     // every token silently stopped verifying.
     let secret = match std::env::var("HENDRA_TOKEN_KEY") {

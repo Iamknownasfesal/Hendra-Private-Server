@@ -2,7 +2,7 @@
 //!
 //! # Why this is not the in-memory move
 //!
-//! An in-memory move is safe because it reads, validates and writes with nothing in between — one
+//! An in-memory move is safe because it reads, validates and writes with nothing in between: one
 //! thread, one world, no window. Neither assumption holds here. Two connections can attempt the
 //! same move at the same instant, and the read and the write are separated by a network round trip
 //! wide enough to drive a duplication through.
@@ -59,7 +59,7 @@ impl Store {
     /// Moves or swaps the contents of two durable slots.
     ///
     /// `expected` is what the caller believed was in the source. A move whose source no longer
-    /// holds that is refused — this is what stops the same item being moved twice by two requests
+    /// holds that is refused. This is what stops the same item being moved twice by two requests
     /// that both read it before either wrote.
     pub async fn move_item(
         &self,
@@ -172,7 +172,7 @@ impl Store {
 
     /// Removes an item from a slot, but only if that slot still holds what the caller expects.
     ///
-    /// The condition is the point: it is what makes two simultaneous requests to drop the same item
+    /// The condition is what makes two simultaneous requests to drop the same item
     /// resolve to one drop rather than two.
     pub async fn take_item(&self, character_id: i64, slot: i16, expected: i32) -> Result<()> {
         let removed = sqlx::query(

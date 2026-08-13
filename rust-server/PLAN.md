@@ -77,14 +77,6 @@ covers it. 8.5 is smaller than stated.
 | Paused | Skip the entity in `think` and `advance` |
 | \*Immune | Refuse the matching effect in `give_effect` |
 
-One `EffectRules` struct derived from a `ConditionSet` once per entity per tick, so the hot paths
-ask a precomputed struct rather than testing bits repeatedly.
-
-**Verify:** a boss with `conditional_effect(invulnerable)` survives a hundred shots and dies to the
-hundred-and-first once the state ends. A paralysed player cannot move. Mutation-check each.
-
-**Files:** `crates/sim/src/effects.rs` (new), `projectile.rs`, `world.rs`
-
 ### 6.2 The stat system — **M**
 
 Eight stats exist in the content and nothing reads them. `PlayerDesc` already carries base, maximum

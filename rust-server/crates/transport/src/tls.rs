@@ -5,7 +5,7 @@
 //!
 //! That rules out certificate pinning, which is tempting for a game and wrong here. ACME
 //! certificates renew roughly every ninety days and the key may rotate with them, so any client
-//! holding a pinned fingerprint would stop connecting at the first renewal — a failure that arrives
+//! holding a pinned fingerprint would stop connecting at the first renewal, a failure that arrives
 //! months after the code that caused it, for every player at once.
 //!
 //! # Certificates on disk

@@ -17,7 +17,7 @@ pub struct EntityId(pub u32);
 
 /// Which fields a record carries.
 ///
-/// Written as a varint, so the common case — an entity that only moved — costs a single byte
+/// Written as a varint, so the common case of an entity that only moved costs a single byte
 /// regardless of how many fields exist in total. Adding a field later costs nothing until something
 /// sets it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -74,7 +74,7 @@ pub struct EntityState {
     pub max_mp: i32,
 
     /// Condition effects, as the bitmask described in `hendra-content`. Kept as a bare `u128` so
-    /// this crate stays free of a content dependency — the client's extension has no use for loot
+    /// this crate stays free of a content dependency. The client's extension has no use for loot
     /// tables or spawn rules.
     pub conditions: u128,
 

@@ -2,7 +2,7 @@
 //!
 //! # Why the runtime does not touch the world
 //!
-//! A behaviour asks for things — move this way, fire that spread, heal — and reads a small set of
+//! A behaviour asks for things, such as moving one way or firing a spread, and reads a small set of
 //! facts about its surroundings. It never reaches into the simulation. That keeps the two
 //! independent in the direction that matters: an enemy's behaviour can be tested by handing it a
 //! position and a nearby player and reading back what it wanted to do, with no world, no tick loop
@@ -350,7 +350,7 @@ pub enum Primitive {
 
     /// Hold a condition effect for as long as the state lasts.
     ///
-    /// The most used behaviour in the game's content by a wide margin — it is how anything is made
+    /// The most used behaviour in the game's content by a wide margin. It is how anything is made
     /// invulnerable, paralysed, or invisible for a phase.
     ConditionalEffect {
         effect: u8,
@@ -523,7 +523,7 @@ pub enum Primitive {
 
     /// Run the first child that wants to act, and no others.
     ///
-    /// This is what makes an enemy look deliberate rather than twitchy: it chases if it can,
+    /// This is what makes an enemy look decided rather than twitchy: it chases if it can,
     /// otherwise it keeps its distance, otherwise it wanders.
     Prioritize(Vec<Primitive>),
 
@@ -700,8 +700,8 @@ pub struct Program {
 
     /// Every entity name the behaviours mention, interned.
     ///
-    /// Kept as text because this crate cannot resolve them: it has no catalog and is deliberately
-    /// testable without one. The host calls [`Program::resolve`] once at load.
+    /// Kept as text because this crate cannot resolve them: it has no catalog and stays testable
+    /// without one. The host calls [`Program::resolve`] once at load.
     pub names: Vec<String>,
 
     /// What the host resolved each name to. `None` for a name it does not have, which is a content
@@ -730,7 +730,7 @@ impl Program {
     /// missing an enemy is a line in a log rather than a boss that silently never wakes up.
     ///
     /// The unknown names are owned rather than borrowed, so the caller can still read the program
-    /// it just resolved — reporting which enemy has the problem needs its name.
+    /// it just resolved, since reporting which enemy has the problem needs its name.
     pub fn resolve(&mut self, mut lookup: impl FnMut(&str) -> Option<u16>) -> Vec<String> {
         self.kinds = self.names.iter().map(|name| lookup(name)).collect();
 

@@ -2,7 +2,7 @@
 //!
 //! Everything a player does before they are in a world happens here, over HTTPS. It is the only
 //! thing that ever sees a password, and the only thing that mints a session token. The game server
-//! sees neither — it takes a token and checks the signature.
+//! sees neither; it takes a token and checks the signature.
 //!
 //! ```text
 //!   POST   /register       {name, password}       ->  {token, account_id}
@@ -17,8 +17,8 @@
 //!
 //! # On running this behind something
 //!
-//! There is no TLS here. Terminating it belongs to whatever sits in front — a reverse proxy that
-//! also handles certificate renewal — and putting a second, worse implementation of it in this
+//! There is no TLS here. Terminating it belongs to whatever sits in front, a reverse proxy that
+//! also handles certificate renewal, and putting a second, worse implementation of it in this
 //! process would be a way to get it wrong twice. The server refuses to bind a public address
 //! without being told that something is in front of it.
 
@@ -132,7 +132,7 @@ fn bad_credentials() -> (StatusCode, Json<Refusal>) {
 
 /// Refuses a name that has failed too often, and says when it may try again.
 ///
-/// Answered before the password is looked at, so a locked-out name costs no hashing — the limit is
+/// Answered before the password is looked at, so a locked-out name costs no hashing. The limit is
 /// meant to stop guessing being cheap for the server as well as bounded for the attacker.
 fn too_many_attempts(after: std::time::Duration) -> (StatusCode, Json<Refusal>) {
     let seconds = after.as_secs().max(1);
@@ -214,7 +214,7 @@ pub async fn login(State(app): State<Arc<App>>, Json(body): Json<Credentials>) -
     };
 
     // An account made before authentication existed has no password. Refusing by name is right:
-    // the alternative is comparing against nothing and letting anyone in.
+    // comparing against nothing would let anyone in.
     let Some(stored) = account.password_hash.as_deref() else {
         return Err(refuse(
             StatusCode::FORBIDDEN,
@@ -409,7 +409,7 @@ pub struct PasswordChange {
 /// Changes a password, given the current one.
 ///
 /// A valid token is not enough on its own. Requiring the old password is what stops a token taken
-/// from a log or a shared machine being turned into permanent ownership of the account — the token
+/// from a log or a shared machine being turned into permanent ownership of the account. The token
 /// expires in fifteen minutes, and a changed password does not.
 pub async fn change_password(
     State(app): State<Arc<App>>,

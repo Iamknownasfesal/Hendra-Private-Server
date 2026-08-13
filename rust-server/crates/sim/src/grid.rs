@@ -1,6 +1,6 @@
 //! A uniform spatial grid, rebuilt once per tick.
 //!
-//! Every expensive question the simulation asks is "what is near this point?" — what a player can
+//! Every expensive question the simulation asks is "what is near this point?": what a player can
 //! see, what a bullet just hit, what an enemy might chase. On a tile map with a bounded query
 //! radius, a uniform grid answers that better than a tree: no rebalancing, no pointer chasing, and
 //! a rebuild that is a counting sort.
@@ -9,7 +9,7 @@
 //!
 //! Cells are not `Vec`s. A `Vec` per cell would mean thousands of allocations per tick and a heap
 //! walk per query. Instead the rebuild counts how many entities fall in each cell, prefix-sums the
-//! counts into offsets, and scatters entries into one contiguous array — the same shape a sparse
+//! counts into offsets, and scatters entries into one contiguous array, the same shape a sparse
 //! matrix uses. A query then walks a handful of contiguous slices.
 //!
 //! ```text
@@ -101,8 +101,8 @@ impl Grid {
 
     /// Which cell a position falls in, clamped to the grid.
     ///
-    /// Clamping rather than rejecting: an entity slightly outside the map — mid-knockback, or on a
-    /// map whose objects sit on the boundary — should still be findable, and the alternative is
+    /// Clamping rather than rejecting: an entity slightly outside the map, mid-knockback or on a
+    /// map whose objects sit on the boundary, should still be findable. Rejecting it instead is
     /// that it silently vanishes from every query.
     #[inline]
     fn cell_of(&self, x: f32, y: f32) -> (usize, usize) {
@@ -192,7 +192,7 @@ impl Grid {
     ///
     /// Squared rather than actual distance because nothing downstream needs the square root and
     /// skipping it keeps the comparison exact. Sorting costs more than [`Grid::within`], so this is
-    /// for the cases that genuinely need order — choosing a target, or filling a snapshot that may
+    /// for the cases that genuinely need order, such as choosing a target or filling a snapshot that may
     /// have to be truncated, where the nearest entities are the ones worth keeping.
     pub fn within_ranked(&self, x: f32, y: f32, radius: f32, out: &mut Vec<(Handle, f32)>) {
         out.clear();

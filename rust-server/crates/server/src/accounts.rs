@@ -4,7 +4,7 @@
 //!
 //! The app server authenticates over HTTPS and mints a short-lived signed token. This checks the
 //! signature and reads the account out of it. No password ever reaches the game socket, and this
-//! process cannot mint a token — it holds the key only to verify.
+//! process cannot mint a token; it holds the key only to verify.
 //!
 //! An expired or forged token is refused here rather than anywhere later, so nothing downstream
 //! has to wonder whether the account id it is holding was vouched for.

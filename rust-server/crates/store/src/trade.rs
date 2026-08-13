@@ -3,8 +3,8 @@
 //! # Why this is one transaction and not several moves
 //!
 //! A trade is not a sequence of moves that happen to run together. Halfway through a sequence one
-//! player has given up their side and not received the other, and any failure there — a full
-//! inventory, a dropped connection, a crash — leaves that asymmetry permanent. Worse, an
+//! player has given up their side and not received the other, and any failure there, whether a
+//! full inventory, a dropped connection or a crash, leaves that asymmetry permanent. Worse, an
 //! implementation that moves items one at a time can be interrupted by the same player trading the
 //! same item elsewhere.
 //!
@@ -21,18 +21,18 @@
 //!   reaching two people: the second transaction blocks on the row, re-evaluates after the first
 //!   commits, deletes nothing, and the trade is refused.
 //! - The **row locks** hold the room calculation still. Free slots are chosen before anything
-//!   moves, and without the lock two trades can both decide the same slot is free — which fails as
+//!   moves, and without the lock two trades can both decide the same slot is free, which fails as
 //!   a primary-key violation rather than a clean refusal, and would fail silently if the
 //!   destination were ever chosen less strictly.
 //!
 //! With either one present the race test passes. With both removed it produces two items where
-//! there was one. Keeping both is deliberate: they overlap on the case that matters most and cover
+//! there was one. Both are kept because they overlap on the case that matters most and cover
 //! different ground either side of it.
 //!
 //! # Why the locks are ordered
 //!
 //! Two players trading with each other in both directions at once would each lock their own side
-//! and wait for the other's. Locking in a fixed order — by character id — means one of them takes
+//! and wait for the other's. Locking in a fixed order, by character id, means one of them takes
 //! every lock and the other waits.
 
 use crate::{Result, Store, StoreError};
@@ -73,7 +73,7 @@ pub struct TradeOutcome {
 impl Store {
     /// Exchanges the offered items between two characters, or does nothing at all.
     ///
-    /// `first_slot` and `last_slot` bound the carried range items may land in — worn slots are not
+    /// `first_slot` and `last_slot` bound the carried range items may land in. Worn slots are not
     /// a valid destination for something received, because nothing checks whether it fits.
     pub async fn trade(
         &self,
@@ -92,7 +92,7 @@ impl Store {
         let mut transaction = self.pool().begin().await?;
 
         // Lock both inventories entirely, in a fixed order. Locking whole inventories rather than
-        // individual slots is deliberate here: a trade reads free space as well as specific slots,
+        // individual slots, because a trade reads free space as well as specific slots,
         // and a slot that is free at the check and taken at the write would break the room
         // guarantee this is supposed to provide.
         let (low, high) = if first.character_id <= second.character_id {

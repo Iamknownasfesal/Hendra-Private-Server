@@ -125,7 +125,7 @@ impl Node {
 
     /// Reads and parses a file.
     ///
-    /// The declared encoding is ISO-8859-1 and the bytes really are Latin-1 — a handful of item
+    /// The declared encoding is ISO-8859-1 and the bytes really are Latin-1. A handful of item
     /// descriptions carry accented characters. Latin-1 maps one byte to one codepoint, so the
     /// conversion is exact and needs no encoding tables.
     pub fn parse_file(path: &Path) -> Result<Node, XmlError> {
@@ -196,7 +196,7 @@ impl Node {
         self.children.iter().filter(move |c| c.name == name)
     }
 
-    /// Whether a child element is present at all — the shape of every flag in these files, which
+    /// Whether a child element is present at all, the shape of every flag in these files, which
     /// are written `<Enemy/>` and carry no value.
     pub fn has(&self, name: &str) -> bool {
         self.child(name).is_some()
@@ -247,7 +247,7 @@ impl Node {
 /// Parses an integer the way the content files write them: decimal, or `0x`-prefixed hex.
 ///
 /// Object and ground types are written in hex (`type="0xc85"`), while sizes and costs are decimal.
-/// A leading `-` is honoured for both, and a float-looking value truncates rather than failing —
+/// A leading `-` is honoured for both, and a float-looking value truncates rather than failing,
 /// `<Size>100.0</Size>` appears in the data and the C# loader accepted it.
 pub fn parse_int(text: &str) -> Option<i64> {
     let text = text.trim();

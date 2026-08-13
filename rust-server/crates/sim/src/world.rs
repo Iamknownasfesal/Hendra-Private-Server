@@ -1,7 +1,7 @@
 //! One world: what is in it, and what happens to it each tick.
 //!
 //! A world is owned outright by whatever ticks it. Nothing here is behind a lock, and nothing is
-//! shared with another world — the C# server reached for `ConcurrentDictionary` on five collections
+//! shared with another world. The C# server reached for `ConcurrentDictionary` on five collections
 //! belonging to a world that only ever ticked on one thread, and paid lock-striping on every access
 //! for the privilege. Worlds are independent, so parallelism belongs *between* them.
 //!
@@ -125,7 +125,7 @@ pub struct Entity {
 
     /// The health this entity had before any scaling to the crowd.
     ///
-    /// Kept so scaling is measured from the base each time rather than compounded — without it a
+    /// Kept so scaling is measured from the base each time rather than compounded. Without it a
     /// boss in a busy room grows every two seconds forever.
     pub base_max_hp: Option<i32>,
 
@@ -267,7 +267,7 @@ fn slot_type_of(kind: &str) -> Option<i32> {
 
 /// How much further than the rules allow a claim may travel before it is trimmed.
 ///
-/// Not generosity toward cheating — the claim is clamped either way. It absorbs the ordinary
+/// Not generosity toward cheating, since the claim is clamped either way. It absorbs the ordinary
 /// disagreement between a client's clock and the server's, which at 20 ticks per second is a small
 /// fraction of a tile. The C# server needed far more slack because it ticked at six per second, so
 /// a single tick of drift was three times larger and honest players kept tripping it.
@@ -382,15 +382,15 @@ impl World {
     /// Installs compiled behaviours and gives every enemy already present a mind.
     ///
     /// An enemy with no matching program keeps `None` and simply stands there, which is what a
-    /// half-converted content directory should look like — most of the dungeon working.
+    /// half-converted content directory should look like: most of the dungeon working.
     pub fn set_behaviours(&mut self, catalog: &Catalog, mut behaviours: Programs) {
         // Names become numbers here, once, because this is the first moment both the behaviours
         // and the catalog are in the same place. Skipping it would leave every behaviour that
         // names an entity inert: a boss would wait forever for guardians it cannot recognise, and
         // an order would reach nobody.
         for program in &mut behaviours.programs {
-            // Objects first, then tiles. A behaviour names both — an enemy to spawn and a ground
-            // to lay down — and looking in only one place left every ground change silently doing
+            // Objects first, then tiles. A behaviour names both an enemy to spawn and a ground to
+            // lay down, and looking in only one place left every ground change silently doing
             // nothing.
             let unknown = program.resolve(|name| {
                 catalog
@@ -506,7 +506,7 @@ impl World {
     ///
     /// The claim is never trusted. Two things bound it: how far the entity could have travelled in
     /// the time available, and whether the destination can be stood on. A claim that fails either
-    /// is trimmed rather than rejected outright — a rejected move makes a laggy player rubber-band,
+    /// is trimmed rather than rejected outright. A rejected move makes a laggy player rubber-band,
     /// while a trimmed one merely makes them slightly wrong for one tick.
     pub fn resolve_move(
         &self,
@@ -557,7 +557,7 @@ impl World {
         }
 
         // Blocked head-on. Try each axis alone, so walking into a wall at an angle slides along it
-        // rather than stopping dead — which is what a player expects and what the client's own
+        // rather than stopping dead, which is what a player expects and what the client's own
         // prediction will have done.
         if self.terrain.walkable_at(target_x, entity.y) {
             return Some(MoveOutcome {
@@ -585,8 +585,8 @@ impl World {
     ///
     /// Unlike [`World::resolve_move`] there is no speed limit, because there is no claim to check:
     /// the distance was computed here from a behaviour's own speed, and clamping it again against
-    /// the entity's speed would be checking our own arithmetic. Terrain still applies — an enemy
-    /// walks through a wall no more than a player does — and it slides along one rather than
+    /// the entity's speed would be checking our own arithmetic. Terrain still applies: an enemy
+    /// walks through a wall no more than a player does, and it slides along one rather than
     /// stopping dead.
     pub fn step(&mut self, handle: Handle, to_x: f32, to_y: f32) {
         let Some(entity) = self.entities.get(handle) else {
@@ -631,7 +631,7 @@ impl World {
     ///
     /// The angle is the one thing taken from the client without argument: where a player is aiming
     /// is genuinely theirs to decide, and there is nothing to validate it against. Everything that
-    /// follows — where the shot goes, what it strikes, what that costs — is the server's.
+    /// follows, meaning where the shot goes, what it strikes and what that costs, is the server's.
     pub fn shoot(&mut self, handle: Handle, catalog: &Catalog, angle: f32) -> Vec<Handle> {
         let mut fired = Vec::new();
 
@@ -715,7 +715,7 @@ impl World {
     fn think(&mut self, catalog: &Catalog, elapsed_ms: u32) {
         // Lifted out for the loop. Nothing in a tick changes the compiled behaviours, and holding
         // them here rather than borrowing from the world is what lets the world be written to
-        // while a program is being read — the alternative was cloning a program per entity per
+        // while a program is being read. The alternative was cloning a program per entity per
         // tick, which is the most expensive thing that could possibly happen in this loop.
         let behaviours = std::mem::take(&mut self.behaviours);
 
@@ -950,7 +950,7 @@ impl World {
                     entity.y + angle.sin() * distance,
                 );
 
-                // Terrain still applies, so an enemy cannot walk through a wall — but the speed
+                // Terrain still applies, so an enemy cannot walk through a wall, but the speed
                 // limit does not, because this distance came from the server rather than a client.
                 let _ = catalog;
                 self.step(handle, to_x, to_y);
@@ -1250,7 +1250,7 @@ impl World {
         entity.spawn_y = y;
 
         // Taken from the caller rather than from `self`, because the tick lifts the programs out
-        // of the world while it runs — reading them from `self` here found an empty set, and every
+        // of the world while it runs. Reading them from `self` here found an empty set, and every
         // spawned child stood still forever.
         let seed = self.next_seed();
         if let Some(program) = behaviours.get(&desc.id) {
@@ -1445,7 +1445,7 @@ impl World {
                     continue;
                 }
 
-                // Ground never blocks sight — only objects standing on it do, and this changes
+                // Ground never blocks sight. Only objects standing on it do, and this changes
                 // the ground rather than what is on it.
                 self.terrain
                     .set_square(square_x as u32, square_y as u32, !desc.no_walk, false);
@@ -1631,8 +1631,8 @@ impl World {
 
     /// Applies the effects that move health over time.
     ///
-    /// Kept apart from the ground because the two answer different questions — one is where you
-    /// are standing and the other is what is on you — and because an entity can be subject to both
+    /// Kept apart from the ground because the two answer different questions. One is where you are
+    /// standing and the other is what is on you, and an entity can be subject to both
     /// at once, in which case both should apply.
     fn apply_effect_health(&mut self, elapsed_ms: u32) {
         let seconds = elapsed_ms as f32 / 1000.0;
@@ -1659,7 +1659,7 @@ impl World {
                 continue;
             }
 
-            // Bleeding never finishes the job — the game leaves you at one and lets something else
+            // Bleeding never finishes the job. The game leaves you at one and lets something else
             // kill you, which is what stops a stray poison being an execution.
             entity.hp = (entity.hp + change).clamp(1, entity.max_hp);
         }
@@ -1780,7 +1780,7 @@ impl World {
 
     /// Runs whatever the dying have arranged to happen after them.
     ///
-    /// Between loot and reaping, because these need the entity still in the world — where it was
+    /// Between loot and reaping, because these need the entity still in the world. Where it was
     /// standing is most of what a portal, a transformation or a change of ground is about.
     fn run_death_effects(&mut self, catalog: &Catalog) {
         self.handles.clear();
@@ -1956,7 +1956,7 @@ impl World {
             };
 
             // Within range is not the same as in view. Without this a player sees, and is seen by,
-            // anything on the far side of a wall — which in a game where being seen means being
+            // anything on the far side of a wall, which in a game where being seen means being
             // shot is a correctness problem rather than a cosmetic one.
             if *handle != viewer && !self.terrain.line_of_sight(x, y, entity.x, entity.y) {
                 continue;
@@ -2038,9 +2038,9 @@ mod tests {
         let mut squares: Vec<Composition> = (0..8 * 8)
             .map(|_| square(0x10, ObjectType::NONE.0))
             .collect();
-        squares[10] = square(0x10, 0x500); // wall — collision only
-        squares[20] = square(0x10, 0x501); // sign — an entity
-        squares[30] = square(0x10, 0x502); // slime — an entity
+        squares[10] = square(0x10, 0x500); // wall, collision only
+        squares[20] = square(0x10, 0x501); // sign, an entity
+        squares[30] = square(0x10, 0x502); // slime, an entity
 
         let map = Map::from_squares(8, 8, squares).unwrap();
         let world = World::new("Test", Terrain::build(map, &catalog), &catalog);
@@ -2734,7 +2734,7 @@ mod tests {
         );
     }
 
-    // -- effects, which used to be recorded and ignored -----------------------------------------
+    // -- condition effects ----------------------------------------------------------------------
 
     fn give(world: &mut World, handle: Handle, effect: hendra_content::ConditionEffect) {
         if let Some(entity) = world.get_mut(handle) {
@@ -2789,7 +2789,7 @@ mod tests {
         let catalog = catalog();
 
         // A target with armour of its own, because ArmorBroken removes defence rather than
-        // creating negative defence — against something with none it correctly does nothing.
+        // creating negative defence. Against something with none it correctly does nothing.
         let hp_after = |effect: Option<hendra_content::ConditionEffect>| {
             let mut world = field(&catalog);
 
@@ -2858,7 +2858,7 @@ mod tests {
 
     #[test]
     fn being_slowed_shortens_how_far_a_claim_may_reach() {
-        // Not refused outright — a slowed player still moves, just less. Refusing would look like
+        // Not refused outright: a slowed player still moves, just less. Refusing would look like
         // a disconnection rather than an effect.
         let catalog = catalog();
         let mut world = field(&catalog);

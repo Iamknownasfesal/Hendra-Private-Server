@@ -2,19 +2,19 @@
 //!
 //! A session owns its link and nothing else. It decodes what arrives, turns it into a message for
 //! whichever world the player is in, and hands it on; it never touches a world directly. Snapshots
-//! travel the other way without passing through here at all — the world writes to the player's
+//! travel the other way without passing through here at all. The world writes to the player's
 //! connection itself.
 //!
 //! # Where items live
 //!
 //! Equipment and the backpack are one table. Slots 0 to 3 are worn and 4 upwards are carried, which
 //! is how the game has always numbered them, and it means every move between them is a move within
-//! one container — so it goes through the same transactional path a vault move does rather than
+//! one container, so it goes through the same transactional path a vault move does rather than
 //! needing a second mechanism.
 //!
 //! # Bags cross a boundary
 //!
-//! A bag lives in the world — in memory, gone in a minute — while an inventory lives in the
+//! A bag lives in the world, in memory and gone in a minute, while an inventory lives in the
 //! database. A move between them cannot be one transaction, so it is two, and the order they happen
 //! in decides what a crash between them costs.
 //!
@@ -31,7 +31,7 @@
 //! A session outlives the world it is in. Stepping through a portal leaves one world and joins
 //! another, and the player's identity changes with it: a handle names a slot in a particular
 //! world's storage and means nothing anywhere else. The client is told by a second `Welcome`, which
-//! it must treat as "forget everything" — its snapshot history was measured against a world that no
+//! it must treat as "forget everything", because its snapshot history was measured against a world that no
 //! longer applies.
 
 use std::sync::Arc;
@@ -172,7 +172,7 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
         })
         .await;
 
-    // Write back what the character became. Items are not saved here — they are written as they
+    // Write back what the character became. Items are not saved here; they are written as they
     // move, so a checkpoint that rewrote slots wholesale could undo a move that had committed.
     if let Err(err) = crate::accounts::save(
         &context.store,
@@ -438,7 +438,7 @@ async fn place_chests(context: &Context, player: &crate::accounts::Session, plac
 /// Takes an item out of a bag and into the player's inventory.
 ///
 /// The bag gives it up first. If the durable write then fails the item goes back, and if the server
-/// dies in between it is lost — which is the trade this order buys, and the right way round.
+/// dies in between it is lost, which is the trade this order buys and the right way round.
 async fn take_from_bag(
     link: &mut Link,
     context: &Context,
@@ -492,7 +492,7 @@ async fn take_from_bag(
 
     if let Err(err) = outcome {
         // Undo the first step. The bag may have gone if it emptied, in which case this makes a new
-        // one where the player stands — the item comes back either way.
+        // one where the player stands. The item comes back either way.
         let (reply, _) = tokio::sync::oneshot::channel();
         let _ = placement
             .world
@@ -536,8 +536,8 @@ async fn put_in_bag(
         return;
     };
 
-    // The durable side gives it up first here too, for the same reason in reverse: the alternative
-    // is an item that exists in a bag and in the database at once.
+    // The durable side gives it up first here too, for the same reason in reverse. Otherwise an
+    // item exists in a bag and in the database at once.
     if let Err(err) = context.store.take_item(character_id, slot, item).await {
         say(link, &err.to_string()).await;
         return;
@@ -727,7 +727,7 @@ async fn travel(
 ) -> Option<Placement> {
     let destination = worlds.destination_of(portal_type)?.to_string();
 
-    // A portal leading back into the world you are already in is a no-op, not a rejoin — rejoining
+    // A portal leading back into the world you are already in is a no-op, not a rejoin. Rejoining
     // would move the player to the spawn point for no reason.
     if destination == from.world.name.as_ref() {
         return None;
@@ -760,8 +760,8 @@ async fn dispatch(received: &Received, placement: &Placement) -> Outcome {
     let message = match ClientMessage::decode(&mut reader) {
         Ok(message) => message,
         Err(err) => {
-            // One undecodable packet is not worth dropping a player over — a datagram can arrive
-            // corrupted — but it is worth knowing about.
+            // One undecodable packet is not worth dropping a player over, since a datagram can
+            // arrive corrupted, but it is worth knowing about.
             tracing::debug!(%err, "ignoring an undecodable message");
             return Outcome::Continue;
         }

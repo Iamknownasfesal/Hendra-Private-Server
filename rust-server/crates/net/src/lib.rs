@@ -3,8 +3,8 @@
 //! Both ends run this crate: the dedicated server links it directly, and the Godot client loads it
 //! through a GDExtension. That is the reason it exists as its own crate. An encoder and its decoder
 //! cannot disagree about a field's width or a coordinate's scale when there is exactly one of each,
-//! and the failure this prevents — a protocol change applied to one side and forgotten on the other
-//! — is silent, intermittent, and expensive to find.
+//! and the failure this prevents, a protocol change applied to one side and forgotten on the
+//! other, is silent, intermittent and expensive to find.
 //!
 //! The same property makes the test suite worth trusting. A round-trip test here exercises the code
 //! that actually runs in production on both sides, rather than one implementation's idea of what the

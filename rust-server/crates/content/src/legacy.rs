@@ -3,7 +3,7 @@
 //! Everything here runs once, at conversion time, and nothing in the server calls it. Its whole job
 //! is to turn `.jm` and `.wmap` into [`Map`] so that neither format is ever read again.
 //!
-//! Both encode the same idea — a dictionary of square compositions plus a grid of indices into it —
+//! Both encode the same idea, a dictionary of square compositions plus a grid of indices into it,
 //! and they disagree on almost every detail of how:
 //!
 //! | | `.jm` | `.wmap` |
@@ -217,7 +217,7 @@ fn empty_square() -> Composition {
 
 /// Converts a `.wmap` file.
 ///
-/// Versions 0, 1 and 2 exist and differ in where an elevation byte sits — after the dictionary
+/// Versions 0, 1 and 2 exist and differ in where an elevation byte sits: after the dictionary
 /// entry in version 1, after each grid square in version 2, and absent in version 0. Elevation is
 /// read and discarded: nothing in the simulation consumes it.
 pub fn from_wmap(bytes: &[u8], catalog: &Catalog) -> Result<(Map, UnresolvedNames), ImportError> {
@@ -348,8 +348,8 @@ mod tests {
 
     /// The handful of names the fixtures below use.
     ///
-    /// Built from a string rather than a file. Several tests used to write the same fixture to the
-    /// same path and could read it mid-truncate, which passed alone and failed in the suite.
+    /// Built from a string rather than a file, so parallel tests cannot race over a shared path
+    /// and read it mid-write.
     const FIXTURE: &str = r#"<Objects>
         <Ground type="0x10" id="Grass"><Speed>1</Speed></Ground>
         <Ground type="0x11" id="Water"><NoWalk/></Ground>

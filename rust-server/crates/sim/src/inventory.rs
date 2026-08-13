@@ -9,7 +9,7 @@
 //!
 //! Here it is structural. A move reads both slots into local values, decides whether it is allowed,
 //! and only then writes both. There is no window in which an item exists twice, because between the
-//! read and the write nothing is stored anywhere — and no call site can opt out of that, because it
+//! read and the write nothing is stored anywhere, and no call site can opt out of that, because it
 //! is the only way to move an item.
 //!
 //! Items are [`ObjectType`], which is `Copy` and sixteen bits wide. That is what makes the pattern

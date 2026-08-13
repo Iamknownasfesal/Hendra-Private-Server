@@ -5,8 +5,8 @@
 //! The game shipped two, and neither is worth keeping. `.jm` is JSON wrapping a base64 blob of
 //! big-endian shorts; `.wmap` is a binary format whose only header is a bare version byte, read
 //! little-endian. Two encodings, opposite byte orders, and no way to tell either one from an
-//! unrelated file except by trying to parse it. Both are now import formats — see [`crate::legacy`]
-//! — and this is what the server actually reads.
+//! unrelated file except by trying to parse it. Both are now import formats, handled by
+//! [`crate::legacy`], and this is what the server actually reads.
 //!
 //! # Layout
 //!
@@ -23,8 +23,8 @@
 //!   grid          width × height × index_width, row-major
 //! ```
 //!
-//! The dictionary is the reason maps are small. A square's whole composition — ground, object,
-//! region, terrain, configuration — repeats constantly across a map, so the grid stores an index
+//! The dictionary is the reason maps are small. A square's whole composition of ground, object,
+//! region, terrain and configuration repeats constantly across a map, so the grid stores an index
 //! into a table of distinct compositions rather than the composition itself. The realm has millions
 //! of squares and, in practice, a few hundred distinct ones.
 //!
@@ -59,8 +59,8 @@ pub struct Composition {
 
     /// Per-square object settings, in the game's own `key:value;key:value` form.
     ///
-    /// Kept verbatim rather than parsed into fields because the keys are open-ended — `name`,
-    /// `size`, `eff`, `conn` and others appear — and an unrecognised one should travel through the
+    /// Kept verbatim rather than parsed into fields because the keys are open-ended. `name`,
+    /// `size`, `eff`, `conn` and others appear, and an unrecognised one should travel through the
     /// pipeline rather than be dropped by it. [`Composition::settings`] reads them.
     pub config: String,
 }
@@ -138,7 +138,7 @@ pub enum MapError {
 impl Map {
     /// Builds a map from a grid of compositions in row-major order.
     ///
-    /// Deduplication happens here, so callers — importers included — can hand over one composition
+    /// Deduplication happens here, so callers including importers can hand over one composition
     /// per square without thinking about the dictionary.
     pub fn from_squares(
         width: u32,

@@ -38,8 +38,8 @@ pub struct Catalog {
 
 /// What went wrong, per file, without aborting the load.
 ///
-/// A malformed file should cost you that file, not the server's ability to boot — the old server
-/// refused to start over one unclosed `<Region>` tag, which is exactly the failure mode to avoid.
+/// A malformed file should cost you that file, not the server's ability to boot. The old server
+/// refused to start over one unclosed `<Region>` tag.
 #[derive(Debug)]
 pub struct LoadReport {
     pub files_read: usize,
@@ -126,7 +126,7 @@ impl Catalog {
     /// Loads content already in memory.
     ///
     /// Useful wherever the source is not a file on disk: a baked artifact, content embedded in the
-    /// binary, or a test that wants a catalog without touching the filesystem — which also removes
+    /// binary, or a test that wants a catalog without touching the filesystem, which also removes
     /// the temptation to have several tests share a fixture file and race each other over it.
     pub fn load_str(sources: &[&str]) -> (Catalog, LoadReport) {
         let mut catalog = Catalog::default();
@@ -189,8 +189,8 @@ impl Catalog {
 
     /// Takes every `<Object>` and `<Ground>` anywhere in a parsed file.
     ///
-    /// The files disagree on their root element — `<Objects>`, `<GroundTypes>`, and several with
-    /// both nested under one root — so this walks rather than assuming a shape.
+    /// The files disagree on their root element. `<Objects>`, `<GroundTypes>` and several with
+    /// both nested under one root all occur, so this walks rather than assuming a shape.
     fn absorb(&mut self, node: &Node, problems: &mut Vec<LoadProblem>) {
         match node.name.as_str() {
             "Object" => {
@@ -265,7 +265,7 @@ impl Catalog {
     /// shoot. Tier zero of the slot the class's weapon goes in is what the game has always given
     /// out, and deriving it means a new class needs no new configuration.
     ///
-    /// Untiered items — everything unique or special — are skipped, since "no tier" sorts as
+    /// Untiered items, meaning everything unique or special, are skipped, since "no tier" sorts as
     /// nothing rather than as the bottom.
     pub fn lowest_tier_for_slot(&self, slot_type: i32) -> Option<ObjectType> {
         self.items
@@ -337,7 +337,7 @@ impl Catalog {
         self.tiles.get(tile_type.0 as usize)?.as_ref()
     }
 
-    /// Resolves a content name to its type. Load-time and tooling only — never call this per tick.
+    /// Resolves a content name to its type. Load-time and tooling only; never call this per tick.
     pub fn type_of(&self, id: &str) -> Option<ObjectType> {
         self.by_id.get(id).copied()
     }

@@ -4,7 +4,7 @@
 //!
 //! The comparison is against a fixed record per visible entity, which is what the legacy server
 //! sends: `NewTick` carries every stat of every entity in sight whether or not it changed. Twenty
-//! fields at four bytes plus an id is a conservative reading of it — the real packet also spends a
+//! fields at four bytes plus an id is a conservative reading of it. The real packet also spends a
 //! byte on each stat's type tag.
 
 use hendra_net::{
@@ -131,7 +131,7 @@ fn run(label: &str, moving: u32) {
     // The full snapshot is the same size in every scenario, so report it once.
     if full_count > 0 && moving == 0 {
         println!(
-            "{:<20} full snapshot {full_peak} B — {} the {MTU} B datagram limit\n",
+            "{:<20} full snapshot {full_peak} B, {} the {MTU} B datagram limit\n",
             "",
             if full_peak > MTU { "EXCEEDS" } else { "within" }
         );

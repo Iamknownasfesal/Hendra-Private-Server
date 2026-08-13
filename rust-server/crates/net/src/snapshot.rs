@@ -16,7 +16,7 @@ use crate::codec::{CodecError, Reader, Writer};
 
 /// How many snapshots of history each connection keeps.
 ///
-/// At 20 ticks per second this is 1.6 seconds of tolerance — comfortably longer than any round
+/// At 20 ticks per second this is 1.6 seconds of tolerance, comfortably longer than any round
 /// trip that is still worth encoding a delta for. A client quiet for longer than this gets a full
 /// snapshot, which is the correct answer anyway.
 pub const SNAPSHOT_HISTORY: usize = 32;
@@ -86,7 +86,7 @@ impl Acknowledgement {
 
 /// What the encoder should do for the next snapshot.
 ///
-/// An enum rather than an `Option` so a caller cannot quietly forget the full-snapshot path — the
+/// An enum rather than an `Option` so a caller cannot quietly forget the full-snapshot path. The
 /// case that only shows up under packet loss, and therefore the one that never gets tested if it
 /// is easy to skip.
 #[derive(Debug, PartialEq, Eq)]

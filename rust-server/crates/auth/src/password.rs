@@ -1,7 +1,7 @@
 //! Storing passwords so that a stolen database is not a stolen account.
 //!
 //! Argon2id, with a random salt per password. The parameters are the crate's defaults, which are
-//! the current OWASP recommendation — deliberately not tuned down for speed, because the cost is
+//! the current OWASP recommendation, and not tuned down for speed, because the cost is
 //! paid once per login and the thing it buys is that a leaked table is expensive to attack rather
 //! than a list of passwords.
 

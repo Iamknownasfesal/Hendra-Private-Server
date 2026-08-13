@@ -1,6 +1,6 @@
 //! World definitions: what a place is, and which maps make it.
 //!
-//! These come from `.jw` files, which are JSON in spirit and not quite JSON in fact — portal lists
+//! These come from `.jw` files, which are JSON in spirit and not quite JSON in fact. Portal lists
 //! are written with hex literals like `0xff00`, which the specification does not allow and the
 //! game's C# parser accepted anyway. Rather than adopt a lenient JSON parser for one field, the
 //! literals are rewritten to decimal before parsing. That keeps the tolerance in one visible place
@@ -22,7 +22,7 @@ pub struct WorldDef {
     pub difficulty: i32,
     pub background: i32,
 
-    /// A staging area rather than a place to play — the character-select world, mainly.
+    /// A staging area rather than a place to play, mainly the character-select world.
     #[serde(rename = "isLimbo", deserialize_with = "lenient_bool")]
     pub is_limbo: bool,
 

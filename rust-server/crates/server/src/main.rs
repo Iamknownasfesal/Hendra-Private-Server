@@ -107,7 +107,7 @@ async fn main() {
     let catalog = Arc::new(catalog);
 
     // The class a new character is made as, and the one a broken one falls back to. The first free
-    // class in the files rather than a name written here, so content decides it — in the shipped
+    // class in the files rather than a name written here, so content decides it. In the shipped
     // files that is the wizard, which is what the game has always started people on.
     let default_class = catalog
         .classes()
@@ -149,7 +149,7 @@ async fn main() {
     };
 
     // Shared with the app server, which mints the tokens this verifies. Refusing to invent one is
-    // deliberate: a generated default works until the two processes restart separately, at which
+    // refused rather than generated: a default works until the two processes restart separately, at which
     // point every token silently stops verifying and nobody can log in for no visible reason.
     let key = match std::env::var("HENDRA_TOKEN_KEY") {
         Ok(secret) => match hendra_auth::TokenKey::new(secret.into_bytes()) {

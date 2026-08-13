@@ -4,13 +4,13 @@
 //!
 //! The obvious shape is a `select!` over "next stream frame" and "next datagram". It is wrong.
 //! Reading a length-prefixed frame means reading four bytes and then a body, and `select!` drops
-//! the losing future — so a datagram arriving mid-frame would discard a read that had already
+//! the losing future, so a datagram arriving mid-frame would discard a read that had already
 //! consumed bytes from the stream. QUIC streams are byte streams with no resynchronisation point,
 //! so those bytes are simply gone and every frame after them is garbage.
 //!
 //! Instead each source is drained by its own task and both feed one queue. Taking from a queue is
 //! cancel-safe, the framing never sits inside a `select!`, and the receiving end becomes a channel
-//! read — which is also what the Godot client wants, since it polls once per frame rather than
+//! read, which is also what the Godot client wants, since it polls once per frame rather than
 //! awaiting.
 
 use std::sync::Arc;
@@ -29,8 +29,8 @@ pub const MAX_FRAME: usize = 256 * 1024;
 
 /// How many reliable payloads may queue before a sender has to wait.
 ///
-/// Deep enough to absorb a legitimate burst — joining a world sends a run of messages back to back
-/// — and shallow enough that a peer which has genuinely stopped reading is noticed in well under a
+/// Deep enough to absorb a legitimate burst, since joining a world sends a run of messages back to
+/// back, and shallow enough that a peer which has genuinely stopped reading is noticed in well under a
 /// second rather than after megabytes have piled up in memory.
 const SEND_QUEUE: usize = 64;
 
@@ -146,7 +146,7 @@ pub struct Link {
 }
 
 impl std::fmt::Debug for Link {
-    /// Shows who is on the other end and how far away they are — the two things worth seeing in a
+    /// Shows who is on the other end and how far away they are, the two things worth seeing in a
     /// log line about a connection.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Link")

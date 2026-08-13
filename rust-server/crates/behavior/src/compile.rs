@@ -7,7 +7,7 @@
 //!
 //! The content uses seventy-five primitives and this runtime implements the ones that carry the
 //! weight. A behaviour it does not know becomes [`Primitive::Unsupported`], which does nothing, and
-//! is reported once by name with a suggestion. The alternative — refusing the file — means a single
+//! is reported once by name with a suggestion. Refusing the whole file instead would mean a single
 //! unimplemented cosmetic behaviour costs a whole boss, which is the wrong trade while the runtime
 //! is being filled in.
 
@@ -100,7 +100,7 @@ const KNOWN_CONDITIONS: &[&str] = &[
 
 /// Compiles a parsed file.
 ///
-/// Returns the programs and everything worth telling the author. Diagnostics are not failures —
+/// Returns the programs and everything worth telling the author. Diagnostics are not failures:
 /// they are the list of things that will silently do nothing.
 pub fn compile(parsed: &Behaviours) -> (Programs, Vec<Diagnostic>) {
     let mut diagnostics = Vec::new();
@@ -305,7 +305,7 @@ const SCALE_RADIUS: f32 = 20.0;
 
 /// How far around itself a `reproduce_children` counts its own kind.
 ///
-/// The C# form of this behaviour has no radius at all — it counts children it has made. Counting
+/// The C# form of this behaviour has no radius at all, it counts children it has made. Counting
 /// what is standing nearby needs one, and this is wide enough to cover a room.
 const REPRODUCE_RADIUS: f32 = 15.0;
 
@@ -341,7 +341,7 @@ fn text_list(call: &Call, from: usize) -> Vec<&str> {
 
 /// A condition effect, by name or by number.
 ///
-/// The content writes these both ways — `ConditionEffectIndex.Invulnerable` transpiles to a name,
+/// The content writes these both ways. `ConditionEffectIndex.Invulnerable` transpiles to a name,
 /// while a few files use the raw index. Unknown names become `Nothing` rather than refusing, and
 /// the compiler says so.
 fn effect_of(call: &Call, name: &str, index: usize, diagnostics: &mut Vec<Diagnostic>) -> u8 {
@@ -509,7 +509,7 @@ fn behaviour(call: &Call, names: &mut Names, diagnostics: &mut Vec<Diagnostic>) 
             cooldown_ms: number(call, "cooldown", 3, 1000.0).max(0.0) as u32,
         },
 
-        // `ReproduceChildren(maxChildren, initialSpawn, coolDown, params children)` — the numbers
+        // `ReproduceChildren(maxChildren, initialSpawn, coolDown, params children)`: the numbers
         // come first here and the name last, which is the reverse of `reproduce`.
         "reproduce_children" => Primitive::Reproduce {
             child: names.intern(text_list(call, 0).last().copied().unwrap_or_default()),
@@ -693,7 +693,7 @@ fn behaviour(call: &Call, names: &mut Names, diagnostics: &mut Vec<Diagnostic>) 
             speed: number(call, "speed", 0, 1.0) as f32,
         },
 
-        // `MoveTo2(x, y, speed)` — the same behaviour with the arguments the other way round.
+        // `MoveTo2(x, y, speed)` is the same behaviour with the arguments the other way round.
         "move_to2" => Primitive::MoveTo {
             x: number(call, "x", 0, 0.0) as f32,
             y: number(call, "y", 1, 0.0) as f32,
@@ -749,7 +749,7 @@ fn behaviour(call: &Call, names: &mut Names, diagnostics: &mut Vec<Diagnostic>) 
             cooldown_ms: number(call, "cooldown", 2, 0.0).max(0.0) as u32,
         },
 
-        // `ReplaceTile(objName, replacedObjName, range)` — the *second* name is what the ground
+        // `ReplaceTile(objName, replacedObjName, range)`: the *second* name is what the ground
         // becomes. Taking the first would replace the ground with what was already there.
         "replace_tile" => Primitive::GroundTransform {
             tile: names.intern(text_list(call, 0).get(1).copied().unwrap_or_default()),
@@ -775,7 +775,7 @@ fn behaviour(call: &Call, names: &mut Names, diagnostics: &mut Vec<Diagnostic>) 
             }))
         }
 
-        // `ChangeGroundOnDeath(groundToChange, changeTo, dist)` — again the second name is what
+        // `ChangeGroundOnDeath(groundToChange, changeTo, dist)`: again the second name is what
         // the ground becomes, falling back to the only name when just one was written.
         "change_ground_on_death" => Primitive::OnDeath(Box::new(DeathEffect::ChangeGround {
             tile: {
@@ -802,7 +802,7 @@ fn behaviour(call: &Call, names: &mut Names, diagnostics: &mut Vec<Diagnostic>) 
             state: Arc::from(text(call, "target_state", 2).unwrap_or_default().trim()),
         })),
 
-        // `TransferDamageOnDeath(target, radius)` — name first, radius second.
+        // `TransferDamageOnDeath(target, radius)`: name first, radius second.
         "transfer_damage_on_death" | "copy_damage_on_death" => {
             Primitive::OnDeath(Box::new(DeathEffect::TransferDamage {
                 radius: number(call, "radius", 1, 50.0) as f32,
@@ -889,7 +889,7 @@ fn condition(call: &Call, names: &mut Names, diagnostics: &mut Vec<Diagnostic>) 
             },
         },
 
-        // `EntityExistsTransition(target, dist, targetState)` — the name comes first and the
+        // `EntityExistsTransition(target, dist, targetState)`: the name comes first and the
         // radius second, which is the opposite way round from the plural form below.
         "entity_exists" | "entity_count_greater_than" => Condition::EntityWithin {
             kind: names.intern(text_list(call, 0).first().copied().unwrap_or_default()),
@@ -978,7 +978,7 @@ fn loot(call: &Call) -> Option<LootEntry> {
 
 /// A "did you mean" for a misspelled name.
 ///
-/// Cheap edit distance over a list of ten names. The value is not the algorithm — it is that a
+/// Cheap edit distance over a list of ten names. The value is not the algorithm but the fact that a
 /// typo in a content file says what was probably meant instead of quietly doing nothing.
 fn suggestion(found: &str, known: &[&str]) -> String {
     let best = known

@@ -2,7 +2,7 @@
 //!
 //! A class is the difference between one avatar and fourteen: where its equipment slots are, what
 //! it can put in them, what it starts with, how it grows, and what has to be done before it can be
-//! played at all. None of that was read before this — every character was created with the same
+//! played at all. Without it every character would be created with the same
 //! hardcoded health and the same kit, which made the class a sprite.
 
 use crate::desc::ObjectType;
@@ -132,8 +132,8 @@ impl Unlock {
 pub struct PlayerDesc {
     pub object_type: ObjectType,
 
-    /// What each slot accepts, by slot type. The first four are the equipped ones — weapon,
-    /// ability, armour, ring — and the rest are the backpack.
+    /// What each slot accepts, by slot type. The first four are the equipped ones, being weapon,
+    /// ability, armour and ring, and the rest are the backpack.
     pub slot_types: Vec<i32>,
 
     /// What the class starts holding, in slot order. `None` where it starts with nothing.
@@ -219,7 +219,7 @@ impl PlayerDesc {
     ///
     /// `best_level` answers "how far has this account taken that class", and `purchased` is the
     /// set bought outright. Progress is looked up by class rather than passed as one number
-    /// because an unlock names a specific class — levelling a wizard does not open the knight.
+    /// because an unlock names a specific class. Levelling a wizard does not open the knight.
     ///
     /// A class whose prerequisite is not in the files at all is treated as open. The alternative
     /// is a class nobody can ever play because of a typo in content, which fails silently and is
@@ -247,7 +247,7 @@ impl PlayerDesc {
 
 /// Splits a comma-separated list, skipping anything that is not a number.
 ///
-/// The files space these inconsistently — `2, 13, 6, 9, 52, 53 , 54 ,55` is one real line — so
+/// The files space these inconsistently, and `2, 13, 6, 9, 52, 53 , 54 ,55` is one real line, so
 /// trimming each piece is required rather than tidy.
 fn comma_ints(text: &str) -> Vec<i64> {
     text.split(',')
