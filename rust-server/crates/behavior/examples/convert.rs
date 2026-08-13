@@ -82,7 +82,10 @@ fn main() {
     let elapsed = started.elapsed();
 
     println!("read      {} files, {lines_in} lines of C#", files.len());
-    println!("converted {} enemies into {lines_out} lines, in {elapsed:.1?}", report.enemies);
+    println!(
+        "converted {} enemies into {lines_out} lines, in {elapsed:.1?}",
+        report.enemies
+    );
     println!("compiled  {compiled} programs, {diagnostics} diagnostics");
 
     if !report.skipped.is_empty() {
@@ -125,7 +128,10 @@ fn main() {
     // rather than guessed.
     let counts = report.by_use();
     let total: usize = counts.iter().map(|(_, seen)| seen).sum();
-    println!("\n{} distinct primitives, {total} uses in total", counts.len());
+    println!(
+        "\n{} distinct primitives, {total} uses in total",
+        counts.len()
+    );
 
     let implemented = [
         "shoot",

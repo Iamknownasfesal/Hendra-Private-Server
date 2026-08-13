@@ -100,10 +100,13 @@ impl Region {
             .flat_map(char::to_lowercase)
             .collect();
 
-        (0..REGION_COUNT as u8).filter_map(Region::from_index).find(|region| {
-            let candidate: String = region.name().chars().flat_map(char::to_lowercase).collect();
-            candidate == wanted
-        })
+        (0..REGION_COUNT as u8)
+            .filter_map(Region::from_index)
+            .find(|region| {
+                let candidate: String =
+                    region.name().chars().flat_map(char::to_lowercase).collect();
+                candidate == wanted
+            })
     }
 
     /// The canonical name, matching the map editor's spelling with underscores removed.
@@ -232,10 +235,19 @@ mod tests {
 
     #[test]
     fn names_parse_in_the_spellings_the_maps_use() {
-        assert_eq!(Region::from_name("Realm_Portals"), Some(Region::RealmPortals));
-        assert_eq!(Region::from_name("Realm Portals"), Some(Region::RealmPortals));
+        assert_eq!(
+            Region::from_name("Realm_Portals"),
+            Some(Region::RealmPortals)
+        );
+        assert_eq!(
+            Region::from_name("Realm Portals"),
+            Some(Region::RealmPortals)
+        );
         assert_eq!(Region::from_name("Store_1"), Some(Region::Store1));
-        assert_eq!(Region::from_name("Gifting_Chest"), Some(Region::GiftingChest));
+        assert_eq!(
+            Region::from_name("Gifting_Chest"),
+            Some(Region::GiftingChest)
+        );
         assert_eq!(Region::from_name("Vault"), Some(Region::Vault));
         assert_eq!(Region::from_name("nonsense"), None);
     }

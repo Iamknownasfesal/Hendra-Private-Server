@@ -13,8 +13,22 @@ use std::time::Duration;
 /// Buckets, in microseconds. Logarithmic, because the interesting range spans four orders of
 /// magnitude and a linear histogram would spend all its resolution where nothing happens.
 const BOUNDS: [u64; 16] = [
-    50, 100, 200, 400, 800, 1_600, 3_200, 6_400, 12_800, 25_600, 51_200, 102_400, 204_800, 409_600,
-    819_200, u64::MAX,
+    50,
+    100,
+    200,
+    400,
+    800,
+    1_600,
+    3_200,
+    6_400,
+    12_800,
+    25_600,
+    51_200,
+    102_400,
+    204_800,
+    409_600,
+    819_200,
+    u64::MAX,
 ];
 
 /// A histogram of how long ticks took.
@@ -167,9 +181,18 @@ mod tests {
 
     #[test]
     fn the_budget_follows_the_tick_rate() {
-        assert_eq!(TickMetrics::for_rate(20).budget(), Duration::from_millis(50));
-        assert_eq!(TickMetrics::for_rate(6).budget(), Duration::from_micros(166_666));
-        assert_eq!(TickMetrics::for_rate(60).budget(), Duration::from_micros(16_666));
+        assert_eq!(
+            TickMetrics::for_rate(20).budget(),
+            Duration::from_millis(50)
+        );
+        assert_eq!(
+            TickMetrics::for_rate(6).budget(),
+            Duration::from_micros(166_666)
+        );
+        assert_eq!(
+            TickMetrics::for_rate(60).budget(),
+            Duration::from_micros(16_666)
+        );
     }
 
     #[test]

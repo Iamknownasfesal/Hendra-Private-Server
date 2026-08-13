@@ -318,7 +318,10 @@ impl World {
             let Some(entity) = self.entities.get(handle) else {
                 continue;
             };
-            let Some(id) = catalog.object(entity.object_type).map(|desc| desc.id.clone()) else {
+            let Some(id) = catalog
+                .object(entity.object_type)
+                .map(|desc| desc.id.clone())
+            else {
                 continue;
             };
 
@@ -383,7 +386,8 @@ impl World {
     fn reindex(&mut self) {
         // Collected first because `rebuild` takes `&mut self.grid` while reading `self.entities`.
         self.handles.clear();
-        self.handles.extend(self.entities.iter().map(|(handle, _)| handle));
+        self.handles
+            .extend(self.entities.iter().map(|(handle, _)| handle));
 
         let entities = &self.entities;
         let positions = self.handles.iter().filter_map(|handle| {
@@ -544,8 +548,7 @@ impl World {
 
         for shot in &desc.projectiles {
             let roll = self.roll();
-            let projectile =
-                Projectile::from_desc(handle, from_player, shot, x, y, angle, roll);
+            let projectile = Projectile::from_desc(handle, from_player, shot, x, y, angle, roll);
             if let Some(handle) = self.projectiles.fire(projectile) {
                 fired.push(handle);
             }
@@ -812,9 +815,11 @@ impl World {
     /// Damages anything standing on ground that hurts.
     fn apply_hazards(&mut self, catalog: &Catalog, elapsed_ms: u32) {
         self.handles.clear();
-        self.handles.extend(self.entities.iter().filter_map(|(handle, entity)| {
-            entity.kind.is_alive_kind().then_some(handle)
-        }));
+        self.handles.extend(
+            self.entities
+                .iter()
+                .filter_map(|(handle, entity)| entity.kind.is_alive_kind().then_some(handle)),
+        );
 
         for index in 0..self.handles.len() {
             let handle = self.handles[index];
@@ -875,7 +880,10 @@ impl World {
             };
             let (x, y) = (entity.x, entity.y);
 
-            let Some(id) = catalog.object(entity.object_type).map(|desc| desc.id.clone()) else {
+            let Some(id) = catalog
+                .object(entity.object_type)
+                .map(|desc| desc.id.clone())
+            else {
                 continue;
             };
             let Some(program) = self.behaviours.get(&id) else {
@@ -923,11 +931,7 @@ impl World {
                 catalog.type_of(name)
             }
 
-            LootEntry::Tier {
-                tier,
-                kind,
-                chance,
-            } => {
+            LootEntry::Tier { tier, kind, chance } => {
                 if self.roll() > *chance {
                     return None;
                 }
@@ -1093,7 +1097,9 @@ mod tests {
     fn an_ordinary_step_is_honoured_in_full() {
         let catalog = catalog();
         let mut world = field(&catalog);
-        let player = world.spawn(Entity::player(ObjectType(0x600), 16.0, 16.0, 800)).unwrap();
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 16.0, 16.0, 800))
+            .unwrap();
 
         // 5 tiles per second for 50ms is a quarter tile.
         let outcome = world
@@ -1108,7 +1114,9 @@ mod tests {
     fn a_claim_faster_than_the_entity_can_travel_is_trimmed() {
         let catalog = catalog();
         let mut world = field(&catalog);
-        let player = world.spawn(Entity::player(ObjectType(0x600), 16.0, 16.0, 800)).unwrap();
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 16.0, 16.0, 800))
+            .unwrap();
 
         // Claiming ten tiles in one 50ms tick.
         let outcome = world
@@ -1139,7 +1147,9 @@ mod tests {
 
         let map = Map::from_squares(8, 8, squares).unwrap();
         let mut world = World::new("Test", Terrain::build(map, &catalog), &catalog);
-        let player = world.spawn(Entity::player(ObjectType(0x600), 3.5, 3.5, 800)).unwrap();
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 3.5, 3.5, 800))
+            .unwrap();
 
         let outcome = world.resolve_move(player, &catalog, 4.5, 3.5, 200).unwrap();
         assert_eq!(outcome.refused, Some(MoveRefusal::Blocked));
@@ -1158,7 +1168,9 @@ mod tests {
 
         let map = Map::from_squares(8, 8, squares).unwrap();
         let mut world = World::new("Test", Terrain::build(map, &catalog), &catalog);
-        let player = world.spawn(Entity::player(ObjectType(0x600), 3.5, 3.5, 800)).unwrap();
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 3.5, 3.5, 800))
+            .unwrap();
 
         // Moving diagonally into the wall: the wall stops x, but y should still advance.
         let outcome = world.resolve_move(player, &catalog, 4.5, 4.0, 200).unwrap();
@@ -1177,7 +1189,9 @@ mod tests {
         let map = Map::from_squares(8, 8, squares).unwrap();
         let mut world = World::new("Lava", Terrain::build(map, &catalog), &catalog);
 
-        let player = world.spawn(Entity::player(ObjectType(0x600), 4.0, 4.0, 300)).unwrap();
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 4.0, 4.0, 300))
+            .unwrap();
 
         world.advance(&catalog, 1000);
         assert_eq!(world.get(player).unwrap().hp, 200, "100 damage per second");
@@ -1194,15 +1208,24 @@ mod tests {
         let catalog = catalog();
         let mut world = field(&catalog);
 
-        let viewer = world.spawn(Entity::player(ObjectType(0x600), 16.0, 16.0, 800)).unwrap();
-        let near = world.spawn(Entity::player(ObjectType(0x600), 18.0, 16.0, 800)).unwrap();
-        let far = world.spawn(Entity::player(ObjectType(0x600), 16.0, 16.0, 800)).unwrap();
+        let viewer = world
+            .spawn(Entity::player(ObjectType(0x600), 16.0, 16.0, 800))
+            .unwrap();
+        let near = world
+            .spawn(Entity::player(ObjectType(0x600), 18.0, 16.0, 800))
+            .unwrap();
+        let far = world
+            .spawn(Entity::player(ObjectType(0x600), 16.0, 16.0, 800))
+            .unwrap();
         world.get_mut(far).unwrap().x = 100.0;
 
         world.advance(&catalog, 50);
 
         let snapshot = world.snapshot_for(viewer, SIGHT_RADIUS);
-        assert!(snapshot.get(viewer.to_entity_id()).is_some(), "the viewer sees itself");
+        assert!(
+            snapshot.get(viewer.to_entity_id()).is_some(),
+            "the viewer sees itself"
+        );
         assert!(snapshot.get(near.to_entity_id()).is_some());
         assert!(
             snapshot.get(far.to_entity_id()).is_none(),
@@ -1226,16 +1249,28 @@ mod tests {
         let catalog = catalog();
         let mut world = field(&catalog);
 
-        let viewer = world.spawn(Entity::player(ObjectType(0x600), 16.0, 16.0, 800)).unwrap();
-        let other = world.spawn(Entity::player(ObjectType(0x600), 17.0, 16.0, 800)).unwrap();
+        let viewer = world
+            .spawn(Entity::player(ObjectType(0x600), 16.0, 16.0, 800))
+            .unwrap();
+        let other = world
+            .spawn(Entity::player(ObjectType(0x600), 17.0, 16.0, 800))
+            .unwrap();
         world.advance(&catalog, 50);
-        assert!(world.snapshot_for(viewer, SIGHT_RADIUS).get(other.to_entity_id()).is_some());
+        assert!(
+            world
+                .snapshot_for(viewer, SIGHT_RADIUS)
+                .get(other.to_entity_id())
+                .is_some()
+        );
 
         world.despawn(other);
         world.advance(&catalog, 50);
 
         assert!(
-            world.snapshot_for(viewer, SIGHT_RADIUS).get(other.to_entity_id()).is_none(),
+            world
+                .snapshot_for(viewer, SIGHT_RADIUS)
+                .get(other.to_entity_id())
+                .is_none(),
             "a despawned entity must leave the spatial index as well as the slab"
         );
     }
@@ -1376,10 +1411,8 @@ mod tests {
     #[test]
     fn an_enemy_with_a_behaviour_gets_a_mind() {
         let catalog = catalog();
-        let (world, enemy, _) = confrontation(
-            &catalog,
-            r#"enemy "Slime" { state idle { wander(0.4) } }"#,
-        );
+        let (world, enemy, _) =
+            confrontation(&catalog, r#"enemy "Slime" { state idle { wander(0.4) } }"#);
 
         assert_eq!(world.thinking(), 1);
         assert!(world.get(enemy).unwrap().mind.is_some());
@@ -1393,7 +1426,11 @@ mod tests {
             r#"enemy "Something Else" { state idle { wander(0.4) } }"#,
         );
 
-        assert_eq!(world.thinking(), 0, "a half-converted directory should still run");
+        assert_eq!(
+            world.thinking(),
+            0,
+            "a half-converted directory should still run"
+        );
         assert!(world.get(enemy).unwrap().mind.is_none());
     }
 
@@ -1411,7 +1448,10 @@ mod tests {
         }
 
         let now = world.get(enemy).unwrap().x;
-        assert!(now > start + 0.5, "it should have closed the distance: {start} -> {now}");
+        assert!(
+            now > start + 0.5,
+            "it should have closed the distance: {start} -> {now}"
+        );
     }
 
     #[test]
@@ -1428,7 +1468,10 @@ mod tests {
         }
 
         let after = world.get(player).map(|entity| entity.hp).unwrap_or(0);
-        assert!(after < before, "the player should have taken fire: {before} -> {after}");
+        assert!(
+            after < before,
+            "the player should have taken fire: {before} -> {after}"
+        );
     }
 
     #[test]
@@ -1500,9 +1543,8 @@ mod tests {
             .spawn(Entity::player(ObjectType(0x600), 20.0, 10.0, 800))
             .unwrap();
 
-        let (programs, _) = compile(
-            &parse(r#"enemy "Slime" { state idle { follow(2.0, 30, 1) } }"#).unwrap(),
-        );
+        let (programs, _) =
+            compile(&parse(r#"enemy "Slime" { state idle { follow(2.0, 30, 1) } }"#).unwrap());
         world.set_behaviours(&catalog, programs);
 
         for _ in 0..80 {
@@ -1577,13 +1619,25 @@ mod tests {
 
         world.get_mut(enemy).unwrap().dead = true;
         world.advance(&catalog, 50);
-        assert_eq!(world.iter().filter(|(_, e)| e.kind == Kind::Container).count(), 1);
+        assert_eq!(
+            world
+                .iter()
+                .filter(|(_, e)| e.kind == Kind::Container)
+                .count(),
+            1
+        );
 
         // A minute later there is nothing left, so a cleared dungeon does not fill with bags.
         for _ in 0..(61_000 / 50) {
             world.advance(&catalog, 50);
         }
-        assert_eq!(world.iter().filter(|(_, e)| e.kind == Kind::Container).count(), 0);
+        assert_eq!(
+            world
+                .iter()
+                .filter(|(_, e)| e.kind == Kind::Container)
+                .count(),
+            0
+        );
     }
 
     #[test]
@@ -1609,7 +1663,10 @@ mod tests {
         world.advance(&catalog, 50);
 
         assert_eq!(
-            world.iter().filter(|(_, e)| e.kind == Kind::Container).count(),
+            world
+                .iter()
+                .filter(|(_, e)| e.kind == Kind::Container)
+                .count(),
             0,
             "an empty bag is worse than no bag"
         );
@@ -1619,9 +1676,15 @@ mod tests {
     fn a_move_for_an_entity_that_no_longer_exists_is_refused_safely() {
         let catalog = catalog();
         let mut world = field(&catalog);
-        let player = world.spawn(Entity::player(ObjectType(0x600), 16.0, 16.0, 800)).unwrap();
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 16.0, 16.0, 800))
+            .unwrap();
         world.despawn(player);
 
-        assert!(world.resolve_move(player, &catalog, 17.0, 16.0, 50).is_none());
+        assert!(
+            world
+                .resolve_move(player, &catalog, 17.0, 16.0, 50)
+                .is_none()
+        );
     }
 }

@@ -544,7 +544,9 @@ impl CsParser {
             self.at += 1;
         }
 
-        text.parse::<f64>().map(CsValue::Number).map_err(|_| CsError)
+        text.parse::<f64>()
+            .map(CsValue::Number)
+            .map_err(|_| CsError)
     }
 }
 
@@ -580,7 +582,11 @@ mod tests {
         let enemies = read_enemies(source);
         assert_eq!(enemies.len(), 1);
         assert_eq!(enemies[0].name, "Hobbit Mage");
-        assert_eq!(enemies[0].arguments.len(), 3, "the root state and two loots");
+        assert_eq!(
+            enemies[0].arguments.len(),
+            3,
+            "the root state and two loots"
+        );
 
         let CsValue::Call(root) = &enemies[0].arguments[0] else {
             panic!("the first argument should be the root State");
@@ -617,7 +623,11 @@ mod tests {
         assert_eq!(values[0], &CsValue::Number(1.0));
         assert_eq!(values[1], &CsValue::Number(-3.0));
         assert_eq!(values[2], &CsValue::Number(0.75));
-        assert_eq!(values[3], &CsValue::Number(0.5), "a float suffix is not part of the number");
+        assert_eq!(
+            values[3],
+            &CsValue::Number(0.5),
+            "a float suffix is not part of the number"
+        );
         assert_eq!(values[4], &CsValue::Text("text".into()));
         assert_eq!(values[5], &CsValue::Bool(true));
         assert_eq!(values[6], &CsValue::Bool(false));

@@ -214,7 +214,10 @@ fn main() {
 }
 
 fn name_of(path: &Path) -> String {
-    path.file_name().unwrap_or_default().to_string_lossy().into_owned()
+    path.file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn merge(into: &mut Vec<String>, from: Vec<String>) {

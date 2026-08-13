@@ -171,14 +171,19 @@ impl SnapshotEncoder {
             Some((_, baseline)) => self.diff(current, baseline),
             None => {
                 // Nothing to compare against: every entity is a first sighting.
-                self.records.extend(current.entities.iter().enumerate().map(
-                    |(index, (id, _))| Record {
-                        id: *id,
-                        mask: FieldMask::ALL,
-                        current: index,
-                        baseline: None,
-                    },
-                ));
+                self.records
+                    .extend(
+                        current
+                            .entities
+                            .iter()
+                            .enumerate()
+                            .map(|(index, (id, _))| Record {
+                                id: *id,
+                                mask: FieldMask::ALL,
+                                current: index,
+                                baseline: None,
+                            }),
+                    );
             }
         }
 
@@ -215,7 +220,9 @@ impl SnapshotEncoder {
             let from = record
                 .baseline
                 .and_then(|index| baseline.map(|(_, snapshot)| &snapshot.entities[index].1));
-            current.entities[record.current].1.encode(record.mask, from, w);
+            current.entities[record.current]
+                .1
+                .encode(record.mask, from, w);
         }
 
         // A full snapshot goes on the stream whatever its size: losing one strands the client with
@@ -360,7 +367,10 @@ pub fn decode_body(
             if despawned.binary_search(&id).is_ok() {
                 continue;
             }
-            if records.binary_search_by_key(&id, |(record, _)| *record).is_ok() {
+            if records
+                .binary_search_by_key(&id, |(record, _)| *record)
+                .is_ok()
+            {
                 continue;
             }
             entities.push((id, state.clone()));
@@ -427,8 +437,12 @@ mod tests {
         baseline: Option<&WorldSnapshot>,
     ) -> (WorldSnapshot, usize, Delivery) {
         let mut buf = Vec::new();
-        let delivery =
-            SnapshotEncoder::new().encode(Tick(7), current, baseline.map(|b| (Tick(6), b)), &mut Writer::new(&mut buf));
+        let delivery = SnapshotEncoder::new().encode(
+            Tick(7),
+            current,
+            baseline.map(|b| (Tick(6), b)),
+            &mut Writer::new(&mut buf),
+        );
         let (tick, decoded) = decode_snapshot(baseline, &mut Reader::new(&buf)).unwrap();
         assert_eq!(tick, Tick(7));
         (decoded, buf.len(), delivery)
@@ -487,7 +501,10 @@ mod tests {
             quantize(decoded.get(EntityId(2)).unwrap().x),
             quantize(11.125)
         );
-        assert_eq!(quantize(decoded.get(EntityId(1)).unwrap().x), quantize(10.0));
+        assert_eq!(
+            quantize(decoded.get(EntityId(1)).unwrap().x),
+            quantize(10.0)
+        );
 
         // Header and named baseline, then one record: id step, mask, two axes.
         assert!(bytes <= 10, "{bytes} bytes for one entity moving");
@@ -557,15 +574,27 @@ mod tests {
         let mut encoder = SnapshotEncoder::new();
         let mut buf = Vec::new();
 
-        let first = encoder.encode(Tick(1), &after, Some((Tick(0), &before)), &mut Writer::new(&mut buf));
+        let first = encoder.encode(
+            Tick(1),
+            &after,
+            Some((Tick(0), &before)),
+            &mut Writer::new(&mut buf),
+        );
         assert_eq!(first, Delivery::Datagram);
         let warm = (encoder.records.capacity(), encoder.despawns.capacity());
 
         for tick in 2..50 {
             buf.clear();
-            let repeat =
-                encoder.encode(Tick(tick), &after, Some((Tick(0), &before)), &mut Writer::new(&mut buf));
-            assert_eq!(repeat, first, "delivery should not vary for an identical diff");
+            let repeat = encoder.encode(
+                Tick(tick),
+                &after,
+                Some((Tick(0), &before)),
+                &mut Writer::new(&mut buf),
+            );
+            assert_eq!(
+                repeat, first,
+                "delivery should not vary for an identical diff"
+            );
         }
 
         assert_eq!(
@@ -584,7 +613,12 @@ mod tests {
         ]);
 
         let mut buf = Vec::new();
-        let _ = SnapshotEncoder::new().encode(Tick(3), &after, Some((Tick(2), &before)), &mut Writer::new(&mut buf));
+        let _ = SnapshotEncoder::new().encode(
+            Tick(3),
+            &after,
+            Some((Tick(2), &before)),
+            &mut Writer::new(&mut buf),
+        );
 
         for cut in 0..buf.len() {
             let mut reader = Reader::new(&buf[..cut]);
@@ -602,7 +636,11 @@ mod tests {
         let before = snapshot(&crowd);
 
         let (_, full_bytes, delivery) = round_trip_with_delivery(&before, None);
-        assert_eq!(delivery, Delivery::Stream, "a full snapshot must be reliable");
+        assert_eq!(
+            delivery,
+            Delivery::Stream,
+            "a full snapshot must be reliable"
+        );
         assert!(
             full_bytes > DATAGRAM_BUDGET,
             "expected the full snapshot to exceed {DATAGRAM_BUDGET} B, got {full_bytes}"

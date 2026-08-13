@@ -158,7 +158,10 @@ async fn handle(
                 return Err("empty token".into());
             }
 
-            println!("  hello: character {character}, token {} chars", token.len());
+            println!(
+                "  hello: character {character}, token {} chars",
+                token.len()
+            );
 
             ServerMessage::Welcome {
                 player: EntityId(1),

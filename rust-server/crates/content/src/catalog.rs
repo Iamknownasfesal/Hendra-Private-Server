@@ -62,7 +62,10 @@ pub enum LoadProblem {
     },
 
     /// A projectile names an object that no file declares.
-    UnknownProjectileObject { owner: String, object_id: String },
+    UnknownProjectileObject {
+        owner: String,
+        object_id: String,
+    },
 }
 
 impl std::fmt::Display for LoadProblem {

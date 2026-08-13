@@ -43,7 +43,10 @@ impl BitGrid {
     }
 
     fn count(&self) -> usize {
-        self.words.iter().map(|word| word.count_ones() as usize).sum()
+        self.words
+            .iter()
+            .map(|word| word.count_ones() as usize)
+            .sum()
     }
 }
 
@@ -85,12 +88,11 @@ impl Terrain {
 
                 // A square is walkable when its ground allows it and nothing standing there
                 // objects. Absent ground is not walkable: that is how maps spell a hole.
-                let ground_ok = catalog
-                    .tile(square.tile)
-                    .is_some_and(|tile| !tile.no_walk);
+                let ground_ok = catalog.tile(square.tile).is_some_and(|tile| !tile.no_walk);
 
                 let object = catalog.object(square.object);
-                let object_blocks = object.is_some_and(|desc| desc.full_occupy || desc.occupy_square);
+                let object_blocks =
+                    object.is_some_and(|desc| desc.full_occupy || desc.occupy_square);
 
                 if ground_ok && !object_blocks {
                     walkable.set(x, y);
@@ -254,8 +256,16 @@ impl Terrain {
 
         // Distance along the ray to the next square boundary on each axis, and how much distance
         // one whole square costs. An infinite delta means the ray never crosses that axis.
-        let delta_x = if dx == 0.0 { f32::INFINITY } else { (1.0 / dx).abs() };
-        let delta_y = if dy == 0.0 { f32::INFINITY } else { (1.0 / dy).abs() };
+        let delta_x = if dx == 0.0 {
+            f32::INFINITY
+        } else {
+            (1.0 / dx).abs()
+        };
+        let delta_y = if dy == 0.0 {
+            f32::INFINITY
+        } else {
+            (1.0 / dy).abs()
+        };
 
         let mut next_x = if dx == 0.0 {
             f32::INFINITY
@@ -313,8 +323,16 @@ impl Terrain {
 
         let (dx, dy) = (to_x - from_x, to_y - from_y);
         let (step_x, step_y) = (dx.signum() as i64, dy.signum() as i64);
-        let delta_x = if dx == 0.0 { f32::INFINITY } else { (1.0 / dx).abs() };
-        let delta_y = if dy == 0.0 { f32::INFINITY } else { (1.0 / dy).abs() };
+        let delta_x = if dx == 0.0 {
+            f32::INFINITY
+        } else {
+            (1.0 / dx).abs()
+        };
+        let delta_y = if dy == 0.0 {
+            f32::INFINITY
+        } else {
+            (1.0 / dy).abs()
+        };
 
         let mut next_x = if dx == 0.0 {
             f32::INFINITY
@@ -422,10 +440,7 @@ mod tests {
     fn sight_blocking_is_separate_from_walking() {
         let terrain = strip();
         assert!(terrain.blocks_sight(3, 0), "a tree blocks sight");
-        assert!(
-            terrain.walkable(3, 0),
-            "but you can still walk under it"
-        );
+        assert!(terrain.walkable(3, 0), "but you can still walk under it");
         assert!(!terrain.blocks_sight(0, 0), "open grass does not");
     }
 
@@ -456,7 +471,10 @@ mod tests {
         let map = Map::from_squares(
             2,
             1,
-            vec![square(0x10, ObjectType::NONE.0), square(0x12, ObjectType::NONE.0)],
+            vec![
+                square(0x10, ObjectType::NONE.0),
+                square(0x12, ObjectType::NONE.0),
+            ],
         )
         .unwrap();
         let terrain = Terrain::build(map, &catalog);
@@ -491,7 +509,10 @@ mod tests {
         let terrain = walled(&[]);
         assert!(terrain.line_of_sight(1.5, 1.5, 14.5, 1.5));
         assert!(terrain.line_of_sight(1.5, 1.5, 14.5, 14.5));
-        assert!(terrain.line_of_sight(14.5, 14.5, 1.5, 1.5), "and back again");
+        assert!(
+            terrain.line_of_sight(14.5, 14.5, 1.5, 1.5),
+            "and back again"
+        );
     }
 
     #[test]
@@ -499,9 +520,18 @@ mod tests {
         let wall: Vec<(u32, u32)> = (0..16).map(|y| (8, y)).collect();
         let terrain = walled(&wall);
 
-        assert!(!terrain.line_of_sight(2.5, 8.5, 13.5, 8.5), "straight through");
-        assert!(!terrain.line_of_sight(2.5, 2.5, 13.5, 13.5), "diagonally through");
-        assert!(terrain.line_of_sight(2.5, 8.5, 6.5, 8.5), "short of the wall");
+        assert!(
+            !terrain.line_of_sight(2.5, 8.5, 13.5, 8.5),
+            "straight through"
+        );
+        assert!(
+            !terrain.line_of_sight(2.5, 2.5, 13.5, 13.5),
+            "diagonally through"
+        );
+        assert!(
+            terrain.line_of_sight(2.5, 8.5, 6.5, 8.5),
+            "short of the wall"
+        );
     }
 
     #[test]
@@ -535,9 +565,18 @@ mod tests {
     fn standing_on_cover_does_not_hide_you() {
         let terrain = walled(&[(8, 8)]);
 
-        assert!(terrain.line_of_sight(5.5, 8.5, 8.5, 8.5), "the tree itself is visible");
-        assert!(terrain.line_of_sight(8.5, 8.5, 8.5, 8.5), "and it can see itself");
-        assert!(!terrain.line_of_sight(5.5, 8.5, 11.5, 8.5), "but not past it");
+        assert!(
+            terrain.line_of_sight(5.5, 8.5, 8.5, 8.5),
+            "the tree itself is visible"
+        );
+        assert!(
+            terrain.line_of_sight(8.5, 8.5, 8.5, 8.5),
+            "and it can see itself"
+        );
+        assert!(
+            !terrain.line_of_sight(5.5, 8.5, 11.5, 8.5),
+            "but not past it"
+        );
     }
 
     #[test]
@@ -552,7 +591,15 @@ mod tests {
         // The optimisation must be conservative: it may only skip a walk it can prove is clear.
         // Blockers are scattered so that some region boxes contain one and some do not.
         let trees: Vec<(u32, u32)> = vec![
-            (3, 3), (4, 3), (8, 7), (7, 8), (12, 2), (2, 12), (9, 9), (10, 9), (14, 14),
+            (3, 3),
+            (4, 3),
+            (8, 7),
+            (7, 8),
+            (12, 2),
+            (2, 12),
+            (9, 9),
+            (10, 9),
+            (14, 14),
         ];
         let terrain = walled(&trees);
 
@@ -581,7 +628,10 @@ mod tests {
             x += 1.3;
         }
 
-        assert!(checked > 400, "the sweep should be broad, checked {checked}");
+        assert!(
+            checked > 400,
+            "the sweep should be broad, checked {checked}"
+        );
     }
 
     #[test]

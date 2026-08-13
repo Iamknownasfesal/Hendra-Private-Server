@@ -379,7 +379,10 @@ mod tests {
 
         let on_the_wire = handle.to_entity_id();
         assert_eq!(Handle::from_entity_id(on_the_wire), handle);
-        assert_eq!(slab.get(Handle::from_entity_id(on_the_wire)), Some(&"player"));
+        assert_eq!(
+            slab.get(Handle::from_entity_id(on_the_wire)),
+            Some(&"player")
+        );
     }
 
     #[test]

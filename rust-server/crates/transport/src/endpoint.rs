@@ -8,9 +8,9 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use crate::TransportError;
 use crate::link::{Link, transport_config};
 use crate::tls::{ALPN, ServerIdentity, Trust};
-use crate::TransportError;
 
 /// Accepts incoming connections.
 pub struct Listener {
@@ -30,13 +30,14 @@ impl Listener {
             );
         }
 
-        let mut tls = rustls::ServerConfig::builder_with_protocol_versions(&[&rustls::version::TLS13])
-            .with_no_client_auth()
-            .with_single_cert(identity.chain, identity.key)
-            .map_err(|source| TransportError::Identity {
-                path: "<configured>".into(),
-                detail: source.to_string(),
-            })?;
+        let mut tls =
+            rustls::ServerConfig::builder_with_protocol_versions(&[&rustls::version::TLS13])
+                .with_no_client_auth()
+                .with_single_cert(identity.chain, identity.key)
+                .map_err(|source| TransportError::Identity {
+                    path: "<configured>".into(),
+                    detail: source.to_string(),
+                })?;
         tls.alpn_protocols = vec![ALPN.to_vec()];
 
         let crypto = quinn::crypto::rustls::QuicServerConfig::try_from(tls)
@@ -45,8 +46,8 @@ impl Listener {
         let mut config = quinn::ServerConfig::with_crypto(Arc::new(crypto));
         config.transport_config(transport_config());
 
-        let endpoint = quinn::Endpoint::server(config, address)
-            .map_err(|source| TransportError::Bind {
+        let endpoint =
+            quinn::Endpoint::server(config, address).map_err(|source| TransportError::Bind {
                 address,
                 detail: source.to_string(),
             })?;
@@ -69,19 +70,21 @@ impl Listener {
     pub async fn accept(&self) -> Option<Result<Link, TransportError>> {
         let incoming = self.endpoint.accept().await?;
 
-        Some(async move {
-            let connection = incoming
-                .await
-                .map_err(|source| TransportError::Handshake(source.to_string()))?;
+        Some(
+            async move {
+                let connection = incoming
+                    .await
+                    .map_err(|source| TransportError::Handshake(source.to_string()))?;
 
-            let (send, recv) = connection
-                .accept_bi()
-                .await
-                .map_err(|source| TransportError::Handshake(source.to_string()))?;
+                let (send, recv) = connection
+                    .accept_bi()
+                    .await
+                    .map_err(|source| TransportError::Handshake(source.to_string()))?;
 
-            Ok(Link::start(connection, send, recv))
-        }
-        .await)
+                Ok(Link::start(connection, send, recv))
+            }
+            .await,
+        )
     }
 
     /// Stops accepting and lets existing connections drain.

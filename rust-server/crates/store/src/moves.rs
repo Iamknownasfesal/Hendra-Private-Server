@@ -247,12 +247,14 @@ async fn write(
                 .await?;
         }
         (Location::Inventory { character_id, slot }, item) => {
-            sqlx::query("UPDATE inventory_slot SET item_type = $3 WHERE character_id = $1 AND slot = $2")
-                .bind(character_id)
-                .bind(slot)
-                .bind(item)
-                .execute(&mut **transaction)
-                .await?;
+            sqlx::query(
+                "UPDATE inventory_slot SET item_type = $3 WHERE character_id = $1 AND slot = $2",
+            )
+            .bind(character_id)
+            .bind(slot)
+            .bind(item)
+            .execute(&mut **transaction)
+            .await?;
         }
         (Location::Vault { account_id, slot }, 0) => {
             sqlx::query("DELETE FROM vault_slot WHERE account_id = $1 AND slot = $2")

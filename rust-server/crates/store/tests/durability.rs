@@ -105,7 +105,10 @@ async fn an_item_moves_between_inventory_and_vault() {
         .await
         .unwrap();
 
-    store.set_inventory(character.id, &[(0, WAND)]).await.unwrap();
+    store
+        .set_inventory(character.id, &[(0, WAND)])
+        .await
+        .unwrap();
 
     let from = Location::Inventory {
         character_id: character.id,
@@ -120,7 +123,14 @@ async fn an_item_moves_between_inventory_and_vault() {
     assert_eq!(outcome.source, 0, "the inventory slot is now empty");
     assert_eq!(outcome.destination, WAND);
 
-    assert!(store.character(character.id).await.unwrap().inventory.is_empty());
+    assert!(
+        store
+            .character(character.id)
+            .await
+            .unwrap()
+            .inventory
+            .is_empty()
+    );
     assert_eq!(store.vault(account.id).await.unwrap(), vec![(3, WAND)]);
 }
 
@@ -136,7 +146,10 @@ async fn two_occupied_slots_swap() {
         .await
         .unwrap();
 
-    store.set_inventory(character.id, &[(0, WAND)]).await.unwrap();
+    store
+        .set_inventory(character.id, &[(0, WAND)])
+        .await
+        .unwrap();
     store.set_vault_slot(account.id, 0, ROBE).await.unwrap();
 
     let inventory = Location::Inventory {
@@ -150,7 +163,10 @@ async fn two_occupied_slots_swap() {
 
     store.move_item(inventory, vault, WAND).await.unwrap();
 
-    assert_eq!(store.character(character.id).await.unwrap().inventory, vec![(0, ROBE)]);
+    assert_eq!(
+        store.character(character.id).await.unwrap().inventory,
+        vec![(0, ROBE)]
+    );
     assert_eq!(store.vault(account.id).await.unwrap(), vec![(0, WAND)]);
 }
 
@@ -202,7 +218,10 @@ async fn the_same_item_cannot_be_moved_twice_at_once() {
         let slot_a = (attempt * 2) as i16;
         let slot_b = slot_a + 1;
 
-        store.set_inventory(character.id, &[(0, WAND)]).await.unwrap();
+        store
+            .set_inventory(character.id, &[(0, WAND)])
+            .await
+            .unwrap();
 
         let source = Location::Inventory {
             character_id: character.id,
@@ -241,7 +260,10 @@ async fn the_same_item_cannot_be_moved_twice_at_once() {
         };
 
         let (first, second) = (one.await.unwrap(), two.await.unwrap());
-        let winners = [first.is_ok(), second.is_ok()].iter().filter(|ok| **ok).count();
+        let winners = [first.is_ok(), second.is_ok()]
+            .iter()
+            .filter(|ok| **ok)
+            .count();
 
         assert_eq!(
             winners, 1,
@@ -346,10 +368,27 @@ async fn giving_an_item_finds_the_first_free_slot() {
         .await
         .unwrap();
 
-    store.set_inventory(character.id, &[(4, WAND), (6, ROBE)]).await.unwrap();
+    store
+        .set_inventory(character.id, &[(4, WAND), (6, ROBE)])
+        .await
+        .unwrap();
 
-    assert_eq!(store.give_item(character.id, WAND, 4, 11).await.unwrap().slot, 5);
-    assert_eq!(store.give_item(character.id, WAND, 4, 11).await.unwrap().slot, 7);
+    assert_eq!(
+        store
+            .give_item(character.id, WAND, 4, 11)
+            .await
+            .unwrap()
+            .slot,
+        5
+    );
+    assert_eq!(
+        store
+            .give_item(character.id, WAND, 4, 11)
+            .await
+            .unwrap()
+            .slot,
+        7
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -404,7 +443,10 @@ async fn two_pickups_cannot_claim_the_same_slot() {
         };
 
         let (first, second) = (one.await.unwrap(), two.await.unwrap());
-        let winners = [first.is_ok(), second.is_ok()].iter().filter(|ok| **ok).count();
+        let winners = [first.is_ok(), second.is_ok()]
+            .iter()
+            .filter(|ok| **ok)
+            .count();
 
         assert_eq!(winners, 1, "one free slot can only take one item");
         assert_eq!(
@@ -427,7 +469,10 @@ async fn taking_an_item_that_moved_is_refused() {
         .await
         .unwrap();
 
-    store.set_inventory(character.id, &[(4, WAND)]).await.unwrap();
+    store
+        .set_inventory(character.id, &[(4, WAND)])
+        .await
+        .unwrap();
 
     // The condition is what makes two simultaneous drops of the same item resolve to one.
     assert!(matches!(
@@ -494,9 +539,11 @@ async fn vault_chests_are_bought_up_to_a_limit() {
         store.buy_vault_chest(account.id, 6).await,
         Err(StoreError::Refused(_))
     ));
-    assert_eq!(store.account_by_name("Buyer").await.unwrap().vault_chests, 6);
+    assert_eq!(
+        store.account_by_name("Buyer").await.unwrap().vault_chests,
+        6
+    );
 }
-
 
 // -- trade ------------------------------------------------------------------------------------
 
@@ -618,7 +665,10 @@ async fn a_trade_into_a_full_inventory_is_refused_before_anything_moves() {
     // One offers nothing and has no room; two offers two items.
     let packed: Vec<(i16, i32)> = (4..=11).map(|slot| (slot, WAND)).collect();
     store.set_inventory(one.id, &packed).await.unwrap();
-    store.set_inventory(two.id, &[(4, ROBE), (5, ROBE)]).await.unwrap();
+    store
+        .set_inventory(two.id, &[(4, ROBE), (5, ROBE)])
+        .await
+        .unwrap();
 
     let before = between(&store, one.id, two.id).await;
 
@@ -733,8 +783,6 @@ async fn the_same_item_cannot_be_traded_to_two_people_at_once() {
 fn futures_block(
     future: impl std::future::Future<Output = hendra_store::Result<hendra_store::Character>>,
 ) -> hendra_store::Character {
-    tokio::task::block_in_place(|| {
-        tokio::runtime::Handle::current().block_on(future)
-    })
-    .expect("the character should load")
+    tokio::task::block_in_place(|| tokio::runtime::Handle::current().block_on(future))
+        .expect("the character should load")
 }

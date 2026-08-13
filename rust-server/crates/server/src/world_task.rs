@@ -48,7 +48,10 @@ pub enum ToWorld {
     },
 
     /// A player is firing. Only the aim comes from them.
-    Shoot { handle: Handle, angle: f32 },
+    Shoot {
+        handle: Handle,
+        angle: f32,
+    },
 
     Chat {
         handle: Handle,
@@ -135,8 +138,7 @@ pub async fn run(
     let mut metrics = TickMetrics::for_rate(TICKS_PER_SECOND);
     let elapsed_ms = 1000 / TICKS_PER_SECOND;
 
-    let mut ticker =
-        tokio::time::interval(std::time::Duration::from_millis(elapsed_ms as u64));
+    let mut ticker = tokio::time::interval(std::time::Duration::from_millis(elapsed_ms as u64));
     // Skip rather than burst: a world that falls behind should not try to run the ticks it missed.
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
@@ -237,7 +239,8 @@ fn handle(
             }
 
             // The claim is advisory. The world decides where the player actually is.
-            if let Some(outcome) = world.resolve_move(handle, catalog, x, y, tick_ms(client_time_ms))
+            if let Some(outcome) =
+                world.resolve_move(handle, catalog, x, y, tick_ms(client_time_ms))
             {
                 world.place(handle, outcome);
             }
@@ -253,7 +256,9 @@ fn handle(
 
             let mut buf = Vec::new();
             for projectile in fired {
-                let Some(shot) = world.projectiles().find(|(handle, _)| *handle == projectile)
+                let Some(shot) = world
+                    .projectiles()
+                    .find(|(handle, _)| *handle == projectile)
                 else {
                     continue;
                 };
@@ -411,11 +416,8 @@ fn place_vault_chests(
             }
         }
 
-        let mut chest = hendra_sim::world::Entity::fixture(
-            chest_type,
-            *x as f32 + 0.5,
-            *y as f32 + 0.5,
-        );
+        let mut chest =
+            hendra_sim::world::Entity::fixture(chest_type, *x as f32 + 0.5, *y as f32 + 0.5);
         chest.kind = hendra_sim::Kind::Container;
         chest.container = Some(Box::new(container));
 
@@ -494,8 +496,7 @@ fn put_in_bag(
     };
     let (x, y) = (player.x, player.y);
 
-    let mut container =
-        hendra_sim::Container::new(hendra_sim::ContainerKind::Bag, 8);
+    let mut container = hendra_sim::Container::new(hendra_sim::ContainerKind::Bag, 8);
     if container.insert(item, catalog).is_none() {
         return false;
     }
@@ -557,7 +558,9 @@ async fn broadcast(world: &mut World, players: &mut Vec<Player>) {
             Baseline::Delta { tick, state } => Some((tick, state)),
             Baseline::Full => None,
         };
-        let delivery = player.encoder.encode(tick, &snapshot, baseline, &mut writer);
+        let delivery = player
+            .encoder
+            .encode(tick, &snapshot, baseline, &mut writer);
 
         // Never awaits: a slow player must not hold up the tick for everyone else. A backlog is
         // reported and the next tick supersedes what was dropped.

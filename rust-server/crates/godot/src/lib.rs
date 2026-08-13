@@ -174,17 +174,9 @@ impl Shared {
 enum Command {
     Input { x: f32, y: f32, time_ms: u32 },
     Shoot { angle: f32 },
-    MoveItem {
-        from: (u8, u16),
-        to: (u8, u16),
-    },
-    PickUp {
-        bag: u32,
-        slot: u8,
-    },
-    Drop {
-        slot: u16,
-    },
+    MoveItem { from: (u8, u16), to: (u8, u16) },
+    PickUp { bag: u32, slot: u8 },
+    Drop { slot: u16 },
     Chat(String),
     UsePortal(u32),
     Disconnect,
@@ -264,7 +256,16 @@ impl HendraConnection {
         };
 
         runtime.spawn(async move {
-            run(shared, receiver, host, port as u16, token, character as u32, trust).await;
+            run(
+                shared,
+                receiver,
+                host,
+                port as u16,
+                token,
+                character as u32,
+                trust,
+            )
+            .await;
         });
 
         self.commands = Some(sender);

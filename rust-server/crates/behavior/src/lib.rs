@@ -25,10 +25,10 @@ pub mod run;
 pub mod transpile;
 
 pub use ast::{Argument, Behaviours, Call, Enemy, Item, Loot, State, Transition, Value};
-pub use lex::{LexError, Span, Token, tokenize};
 pub use compile::{Diagnostic, compile};
+pub use lex::{LexError, Span, Token, tokenize};
 pub use parse::{ParseError, parse};
-pub use run::Mind;
 pub use program::{
     Action, CompiledState, Condition, LootEntry, Nearby, Primitive, Program, Programs, Senses,
 };
+pub use run::Mind;

@@ -231,7 +231,10 @@ pub fn from_wmap(bytes: &[u8], catalog: &Catalog) -> Result<(Map, UnresolvedName
         .read_to_end(&mut body)
         .map_err(|source| ImportError::Decode(source.to_string()))?;
 
-    let mut cursor = Cursor { bytes: &body, at: 0 };
+    let mut cursor = Cursor {
+        bytes: &body,
+        at: 0,
+    };
     let mut unresolved = UnresolvedNames::default();
 
     let count = cursor.i16()? as usize;
@@ -279,18 +282,10 @@ pub fn from_wmap(bytes: &[u8], catalog: &Catalog) -> Result<(Map, UnresolvedName
         if version == 2 {
             cursor.u8()?; // elevation
         }
-        compositions.push(
-            dictionary
-                .get(index)
-                .cloned()
-                .unwrap_or_else(empty_square),
-        );
+        compositions.push(dictionary.get(index).cloned().unwrap_or_else(empty_square));
     }
 
-    Ok((
-        Map::from_squares(width, height, compositions)?,
-        unresolved,
-    ))
+    Ok((Map::from_squares(width, height, compositions)?, unresolved))
 }
 
 /// A little-endian reader for the `.wmap` body, with C#'s `BinaryReader` string encoding.
@@ -448,9 +443,8 @@ mod tests {
     fn a_grid_that_does_not_match_the_dimensions_is_refused() {
         let grid: Vec<u8> = 0u16.to_be_bytes().to_vec();
         let encoded = base64::engine::general_purpose::STANDARD.encode(zlib(&grid));
-        let json = format!(
-            r#"{{"width":8,"height":8,"dict":[{{"ground":"Grass"}}],"data":"{encoded}"}}"#
-        );
+        let json =
+            format!(r#"{{"width":8,"height":8,"dict":[{{"ground":"Grass"}}],"data":"{encoded}"}}"#);
 
         assert!(matches!(
             from_jm(&json, &catalog()),

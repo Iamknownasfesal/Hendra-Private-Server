@@ -102,7 +102,10 @@ impl EntityState {
         mask.set(FieldMask::MAX_HP, self.max_hp != baseline.max_hp);
         mask.set(FieldMask::MP, self.mp != baseline.mp);
         mask.set(FieldMask::MAX_MP, self.max_mp != baseline.max_mp);
-        mask.set(FieldMask::CONDITIONS, self.conditions != baseline.conditions);
+        mask.set(
+            FieldMask::CONDITIONS,
+            self.conditions != baseline.conditions,
+        );
         mask.set(FieldMask::SIZE, self.size != baseline.size);
         mask.set(FieldMask::NAME, self.name != baseline.name);
         mask.set(
@@ -169,15 +172,19 @@ impl EntityState {
     ///
     /// Fields absent from the mask keep their baseline values, which is the whole point: the sender
     /// omitted them precisely because they had not changed.
-    pub fn decode(baseline: Option<&EntityState>, r: &mut Reader<'_>) -> Result<EntityState, CodecError> {
+    pub fn decode(
+        baseline: Option<&EntityState>,
+        r: &mut Reader<'_>,
+    ) -> Result<EntityState, CodecError> {
         let mask = FieldMask(r.varint_u32()?);
         let mut state = baseline.cloned().unwrap_or_default();
 
         if mask.has(FieldMask::OBJECT_TYPE) {
-            state.object_type = u16::try_from(r.varint()?).map_err(|_| CodecError::InvalidValue {
-                what: "object type",
-                value: 0,
-            })?;
+            state.object_type =
+                u16::try_from(r.varint()?).map_err(|_| CodecError::InvalidValue {
+                    what: "object type",
+                    value: 0,
+                })?;
         }
         if mask.has(FieldMask::POSITION) {
             match baseline {

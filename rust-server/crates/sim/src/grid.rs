@@ -260,9 +260,11 @@ mod tests {
     #[test]
     fn a_query_finds_what_is_inside_and_nothing_outside() {
         let mut grid = Grid::new(64, 64);
-        let points = [(handle(1), 10.0, 10.0),
+        let points = [
+            (handle(1), 10.0, 10.0),
             (handle(2), 12.0, 10.0),
-            (handle(3), 30.0, 30.0)];
+            (handle(3), 30.0, 30.0),
+        ];
         grid.rebuild(points.iter().copied());
 
         let mut out = Vec::new();

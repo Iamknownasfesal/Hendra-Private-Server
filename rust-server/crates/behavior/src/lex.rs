@@ -208,7 +208,8 @@ pub fn tokenize(source: &str) -> Result<Vec<Spanned>, LexError> {
                 at += 1;
                 column += 1;
             }
-            while at < characters.len() && (characters[at].is_ascii_digit() || characters[at] == '.')
+            while at < characters.len()
+                && (characters[at].is_ascii_digit() || characters[at] == '.')
             {
                 text.push(characters[at]);
                 at += 1;

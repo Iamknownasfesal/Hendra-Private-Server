@@ -116,7 +116,13 @@ impl Store {
         confirm(&held_second, &second.items)?;
 
         // Room, counted after each side gives up what it offered.
-        let to_first = place(&held_first, &first.items, second.items.len(), first_slot, last_slot)?;
+        let to_first = place(
+            &held_first,
+            &first.items,
+            second.items.len(),
+            first_slot,
+            last_slot,
+        )?;
         let to_second = place(
             &held_second,
             &second.items,
@@ -213,7 +219,9 @@ fn place(
         .collect();
 
     if free.len() < incoming {
-        return Err(StoreError::Refused("there is not enough room for that trade"));
+        return Err(StoreError::Refused(
+            "there is not enough room for that trade",
+        ));
     }
     Ok(free)
 }

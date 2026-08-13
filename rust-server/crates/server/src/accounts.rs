@@ -1,14 +1,13 @@
 //! Turning a session token into a character.
 //!
-//! # What the token is, for now
+//! # What the token is
 //!
-//! The design is that the app server authenticates over HTTPS and mints a short-lived token, and
-//! the game socket only ever carries that token. The app server does not exist yet, so this treats
-//! the token as an account name and creates the account if it is new.
+//! The app server authenticates over HTTPS and mints a short-lived signed token. This checks the
+//! signature and reads the account out of it. No password ever reaches the game socket, and this
+//! process cannot mint a token — it holds the key only to verify.
 //!
-//! That is deliberately obvious rather than quietly convenient: it is one function, it is named,
-//! and it is the only thing that has to change when real authentication lands. A server run this
-//! way is a development server, and it says so at startup.
+//! An expired or forged token is refused here rather than anywhere later, so nothing downstream
+//! has to wonder whether the account id it is holding was vouched for.
 
 use hendra_content::{Catalog, ObjectType};
 use hendra_store::{Account, Character, Store, StoreError};
@@ -49,6 +48,9 @@ pub enum LoginError {
     #[error("the token was empty")]
     NoToken,
 
+    #[error("the token is not valid: {0}")]
+    BadToken(hendra_auth::TokenError),
+
     #[error("this account is banned")]
     Banned,
 
@@ -56,13 +58,15 @@ pub enum LoginError {
     Store(#[from] StoreError),
 }
 
-/// Finds or creates the account a token names, and the character to play.
+/// Checks a token and finds the character to play.
 ///
-/// `character_id` picks an existing character; zero means "any living one, or a new one".
+/// `character_id` picks an existing character; zero means "any living one, or a new one". A token
+/// naming a character takes precedence, because that is the one the player chose on the way in.
 pub async fn log_in(
     store: &Store,
     catalog: &Catalog,
     kit: &StartingKit<'_>,
+    key: &hendra_auth::TokenKey,
     token: &str,
     character_id: i64,
 ) -> Result<Session, LoginError> {
@@ -70,15 +74,21 @@ pub async fn log_in(
         return Err(LoginError::NoToken);
     }
 
-    let account = match store.account_by_name(token).await {
-        Ok(account) => account,
-        Err(StoreError::NoSuchAccount(_)) => store.create_account(token).await?,
-        Err(err) => return Err(err.into()),
-    };
+    let claims =
+        hendra_auth::verify(key, token.trim(), hendra_auth::now()).map_err(LoginError::BadToken)?;
 
+    let account = store.account(claims.account_id).await?;
     if account.banned {
         return Err(LoginError::Banned);
     }
+
+    // The token may name a character, which beats whatever the client asked for separately: one is
+    // signed and the other is not.
+    let character_id = if claims.character_id > 0 {
+        claims.character_id
+    } else {
+        character_id
+    };
 
     // A named character, if it belongs to this account. A client naming someone else's is answered
     // as though it named nothing, rather than told which of the two it got wrong.
@@ -121,7 +131,10 @@ async fn create_character(
         // Anything the catalog does not have is skipped rather than fatal: a half-converted content
         // directory should still let someone play.
         let Some(object_type) = catalog.type_of(name) else {
-            tracing::warn!(item = name, "starting kit names an item the catalog does not have");
+            tracing::warn!(
+                item = name,
+                "starting kit names an item the catalog does not have"
+            );
             continue;
         };
 
@@ -174,7 +187,12 @@ fn equipment_slot_for(slot_type: i32) -> Option<i16> {
 }
 
 /// Writes back what a character became.
-pub async fn save(store: &Store, character: &Character, hp: i32, mp: i32) -> Result<(), StoreError> {
+pub async fn save(
+    store: &Store,
+    character: &Character,
+    hp: i32,
+    mp: i32,
+) -> Result<(), StoreError> {
     store
         .save_character(
             character.id,

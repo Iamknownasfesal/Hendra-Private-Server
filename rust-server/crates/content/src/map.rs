@@ -212,28 +212,34 @@ impl Map {
     /// This is what a world uses to populate itself, and it is a filtered scan rather than a stored
     /// list because the dictionary already tells us which entries have objects.
     pub fn objects(&self) -> impl Iterator<Item = (u32, u32, &Composition)> {
-        self.grid.iter().enumerate().filter_map(move |(at, &index)| {
-            let square = self.dictionary.get(index as usize)?;
-            if !square.has_object() {
-                return None;
-            }
-            let x = (at % self.width as usize) as u32;
-            let y = (at / self.width as usize) as u32;
-            Some((x, y, square))
-        })
+        self.grid
+            .iter()
+            .enumerate()
+            .filter_map(move |(at, &index)| {
+                let square = self.dictionary.get(index as usize)?;
+                if !square.has_object() {
+                    return None;
+                }
+                let x = (at % self.width as usize) as u32;
+                let y = (at / self.width as usize) as u32;
+                Some((x, y, square))
+            })
     }
 
     /// Every square carrying a region marker.
     pub fn regions(&self) -> impl Iterator<Item = (u32, u32, Region)> {
-        self.grid.iter().enumerate().filter_map(move |(at, &index)| {
-            let square = self.dictionary.get(index as usize)?;
-            if square.region == Region::None {
-                return None;
-            }
-            let x = (at % self.width as usize) as u32;
-            let y = (at / self.width as usize) as u32;
-            Some((x, y, square.region))
-        })
+        self.grid
+            .iter()
+            .enumerate()
+            .filter_map(move |(at, &index)| {
+                let square = self.dictionary.get(index as usize)?;
+                if square.region == Region::None {
+                    return None;
+                }
+                let x = (at % self.width as usize) as u32;
+                let y = (at / self.width as usize) as u32;
+                Some((x, y, square.region))
+            })
     }
 
     // -- format --------------------------------------------------------------------------------
@@ -519,7 +525,9 @@ mod tests {
     #[test]
     fn a_foreign_file_is_named_rather_than_misparsed() {
         // The legacy .wmap started with a bare version byte, so any file at all began to parse.
-        let legacy = [0x01u8, 0x78, 0x9c, 0x00, 0x00, 0x00, 0x00, 0x00, 0, 0, 0, 0, 0, 0, 0, 0];
+        let legacy = [
+            0x01u8, 0x78, 0x9c, 0x00, 0x00, 0x00, 0x00, 0x00, 0, 0, 0, 0, 0, 0, 0, 0,
+        ];
         assert!(matches!(
             Map::read(&legacy),
             Err(MapError::WrongMagic { .. })

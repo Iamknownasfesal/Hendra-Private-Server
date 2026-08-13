@@ -1,0 +1,17 @@
+[package]
+name = "hendra-auth"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# Both the app server, which mints tokens, and the game server, which checks them, need this. It is
+# a crate of its own so neither has to depend on the other.
+
+[dependencies]
+argon2 = "0.5"
+hmac = "0.12"
+sha2 = "0.10"
+base64 = "0.23"
+subtle = "2"
+thiserror.workspace = true
+rand_core = { version = "0.6", features = ["getrandom"] }

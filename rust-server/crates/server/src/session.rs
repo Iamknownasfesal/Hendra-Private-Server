@@ -40,8 +40,8 @@ use hendra_net::message::{
     ClientMessage, ContainerId, PROTOCOL_VERSION, RejectReason, ServerMessage, SlotLocation,
 };
 use hendra_net::{Delivery, EntityId, Reader, Writer};
-use hendra_store::{Location, Store};
 use hendra_sim::Handle;
+use hendra_store::{Location, Store};
 use hendra_transport::{Link, Received};
 
 use crate::world_task::{ToWorld, WorldHandle};
@@ -62,6 +62,9 @@ pub struct Context {
     pub store: Store,
     pub catalog: Arc<hendra_content::Catalog>,
     pub kit: crate::accounts::StartingKitOwned,
+
+    /// Verifies session tokens. This process cannot mint one.
+    pub key: hendra_auth::TokenKey,
 }
 
 /// Turns a wire slot into a durable one.
@@ -227,7 +230,11 @@ async fn handshake(
 
     if protocol != PROTOCOL_VERSION {
         refuse(link, RejectReason::VersionMismatch).await;
-        tracing::info!(protocol, expected = PROTOCOL_VERSION, "refused: wrong version");
+        tracing::info!(
+            protocol,
+            expected = PROTOCOL_VERSION,
+            "refused: wrong version"
+        );
         return None;
     }
 
@@ -242,6 +249,7 @@ async fn handshake(
         &context.store,
         &context.catalog,
         &kit,
+        &context.key,
         token,
         character as i64,
     )
@@ -252,7 +260,8 @@ async fn handshake(
             refuse(link, RejectReason::Banned).await;
             return None;
         }
-        Err(crate::accounts::LoginError::NoToken) => {
+        Err(crate::accounts::LoginError::NoToken)
+        | Err(crate::accounts::LoginError::BadToken(_)) => {
             refuse(link, RejectReason::BadToken).await;
             return None;
         }
@@ -348,8 +357,8 @@ async fn move_item(
     // The vault is a place. Reaching into it from a dungeon would make the room decoration, and
     // the check belongs here rather than in the client, which is not in a position to be trusted
     // about where it is standing.
-    let touches_vault = matches!(from, SlotLocation::Vault { .. })
-        || matches!(to, SlotLocation::Vault { .. });
+    let touches_vault =
+        matches!(from, SlotLocation::Vault { .. }) || matches!(to, SlotLocation::Vault { .. });
     if touches_vault && placement.world.name.as_ref() != "Vault" {
         say(link, "you are not at your vault").await;
         return;
@@ -373,11 +382,7 @@ async fn move_item(
         }
     };
 
-    match context
-        .store
-        .move_item(source, destination, expected)
-        .await
-    {
+    match context.store.move_item(source, destination, expected).await {
         Ok(_) => {
             send_containers(link, &context.store, player).await;
             if touches_vault {

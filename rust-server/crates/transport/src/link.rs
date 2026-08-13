@@ -90,13 +90,14 @@ impl LinkSender {
     pub fn try_send(&self, delivery: Delivery, payload: &[u8]) -> Result<(), TransportError> {
         match delivery {
             Delivery::Datagram => send_datagram(&self.connection, payload),
-            Delivery::Stream => self
-                .outbound
-                .try_send(payload.to_vec())
-                .map_err(|source| match source {
-                    mpsc::error::TrySendError::Full(_) => TransportError::Backlogged,
-                    mpsc::error::TrySendError::Closed(_) => TransportError::Closed,
-                }),
+            Delivery::Stream => {
+                self.outbound
+                    .try_send(payload.to_vec())
+                    .map_err(|source| match source {
+                        mpsc::error::TrySendError::Full(_) => TransportError::Backlogged,
+                        mpsc::error::TrySendError::Closed(_) => TransportError::Closed,
+                    })
+            }
         }
     }
 
@@ -254,13 +255,14 @@ impl Link {
     pub fn try_send(&self, delivery: Delivery, payload: &[u8]) -> Result<(), TransportError> {
         match delivery {
             Delivery::Datagram => self.send_datagram(payload),
-            Delivery::Stream => self
-                .outbound
-                .try_send(payload.to_vec())
-                .map_err(|source| match source {
-                    mpsc::error::TrySendError::Full(_) => TransportError::Backlogged,
-                    mpsc::error::TrySendError::Closed(_) => TransportError::Closed,
-                }),
+            Delivery::Stream => {
+                self.outbound
+                    .try_send(payload.to_vec())
+                    .map_err(|source| match source {
+                        mpsc::error::TrySendError::Full(_) => TransportError::Backlogged,
+                        mpsc::error::TrySendError::Closed(_) => TransportError::Closed,
+                    })
+            }
         }
     }
 

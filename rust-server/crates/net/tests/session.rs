@@ -121,7 +121,10 @@ impl Client {
         };
 
         // Datagrams reorder, so a snapshot older than what we already hold is stale on arrival.
-        if self.newest.is_some_and(|newest| !header.tick.is_newer_than(newest)) {
+        if self
+            .newest
+            .is_some_and(|newest| !header.tick.is_newer_than(newest))
+        {
             return false;
         }
 
@@ -183,15 +186,17 @@ fn settle(server: &mut Server, client: &mut Client) {
 
 fn assert_converged(server: &Server, client: &Client) {
     for (id, truth) in server.world.iter() {
-        let seen = client.sees(id).unwrap_or_else(|| panic!("{id:?} unknown to client"));
-        assert_eq!(
-            quantize(seen.x),
-            quantize(truth.x),
-            "{id:?} drifted on x"
-        );
+        let seen = client
+            .sees(id)
+            .unwrap_or_else(|| panic!("{id:?} unknown to client"));
+        assert_eq!(quantize(seen.x), quantize(truth.x), "{id:?} drifted on x");
         assert_eq!(seen.hp, truth.hp, "{id:?} drifted on hp");
     }
-    assert_eq!(client.world.len(), server.world.len(), "entity count differs");
+    assert_eq!(
+        client.world.len(),
+        server.world.len(),
+        "entity count differs"
+    );
 }
 
 #[test]
@@ -306,7 +311,10 @@ fn only_the_first_snapshot_needs_the_stream() {
     let mut server = Server::new(world_of(30));
     let mut client = Client::default();
 
-    assert_eq!(exchange_on(&mut server, &mut client, true), Delivery::Stream);
+    assert_eq!(
+        exchange_on(&mut server, &mut client, true),
+        Delivery::Stream
+    );
 
     for _ in 0..50 {
         assert_eq!(
@@ -359,7 +367,11 @@ fn a_gap_longer_than_the_history_falls_back_to_a_full_snapshot() {
     }
 
     let (packet, delivery) = server.snapshot(client.ack());
-    assert_eq!(delivery, Delivery::Stream, "a full snapshot must be reliable");
+    assert_eq!(
+        delivery,
+        Delivery::Stream,
+        "a full snapshot must be reliable"
+    );
     assert!(
         server.history.full_sends() > before,
         "the server should have counted a fallback"
@@ -440,7 +452,10 @@ fn sustained_loss_never_desynchronises() {
         server.advance(0.0625);
     }
 
-    assert!(delivered > 50, "the test should have delivered most packets");
+    assert!(
+        delivered > 50,
+        "the test should have delivered most packets"
+    );
 
     settle(&mut server, &mut client);
     assert_converged(&server, &client);

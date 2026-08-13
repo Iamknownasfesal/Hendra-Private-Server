@@ -468,8 +468,7 @@ mod tests {
     #[test]
     fn a_projectile_strikes_an_enemy_in_its_path() {
         let catalog = catalog();
-        let (entities, grid, terrain, handles) =
-            scene(&catalog, vec![enemy(0x502, 6.0, 5.0, 200)]);
+        let (entities, grid, terrain, handles) = scene(&catalog, vec![enemy(0x502, 6.0, 5.0, 200)]);
 
         let mut projectiles = Projectiles::new();
         projectiles
@@ -485,7 +484,10 @@ mod tests {
         assert_eq!(hits[0].damage, 90);
         assert!(!hits[0].fatal);
 
-        assert!(projectiles.is_empty(), "a single-hit bullet stops on impact");
+        assert!(
+            projectiles.is_empty(),
+            "a single-hit bullet stops on impact"
+        );
     }
 
     #[test]
@@ -504,7 +506,11 @@ mod tests {
         let mut hits = Vec::new();
         projectiles.advance(&entities, &grid, &terrain, &catalog, 50, &mut hits);
 
-        assert_eq!(hits.len(), 1, "it crossed the target and must have struck it");
+        assert_eq!(
+            hits.len(),
+            1,
+            "it crossed the target and must have struck it"
+        );
     }
 
     #[test]
@@ -518,12 +524,24 @@ mod tests {
         grid.rebuild(vec![(shooter, 5.0, 5.0)]);
 
         let mut projectiles = Projectiles::new();
-        projectiles.fire(bullet(shooter, 5.0, 5.0, 0.0, 100)).unwrap();
+        projectiles
+            .fire(bullet(shooter, 5.0, 5.0, 0.0, 100))
+            .unwrap();
 
         let mut hits = Vec::new();
-        projectiles.advance(&entities, &grid, &terrain(&catalog), &catalog, 50, &mut hits);
+        projectiles.advance(
+            &entities,
+            &grid,
+            &terrain(&catalog),
+            &catalog,
+            50,
+            &mut hits,
+        );
 
-        assert!(hits.is_empty(), "a shot must not strike the one who fired it");
+        assert!(
+            hits.is_empty(),
+            "a shot must not strike the one who fired it"
+        );
     }
 
     #[test]
@@ -672,7 +690,10 @@ mod tests {
         projectiles.advance(&entities, &grid, &terrain, &catalog, 100, &mut hits);
 
         assert_eq!(hits.len(), 1);
-        assert_eq!(hits[0].damage, 15, "1000 defence, and the floor still applies");
+        assert_eq!(
+            hits[0].damage, 15,
+            "1000 defence, and the floor still applies"
+        );
     }
 
     #[test]
@@ -695,7 +716,10 @@ mod tests {
 
         assert_eq!(first.index(), second.index(), "the slot was reused");
         assert_ne!(first, second, "but the handle was not");
-        assert!(projectiles.get(first).is_none(), "the stale handle must miss");
+        assert!(
+            projectiles.get(first).is_none(),
+            "the stale handle must miss"
+        );
         assert!(projectiles.get(second).is_some());
 
         let mut hits = Vec::new();
@@ -716,9 +740,19 @@ mod tests {
             .unwrap();
 
         let mut hits = Vec::new();
-        projectiles.advance(&entities, &grid, &terrain(&catalog), &catalog, 100, &mut hits);
+        projectiles.advance(
+            &entities,
+            &grid,
+            &terrain(&catalog),
+            &catalog,
+            100,
+            &mut hits,
+        );
 
-        assert!(hits.is_empty(), "something already at zero cannot be hit again");
+        assert!(
+            hits.is_empty(),
+            "something already at zero cannot be hit again"
+        );
     }
 
     #[test]
@@ -730,13 +764,18 @@ mod tests {
             .unwrap();
 
         let mut projectiles = Projectiles::new();
-        projectiles.fire(bullet(shooter, 5.0, 5.0, 0.0, 100)).unwrap();
+        projectiles
+            .fire(bullet(shooter, 5.0, 5.0, 0.0, 100))
+            .unwrap();
         assert_eq!(projectiles.len(), 1);
 
         entities.remove(shooter);
         projectiles.drop_orphans(&entities);
 
-        assert!(projectiles.is_empty(), "the shooter left; the shot goes with them");
+        assert!(
+            projectiles.is_empty(),
+            "the shooter left; the shot goes with them"
+        );
         let _ = catalog;
     }
 

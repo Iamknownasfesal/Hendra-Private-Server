@@ -232,11 +232,17 @@ pub enum ClientMessage<'a> {
 
     Input(Input),
 
-    Chat { text: &'a str },
+    Chat {
+        text: &'a str,
+    },
 
-    UsePortal { entity: EntityId },
+    UsePortal {
+        entity: EntityId,
+    },
 
-    Pong { serial: u32 },
+    Pong {
+        serial: u32,
+    },
 
     /// A request to fire, carrying only where the player is aiming.
     ///
@@ -244,7 +250,10 @@ pub enum ClientMessage<'a> {
     /// theirs to decide, and there is nothing to check it against. Everything downstream is the
     /// server's: whether the weapon is off cooldown, where the shot travels, what it strikes, and
     /// what that costs. Notably there is no hit report anywhere in this protocol.
-    Shoot { angle: f32, client_time_ms: u32 },
+    Shoot {
+        angle: f32,
+        client_time_ms: u32,
+    },
 
     /// A request to move an item.
     ///
@@ -402,7 +411,9 @@ pub enum ServerMessage<'a> {
     },
 
     /// A request was refused, with something to show the player.
-    Refused { message: &'a str },
+    Refused {
+        message: &'a str,
+    },
 }
 
 impl ServerMessage<'_> {
@@ -508,11 +519,10 @@ impl ServerMessage<'_> {
             },
             server_id::CONTAINER => {
                 let code = r.u8()?;
-                let container =
-                    ContainerId::from_code(code).ok_or(CodecError::InvalidValue {
-                        what: "container",
-                        value: code as u64,
-                    })?;
+                let container = ContainerId::from_code(code).ok_or(CodecError::InvalidValue {
+                    what: "container",
+                    value: code as u64,
+                })?;
 
                 // Decoded into the reader's own buffer would need an allocation, and this borrows
                 // like everything else, so the caller reads the pairs itself.
@@ -555,7 +565,11 @@ mod tests {
         let mut reader = Reader::new(&buf);
         let decoded = ClientMessage::decode(&mut reader).unwrap();
         assert_eq!(decoded, message);
-        assert!(reader.is_empty(), "decoder left {} bytes", reader.remaining());
+        assert!(
+            reader.is_empty(),
+            "decoder left {} bytes",
+            reader.remaining()
+        );
         buf
     }
 

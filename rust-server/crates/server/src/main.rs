@@ -70,7 +70,9 @@ fn parse_options() -> Options {
         match flag.as_str() {
             "--port" => options.port = args.next().and_then(|v| v.parse().ok()).unwrap_or(2050),
             "--map" => options.map = args.next().unwrap_or(options.map),
-            "--content" => options.content = args.next().map(PathBuf::from).unwrap_or(options.content),
+            "--content" => {
+                options.content = args.next().map(PathBuf::from).unwrap_or(options.content)
+            }
             "--worlds" => options.worlds = args.next().map(PathBuf::from).unwrap_or(options.worlds),
             "--cert" => cert = args.next().map(PathBuf::from),
             "--key" => key = args.next().map(PathBuf::from),
@@ -136,10 +138,25 @@ async fn main() {
         }
     };
 
-    tracing::warn!(
-        "authentication is not implemented: a session token is taken as an account name and the \
-         account is created if new. This is a development server."
-    );
+    // Shared with the app server, which mints the tokens this verifies. Refusing to invent one is
+    // deliberate: a generated default works until the two processes restart separately, at which
+    // point every token silently stops verifying and nobody can log in for no visible reason.
+    let key = match std::env::var("HENDRA_TOKEN_KEY") {
+        Ok(secret) => match hendra_auth::TokenKey::new(secret.into_bytes()) {
+            Ok(key) => key,
+            Err(err) => {
+                tracing::error!(%err, "HENDRA_TOKEN_KEY is not usable");
+                std::process::exit(1);
+            }
+        },
+        Err(_) => {
+            tracing::error!(
+                "HENDRA_TOKEN_KEY is not set. It must be at least 32 bytes and identical to the \
+                 app server's, which is what mints the tokens this checks."
+            );
+            std::process::exit(1);
+        }
+    };
 
     let registry = Arc::new(worlds::Worlds::load(
         &options.worlds,
@@ -239,6 +256,7 @@ async fn main() {
             items: STARTING_KIT.iter().map(|name| name.to_string()).collect(),
             max_hp: 800,
         },
+        key,
     });
 
     tracing::info!(

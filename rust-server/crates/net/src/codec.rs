@@ -348,7 +348,8 @@ impl<'a> Reader<'a> {
     }
 
     pub fn position_value(&mut self) -> Result<f32> {
-        let quantized = i32::try_from(self.varint_signed()?).map_err(|_| CodecError::VarintOverflow)?;
+        let quantized =
+            i32::try_from(self.varint_signed()?).map_err(|_| CodecError::VarintOverflow)?;
         Ok(dequantize(quantized))
     }
 
@@ -501,7 +502,10 @@ mod tests {
         let step = 1.0 / POSITION_SCALE;
         for raw in [0.0f32, 0.1, 1.7, 42.123_456, 1023.9, -17.3] {
             let error = (dequantize(quantize(raw)) - raw).abs();
-            assert!(error <= step / 2.0 + f32::EPSILON, "{raw} drifted by {error}");
+            assert!(
+                error <= step / 2.0 + f32::EPSILON,
+                "{raw} drifted by {error}"
+            );
         }
     }
 
@@ -565,7 +569,9 @@ mod tests {
     #[test]
     fn an_overlong_varint_does_not_silently_wrap() {
         // Eleven continuation bytes cannot encode a u64 no matter what they hold.
-        let bytes = vec![0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01];
+        let bytes = vec![
+            0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01,
+        ];
         let mut reader = Reader::new(&bytes);
         assert!(reader.varint().is_err());
     }
@@ -621,11 +627,11 @@ mod tests {
         // A cheap deterministic sweep: every decoder against a range of junk inputs.
         let mut seed = 0x243f_6a88_85a3_08d3u64;
         for _ in 0..2_000 {
-            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let len = (seed % 48) as usize;
-            let junk: Vec<u8> = (0..len)
-                .map(|i| (seed >> (i % 8 * 8)) as u8)
-                .collect();
+            let junk: Vec<u8> = (0..len).map(|i| (seed >> (i % 8 * 8)) as u8).collect();
 
             let mut reader = Reader::new(&junk);
             let _ = reader.varint();

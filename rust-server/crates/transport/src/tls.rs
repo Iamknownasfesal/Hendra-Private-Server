@@ -92,19 +92,21 @@ impl ServerIdentity {
     /// it pairs only with [`Trust::AnyCertificate`], and both carry the same warning.
     pub fn self_signed(names: &[&str]) -> Result<ServerIdentity, TransportError> {
         let names: Vec<String> = names.iter().map(|name| name.to_string()).collect();
-        let generated = rcgen::generate_simple_self_signed(names)
-            .map_err(|source| TransportError::Identity {
+        let generated = rcgen::generate_simple_self_signed(names).map_err(|source| {
+            TransportError::Identity {
                 path: "<generated>".into(),
                 detail: source.to_string(),
-            })?;
+            }
+        })?;
 
         Ok(ServerIdentity {
             chain: vec![CertificateDer::from(generated.cert)],
-            key: PrivateKeyDer::try_from(generated.signing_key.serialize_der())
-                .map_err(|detail| TransportError::Identity {
+            key: PrivateKeyDer::try_from(generated.signing_key.serialize_der()).map_err(
+                |detail| TransportError::Identity {
                     path: "<generated>".into(),
                     detail: detail.to_string(),
-                })?,
+                },
+            )?,
         })
     }
 
@@ -148,12 +150,12 @@ impl Trust {
                     .with_root_certificates(roots)
                     .with_no_client_auth()
             }
-            Trust::AnyCertificate => rustls::ClientConfig::builder_with_protocol_versions(&[
-                &rustls::version::TLS13,
-            ])
-            .dangerous()
-                .with_custom_certificate_verifier(AcceptAnyCertificate::new())
-                .with_no_client_auth(),
+            Trust::AnyCertificate => {
+                rustls::ClientConfig::builder_with_protocol_versions(&[&rustls::version::TLS13])
+                    .dangerous()
+                    .with_custom_certificate_verifier(AcceptAnyCertificate::new())
+                    .with_no_client_auth()
+            }
         };
 
         config.alpn_protocols = vec![ALPN.to_vec()];
@@ -278,8 +280,11 @@ mod tests {
 
     #[test]
     fn a_missing_file_names_the_path_it_could_not_read() {
-        let error = ServerIdentity::from_pem_files("/nonexistent/fullchain.pem", "/nonexistent/privkey.pem")
-            .unwrap_err();
+        let error = ServerIdentity::from_pem_files(
+            "/nonexistent/fullchain.pem",
+            "/nonexistent/privkey.pem",
+        )
+        .unwrap_err();
         assert!(
             error.to_string().contains("fullchain.pem"),
             "the error should name the file: {error}"

@@ -54,7 +54,10 @@ impl Senses {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Action {
     /// Move at this speed, in tiles per second, in this direction.
-    Move { angle: f32, speed: f32 },
+    Move {
+        angle: f32,
+        speed: f32,
+    },
 
     /// Fire a spread of projectiles centred on `angle`.
     Shoot {
@@ -65,10 +68,15 @@ pub enum Action {
         projectile: u8,
     },
 
-    Heal { amount: i32 },
+    Heal {
+        amount: i32,
+    },
 
     /// Ask the world to create children.
-    Spawn { child: String, count: u32 },
+    Spawn {
+        child: String,
+        count: u32,
+    },
 
     /// Remove this entity without it counting as a kill.
     Vanish,
@@ -137,7 +145,9 @@ pub enum Primitive {
     ///
     /// Kept rather than rejected so that one unimplemented behaviour costs that behaviour and not
     /// the whole enemy. The compiler reports it once, by name, at load.
-    Unsupported { name: String },
+    Unsupported {
+        name: String,
+    },
 }
 
 impl Primitive {
@@ -156,16 +166,26 @@ impl Primitive {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Condition {
     /// After this long in the current state.
-    Timed { after_ms: u32 },
+    Timed {
+        after_ms: u32,
+    },
 
-    PlayerWithin { radius: f32 },
-    NoPlayerWithin { radius: f32 },
+    PlayerWithin {
+        radius: f32,
+    },
+    NoPlayerWithin {
+        radius: f32,
+    },
 
     /// Health at or below this fraction of the maximum.
-    HpBelow { fraction: f32 },
+    HpBelow {
+        fraction: f32,
+    },
 
     /// A condition the runtime does not implement. Never fires, and is reported at load.
-    Unsupported { name: String },
+    Unsupported {
+        name: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -212,11 +232,7 @@ pub enum LootEntry {
     Item { name: String, chance: f32 },
 
     /// Anything of a tier and kind.
-    Tier {
-        tier: u8,
-        kind: String,
-        chance: f32,
-    },
+    Tier { tier: u8, kind: String, chance: f32 },
 }
 
 impl Program {

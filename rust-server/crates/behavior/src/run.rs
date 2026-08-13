@@ -477,7 +477,11 @@ mod tests {
         assert_eq!(mind.state_name(&program), "angry");
 
         mind.tick(&program, &alone(), 50, &mut out);
-        assert_eq!(mind.state_name(&program), "idle", "and settles when they leave");
+        assert_eq!(
+            mind.state_name(&program),
+            "idle",
+            "and settles when they leave"
+        );
     }
 
     #[test]
@@ -517,7 +521,10 @@ mod tests {
         let mut out = Vec::new();
 
         mind.tick(&program, &alone(), 50, &mut out);
-        assert!(out.is_empty(), "shooting at nothing is worse than not shooting");
+        assert!(
+            out.is_empty(),
+            "shooting at nothing is worse than not shooting"
+        );
 
         mind.tick(&program, &with_player_at(12.0, 10.0), 200, &mut out);
         assert_eq!(out.len(), 1);
@@ -535,7 +542,10 @@ mod tests {
         assert_eq!(out.len(), 1);
         match &out[0] {
             Action::Shoot { angle, .. } => {
-                assert!((angle - std::f32::consts::FRAC_PI_2).abs() < 1e-5, "90 degrees");
+                assert!(
+                    (angle - std::f32::consts::FRAC_PI_2).abs() < 1e-5,
+                    "90 degrees"
+                );
             }
             other => panic!("expected a shot, got {other:?}"),
         }
@@ -598,7 +608,9 @@ mod tests {
         mind.tick(&program, &with_player_at(20.0, 10.0), 50, &mut out);
         assert_eq!(out.len(), 1);
         match &out[0] {
-            Action::Move { speed, .. } => assert_eq!(*speed, 1.0, "the follow speed, not the wander"),
+            Action::Move { speed, .. } => {
+                assert_eq!(*speed, 1.0, "the follow speed, not the wander")
+            }
             other => panic!("expected a move, got {other:?}"),
         }
 
@@ -648,11 +660,21 @@ mod tests {
         let mut mind = Mind::new(&program, 1);
         let mut out = Vec::new();
 
-        assert_eq!(mind.state_name(&program), "phase1", "entry descends to the leaf");
+        assert_eq!(
+            mind.state_name(&program),
+            "phase1",
+            "entry descends to the leaf"
+        );
 
         mind.tick(&program, &alone(), 50, &mut out);
-        assert!(out.iter().any(|a| matches!(a, Action::Shoot { .. })), "the leaf shoots");
-        assert!(out.iter().any(|a| matches!(a, Action::Move { .. })), "the parent still wanders");
+        assert!(
+            out.iter().any(|a| matches!(a, Action::Shoot { .. })),
+            "the leaf shoots"
+        );
+        assert!(
+            out.iter().any(|a| matches!(a, Action::Move { .. })),
+            "the parent still wanders"
+        );
     }
 
     #[test]
@@ -713,9 +735,8 @@ mod tests {
 
     #[test]
     fn spawning_stops_at_the_limit() {
-        let program = program(
-            r#"enemy "X" { state a { spawn("Slime", max_children: 2, cooldown: 50ms) } }"#,
-        );
+        let program =
+            program(r#"enemy "X" { state a { spawn("Slime", max_children: 2, cooldown: 50ms) } }"#);
         let mut mind = Mind::new(&program, 1);
         let mut out = Vec::new();
 

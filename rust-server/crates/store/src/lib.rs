@@ -20,8 +20,8 @@ pub use model::{Account, Character, CharacterSummary};
 pub use moves::{Location, MoveOutcome, Placed};
 pub use trade::{Offer, TradeOutcome};
 
-use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
+use sqlx::postgres::PgPoolOptions;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {

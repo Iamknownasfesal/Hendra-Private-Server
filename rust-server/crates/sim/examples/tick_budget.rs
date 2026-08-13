@@ -24,7 +24,10 @@ fn main() {
             std::process::exit(1);
         }
     };
-    println!("catalog: {} objects, {} tiles\n", report.objects, report.tiles);
+    println!(
+        "catalog: {} objects, {} tiles\n",
+        report.objects, report.tiles
+    );
 
     let worlds = std::path::PathBuf::from("../Server-Side/XmlDatas/worlds");
     for (file, players) in [
@@ -102,7 +105,8 @@ fn measure(label: &str, map: Map, players: u32, catalog: &Catalog) {
             };
             let (claim_x, claim_y) = (entity.x + drift, entity.y + drift * 0.5);
 
-            if let Some(outcome) = world.resolve_move(*handle, catalog, claim_x, claim_y, elapsed_ms)
+            if let Some(outcome) =
+                world.resolve_move(*handle, catalog, claim_x, claim_y, elapsed_ms)
             {
                 world.place(*handle, outcome);
             }
@@ -139,6 +143,10 @@ fn measure(label: &str, map: Map, players: u32, catalog: &Catalog) {
     println!(
         "  headroom: {:.0}× budget at p99{}\n",
         metrics.budget().as_secs_f64() / metrics.percentile(0.99).as_secs_f64().max(1e-9),
-        if metrics.healthy() { "" } else { "  ** OVER **" }
+        if metrics.healthy() {
+            ""
+        } else {
+            "  ** OVER **"
+        }
     );
 }

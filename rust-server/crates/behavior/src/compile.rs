@@ -142,7 +142,11 @@ fn compile_enemy(enemy: &ast::Enemy, diagnostics: &mut Vec<Diagnostic>) -> Progr
         root: 0,
         slots: slot_base,
         states,
-        loot: enemy.loot.iter().filter_map(|entry| loot(&entry.call)).collect(),
+        loot: enemy
+            .loot
+            .iter()
+            .filter_map(|entry| loot(&entry.call))
+            .collect(),
     }
 }
 
@@ -306,7 +310,10 @@ fn condition(call: &Call, diagnostics: &mut Vec<Diagnostic>) -> Condition {
 fn loot(call: &Call) -> Option<LootEntry> {
     match call.name.as_str() {
         "item" => Some(LootEntry::Item {
-            name: call.argument("name", 0).and_then(Value::as_text)?.to_string(),
+            name: call
+                .argument("name", 0)
+                .and_then(Value::as_text)?
+                .to_string(),
             chance: number(call, "chance", 1, 0.0) as f32,
         }),
         "tier" => Some(LootEntry::Tier {

@@ -53,7 +53,9 @@ impl Parser {
     }
 
     fn advance(&mut self) -> Token {
-        let token = self.tokens[self.at.min(self.tokens.len() - 1)].token.clone();
+        let token = self.tokens[self.at.min(self.tokens.len() - 1)]
+            .token
+            .clone();
         if self.at < self.tokens.len() - 1 {
             self.at += 1;
         }
@@ -415,7 +417,11 @@ mod tests {
         let parsed = parse(HOBBIT_MAGE).unwrap();
         let mage = parsed.get("Hobbit Mage").unwrap();
 
-        let ring1 = mage.root.states().find(|state| state.name == "ring1").unwrap();
+        let ring1 = mage
+            .root
+            .states()
+            .find(|state| state.name == "ring1")
+            .unwrap();
         let shoot = ring1.behaviours().next().unwrap();
 
         assert_eq!(shoot.name, "shoot");
@@ -451,11 +457,18 @@ mod tests {
         let parsed = parse(HOBBIT_MAGE).unwrap();
         let mage = parsed.get("Hobbit Mage").unwrap();
 
-        let idle = mage.root.states().find(|state| state.name == "idle").unwrap();
+        let idle = mage
+            .root
+            .states()
+            .find(|state| state.name == "idle")
+            .unwrap();
         let transition = idle.transitions().next().unwrap();
 
         assert_eq!(transition.condition.name, "player_within");
-        assert_eq!(transition.condition.positional(0), Some(&Value::Number(12.0)));
+        assert_eq!(
+            transition.condition.positional(0),
+            Some(&Value::Number(12.0))
+        );
         assert_eq!(transition.target, "ring1");
     }
 
@@ -491,7 +504,10 @@ mod tests {
         let outcome = parse("enemy \"X\" {\n  state idle\n}");
         match outcome {
             Err(ParseError::Expected { expected, at, .. }) => {
-                assert!(expected.contains('{'), "expected mentions the brace: {expected}");
+                assert!(
+                    expected.contains('{'),
+                    "expected mentions the brace: {expected}"
+                );
                 assert_eq!(at.line, 3, "and points at the line that went wrong");
             }
             other => panic!("expected a specific complaint, got {other:?}"),

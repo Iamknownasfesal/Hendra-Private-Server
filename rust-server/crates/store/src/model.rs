@@ -8,6 +8,10 @@ pub struct Account {
     pub name: String,
     pub vault_chests: i16,
     pub banned: bool,
+
+    /// `None` for an account that predates authentication, which cannot be logged into until it
+    /// sets one.
+    pub password_hash: Option<String>,
 }
 
 /// A character, with everything needed to put it into a world.
@@ -44,19 +48,21 @@ pub struct CharacterSummary {
 impl Store {
     /// Creates an account, or reports that the name is taken.
     pub async fn create_account(&self, name: &str) -> Result<Account> {
-        let row = sqlx::query_as::<_, (i64, String, i16, bool)>(
-            "INSERT INTO account (name) VALUES ($1) RETURNING id, name, vault_chests, banned",
+        let row = sqlx::query_as::<_, (i64, String, i16, bool, Option<String>)>(
+            "INSERT INTO account (name) VALUES ($1)
+             RETURNING id, name, vault_chests, banned, password_hash",
         )
         .bind(name)
         .fetch_one(self.pool())
         .await;
 
         match row {
-            Ok((id, name, vault_chests, banned)) => Ok(Account {
+            Ok((id, name, vault_chests, banned, password_hash)) => Ok(Account {
                 id,
                 name,
                 vault_chests,
                 banned,
+                password_hash,
             }),
             // The unique index is what decides this, not a prior lookup — a check-then-insert has a
             // window between the two in which someone else inserts the same name.
@@ -69,20 +75,53 @@ impl Store {
 
     /// Finds an account by name, ignoring case.
     pub async fn account_by_name(&self, name: &str) -> Result<Account> {
-        let row = sqlx::query_as::<_, (i64, String, i16, bool)>(
-            "SELECT id, name, vault_chests, banned FROM account WHERE lower(name) = lower($1)",
+        let row = sqlx::query_as::<_, (i64, String, i16, bool, Option<String>)>(
+            "SELECT id, name, vault_chests, banned, password_hash
+             FROM account WHERE lower(name) = lower($1)",
         )
         .bind(name)
         .fetch_optional(self.pool())
         .await?;
 
-        row.map(|(id, name, vault_chests, banned)| Account {
+        row.map(|(id, name, vault_chests, banned, password_hash)| Account {
             id,
             name,
             vault_chests,
             banned,
+            password_hash,
         })
         .ok_or_else(|| StoreError::NoSuchAccount(name.to_string()))
+    }
+
+    /// Sets or replaces an account's password hash.
+    pub async fn set_password(&self, account_id: i64, hash: &str) -> Result<()> {
+        sqlx::query(
+            "UPDATE account SET password_hash = $2, password_changed_at = now() WHERE id = $1",
+        )
+        .bind(account_id)
+        .bind(hash)
+        .execute(self.pool())
+        .await?;
+        Ok(())
+    }
+
+    /// An account by id.
+    pub async fn account(&self, id: i64) -> Result<Account> {
+        let row = sqlx::query_as::<_, (i64, String, i16, bool, Option<String>)>(
+            "SELECT id, name, vault_chests, banned, password_hash FROM account WHERE id = $1",
+        )
+        .bind(id)
+        .fetch_optional(self.pool())
+        .await?;
+
+        row.map(|(id, name, vault_chests, banned, password_hash)| Account {
+            id,
+            name,
+            vault_chests,
+            banned,
+            password_hash,
+        })
+        .ok_or_else(|| StoreError::NoSuchAccount(id.to_string()))
     }
 
     /// Creates a character for an account.
@@ -109,7 +148,23 @@ impl Store {
 
     /// Loads a character and its inventory.
     pub async fn character(&self, id: i64) -> Result<Character> {
-        let row = sqlx::query_as::<_, (i64, i64, i32, String, i32, i32, i32, i32, i16, i32, i32, bool)>(
+        let row = sqlx::query_as::<
+            _,
+            (
+                i64,
+                i64,
+                i32,
+                String,
+                i32,
+                i32,
+                i32,
+                i32,
+                i16,
+                i32,
+                i32,
+                bool,
+            ),
+        >(
             "SELECT id, account_id, object_type, name, hp, max_hp, mp, max_mp,
                     level, experience, fame, alive
              FROM character WHERE id = $1",
@@ -155,14 +210,16 @@ impl Store {
 
         Ok(rows
             .into_iter()
-            .map(|(id, object_type, name, level, fame, alive)| CharacterSummary {
-                id,
-                object_type,
-                name,
-                level,
-                fame,
-                alive,
-            })
+            .map(
+                |(id, object_type, name, level, fame, alive)| CharacterSummary {
+                    id,
+                    object_type,
+                    name,
+                    level,
+                    fame,
+                    alive,
+                },
+            )
             .collect())
     }
 

@@ -13,11 +13,11 @@
 
 pub mod catalog;
 pub mod desc;
+pub mod effect;
 pub mod legacy;
 pub mod map;
 pub mod region;
 pub mod world;
-pub mod effect;
 pub mod xml;
 
 pub use catalog::{Catalog, LoadProblem, LoadReport};

@@ -14,8 +14,8 @@ pub mod world;
 
 pub use grid::Grid;
 pub use inventory::{Container, ContainerKind, MoveError, Slot};
-pub use slab::{Handle, MAX_ENTITIES, Slab};
 pub use metrics::TickMetrics;
 pub use projectile::{Hit, Projectile, Projectiles};
+pub use slab::{Handle, MAX_ENTITIES, Slab};
 pub use tiles::Terrain;
 pub use world::{Entity, Kind, MoveOutcome, MoveRefusal, SIGHT_RADIUS, World};

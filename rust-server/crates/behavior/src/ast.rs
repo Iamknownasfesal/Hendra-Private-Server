@@ -134,7 +134,10 @@ pub enum Item {
     State(State),
 
     /// A behaviour that contains others, such as `prioritize`.
-    Group { call: Call, children: Vec<Item> },
+    Group {
+        call: Call,
+        children: Vec<Item>,
+    },
 }
 
 /// A state, which is also the shape of an enemy's root.

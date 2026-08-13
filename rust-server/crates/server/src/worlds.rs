@@ -80,7 +80,9 @@ impl Worlds {
                         .unwrap_or_default();
                     definitions.insert(definition.name.clone(), (definition, stem));
                 }
-                Err(err) => tracing::warn!(path = %path.display(), %err, "skipping world definition"),
+                Err(err) => {
+                    tracing::warn!(path = %path.display(), %err, "skipping world definition")
+                }
             }
         }
 

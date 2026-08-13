@@ -139,9 +139,9 @@ impl Container {
 
     /// The first empty slot that would accept an item.
     pub fn room_for(&self, item: ObjectType, catalog: &Catalog) -> Option<usize> {
-        self.slots.iter().position(|slot| {
-            slot.is_empty() && slot_accepts(slot, item, catalog)
-        })
+        self.slots
+            .iter()
+            .position(|slot| slot.is_empty() && slot_accepts(slot, item, catalog))
     }
 
     /// Puts an item in the first slot that will take it.
@@ -388,7 +388,11 @@ mod tests {
         assert_eq!(equipment.item(0), WAND);
 
         let outcome = swap(&mut backpack, 1, &mut equipment, 0, &catalog);
-        assert_eq!(outcome, Err(MoveError::WrongSlotType), "a robe is not a wand");
+        assert_eq!(
+            outcome,
+            Err(MoveError::WrongSlotType),
+            "a robe is not a wand"
+        );
 
         swap(&mut backpack, 1, &mut equipment, 1, &catalog).expect("a robe in the armour slot");
         assert_eq!(equipment.item(1), ROBE);
@@ -475,7 +479,11 @@ mod tests {
         let catalog = catalog();
         let mut equipment = Container::equipment(&[14, 8, 8]);
 
-        assert_eq!(equipment.insert(WAND, &catalog), Some(1), "the first wand slot");
+        assert_eq!(
+            equipment.insert(WAND, &catalog),
+            Some(1),
+            "the first wand slot"
+        );
         assert_eq!(equipment.insert(WAND, &catalog), Some(2), "then the next");
         assert_eq!(equipment.insert(WAND, &catalog), None, "and then no room");
 

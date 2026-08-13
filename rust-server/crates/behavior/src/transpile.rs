@@ -161,7 +161,8 @@ fn emit_enemy(enemy: &CsEnemy, report: &mut Report) -> Result<String, String> {
             CsValue::Call(call) if call.name == "State" => {
                 // The root State's contents become the enemy's body directly.
                 for item in &call.arguments {
-                    if let Some(text) = emit_item(&item.value, 1, report, &enemy.name, &mut naming) {
+                    if let Some(text) = emit_item(&item.value, 1, report, &enemy.name, &mut naming)
+                    {
                         out.push_str(&text);
                         wrote_body = true;
                     }
@@ -506,7 +507,8 @@ mod tests {
         assert_eq!(report.enemies, 1);
         assert!(report.skipped.is_empty(), "{:?}", report.skipped);
 
-        let parsed = parse(&text).unwrap_or_else(|err| panic!("output should parse: {err}\n{text}"));
+        let parsed =
+            parse(&text).unwrap_or_else(|err| panic!("output should parse: {err}\n{text}"));
         let enemy = parsed.get("Hobbit Mage").expect("by name");
 
         assert_eq!(enemy.root.states().count(), 3);
@@ -558,7 +560,10 @@ mod tests {
         // HpLessTransition tests a fraction, so `hp_below` says what it does.
         assert_eq!(transition_name("HpLessTransition"), "hp_below");
         assert_eq!(transition_name("PlayerWithinTransition"), "player_within");
-        assert_eq!(transition_name("EntityNotExistsTransition"), "entity_not_exists");
+        assert_eq!(
+            transition_name("EntityNotExistsTransition"),
+            "entity_not_exists"
+        );
     }
 
     #[test]
@@ -581,8 +586,16 @@ mod tests {
         let parsed = parse(&text).expect("should parse");
         let enemy = parsed.get("X").unwrap();
 
-        assert_eq!(enemy.root.states().count(), 1, "only the named one is a state");
-        assert_eq!(enemy.root.behaviours().count(), 1, "the anonymous one's contents moved up");
+        assert_eq!(
+            enemy.root.states().count(),
+            1,
+            "only the named one is a state"
+        );
+        assert_eq!(
+            enemy.root.behaviours().count(),
+            1,
+            "the anonymous one's contents moved up"
+        );
     }
 
     #[test]
@@ -591,7 +604,10 @@ mod tests {
         let mut report = Report::default();
         let text = transpile(source, &mut report);
 
-        assert!(!text.contains("null"), "null should not reach the output: {text}");
+        assert!(
+            !text.contains("null"),
+            "null should not reach the output: {text}"
+        );
         assert!(parse(&text).is_ok());
     }
 

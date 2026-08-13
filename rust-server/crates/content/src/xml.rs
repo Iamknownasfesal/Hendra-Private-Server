@@ -74,11 +74,7 @@ impl Node {
                     // The sentinel root must survive an unbalanced closing tag, hence `len() > 1`.
                     if stack.len() > 1 {
                         let done = stack.pop().expect("checked len");
-                        stack
-                            .last_mut()
-                            .expect("checked len")
-                            .children
-                            .push(done);
+                        stack.last_mut().expect("checked len").children.push(done);
                     }
                 }
 
@@ -114,11 +110,7 @@ impl Node {
         // Anything left open at EOF still belongs to the tree; unwind it rather than drop it.
         while stack.len() > 1 {
             let done = stack.pop().expect("checked len");
-            stack
-                .last_mut()
-                .expect("checked len")
-                .children
-                .push(done);
+            stack.last_mut().expect("checked len").children.push(done);
         }
 
         let mut sentinel = stack.pop().expect("root sentinel is never popped");
