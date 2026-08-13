@@ -21,7 +21,7 @@ mod trade;
 
 pub use guild::{Guild, Member, Rank};
 pub use market::{Listing, MarketPurchase};
-pub use model::{Account, Character, CharacterSummary, Currency};
+pub use model::{Account, Admin, Character, CharacterSummary, Currency};
 pub use moves::{Location, MoveOutcome, Placed, Purchase};
 pub use social::{Friend, Message};
 pub use trade::{Offer, TradeOutcome};

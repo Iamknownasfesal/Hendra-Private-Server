@@ -6,7 +6,7 @@ deliberately excluded and left until last.
 Phases 0–5 are done: workspace, content, protocol, transport, simulation, behaviour language,
 persistence, authentication. What follows is phases 6–11.
 
-**Where we are:** ~89% of the old server by subsystem. 620 tests.
+**Where we are:** ~91% of the old server by subsystem. 623 tests.
 
 **Sizing** is relative, not calendar: **S** is an afternoon, **M** is a day or two, **L** is
 several days, **XL** is a week or more.
@@ -202,7 +202,7 @@ Independent of everything above and blocks nothing.
 
 - [x] say and tell scoping. Guild scoping waits on 9.2, and global waits on somewhere to put it
 - [x] Rate limiting on a sliding window, and a mute read fresh so it takes effect without a reconnect
-- [ ] Moderation commands
+- [x] `/mute`, `/unmute`, `/ban` and `/unban`, on two ranks so silencing and removing are separate powers. A player without the rank is told the command does not exist rather than that they may not use it
 
 ### 9.2 Guilds — **L**
 

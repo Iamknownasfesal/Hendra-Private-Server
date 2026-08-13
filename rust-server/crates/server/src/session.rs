@@ -815,6 +815,94 @@ async fn save_progress(
     .await
 }
 
+/// Carries out a moderation command, or explains why not.
+///
+/// The rank is read fresh rather than taken from the session, so raising or lowering somebody takes
+/// effect without waiting for them to reconnect, exactly as a mute does.
+async fn moderate(
+    link: &mut Link,
+    context: &Context,
+    player: &crate::accounts::Session,
+    command: &str,
+    rest: &str,
+) {
+    use hendra_store::Admin;
+
+    let rank = match context.store.account(player.account.id).await {
+        Ok(account) => Admin::from_number(account.admin_rank),
+        Err(_) => Admin::None,
+    };
+
+    // A player who is not a moderator is told the command does not exist rather than that they may
+    // not use it, so the command list is not something anyone can enumerate by trying.
+    let unknown = format!("there is no /{command}");
+
+    let (name, tail) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
+    let name = name.trim();
+
+    match command {
+        "mute" | "unmute" | "ban" | "unban" if rank == Admin::None => say(link, &unknown).await,
+
+        "mute" | "unmute" | "ban" | "unban" if name.is_empty() => {
+            say(link, &format!("/{command} needs a name")).await;
+        }
+
+        "mute" | "unmute" => {
+            if !rank.may_mute() {
+                say(link, &unknown).await;
+                return;
+            }
+
+            let Ok(target) = context.store.account_by_name(name).await else {
+                say(link, "no such player").await;
+                return;
+            };
+
+            // Minutes, defaulting to an hour. A mute with no end is a ban that nobody remembers
+            // applying, so this one always has one.
+            let until = (command == "mute").then(|| {
+                let minutes = tail
+                    .trim()
+                    .parse::<i64>()
+                    .unwrap_or(60)
+                    .clamp(1, 60 * 24 * 30);
+                chrono::Utc::now() + chrono::Duration::minutes(minutes)
+            });
+
+            match context.store.mute(target.id, until).await {
+                Ok(()) => say(link, &format!("{} is {command}d", target.name)).await,
+                Err(_) => say(link, "that could not be done").await,
+            }
+        }
+
+        "ban" | "unban" => {
+            if !rank.may_ban() {
+                say(link, &unknown).await;
+                return;
+            }
+
+            let Ok(target) = context.store.account_by_name(name).await else {
+                say(link, "no such player").await;
+                return;
+            };
+
+            // A moderator cannot ban somebody who outranks them, which is what stops one
+            // disagreement removing everyone above it.
+            if Admin::from_number(target.admin_rank) >= rank {
+                say(link, "you cannot do that to them").await;
+                return;
+            }
+
+            match context.store.set_banned(target.id, command == "ban").await {
+                Ok(()) => say(link, &format!("{} is {command}ned", target.name)).await,
+                Err(_) => say(link, "that could not be done").await,
+            }
+        }
+
+        _ => say(link, &unknown).await,
+    }
+}
+
 /// Tells a client what the ground is.
 ///
 /// Sent in strips, one row at a time, because a map is millions of squares and one message holding
@@ -904,8 +992,8 @@ async fn say_something(
                 .await;
         }
 
-        Said::Command { name, .. } => {
-            say(link, &format!("there is no /{name}")).await;
+        Said::Command { name, rest } => {
+            moderate(link, context, player, &name, &rest).await;
         }
 
         Said::Nothing => {}

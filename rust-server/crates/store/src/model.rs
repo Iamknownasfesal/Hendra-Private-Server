@@ -21,6 +21,41 @@ pub struct Account {
 
     /// When the account may speak again, or `None` if it always may.
     pub muted_until: Option<chrono::DateTime<chrono::Utc>>,
+
+    /// What this account may do to others. Zero is an ordinary player.
+    pub admin_rank: i16,
+}
+
+/// What a moderator may do.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(i16)]
+pub enum Admin {
+    /// An ordinary player.
+    None = 0,
+
+    /// May mute and kick.
+    Moderator = 10,
+
+    /// May ban, and may raise others.
+    Administrator = 20,
+}
+
+impl Admin {
+    pub fn from_number(number: i16) -> Admin {
+        match number {
+            n if n >= Admin::Administrator as i16 => Admin::Administrator,
+            n if n >= Admin::Moderator as i16 => Admin::Moderator,
+            _ => Admin::None,
+        }
+    }
+
+    pub fn may_mute(self) -> bool {
+        self >= Admin::Moderator
+    }
+
+    pub fn may_ban(self) -> bool {
+        self >= Admin::Administrator
+    }
 }
 
 /// The things an account spends.
@@ -95,9 +130,10 @@ impl Store {
                 i32,
                 i32,
                 Option<chrono::DateTime<chrono::Utc>>,
+                i16,
             ),>(
             "INSERT INTO account (name) VALUES ($1)
-             RETURNING id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until",
+             RETURNING id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until, admin_rank",
         )
         .bind(name)
         .fetch_one(self.pool())
@@ -114,6 +150,7 @@ impl Store {
                 fame,
                 tokens,
                 muted_until,
+                admin_rank,
             )) => Ok(Account {
                 id,
                 name,
@@ -124,6 +161,7 @@ impl Store {
                 fame,
                 tokens,
                 muted_until,
+                admin_rank,
             }),
             // The unique index is what decides this, not a prior lookup. A check-then-insert has a
             // window between the two in which someone else inserts the same name.
@@ -148,9 +186,10 @@ impl Store {
                 i32,
                 i32,
                 Option<chrono::DateTime<chrono::Utc>>,
+                i16,
             ),
         >(
-            "SELECT id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until
+            "SELECT id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until, admin_rank
              FROM account WHERE lower(name) = lower($1)",
         )
         .bind(name)
@@ -158,7 +197,18 @@ impl Store {
         .await?;
 
         row.map(
-            |(id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until)| {
+            |(
+                id,
+                name,
+                vault_chests,
+                banned,
+                password_hash,
+                gold,
+                fame,
+                tokens,
+                muted_until,
+                admin_rank,
+            )| {
                 Account {
                     id,
                     name,
@@ -169,6 +219,7 @@ impl Store {
                     fame,
                     tokens,
                     muted_until,
+                    admin_rank,
                 }
             },
         )
@@ -201,9 +252,10 @@ impl Store {
                 i32,
                 i32,
                 Option<chrono::DateTime<chrono::Utc>>,
+                i16,
             ),
         >(
-            "SELECT id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until
+            "SELECT id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until, admin_rank
              FROM account WHERE id = $1",
         )
         .bind(id)
@@ -211,7 +263,18 @@ impl Store {
         .await?;
 
         row.map(
-            |(id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until)| {
+            |(
+                id,
+                name,
+                vault_chests,
+                banned,
+                password_hash,
+                gold,
+                fame,
+                tokens,
+                muted_until,
+                admin_rank,
+            )| {
                 Account {
                     id,
                     name,
@@ -222,6 +285,7 @@ impl Store {
                     fame,
                     tokens,
                     muted_until,
+                    admin_rank,
                 }
             },
         )
@@ -582,6 +646,26 @@ impl Store {
                 .await?;
 
         Ok(removed.rows_affected())
+    }
+
+    /// Bans or unbans an account.
+    pub async fn set_banned(&self, account_id: i64, banned: bool) -> Result<()> {
+        sqlx::query("UPDATE account SET banned = $2 WHERE id = $1")
+            .bind(account_id)
+            .bind(banned)
+            .execute(self.pool())
+            .await?;
+        Ok(())
+    }
+
+    /// Sets what an account may do to others.
+    pub async fn set_admin_rank(&self, account_id: i64, rank: Admin) -> Result<()> {
+        sqlx::query("UPDATE account SET admin_rank = $2 WHERE id = $1")
+            .bind(account_id)
+            .bind(rank as i16)
+            .execute(self.pool())
+            .await?;
+        Ok(())
     }
 
     /// Renames an account, or reports that the name is taken.

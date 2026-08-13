@@ -7,7 +7,9 @@
 //! Set `HENDRA_TEST_DATABASE` to point at one. Without it the tests skip rather than fail, so a
 //! machine with no Postgres can still run the rest of the suite.
 
-use hendra_store::{Currency, Location, MarketPurchase, Offer, Purchase, Rank, Store, StoreError};
+use hendra_store::{
+    Admin, Currency, Location, MarketPurchase, Offer, Purchase, Rank, Store, StoreError,
+};
 
 /// A store with a schema of its own, or `None` when no database is configured.
 ///
@@ -1603,4 +1605,83 @@ async fn cancelling_gives_the_item_back_and_only_to_its_seller() {
     let held = store.character(seller_character).await.unwrap();
     assert!(held.inventory.iter().any(|(_, item)| *item == WAND));
     assert!(store.listings(10).await.unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_moderator_may_mute_and_an_administrator_may_ban() {
+    let Some(store) = store("t_moderation").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let player = store.create_account("Fesal").await.unwrap();
+    assert_eq!(Admin::from_number(player.admin_rank), Admin::None);
+    assert!(!Admin::None.may_mute());
+    assert!(!Admin::None.may_ban());
+
+    store
+        .set_admin_rank(player.id, Admin::Moderator)
+        .await
+        .unwrap();
+    let moderator = store.account(player.id).await.unwrap();
+
+    // A moderator may silence but not remove: they are different powers and one is reversible in a
+    // way the other is not.
+    assert!(Admin::from_number(moderator.admin_rank).may_mute());
+    assert!(!Admin::from_number(moderator.admin_rank).may_ban());
+
+    store
+        .set_admin_rank(player.id, Admin::Administrator)
+        .await
+        .unwrap();
+    let admin = store.account(player.id).await.unwrap();
+    assert!(Admin::from_number(admin.admin_rank).may_ban());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_mute_expires_on_its_own() {
+    // A mute with no end is a ban nobody remembers applying.
+    let Some(store) = store("t_mute_expiry").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+
+    let past = chrono::Utc::now() - chrono::Duration::minutes(1);
+    store.mute(account.id, Some(past)).await.unwrap();
+
+    let held = store.account(account.id).await.unwrap();
+    assert!(
+        held.muted_until
+            .is_some_and(|until| until < chrono::Utc::now()),
+        "an expired mute needs nothing to clear it"
+    );
+
+    store.mute(account.id, None).await.unwrap();
+    assert!(
+        store
+            .account(account.id)
+            .await
+            .unwrap()
+            .muted_until
+            .is_none()
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn banning_and_unbanning_are_both_possible() {
+    let Some(store) = store("t_ban").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    assert!(!account.banned);
+
+    store.set_banned(account.id, true).await.unwrap();
+    assert!(store.account(account.id).await.unwrap().banned);
+
+    store.set_banned(account.id, false).await.unwrap();
+    assert!(!store.account(account.id).await.unwrap().banned);
 }
