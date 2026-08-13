@@ -76,7 +76,7 @@ namespace wServer.realm.entities
         /// given the same origin and angle, but they disagree about where a moving monster is by
         /// however far it travelled during one tick and one trip down the wire.
         /// </remarks>
-        private const float HitClaimSlack = 1.5f;
+        private const float HitClaimSlack = 2.5f;
 
         /// <summary>How much of an enemy's recent movement a hit claim is allowed to be judged by.</summary>
         private const int HitClaimHistoryTicks = 8;
@@ -379,7 +379,7 @@ namespace wServer.realm.entities
         /// client is watching it from a tick and a wire away and is entitled to be behind.
         /// </para>
         /// </remarks>
-        public bool ValidateEnemyHit(Projectile projectile, Entity target)
+        public bool ValidateEnemyHit(Projectile projectile, Entity target, RealmTime time)
         {
             var slack = Projectile.HitBox + HitClaimSlack;
 
@@ -396,10 +396,23 @@ namespace wServer.realm.entities
                     return true;
             }
 
-            Strike("claiming hits it could not make",
-                $"bullet {projectile.ProjectileId} of {projectile.ProjDesc.ObjectId} " +
-                $"never came within {slack:0.0} of {target.Name ?? target.ObjectType.ToString()} " +
-                $"at {target.X:0.0},{target.Y:0.0}");
+            // Refused, and not struck for. Refusing already takes the whole prize: a client that
+            // widens its hit test claims a hundred monsters and damages none of them, so the kick
+            // was buying nothing and costing a session every time this was wrong about somebody --
+            // which it has been, on an ordinary sword, against ordinary monsters.
+            //
+            // The age is logged because of what it probably is. Bullet ids are a ring and the
+            // server looks the projectile up by id alone, so a hit arriving late for bullet 103
+            // is matched against whatever bullet 103 has since become -- a different shot, from a
+            // different place, on a different heading. An age past the lifetime is that, and not a
+            // cheat.
+            VerifyLog.Info(
+                $"{Name} ({AccountId}) refused a hit claim: bullet {projectile.ProjectileId} of " +
+                $"{projectile.ProjDesc.ObjectId} never came within {slack:0.0} of " +
+                $"{target.Name ?? target.ObjectType.ToString()} at {target.X:0.0},{target.Y:0.0}; " +
+                $"bullet is {time.TotalElapsedMs - projectile.CreationTime}ms old of " +
+                $"{projectile.ProjDesc.LifetimeMS}ms");
+
             return false;
         }
 

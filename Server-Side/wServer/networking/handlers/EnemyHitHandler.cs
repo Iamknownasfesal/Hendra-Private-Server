@@ -34,7 +34,7 @@ namespace wServer.networking.handlers
             // The client decides what its own bullets hit, and this is where that was written down
             // unread. Widening the client's hit test is a one-line change that claims every monster
             // on the screen for every bullet fired, which on a multi-shot weapon is an area attack.
-            if (!player.ValidateEnemyHit(prj, entity))
+            if (!player.ValidateEnemyHit(prj, entity, time))
                 return;
 
             prj.ForceHit(entity, time);

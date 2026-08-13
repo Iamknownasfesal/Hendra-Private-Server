@@ -189,7 +189,15 @@ namespace wServer.realm.worlds.logic
         {
             base.Tick(time);
 
-            foreach (var player in Players.Values)
+            // A world can be ticked in the same pass that removes it, and disposing one nulls its
+            // dictionaries rather than emptying them -- so this is read once and checked, not
+            // dereferenced twice and hoped over. Vault worlds come and go constantly: one per
+            // account per visit, gone a minute after the visitor leaves.
+            var players = Players;
+            if (players == null)
+                return;
+
+            foreach (var player in players.Values)
             {
                 var client = player.Client;
                 if (client == null || client.State != ProtocolState.Ready || client.Account == null)
