@@ -201,6 +201,18 @@ pub async fn login(State(app): State<Arc<App>>, Json(body): Json<Credentials>) -
         return Err(too_many_attempts(after));
     }
 
+    // Shared as well as local. The in-process limiter is the fast path and catches a burst against
+    // one server; this one is what makes the limit mean the same thing when there are four.
+    let window = throttle::WINDOW.as_secs() as i64;
+    if app
+        .store
+        .recent_failed_logins(name, window)
+        .await
+        .is_ok_and(|failures| failures >= throttle::FAILURES_ALLOWED as i64)
+    {
+        return Err(too_many_attempts(throttle::WINDOW));
+    }
+
     let account = match app.store.account_by_name(name).await {
         Ok(account) => account,
         Err(StoreError::NoSuchAccount(_)) => {
@@ -208,6 +220,7 @@ pub async fn login(State(app): State<Arc<App>>, Json(body): Json<Credentials>) -
             // make the limiter answer the question the refusal above refuses to: a name that never
             // locks out is a name that does not exist.
             app.throttle.failed(name, now);
+            let _ = app.store.record_failed_login(name).await;
             return Err(bad_credentials());
         }
         Err(err) => {
@@ -234,9 +247,13 @@ pub async fn login(State(app): State<Arc<App>>, Json(body): Json<Credentials>) -
     };
 
     match checked {
-        Ok(true) => app.throttle.succeeded(name),
+        Ok(true) => {
+            app.throttle.succeeded(name);
+            let _ = app.store.clear_failed_logins(name).await;
+        }
         Ok(false) => {
             app.throttle.failed(name, now);
+            let _ = app.store.record_failed_login(name).await;
             return Err(bad_credentials());
         }
         Err(err) => {

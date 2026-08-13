@@ -49,6 +49,13 @@ fn key() -> TokenKey {
 ///
 /// A schema per test, so tests that create accounts with the same name do not collide and none of
 /// them depends on the order the others ran in.
+/// The connection string for a schema, so a second app can share one database with the first.
+fn scoped_url(schema: &str) -> String {
+    let url = std::env::var("HENDRA_TEST_DATABASE").unwrap_or_default();
+    let separator = if url.contains('?') { '&' } else { '?' };
+    format!("{url}{separator}options=-csearch_path%3D{schema}")
+}
+
 async fn app(schema: &str) -> Option<Arc<App>> {
     let url = std::env::var("HENDRA_TEST_DATABASE").ok()?;
 
@@ -1268,4 +1275,51 @@ async fn every_endpoint_that_should_need_a_token_needs_one() {
             "{method} {path} answered without a token"
         );
     }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_shared_limit_holds_even_for_a_server_that_has_seen_nothing() {
+    // Per-process throttling means two servers behind a load balancer allow twice the attempts.
+    // The database is the one thing they share, so a second server must refuse what the first
+    // already counted.
+    let first = app_or_skip!("a_shared_throttle");
+    send(&first, post("/register", credentials("Fesal", PASSWORD))).await;
+
+    for _ in 0..hendra_app::throttle::FAILURES_ALLOWED {
+        send(&first, post("/login", credentials("Fesal", "wrong"))).await;
+    }
+
+    // A second server, sharing the database and nothing else.
+    let second = Arc::new(App::with_content(
+        Store::connect(&scoped_url("a_shared_throttle"))
+            .await
+            .unwrap(),
+        key(),
+        Arc::new(hendra_content::Catalog::default()),
+        hendra_characters::CommonItems::new(Vec::<String>::new()),
+    ));
+
+    let (status, _) = send(&second, post("/login", credentials("Fesal", PASSWORD))).await;
+    assert_eq!(
+        status,
+        StatusCode::TOO_MANY_REQUESTS,
+        "a fresh process must still honour the shared count"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_correct_password_clears_the_shared_count_too() {
+    let app = app_or_skip!("a_shared_clear");
+    send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
+
+    for _ in 0..hendra_app::throttle::FAILURES_ALLOWED - 1 {
+        send(&app, post("/login", credentials("Fesal", "wrong"))).await;
+    }
+    send(&app, post("/login", credentials("Fesal", PASSWORD))).await;
+
+    assert_eq!(
+        app.store.recent_failed_logins("Fesal", 300).await.unwrap(),
+        0,
+        "getting in should forget the misses"
+    );
 }

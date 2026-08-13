@@ -534,6 +534,56 @@ impl Store {
         Ok(())
     }
 
+    /// Records a failed login against a name.
+    ///
+    /// Keyed by the name rather than the account, because a name that does not exist has to be
+    /// counted the same as one that does: counting only real accounts would make the limiter
+    /// answer the question the login endpoint refuses to.
+    pub async fn record_failed_login(&self, name: &str) -> Result<()> {
+        sqlx::query("INSERT INTO failed_login (name) VALUES (lower($1))")
+            .bind(name.trim())
+            .execute(self.pool())
+            .await?;
+        Ok(())
+    }
+
+    /// How many failures a name has accumulated inside a window.
+    pub async fn recent_failed_logins(&self, name: &str, window_seconds: i64) -> Result<i64> {
+        let (count,): (i64,) = sqlx::query_as(
+            "SELECT count(*) FROM failed_login
+             WHERE name = lower($1) AND at > now() - make_interval(secs => $2)",
+        )
+        .bind(name.trim())
+        .bind(window_seconds as f64)
+        .fetch_one(self.pool())
+        .await?;
+
+        Ok(count)
+    }
+
+    /// Forgets a name's failures, which a correct password does.
+    pub async fn clear_failed_logins(&self, name: &str) -> Result<()> {
+        sqlx::query("DELETE FROM failed_login WHERE name = lower($1)")
+            .bind(name.trim())
+            .execute(self.pool())
+            .await?;
+        Ok(())
+    }
+
+    /// Drops failures old enough that nothing counts them.
+    ///
+    /// The table is filled by unauthenticated requests naming whatever they like, so something has
+    /// to shrink it.
+    pub async fn forget_old_failed_logins(&self, window_seconds: i64) -> Result<u64> {
+        let removed =
+            sqlx::query("DELETE FROM failed_login WHERE at <= now() - make_interval(secs => $1)")
+                .bind(window_seconds as f64)
+                .execute(self.pool())
+                .await?;
+
+        Ok(removed.rows_affected())
+    }
+
     /// Renames an account, or reports that the name is taken.
     ///
     /// The unique index decides it, not a prior lookup: a check-then-rename has a window in which

@@ -6,7 +6,7 @@ deliberately excluded and left until last.
 Phases 0–5 are done: workspace, content, protocol, transport, simulation, behaviour language,
 persistence, authentication. What follows is phases 6–11.
 
-**Where we are:** ~79% of the old server by subsystem. 592 tests.
+**Where we are:** ~80% of the old server by subsystem. 595 tests.
 
 **Sizing** is relative, not calendar: **S** is an afternoon, **M** is a day or two, **L** is
 several days, **XL** is a week or more.
@@ -249,9 +249,9 @@ Eight of 48 endpoints are done, and they are the ones that matter.
 
 ### Operations
 
-- [ ] Shared login throttling: per-process today, so two app servers behind a load balancer double
-      the limit. Needs a `failed_login` table or Redis
-- [ ] A coverage example for endpoints, as `gaps.rs` and `activates.rs` do for their areas
+- [x] Shared login throttling through a `failed_login` table. The in-process limiter stays as the
+      fast path; the shared count is what makes the limit mean the same thing with four servers
+- [x] A coverage example for endpoints: `cargo run -p hendra-app --example endpoints` reports **12 of 40**
 
 ---
 
