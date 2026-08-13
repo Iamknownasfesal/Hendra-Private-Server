@@ -36,7 +36,7 @@ const ENDPOINTS: &[(&str, Option<&str>)] = &[
     ("account/purchaseSkin", None),
     ("account/registerDiscord", None),
     ("account/unregisterDiscord", None),
-    ("app/getServerXmls", None),
+    ("app/getServerXmls", Some("GET /content")),
     ("app/getTextures", None),
     ("app/getLanguageStrings", None),
     ("app/globalNews", Some("GET /news")),

@@ -23,6 +23,7 @@
 //!   POST   /email/verify   {token}                ->  {}
 //!   POST   /password/forgot {email}               ->  {}
 //!   POST   /password/reset {token, password}      ->  {}
+//!   GET    /content                               ->  {objects, tiles, classes}
 //!   GET    /news                                  ->  [{title, body}]
 //!   GET    /news/game      (Bearer)               ->  [{title, body}]
 //!   GET    /daily          (Bearer)               ->  {streak, claimed}
@@ -1014,6 +1015,38 @@ async fn send_link(app: &App, account_id: i64, email: &str, purpose: hendra_stor
 }
 
 #[derive(Serialize)]
+pub struct ContentSummary {
+    pub objects: usize,
+    pub tiles: usize,
+    pub classes: usize,
+
+    /// Every playable class, so a client can draw a select screen without a token.
+    pub class_ids: Vec<String>,
+}
+
+/// What content the server is running.
+///
+/// A summary rather than the files themselves. The client ships its own copy of the content and
+/// always has; what it cannot know is whether the server agrees, and a count that differs is the
+/// cheapest possible signal that the two have drifted.
+pub async fn content(State(app): State<Arc<App>>) -> Json<ContentSummary> {
+    let class_ids = app
+        .catalog
+        .classes()
+        .iter()
+        .filter_map(|class| app.catalog.object(class.object_type))
+        .map(|desc| desc.id.clone())
+        .collect();
+
+    Json(ContentSummary {
+        objects: app.catalog.object_count(),
+        tiles: app.catalog.tile_count(),
+        classes: app.catalog.classes().len(),
+        class_ids,
+    })
+}
+
+#[derive(Serialize)]
 pub struct NewsItem {
     pub title: String,
     pub body: String,
@@ -1096,6 +1129,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/email/verify", post(verify_email))
         .route("/password/forgot", post(forgot_password))
         .route("/password/reset", post(reset_password))
+        .route("/content", get(content))
         .route("/news", get(news))
         .route("/news/game", get(game_news))
         .route("/daily", get(daily).post(claim_daily))

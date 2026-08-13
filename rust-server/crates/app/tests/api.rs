@@ -1581,3 +1581,24 @@ async fn a_verify_code_cannot_reset_a_password() {
         StatusCode::BAD_REQUEST
     );
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_content_summary_needs_no_token_and_says_what_the_server_is_running() {
+    // A client ships its own content and always has. What it cannot know is whether the server
+    // agrees, and a count that differs is the cheapest signal that the two have drifted.
+    let app = app_or_skip!("a_content");
+    content_or_skip!(app);
+
+    let (status, body) = send(&app, get("/content", None)).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert!(body["objects"].as_u64().unwrap_or(0) > 1000);
+    assert_eq!(body["classes"], 14, "the shipped files have fourteen");
+    assert!(
+        body["class_ids"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|id| id == "Wizard")
+    );
+}
