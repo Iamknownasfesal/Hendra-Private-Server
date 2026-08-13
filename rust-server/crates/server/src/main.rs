@@ -12,6 +12,7 @@
 //! public server should run.
 
 mod accounts;
+mod chat;
 mod session;
 mod world_task;
 mod worlds;

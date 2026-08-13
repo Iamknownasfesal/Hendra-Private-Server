@@ -117,6 +117,10 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
     // The client needs to see what it is carrying before it can move any of it.
     send_containers(&mut link, &context.catalog, &context.store, &player).await;
 
+    // One per connection. A limit shared between players would let a busy world silence a quiet
+    // one, and a limit that outlived a connection would follow the wrong person.
+    let mut limit = crate::chat::Limit::new();
+
     loop {
         let Some(received) = link.recv().await else {
             break;
@@ -128,6 +132,10 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
 
             Outcome::Move { from, to } => {
                 move_item(&mut link, &context, &player, &placement, from, to).await;
+            }
+
+            Outcome::Chat(line) => {
+                say_something(&mut link, &context, &player, &placement, &mut limit, &line).await;
             }
 
             Outcome::UseItem { slot, x, y } => {
@@ -197,6 +205,12 @@ enum Outcome {
         from: SlotLocation,
         to: SlotLocation,
     },
+
+    /// The player said something.
+    ///
+    /// Handled by the caller rather than sent straight to the world, because whether they may speak
+    /// at all is an account question and the world does not hold accounts.
+    Chat(String),
 
     /// The player wants to use what is in a slot.
     ///
@@ -797,6 +811,74 @@ async fn save_progress(
     .await
 }
 
+/// Works out what a player meant and, if they may say it, says it.
+async fn say_something(
+    link: &mut Link,
+    context: &Context,
+    player: &crate::accounts::Session,
+    placement: &Placement,
+    limit: &mut crate::chat::Limit,
+    line: &str,
+) {
+    use crate::chat::Said;
+
+    let said = crate::chat::read(line);
+    if said == Said::Nothing {
+        return;
+    }
+
+    // Read fresh rather than from the session's copy, so a mute applied while someone is playing
+    // takes effect without waiting for them to reconnect.
+    if let Ok(account) = context.store.account(player.account.id).await
+        && account
+            .muted_until
+            .is_some_and(|until| until > chrono::Utc::now())
+    {
+        say(link, "you cannot speak at the moment").await;
+        return;
+    }
+
+    if !limit.allow(std::time::Instant::now()) {
+        say(link, "you are speaking too quickly").await;
+        return;
+    }
+
+    match said {
+        Said::Say(text) => {
+            placement
+                .world
+                .send(ToWorld::Chat {
+                    handle: placement.handle,
+                    text,
+                })
+                .await;
+        }
+
+        Said::Tell { to, text } => {
+            // Whispering to yourself is a typo rather than a message.
+            if to.eq_ignore_ascii_case(&player.character.name) {
+                say(link, "you cannot whisper to yourself").await;
+                return;
+            }
+
+            placement
+                .world
+                .send(ToWorld::Tell {
+                    to,
+                    from: player.character.name.clone(),
+                    text,
+                })
+                .await;
+        }
+
+        Said::Command { name, .. } => {
+            say(link, &format!("there is no /{name}")).await;
+        }
+
+        Said::Nothing => {}
+    }
+}
+
 /// Uses what is in a slot.
 ///
 /// The item is read from the durable side rather than taken from the client, which names a slot
@@ -998,12 +1080,7 @@ async fn dispatch(received: &Received, placement: &Placement) -> Outcome {
         }
 
         ClientMessage::Chat { text } => {
-            world
-                .send(ToWorld::Chat {
-                    handle,
-                    text: text.to_owned(),
-                })
-                .await
+            return Outcome::Chat(text.to_owned());
         }
 
         ClientMessage::Shoot { angle, .. } => world.send(ToWorld::Shoot { handle, angle }).await,

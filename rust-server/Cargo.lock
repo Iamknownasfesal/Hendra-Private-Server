@@ -822,6 +822,7 @@ dependencies = [
 name = "hendra-server"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "hendra-auth",
  "hendra-behavior",
  "hendra-characters",

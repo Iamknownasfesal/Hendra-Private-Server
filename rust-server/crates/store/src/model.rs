@@ -18,6 +18,9 @@ pub struct Account {
     pub gold: i32,
     pub fame: i32,
     pub tokens: i32,
+
+    /// When the account may speak again, or `None` if it always may.
+    pub muted_until: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// The things an account spends.
@@ -81,27 +84,47 @@ pub struct CharacterSummary {
 impl Store {
     /// Creates an account, or reports that the name is taken.
     pub async fn create_account(&self, name: &str) -> Result<Account> {
-        let row = sqlx::query_as::<_, (i64, String, i16, bool, Option<String>, i32, i32, i32)>(
+        let row = sqlx::query_as::<_,
+            (
+                i64,
+                String,
+                i16,
+                bool,
+                Option<String>,
+                i32,
+                i32,
+                i32,
+                Option<chrono::DateTime<chrono::Utc>>,
+            ),>(
             "INSERT INTO account (name) VALUES ($1)
-             RETURNING id, name, vault_chests, banned, password_hash, gold, fame, tokens",
+             RETURNING id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until",
         )
         .bind(name)
         .fetch_one(self.pool())
         .await;
 
         match row {
-            Ok((id, name, vault_chests, banned, password_hash, gold, fame, tokens)) => {
-                Ok(Account {
-                    id,
-                    name,
-                    vault_chests,
-                    banned,
-                    password_hash,
-                    gold,
-                    fame,
-                    tokens,
-                })
-            }
+            Ok((
+                id,
+                name,
+                vault_chests,
+                banned,
+                password_hash,
+                gold,
+                fame,
+                tokens,
+                muted_until,
+            )) => Ok(Account {
+                id,
+                name,
+                vault_chests,
+                banned,
+                password_hash,
+                gold,
+                fame,
+                tokens,
+                muted_until,
+            }),
             // The unique index is what decides this, not a prior lookup. A check-then-insert has a
             // window between the two in which someone else inserts the same name.
             Err(sqlx::Error::Database(err)) if err.is_unique_violation() => {
@@ -113,8 +136,21 @@ impl Store {
 
     /// Finds an account by name, ignoring case.
     pub async fn account_by_name(&self, name: &str) -> Result<Account> {
-        let row = sqlx::query_as::<_, (i64, String, i16, bool, Option<String>, i32, i32, i32)>(
-            "SELECT id, name, vault_chests, banned, password_hash, gold, fame, tokens
+        let row = sqlx::query_as::<
+            _,
+            (
+                i64,
+                String,
+                i16,
+                bool,
+                Option<String>,
+                i32,
+                i32,
+                i32,
+                Option<chrono::DateTime<chrono::Utc>>,
+            ),
+        >(
+            "SELECT id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until
              FROM account WHERE lower(name) = lower($1)",
         )
         .bind(name)
@@ -122,15 +158,18 @@ impl Store {
         .await?;
 
         row.map(
-            |(id, name, vault_chests, banned, password_hash, gold, fame, tokens)| Account {
-                id,
-                name,
-                vault_chests,
-                banned,
-                password_hash,
-                gold,
-                fame,
-                tokens,
+            |(id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until)| {
+                Account {
+                    id,
+                    name,
+                    vault_chests,
+                    banned,
+                    password_hash,
+                    gold,
+                    fame,
+                    tokens,
+                    muted_until,
+                }
             },
         )
         .ok_or_else(|| StoreError::NoSuchAccount(name.to_string()))
@@ -150,8 +189,21 @@ impl Store {
 
     /// An account by id.
     pub async fn account(&self, id: i64) -> Result<Account> {
-        let row = sqlx::query_as::<_, (i64, String, i16, bool, Option<String>, i32, i32, i32)>(
-            "SELECT id, name, vault_chests, banned, password_hash, gold, fame, tokens
+        let row = sqlx::query_as::<
+            _,
+            (
+                i64,
+                String,
+                i16,
+                bool,
+                Option<String>,
+                i32,
+                i32,
+                i32,
+                Option<chrono::DateTime<chrono::Utc>>,
+            ),
+        >(
+            "SELECT id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until
              FROM account WHERE id = $1",
         )
         .bind(id)
@@ -159,15 +211,18 @@ impl Store {
         .await?;
 
         row.map(
-            |(id, name, vault_chests, banned, password_hash, gold, fame, tokens)| Account {
-                id,
-                name,
-                vault_chests,
-                banned,
-                password_hash,
-                gold,
-                fame,
-                tokens,
+            |(id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until)| {
+                Account {
+                    id,
+                    name,
+                    vault_chests,
+                    banned,
+                    password_hash,
+                    gold,
+                    fame,
+                    tokens,
+                    muted_until,
+                }
             },
         )
         .ok_or_else(|| StoreError::NoSuchAccount(id.to_string()))
@@ -476,6 +531,20 @@ impl Store {
         .bind(item)
         .execute(self.pool())
         .await?;
+        Ok(())
+    }
+
+    /// Silences an account until a time, or lifts a mute when given `None`.
+    pub async fn mute(
+        &self,
+        account_id: i64,
+        until: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<()> {
+        sqlx::query("UPDATE account SET muted_until = $2 WHERE id = $1")
+            .bind(account_id)
+            .bind(until)
+            .execute(self.pool())
+            .await?;
         Ok(())
     }
 

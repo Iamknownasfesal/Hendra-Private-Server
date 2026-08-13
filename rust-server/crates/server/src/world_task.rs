@@ -117,6 +117,13 @@ pub enum ToWorld {
         reply: tokio::sync::oneshot::Sender<Vec<hendra_content::Effect>>,
     },
 
+    /// A line meant for one named player.
+    Tell {
+        to: String,
+        from: String,
+        text: String,
+    },
+
     /// What a character has become, so it can be written down.
     ///
     /// Asked for rather than sent on leaving, because a session also checkpoints while playing and
@@ -384,6 +391,26 @@ fn handle(
                     let _ = player.sender.try_send(Delivery::Stream, &buf);
                 }
             }
+        }
+
+        ToWorld::Tell { to, from, text } => {
+            let Some(target) = players
+                .iter()
+                .find(|player| player.name.eq_ignore_ascii_case(&to))
+            else {
+                // Answered to nobody: the sender is told by its own session, which is the only
+                // side that knows whether the name exists anywhere else.
+                return;
+            };
+
+            let mut buf = Vec::new();
+            ServerMessage::Chat {
+                from: &format!("{from} whispers"),
+                text: &text,
+            }
+            .encode(&mut Writer::new(&mut buf));
+
+            let _ = target.sender.try_send(Delivery::Stream, &buf);
         }
 
         ToWorld::Chat { handle, text } => {

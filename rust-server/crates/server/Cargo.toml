@@ -16,6 +16,7 @@ hendra-transport = { path = "../transport" }
 hendra-store = { path = "../store" }
 hendra-characters = { path = "../characters" }
 uuid = { version = "1" }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 hendra-auth = { path = "../auth" }
 hendra-behavior = { path = "../behavior" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal"] }

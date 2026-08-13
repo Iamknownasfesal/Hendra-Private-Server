@@ -6,7 +6,7 @@ deliberately excluded and left until last.
 Phases 0–5 are done: workspace, content, protocol, transport, simulation, behaviour language,
 persistence, authentication. What follows is phases 6–11.
 
-**Where we are:** ~67% of the old server by subsystem. 555 tests.
+**Where we are:** ~68% of the old server by subsystem. 566 tests.
 
 **Sizing** is relative, not calendar: **S** is an afternoon, **M** is a day or two, **L** is
 several days, **XL** is a week or more.
@@ -200,8 +200,8 @@ Independent of everything above and blocks nothing.
 
 ### 9.1 Chat — **M**
 
-- [ ] say, tell, guild and global scoping
-- [ ] Rate limiting and a mute list
+- [x] say and tell scoping. Guild scoping waits on 9.2, and global waits on somewhere to put it
+- [x] Rate limiting on a sliding window, and a mute read fresh so it takes effect without a reconnect
 - [ ] Moderation commands
 
 ### 9.2 Guilds — **L**
