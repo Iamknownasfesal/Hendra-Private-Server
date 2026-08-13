@@ -17,10 +17,12 @@
 
 pub mod ast;
 pub mod compile;
+pub mod csharp;
 pub mod lex;
 pub mod parse;
 pub mod program;
 pub mod run;
+pub mod transpile;
 
 pub use ast::{Argument, Behaviours, Call, Enemy, Item, Loot, State, Transition, Value};
 pub use lex::{LexError, Span, Token, tokenize};
