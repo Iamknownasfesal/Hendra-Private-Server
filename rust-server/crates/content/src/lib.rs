@@ -13,6 +13,10 @@
 
 pub mod catalog;
 pub mod desc;
+pub mod legacy;
+pub mod map;
+pub mod region;
+pub mod world;
 pub mod effect;
 pub mod xml;
 
@@ -22,4 +26,7 @@ pub use desc::{
     TileType,
 };
 pub use effect::{AppliedEffect, ConditionEffect, ConditionSet};
+pub use map::{Composition, Map, MapError};
+pub use region::{Region, Terrain};
+pub use world::{WorldDef, WorldError};
 pub use xml::{Node, XmlError};
