@@ -1,0 +1,143 @@
+enemy "Lord of the Lost Lands" {
+    state Waiting_2 {
+        on hp_below(0.99, "Start1.0") -> Start1_0
+    }
+    state Start1_0 {
+        on hp_below(0.1) -> Dead
+        state Start {
+            set_alt_texture(0)
+            prioritize() {
+                wander(0.8)
+            }
+            shoot(0, count: 7, shoot_angle: 10, fixed_angle: 180, cooldown: 2000)
+            shoot(0, count: 7, shoot_angle: 10, fixed_angle: 0, cooldown: 2000)
+            toss_object("Guardian of the Lost Lands", 5, cooldown: 1000)
+            on timed(100, "Spawning Guardian") -> Spawning_Guardian
+        }
+        state Spawning_Guardian {
+            toss_object("Guardian of the Lost Lands", 5, cooldown: 1000)
+            on timed(3100) -> Attack
+        }
+        state Attack {
+            set_alt_texture(0)
+            wander(0.8)
+            on player_within(1) -> Follow
+            on timed(10000) -> Gathering
+            state Attack1_0 {
+                on timed_random(3000, false, "Attack1.1", "Attack1.2") -> Attack1_1
+                state Attack1_1 {
+                    shoot(12, count: 7, shoot_angle: 10, cooldown: 2000)
+                    shoot(12, count: 7, shoot_angle: 190, cooldown: 2000)
+                    on timed(2000, "Attack1.0") -> Attack1_0
+                }
+                state Attack1_2 {
+                    shoot(0, count: 7, shoot_angle: 10, fixed_angle: 180, cooldown: 3000)
+                    shoot(0, count: 7, shoot_angle: 10, fixed_angle: 0, cooldown: 3000)
+                    on timed(2000, "Attack1.0") -> Attack1_0
+                }
+            }
+        }
+        state Follow {
+            prioritize() {
+                follow(1, 20, 3)
+                wander(0.4)
+            }
+            shoot(20, count: 7, shoot_angle: 10, cooldown: 1300)
+            on timed(5000) -> Gathering
+        }
+        state Gathering {
+            taunt(0.99, "Gathering power!")
+            set_alt_texture(3)
+            on timed(2000, "Gathering1.0") -> Gathering1_0
+        }
+        state Gathering1_0 {
+            on timed(5000) -> Protection
+            state Gathering1_1 {
+                shoot(30, 4, fixed_angle: 90, projectile: 1, cooldown: 2000)
+                on timed(1500, "Gathering1.2") -> Gathering1_2
+            }
+            state Gathering1_2 {
+                shoot(30, 4, fixed_angle: 45, projectile: 1, cooldown: 2000)
+                on timed(1500, "Gathering1.1") -> Gathering1_1
+            }
+        }
+        state Protection {
+            set_alt_texture(0)
+            toss_object("Protection Crystal", 4, angle: 0, cooldown: 5000)
+            toss_object("Protection Crystal", 4, angle: 45, cooldown: 5000)
+            toss_object("Protection Crystal", 4, angle: 90, cooldown: 5000)
+            toss_object("Protection Crystal", 4, angle: 135, cooldown: 5000)
+            toss_object("Protection Crystal", 4, angle: 180, cooldown: 5000)
+            toss_object("Protection Crystal", 4, angle: 225, cooldown: 5000)
+            toss_object("Protection Crystal", 4, angle: 270, cooldown: 5000)
+            toss_object("Protection Crystal", 4, angle: 315, cooldown: 5000)
+            on entity_exists("Protection Crystal", 10) -> Waiting
+        }
+    }
+    state Waiting {
+        conditional_effect(invulnerable)
+        set_alt_texture(1)
+        on entity_not_exists("Protection Crystal", 10, "Start1.0") -> Start1_0
+    }
+    state Dead {
+        conditional_effect(invulnerable)
+        set_alt_texture(3)
+        taunt(0.99, "NOOOO!!!!!!")
+        flash(16711680, 0.1, 1000)
+        on timed(2000) -> Suicide
+    }
+    state Suicide {
+        conditional_effect(stun_immune, true)
+        shoot(0, 8, fixed_angle: 360, projectile: 1)
+        suicide()
+    }
+    loot {
+        threshold
+    }
+}
+
+enemy "Protection Crystal" {
+    prioritize() {
+        orbit(0.3, 4, 10, "Lord of the Lost Lands")
+    }
+    shoot(8, count: 4, shoot_angle: 7, cooldown: 500)
+}
+
+enemy "Guardian of the Lost Lands" {
+    state Full {
+        spawn("Knight of the Lost Lands", 2, 1, cooldown: 4000)
+        prioritize() {
+            follow(0.6, 20, 6)
+            wander(0.2)
+        }
+        shoot(10, count: 8, fixed_angle: 360, cooldown: 3000, projectile: 1)
+        shoot(10, count: 5, shoot_angle: 10, cooldown: 1500)
+        on hp_below(0.25) -> Low
+    }
+    state Low {
+        prioritize() {
+            stay_back(0.6, 5)
+            wander(0.2)
+        }
+        shoot(10, count: 8, fixed_angle: 360, cooldown: 3000, projectile: 1)
+        shoot(10, count: 5, shoot_angle: 10, cooldown: 1500)
+    }
+    loot {
+        item("Health Potion", 0.1)
+        item("Magic Potion", 0.1)
+    }
+}
+
+enemy "Knight of the Lost Lands" {
+    prioritize() {
+        follow(1, 20, 4)
+        stay_back(0.5, 2)
+        wander(0.3)
+    }
+    shoot(13, 1, cooldown: 700)
+    loot {
+        item("Health Potion", 0.1)
+        item("Magic Potion", 0.1)
+    }
+}
+

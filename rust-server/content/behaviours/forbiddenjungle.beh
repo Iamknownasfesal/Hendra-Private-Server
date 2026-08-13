@@ -1,0 +1,40 @@
+enemy "Great Coil Snake" {
+    drop_portal_on_death("Forbidden Jungle Portal", 65)
+    prioritize() {
+        stay_close_to_spawn(0.8, 5)
+        wander(0.4)
+    }
+    state Waiting {
+        on player_within(15) -> Attacking
+    }
+    state Attacking {
+        shoot(10, projectile: 0, cooldown: 700, cooldown_offset: 600)
+        shoot(10, 10, 36, 1, cooldown: 2000)
+        toss_object("Great Snake Egg", 4, 0, 5000, cooldown_offset: 0)
+        toss_object("Great Snake Egg", 4, 90, 5000, 600)
+        toss_object("Great Snake Egg", 4, 180, 5000, 1200)
+        toss_object("Great Snake Egg", 4, 270, 5000, 1800)
+        on no_player_within(30) -> Waiting
+    }
+}
+
+enemy "Great Snake Egg" {
+    transform_on_death("Great Temple Snake", 1, 2)
+    state Wait {
+        on timed(2500) -> Explode
+        on player_within(2) -> Explode
+    }
+    state Explode {
+        suicide()
+    }
+}
+
+enemy "Great Temple Snake" {
+    prioritize() {
+        follow(0.6)
+        wander(0.4)
+    }
+    shoot(10, 2, 7, 0, cooldown: 1000, cooldown_offset: 0)
+    shoot(10, 6, 60, 1, cooldown: 2000, cooldown_offset: 600)
+}
+

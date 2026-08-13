@@ -1,0 +1,122 @@
+enemy "Lord Ruthven" {
+    realm_portal_drop()
+    state default {
+        on player_within(8) -> spooksters
+    }
+    state spooksters {
+        wander(0.2)
+        shoot(10, count: 5, shoot_angle: 2, projectile: 0, cooldown: 900)
+        on timed(6000) -> spooksters2
+    }
+    state spooksters2 {
+        wander(0.15)
+        shoot(8.4, count: 40, projectile: 1, cooldown: 2750)
+        shoot(10, count: 5, shoot_angle: 2, projectile: 0, cooldown: 900)
+        on timed(4000) -> spooksters3
+    }
+    state spooksters3 {
+        heal_self(cooldown: 1250)
+        shoot(8.4, count: 40, projectile: 1, cooldown: 2750)
+        on timed(4000) -> spooksters
+    }
+    loot {
+        threshold
+        threshold
+    }
+}
+
+enemy "Hellhound" {
+    follow(1.25, 8, 1, cooldown: 275)
+    shoot(10, count: 5, shoot_angle: 7, cooldown: 2000)
+    loot {
+        item("Magic Potion", 0.05)
+        threshold
+    }
+}
+
+enemy "Vampire Bat Swarmer" {
+    follow(1.5, 8, 1)
+    shoot(10, count: 1, cooldown: 6)
+}
+
+enemy "Lil Feratu" {
+    follow(0.35, 8, 1)
+    shoot(10, count: 6, shoot_angle: 2, cooldown: 900)
+    loot {
+        item("Health Potion", 0.05)
+        threshold
+    }
+}
+
+enemy "Lesser Bald Vampire" {
+    follow(0.35, 8, 1)
+    shoot(10, count: 5, shoot_angle: 6, cooldown: 1000)
+    loot {
+        item("Health Potion", 0.05)
+        threshold
+    }
+}
+
+enemy "Nosferatu" {
+    wander(0.25)
+    shoot(10, count: 5, shoot_angle: 2, projectile: 1, cooldown: 1000)
+    shoot(10, count: 6, shoot_angle: 90, projectile: 0, cooldown: 1500)
+    loot {
+        item("Health Potion", 0.05)
+        threshold
+    }
+}
+
+enemy "Armor Guard" {
+    wander(0.2)
+    toss_object("RockBomb", 7, cooldown: 3000)
+    shoot(10, count: 1, projectile: 0, predictive: 7, cooldown: 1000)
+    shoot(10, count: 1, projectile: 1, cooldown: 750)
+    loot {
+        item("Magic Potion", 0.05)
+        threshold
+    }
+}
+
+enemy "Coffin Creature" {
+    spawn("Lil Feratu", initial_spawn: 1, max_children: 2, cooldown: 2250)
+    shoot(10, count: 1, projectile: 0, cooldown: 700)
+    loot {
+        item("Magic Potion", 0.05)
+    }
+}
+
+enemy "RockBomb" {
+    state BOUTTOEXPLODE {
+        on timed(1111) -> boom
+    }
+    state boom {
+        shoot(8.4, count: 1, fixed_angle: 0, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 90, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 180, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 270, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 45, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 135, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 235, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 315, projectile: 0, cooldown: 1000)
+        suicide()
+    }
+}
+
+enemy "Coffin" {
+    state Coffin1 {
+        on hp_below(0.75) -> Coffin2
+    }
+    state Coffin2 {
+        spawn("Vampire Bat Swarmer", initial_spawn: 1, max_children: 15, cooldown: 99999)
+        on hp_below(0.4) -> Coffin3
+    }
+    state Coffin3 {
+        spawn("Vampire Bat Swarmer", initial_spawn: 1, max_children: 8, cooldown: 99999)
+        spawn("Nosferatu", initial_spawn: 1, max_children: 2, cooldown: 99999)
+    }
+    loot {
+        threshold
+    }
+}
+

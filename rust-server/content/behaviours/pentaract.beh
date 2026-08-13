@@ -1,0 +1,43 @@
+enemy "Pentaract Eye" {
+    prioritize() {
+        swirl(2, 8, 20, true)
+        protect(2, "Pentaract Tower", 20, 6, 4)
+    }
+    shoot(9, 1, cooldown: 1000)
+}
+
+enemy "Pentaract Tower" {
+    spawn("Pentaract Eye", 5, cooldown: 5000, gives_no_xp: false)
+    grenade(4, 100, 8, cooldown: 5000)
+    transform_on_death("Pentaract Tower Corpse")
+    transfer_damage_on_death("Pentaract")
+    transfer_damage_on_death("Pentaract Tower Corpse")
+}
+
+enemy "Pentaract" {
+    conditional_effect(invincible)
+    state Waiting {
+        on entity_not_exists("Pentaract Tower", 50) -> Die
+    }
+    state Die {
+        suicide()
+    }
+}
+
+enemy "Pentaract Tower Corpse" {
+    conditional_effect(invincible)
+    state Waiting {
+        on timed(15000) -> Spawn
+        on entity_not_exists("Pentaract Tower", 50) -> Die
+    }
+    state Spawn {
+        transform("Pentaract Tower")
+    }
+    state Die {
+        suicide()
+    }
+    loot {
+        threshold
+    }
+}
+

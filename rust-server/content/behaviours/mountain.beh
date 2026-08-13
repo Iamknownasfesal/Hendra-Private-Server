@@ -1,0 +1,330 @@
+enemy "Arena Horseman Anchor" {
+    conditional_effect(invincible)
+}
+
+enemy "Arena Headless Horseman" {
+    spawn("Arena Horseman Anchor", 1, 1)
+    state EverythingIsCool {
+        on hp_below(0.1) -> End
+        state Circle {
+            shoot(15, 3, shoot_angle: 25, projectile: 0, cooldown: 1000)
+            shoot(15, projectile: 1, cooldown: 1000)
+            orbit(1, 5, 10, "Arena Horseman Anchor")
+            on timed(8000) -> Shoot
+        }
+        state Shoot {
+            return_to_spawn(1.5)
+            conditional_effect(invincible)
+            flash(15787660, 1, 6)
+            shoot(15, 8, projectile: 2, cooldown: 1500)
+            shoot(15, projectile: 1, cooldown: 2500)
+            on timed(6000) -> Circle
+        }
+    }
+    state End {
+        prioritize() {
+            follow(1.5, 20, 1)
+            wander(1.5)
+        }
+        flash(15787660, 1, 1000)
+        shoot(15, 3, shoot_angle: 25, projectile: 0, cooldown: 1000)
+        shoot(15, projectile: 1, cooldown: 1000)
+    }
+    drop_portal_on_death("Haunted Cemetery Portal", 0.4)
+}
+
+enemy "White Demon" {
+    drop_portal_on_death("Abyss of Demons Portal", 0.17)
+    prioritize() {
+        stay_above(1, 200)
+        follow(1, range: 7)
+        wander(0.4)
+    }
+    shoot(10, count: 3, shoot_angle: 20, predictive: 1, cooldown: 500)
+    reproduce(density_max: 3)
+    loot {
+        threshold
+        threshold
+    }
+}
+
+enemy "Sprite God" {
+    prioritize() {
+        stay_above(1, 200)
+        wander(0.4)
+    }
+    shoot(12, projectile: 0, count: 4, shoot_angle: 10)
+    shoot(10, projectile: 1, predictive: 1)
+    reproduce(density_max: 3)
+    reproduce_children(5, 0.5, 5000, "Sprite Child")
+    loot {
+        threshold
+        threshold
+    }
+}
+
+enemy "Sprite Child" {
+    prioritize() {
+        stay_above(1, 200)
+        protect(0.4, "Sprite God", protection_range: 1)
+        wander(0.4)
+    }
+    drop_portal_on_death("Glowing Portal", 0.11)
+}
+
+enemy "Medusa" {
+    drop_portal_on_death("Snake Pit Portal", 0.17)
+    prioritize() {
+        stay_above(1, 200)
+        follow(1, range: 7)
+        wander(0.4)
+    }
+    shoot(12, count: 5, shoot_angle: 10, cooldown: 1000)
+    grenade(4, 150, range: 8, cooldown: 3000)
+    reproduce(density_max: 3)
+    loot {
+        threshold
+        threshold
+    }
+}
+
+enemy "Ent God" {
+    prioritize() {
+        stay_above(1, 200)
+        follow(1, range: 7)
+        wander(0.4)
+    }
+    shoot(12, count: 5, shoot_angle: 10, predictive: 1, cooldown: 1250)
+    reproduce(density_max: 3)
+    loot {
+        threshold
+        threshold
+    }
+}
+
+enemy "Beholder" {
+    prioritize() {
+        stay_above(1, 200)
+        follow(1, range: 7)
+        wander(0.4)
+    }
+    shoot(12, projectile: 0, count: 5, shoot_angle: 72, predictive: 0.5, cooldown: 750)
+    shoot(10, projectile: 1, predictive: 1)
+    reproduce(density_max: 3)
+    loot {
+        threshold
+        threshold
+    }
+}
+
+enemy "Flying Brain" {
+    prioritize() {
+        stay_above(1, 200)
+        follow(1, range: 7)
+        wander(0.4)
+    }
+    shoot(12, count: 5, shoot_angle: 72, cooldown: 500)
+    reproduce(density_max: 3)
+    drop_portal_on_death("Mad Lab Portal", 0.17)
+    loot {
+        threshold
+        threshold
+    }
+}
+
+enemy "Slime God" {
+    prioritize() {
+        stay_above(1, 200)
+        follow(1, range: 7)
+        wander(0.4)
+    }
+    shoot(12, projectile: 0, count: 5, shoot_angle: 10, predictive: 1, cooldown: 1000)
+    shoot(10, projectile: 1, predictive: 1, cooldown: 650)
+    reproduce(density_max: 2)
+    loot {
+        threshold
+        threshold
+    }
+}
+
+enemy "Ghost God" {
+    prioritize() {
+        stay_above(1, 200)
+        follow(1, range: 7)
+        wander(0.4)
+    }
+    shoot(12, count: 7, shoot_angle: 25, predictive: 0.5, cooldown: 900)
+    reproduce(density_max: 3)
+    drop_portal_on_death("Undead Lair Portal", 0.17)
+    loot {
+        threshold
+        threshold
+    }
+}
+
+enemy "Rock Bot" {
+    spawn("Paper Bot", max_children: 1, initial_spawn: 1, cooldown: 10000, gives_no_xp: false)
+    spawn("Steel Bot", max_children: 1, initial_spawn: 1, cooldown: 10000, gives_no_xp: false)
+    swirl(speed: 0.6, radius: 3, targeted: false)
+    state Waiting {
+        on player_within(15) -> Attacking
+    }
+    state Attacking {
+        shoot(8, cooldown: 2000)
+        heal_group(8, "Papers", cooldown: 1000)
+        taunt(0.5, "We are impervious to non-mystic attacks!")
+        on timed(10000) -> Waiting
+    }
+    loot {
+        threshold
+        threshold
+    }
+}
+
+enemy "Paper Bot" {
+    drop_portal_on_death("Puppet Theatre Portal", 0.15)
+    prioritize() {
+        orbit(0.4, 3, target: "Rock Bot")
+        wander(0.8)
+    }
+    state Idle {
+        on player_within(15) -> Attack
+    }
+    state Attack {
+        shoot(8, count: 3, shoot_angle: 20, cooldown: 800)
+        heal_group(8, "Steels", cooldown: 1000)
+        on no_player_within(30) -> Idle
+        on hp_below(0.2) -> Explode
+    }
+    state Explode {
+        shoot(0, count: 10, shoot_angle: 36, fixed_angle: 0)
+        decay(0)
+    }
+    loot {
+        threshold
+        threshold
+    }
+}
+
+enemy "Steel Bot" {
+    prioritize() {
+        orbit(0.4, 3, target: "Rock Bot")
+        wander(0.8)
+    }
+    state Idle {
+        on player_within(15) -> Attack
+    }
+    state Attack {
+        shoot(8, count: 3, shoot_angle: 20, cooldown: 800)
+        heal_group(8, "Rocks", cooldown: 1000)
+        taunt(0.5, "Silly squishy. We heal our brothers in a circle.")
+        on no_player_within(30) -> Idle
+        on hp_below(0.2) -> Explode
+    }
+    state Explode {
+        shoot(0, count: 10, shoot_angle: 36, fixed_angle: 0)
+        decay(0)
+    }
+    loot {
+        threshold
+        threshold
+    }
+}
+
+enemy "Djinn" {
+    state Idle {
+        prioritize() {
+            stay_above(1, 200)
+            wander(0.8)
+        }
+        conditional_effect(invulnerable)
+        reproduce(density_max: 3, density_radius: 20)
+        on player_within(8) -> Attacking
+    }
+    state Attacking {
+        state Bullet {
+            shoot(1, count: 4, cooldown: 10000, fixed_angle: 90, cooldown_offset: 0, shoot_angle: 90)
+            shoot(1, count: 4, cooldown: 10000, fixed_angle: 100, cooldown_offset: 200, shoot_angle: 90)
+            shoot(1, count: 4, cooldown: 10000, fixed_angle: 110, cooldown_offset: 400, shoot_angle: 90)
+            shoot(1, count: 4, cooldown: 10000, fixed_angle: 120, cooldown_offset: 600, shoot_angle: 90)
+            shoot(1, count: 4, cooldown: 10000, fixed_angle: 130, cooldown_offset: 800, shoot_angle: 90)
+            shoot(1, count: 4, cooldown: 10000, fixed_angle: 140, cooldown_offset: 1000, shoot_angle: 90)
+            shoot(1, count: 4, cooldown: 10000, fixed_angle: 150, cooldown_offset: 1200, shoot_angle: 90)
+            shoot(1, count: 4, cooldown: 10000, fixed_angle: 160, cooldown_offset: 1400, shoot_angle: 90)
+            shoot(1, count: 4, cooldown: 10000, fixed_angle: 170, cooldown_offset: 1600, shoot_angle: 90)
+            shoot(1, count: 4, cooldown: 10000, fixed_angle: 180, cooldown_offset: 1800, shoot_angle: 90)
+            shoot(1, count: 8, cooldown: 10000, fixed_angle: 180, cooldown_offset: 2000, shoot_angle: 45)
+            shoot(1, count: 4, cooldown: 10000, fixed_angle: 180, cooldown_offset: 0, shoot_angle: 90)
+            shoot(1, count: 4, cooldown: 10000, fixed_angle: 170, cooldown_offset: 200, shoot_angle: 90)
+            shoot(1, count: 4, cooldown: 10000, fixed_angle: 160, cooldown_offset: 400, shoot_angle: 90)
+            shoot(1, count: 4, cooldown: 10000, fixed_angle: 150, cooldown_offset: 600, shoot_angle: 90)
+            shoot(1, count: 4, cooldown: 10000, fixed_angle: 140, cooldown_offset: 800, shoot_angle: 90)
+            shoot(1, count: 4, cooldown: 10000, fixed_angle: 130, cooldown_offset: 1000, shoot_angle: 90)
+            shoot(1, count: 4, cooldown: 10000, fixed_angle: 120, cooldown_offset: 1200, shoot_angle: 90)
+            shoot(1, count: 4, cooldown: 10000, fixed_angle: 110, cooldown_offset: 1400, shoot_angle: 90)
+            shoot(1, count: 4, cooldown: 10000, fixed_angle: 100, cooldown_offset: 1600, shoot_angle: 90)
+            shoot(1, count: 4, cooldown: 10000, fixed_angle: 90, cooldown_offset: 1800, shoot_angle: 90)
+            shoot(1, count: 4, cooldown: 10000, fixed_angle: 90, cooldown_offset: 2000, shoot_angle: 22.5)
+            on timed(2000) -> Wait
+        }
+        state Wait {
+            follow(0.7, range: 0.5)
+            flash(4278255360, 0.1, 20)
+            conditional_effect(invulnerable)
+            on timed(2000) -> Bullet
+        }
+        on no_player_within(13) -> Idle
+        on hp_below(0.5) -> FlashBeforeExplode
+    }
+    state FlashBeforeExplode {
+        conditional_effect(invulnerable)
+        flash(16711680, 0.3, 3)
+        on timed(1000) -> Explode
+    }
+    state Explode {
+        shoot(0, count: 10, shoot_angle: 36, fixed_angle: 0)
+        suicide()
+    }
+    loot {
+        threshold
+        threshold
+    }
+}
+
+enemy "Leviathan" {
+    state Wander {
+        swirl()
+        shoot(10, 2, 10, 1, cooldown: 500)
+        on timed(5000) -> Triangle
+    }
+    state Triangle {
+        state s1 {
+            move_line(0.7, 40)
+            shoot(1, 3, 120, fixed_angle: 34, cooldown: 300)
+            shoot(1, 3, 120, fixed_angle: 38, cooldown: 300)
+            shoot(1, 3, 120, fixed_angle: 42, cooldown: 300)
+            shoot(1, 3, 120, fixed_angle: 46, cooldown: 300)
+            on timed(1500, "2") -> s2
+        }
+        state s2 {
+            move_line(0.7, 160)
+            shoot(1, 3, 120, fixed_angle: 94, cooldown: 300)
+            shoot(1, 3, 120, fixed_angle: 98, cooldown: 300)
+            shoot(1, 3, 120, fixed_angle: 102, cooldown: 300)
+            shoot(1, 3, 120, fixed_angle: 106, cooldown: 300)
+            on timed(1500, "3") -> s3
+        }
+        state s3 {
+            move_line(0.7, 280)
+            shoot(1, 3, 120, fixed_angle: 274, cooldown: 300)
+            shoot(1, 3, 120, fixed_angle: 278, cooldown: 300)
+            shoot(1, 3, 120, fixed_angle: 282, cooldown: 300)
+            shoot(1, 3, 120, fixed_angle: 286, cooldown: 300)
+            on timed(1500) -> Wander
+        }
+    }
+    loot {
+        threshold
+    }
+}
+

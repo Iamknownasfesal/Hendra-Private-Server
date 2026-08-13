@@ -1,0 +1,628 @@
+enemy "Encore Huntress Statue" {
+    state s1 {
+        conditional_effect(invincible)
+    }
+    state s2 {
+        flash(16776960, 2, 5)
+        move_to2(9.5, 16.5, 0.1, true, true, false)
+        on timed(2000, "3") -> s3
+    }
+    state s3 {
+        transform_on_death("Encore Huntress")
+        suicide()
+    }
+}
+
+enemy "Encore Trickster Statue" {
+    state s1 {
+        conditional_effect(invincible)
+    }
+    state s2 {
+        flash(16776960, 2, 5)
+        move_to2(16.5, 16.5, 0.1, true, true, false)
+        on timed(2000, "3") -> s3
+    }
+    state s3 {
+        transform_on_death("Encore Trickster")
+        suicide()
+    }
+}
+
+enemy "Confuse Puppet Statue" {
+    state s1 {
+        conditional_effect(invincible)
+    }
+    state s2 {
+        flash(16776960, 2, 5)
+        move_to2(9.5, 9.5, 0.1, true, true, false)
+        on timed(2000, "3") -> s3
+    }
+    state s3 {
+        transform_on_death("Confuse Puppet")
+        suicide()
+    }
+}
+
+enemy "Bleed Puppet Statue" {
+    state s1 {
+        conditional_effect(invincible)
+    }
+    state s2 {
+        flash(16776960, 2, 5)
+        move_to2(16.5, 9.5, 0.1, true, true, false)
+        on timed(2000, "3") -> s3
+    }
+    state s3 {
+        transform_on_death("Bleed Puppet")
+        suicide()
+    }
+}
+
+enemy "Confuse Puppet" {
+    state s1 {
+        orbit(1.5, 10, 15, "puppet master v2")
+        shoot(15, 3, 360, 0, 45, cooldown: 1250)
+        shoot(15, 3, 360, 2, 100, cooldown: 1250)
+    }
+}
+
+enemy "Bleed Puppet" {
+    orbit(0.5, 3, 15, "puppet master v2")
+    state s1 {
+        shoot(15, 4, 360, 0, 45, cooldown: 750)
+        on timed(750, "2") -> s2
+    }
+    state s2 {
+        shoot(15, 4, 360, 1, 90, cooldown: 750)
+        on timed(750, "1") -> s1
+    }
+}
+
+enemy "Encore Huntress" {
+    state s1 {
+        wander(0.3)
+        on hp_below(0.5, "2") -> s2
+        stay_back(0.3, 5)
+        follow(0.4, 10, 5)
+        shoot(15, 2, 14, 0, cooldown: 750)
+    }
+    state s2 {
+        stay_back(0.3, 2)
+        follow(0.4, 10, 3)
+        shoot(15, 2, 14, 0, cooldown: 500)
+        shoot(15, 3, 50, 1, cooldown: 1750)
+    }
+}
+
+enemy "Encore Trickster" {
+    wander(0.3)
+    follow(0.3, 10, 3)
+    state s1 {
+        on hp_below(0.6, "2") -> s2
+        grenade(3, 100, 10, cooldown: 4500)
+        shoot(15, 1, 0, 0, cooldown: 1000)
+    }
+    state s2 {
+        spawn("Puppet Clone", 4)
+        on timed(10, "3") -> s3
+    }
+    state s3 {
+        shoot(15, 3, 5, 1, 90, cooldown: 600)
+        shoot(15, 3, 5, 1, 180, cooldown: 600)
+        shoot(15, 3, 5, 1, 270, cooldown: 600)
+        shoot(15, 3, 5, 1, 0, cooldown: 600)
+        on timed(3000, "4") -> s4
+    }
+    state s4 {
+        shoot(15, 3, 5, 1, 135, cooldown: 600)
+        shoot(15, 3, 5, 1, 225, cooldown: 600)
+        shoot(15, 3, 5, 1, 315, cooldown: 600)
+        shoot(15, 3, 5, 1, 45, cooldown: 600)
+        on timed(3000, "3") -> s3
+    }
+}
+
+enemy "Puppet Clone" {
+    state s1 {
+        wander(0.3)
+        follow(0.4, 10, 0)
+        shoot(15, 4, 30, 0, cooldown: 1000)
+    }
+}
+
+enemy "HomingFire" {
+    conditional_effect(invincible, true)
+    state idle {
+        follow(0.8, 50, 5)
+        on timed(2200) -> white
+    }
+    state white {
+        flash(16777215, 1, 1)
+        on timed(500) -> shoot
+    }
+    state shoot {
+        shoot(50, 1, 0, 0)
+        suicide()
+    }
+}
+
+enemy "Puppet Master v2" {
+    conditional_effect(invulnerable)
+    state s1 {
+        on player_within(30, "2") -> s2
+    }
+    state s2 {
+        taunt(true, "Hello. Hero. Did you you truly think that I was gone forever?")
+        on timed(3500, "3") -> s3
+    }
+    state s3 {
+        taunt(true, "No! I cannot allow you to end my story in such a way")
+        on timed(3500, "4") -> s4
+    }
+    state s4 {
+        taunt(true, "Behold!")
+        flash(16776960, 1.75, 2)
+        toss_object("Encore Trickster Statue", 8, 45, cooldown: 3500)
+        toss_object("Encore Huntress Statue", 8, 135, cooldown: 3500)
+        toss_object("Confuse Puppet Statue", 8, 225, cooldown: 3500)
+        toss_object("Bleed Puppet Statue", 8, 315, cooldown: 3500)
+        on timed(3500, "5") -> s5
+    }
+    state s5 {
+        taunt(true, "You fail to appreciate my puppets, hero... you do not understand my art. If you cannot be sensible of their beauty then you must die.")
+        on timed(3500, "6") -> s6
+    }
+    state s6 {
+        taunt(true, "You cannot return from whence you came. Face me now, hero and prepare to become the finest of my puppets when I am done with you!")
+        flash(65280, 1.75, 2)
+        on timed(3500, "7") -> s7
+    }
+    state s7 {
+        realm_portal_drop()
+        spawn("HomingFire", 1000, 0.001, cooldown: 2500)
+        state s8 {
+            on hp_below(0.9, "17") -> s17
+            shoot(20, 8, 360, 1, 45, cooldown: 500)
+            on timed(1000, "9") -> s9
+        }
+        state s9 {
+            on hp_below(0.9, "17") -> s17
+            shoot(20, 12, 360, 1, 45, cooldown: 500)
+            on timed(1000, "10") -> s10
+        }
+        state s10 {
+            on hp_below(0.9, "17") -> s17
+            shoot(20, 16, 360, 1, 45, cooldown: 500)
+            on timed(1000, "11") -> s11
+        }
+        state s11 {
+            on hp_below(0.9, "17") -> s17
+            shoot(20, 7, 10, 4, 0, cooldown: 300)
+            on timed(300, "12") -> s12
+        }
+        state s12 {
+            on hp_below(0.9, "17") -> s17
+            shoot(20, 13, 10, 4, 0, cooldown: 300)
+            on timed(300, "13") -> s13
+        }
+        state s13 {
+            on hp_below(0.9, "17") -> s17
+            shoot(20, 19, 10, 4, 0, cooldown: 300)
+            on timed(300, "14") -> s14
+        }
+        state s14 {
+            on hp_below(0.9, "17") -> s17
+            shoot(20, 7, 10, 4, 180, cooldown: 300)
+            on timed(300, "15") -> s15
+        }
+        state s15 {
+            on hp_below(0.9, "17") -> s17
+            shoot(20, 13, 10, 4, 180, cooldown: 300)
+            on timed(300, "16") -> s16
+        }
+        state s16 {
+            on hp_below(0.9, "17") -> s17
+            shoot(20, 19, 10, 4, 180, cooldown: 300)
+            on timed(300, "11") -> s11
+        }
+        state s17 {
+            conditional_effect(invulnerable)
+            taunt(true, "Awaken, my dear puppet. Hunt them down!")
+            state s01 {
+                shoot(15, 6, 360, 3, 0, cooldown: 500)
+                on timed(500, "02") -> s02
+            }
+            state s02 {
+                shoot(15, 6, 360, 3, 20, cooldown: 5000)
+                on timed(500, "03") -> s03
+            }
+            state s03 {
+                shoot(15, 6, 360, 3, 40, cooldown: 5000)
+                on timed(500, "04") -> s04
+            }
+            state s04 {
+                shoot(15, 6, 360, 3, 60, cooldown: 5000)
+                on timed(500, "05") -> s05
+            }
+            state s05 {
+                shoot(15, 6, 360, 3, 80, cooldown: 5000)
+                on timed(500, "06") -> s06
+            }
+            state s06 {
+                shoot(15, 6, 360, 3, 100, cooldown: 5000)
+                on timed(500, "07") -> s07
+            }
+            state s07 {
+                shoot(15, 6, 360, 3, 120, cooldown: 5000)
+                on timed(500, "08") -> s08
+            }
+            state s08 {
+                shoot(15, 6, 360, 3, 140, cooldown: 5000)
+                on timed(500, "09") -> s09
+            }
+            state s09 {
+                shoot(15, 6, 360, 3, 160, cooldown: 5000)
+                on timed(500, "010") -> s010
+            }
+            state s010 {
+                shoot(15, 6, 360, 3, 180, cooldown: 5000)
+                on timed(500, "011") -> s011
+            }
+            state s011 {
+                shoot(15, 6, 360, 3, 200, cooldown: 5000)
+                on timed(500, "012") -> s012
+            }
+            state s012 {
+                shoot(15, 6, 360, 3, 220, cooldown: 5000)
+                on timed(500, "013") -> s013
+            }
+            state s013 {
+                shoot(15, 6, 360, 3, 240, cooldown: 5000)
+                on timed(500, "014") -> s014
+            }
+            state s014 {
+                shoot(15, 6, 360, 3, 260, cooldown: 5000)
+                on timed(500, "015") -> s015
+            }
+            state s015 {
+                shoot(15, 6, 360, 3, 280, cooldown: 5000)
+                on timed(500, "016") -> s016
+            }
+            state s016 {
+                shoot(15, 6, 360, 3, 300, cooldown: 5000)
+                on timed(500, "017") -> s017
+            }
+            state s017 {
+                shoot(15, 6, 360, 3, 320, cooldown: 5000)
+                on timed(500, "018") -> s018
+            }
+            state s018 {
+                shoot(15, 6, 360, 3, 340, cooldown: 5000)
+                on timed(500, "01") -> s01
+            }
+            order_once(50, "Encore Huntress Statue", "2")
+            on entities_not_exists(50, "18", "Encore Huntress", "Encore Huntress Statue") -> s18
+        }
+        state s18 {
+            on hp_below(0.7, "19") -> s19
+            taunt(true, "How dare you destroy my prized puppet! You shall pay for this with your life!")
+            shoot(15, 12, 360, 3, 45, cooldown: 1250)
+            shoot(15, 3, 12, 4, cooldown: 750, predictive: 0.07)
+        }
+        state s19 {
+            conditional_effect(invulnerable)
+            taunt(true, "Awaken, my dear puppet. Fear its blades")
+            state s0111 {
+                shoot(15, 6, 360, 3, 0, cooldown: 500)
+                on timed(500, "0211") -> s0211
+            }
+            state s0211 {
+                shoot(15, 6, 360, 3, 20, cooldown: 5000)
+                on timed(500, "0311") -> s0311
+            }
+            state s0311 {
+                shoot(15, 6, 360, 3, 40, cooldown: 5000)
+                on timed(500, "0411") -> s0411
+            }
+            state s0411 {
+                shoot(15, 6, 360, 3, 60, cooldown: 5000)
+                on timed(500, "0511") -> s0511
+            }
+            state s0511 {
+                shoot(15, 6, 360, 3, 80, cooldown: 5000)
+                on timed(500, "0611") -> s0611
+            }
+            state s0611 {
+                shoot(15, 6, 360, 3, 100, cooldown: 5000)
+                on timed(500, "0711") -> s0711
+            }
+            state s0711 {
+                shoot(15, 6, 360, 3, 120, cooldown: 5000)
+                on timed(500, "0811") -> s0811
+            }
+            state s0811 {
+                shoot(15, 6, 360, 3, 140, cooldown: 5000)
+                on timed(500, "0911") -> s0911
+            }
+            state s0911 {
+                shoot(15, 6, 360, 3, 160, cooldown: 5000)
+                on timed(500, "01011") -> s01011
+            }
+            state s01011 {
+                shoot(15, 6, 360, 3, 180, cooldown: 5000)
+                on timed(500, "01111") -> s01111
+            }
+            state s01111 {
+                shoot(15, 6, 360, 3, 200, cooldown: 5000)
+                on timed(500, "01211") -> s01211
+            }
+            state s01211 {
+                shoot(15, 6, 360, 3, 220, cooldown: 5000)
+                on timed(500, "01311") -> s01311
+            }
+            state s01311 {
+                shoot(15, 6, 360, 3, 240, cooldown: 5000)
+                on timed(500, "01411") -> s01411
+            }
+            state s01411 {
+                shoot(15, 6, 360, 3, 260, cooldown: 5000)
+                on timed(500, "01511") -> s01511
+            }
+            state s01511 {
+                shoot(15, 6, 360, 3, 280, cooldown: 5000)
+                on timed(500, "01611") -> s01611
+            }
+            state s01611 {
+                shoot(15, 6, 360, 3, 300, cooldown: 5000)
+                on timed(500, "01711") -> s01711
+            }
+            state s01711 {
+                shoot(15, 6, 360, 3, 320, cooldown: 5000)
+                on timed(500, "01811") -> s01811
+            }
+            state s01811 {
+                shoot(15, 6, 360, 3, 340, cooldown: 5000)
+                on timed(500, "0111") -> s0111
+            }
+            order_once(50, "Encore Trickster Statue", "2")
+            on entities_not_exists(50, "20", "Encore Trickster", "Encore Trickster Statue", "Puppet Clone") -> s20
+        }
+        state s20 {
+            on hp_below(0.35, "27") -> s27
+            taunt(true, "No! You will suffer for destroying my precious puppets!")
+            on timed(1, "21") -> s21
+        }
+        state s21 {
+            on hp_below(0.35, "27") -> s27
+            shoot(20, 7, 10, 4, 0, cooldown: 300)
+            on timed(300, "22") -> s22
+        }
+        state s22 {
+            on hp_below(0.35, "27") -> s27
+            shoot(20, 13, 10, 4, 0, cooldown: 300)
+            on timed(300, "23") -> s23
+        }
+        state s23 {
+            on hp_below(0.35, "27") -> s27
+            shoot(20, 19, 10, 4, 0, cooldown: 300)
+            on timed(300, "24") -> s24
+        }
+        state s24 {
+            on hp_below(0.35, "27") -> s27
+            shoot(20, 7, 10, 4, 180, cooldown: 300)
+            on timed(300, "25") -> s25
+        }
+        state s25 {
+            on hp_below(0.35, "27") -> s27
+            shoot(20, 13, 10, 4, 180, cooldown: 300)
+            on timed(300, "26") -> s26
+        }
+        state s26 {
+            on hp_below(0.35, "27") -> s27
+            shoot(20, 19, 10, 4, 180, cooldown: 300)
+            on timed(300, "21") -> s21
+        }
+        state s27 {
+            conditional_effect(invulnerable)
+            taunt(true, "Awaken, my dear puppets, and avenge your fallen brothers. Destroy these so-called heroes, leave them to rot here and become one with the dust.")
+            state s20111 {
+                shoot(15, 6, 360, 3, 0, cooldown: 500)
+                on timed(500, "20211") -> s20211
+            }
+            state s20211 {
+                shoot(15, 6, 360, 3, 20, cooldown: 5000)
+                on timed(500, "20311") -> s20311
+            }
+            state s20311 {
+                shoot(15, 6, 360, 3, 40, cooldown: 5000)
+                on timed(500, "20411") -> s20411
+            }
+            state s20411 {
+                shoot(15, 6, 360, 3, 60, cooldown: 5000)
+                on timed(500, "20511") -> s20511
+            }
+            state s20511 {
+                shoot(15, 6, 360, 3, 80, cooldown: 5000)
+                on timed(500, "20611") -> s20611
+            }
+            state s20611 {
+                shoot(15, 6, 360, 3, 100, cooldown: 5000)
+                on timed(500, "20711") -> s20711
+            }
+            state s20711 {
+                shoot(15, 6, 360, 3, 120, cooldown: 5000)
+                on timed(500, "20811") -> s20811
+            }
+            state s20811 {
+                shoot(15, 6, 360, 3, 140, cooldown: 5000)
+                on timed(500, "20911") -> s20911
+            }
+            state s20911 {
+                shoot(15, 6, 360, 3, 160, cooldown: 5000)
+                on timed(500, "201011") -> s201011
+            }
+            state s201011 {
+                shoot(15, 6, 360, 3, 180, cooldown: 5000)
+                on timed(500, "201111") -> s201111
+            }
+            state s201111 {
+                shoot(15, 6, 360, 3, 200, cooldown: 5000)
+                on timed(500, "201211") -> s201211
+            }
+            state s201211 {
+                shoot(15, 6, 360, 3, 220, cooldown: 5000)
+                on timed(500, "201311") -> s201311
+            }
+            state s201311 {
+                shoot(15, 6, 360, 3, 240, cooldown: 5000)
+                on timed(500, "201411") -> s201411
+            }
+            state s201411 {
+                shoot(15, 6, 360, 3, 260, cooldown: 5000)
+                on timed(500, "201511") -> s201511
+            }
+            state s201511 {
+                shoot(15, 6, 360, 3, 280, cooldown: 5000)
+                on timed(500, "201611") -> s201611
+            }
+            state s201611 {
+                shoot(15, 6, 360, 3, 300, cooldown: 5000)
+                on timed(500, "201711") -> s201711
+            }
+            state s201711 {
+                shoot(15, 6, 360, 3, 320, cooldown: 5000)
+                on timed(500, "201811") -> s201811
+            }
+            state s201811 {
+                shoot(15, 6, 360, 3, 340, cooldown: 5000)
+                on timed(500, "20111") -> s20111
+            }
+            order_once(50, "Confuse Puppet Statue", "2")
+            order_once(50, "Bleed Puppet Statue", "2")
+            on entities_not_exists(50, "28", "Confuse Puppet Statue", "Confuse Puppet", "Bleed Puppet Statue", "Bleed Puppet") -> s28
+        }
+        state s28 {
+            taunt(true, "I will rend your souls from your bodies and turn you into my puppet slaves when this is over!")
+            grenade(5, 120, 20, cooldown: 3000)
+            shoot(20, 12, 360, 1, 45, cooldown: 350)
+            shoot(20, 1, 0, 4, cooldown: 500, predictive: 0.09)
+            state s29 {
+                on hp_below(0.05, "49") -> s49
+                shoot(25, 1, 0, 2, 0, cooldown: 50)
+                on timed(50, "30") -> s30
+            }
+            state s30 {
+                on hp_below(0.05, "49") -> s49
+                shoot(25, 3, 8, 2, 0, cooldown: 50)
+                on timed(100, "31") -> s31
+            }
+            state s31 {
+                on hp_below(0.05, "49") -> s49
+                shoot(25, 5, 8, 2, 0, cooldown: 50)
+                on timed(100, "32") -> s32
+            }
+            state s32 {
+                on hp_below(0.05, "49") -> s49
+                shoot(25, 7, 8, 2, 0, cooldown: 50)
+                on timed(100, "33") -> s33
+            }
+            state s33 {
+                on hp_below(0.05, "49") -> s49
+                shoot(25, 9, 8, 2, 0, cooldown: 50)
+                on timed(2000, "34") -> s34
+            }
+            state s34 {
+                on hp_below(0.05, "49") -> s49
+                shoot(25, 1, 0, 2, 90, cooldown: 50)
+                on timed(50, "35") -> s35
+            }
+            state s35 {
+                on hp_below(0.05, "49") -> s49
+                shoot(25, 3, 8, 2, 90, cooldown: 50)
+                on timed(100, "36") -> s36
+            }
+            state s36 {
+                on hp_below(0.05, "49") -> s49
+                shoot(25, 5, 8, 2, 90, cooldown: 50)
+                on timed(100, "37") -> s37
+            }
+            state s37 {
+                on hp_below(0.05, "49") -> s49
+                shoot(25, 7, 8, 2, 90, cooldown: 50)
+                on timed(100, "38") -> s38
+            }
+            state s38 {
+                on hp_below(0.05, "49") -> s49
+                shoot(25, 9, 8, 2, 90, cooldown: 50)
+                on timed(2000, "39") -> s39
+            }
+            state s39 {
+                on hp_below(0.05, "49") -> s49
+                shoot(25, 1, 0, 2, 180, cooldown: 50)
+                on timed(50, "40") -> s40
+            }
+            state s40 {
+                on hp_below(0.05, "49") -> s49
+                shoot(25, 3, 8, 2, 180, cooldown: 50)
+                on timed(100, "41") -> s41
+            }
+            state s41 {
+                on hp_below(0.05, "49") -> s49
+                shoot(25, 5, 8, 2, 180, cooldown: 50)
+                on timed(100, "42") -> s42
+            }
+            state s42 {
+                on hp_below(0.05, "49") -> s49
+                shoot(25, 7, 8, 2, 180, cooldown: 50)
+                on timed(100, "43") -> s43
+            }
+            state s43 {
+                on hp_below(0.05, "49") -> s49
+                shoot(25, 9, 8, 2, 180, cooldown: 50)
+                on timed(2000, "44") -> s44
+            }
+            state s44 {
+                on hp_below(0.05, "49") -> s49
+                shoot(25, 1, 0, 2, 270, cooldown: 50)
+                on timed(50, "45") -> s45
+            }
+            state s45 {
+                on hp_below(0.05, "49") -> s49
+                shoot(25, 3, 8, 2, 270, cooldown: 50)
+                on timed(100, "46") -> s46
+            }
+            state s46 {
+                on hp_below(0.05, "49") -> s49
+                shoot(25, 5, 8, 2, 270, cooldown: 50)
+                on timed(100, "47") -> s47
+            }
+            state s47 {
+                on hp_below(0.05, "49") -> s49
+                shoot(25, 7, 8, 2, 270, cooldown: 50)
+                on timed(100, "48") -> s48
+            }
+            state s48 {
+                on hp_below(0.05, "49") -> s49
+                shoot(25, 9, 8, 2, 270, cooldown: 50)
+                on timed(2000, "29") -> s29
+            }
+        }
+        state s49 {
+            on_death_behavior() {
+                shoot(50, 12, 360, 3, 45)
+            }
+            flash(13882323, 2, 15)
+            conditional_effect(invincible)
+            taunt(true, "I don't understand it wasn't supposed to end this way. Noooo!!!")
+            on timed(4000, "50") -> s50
+        }
+        state s50 {
+            suicide()
+        }
+    }
+    loot {
+        threshold
+        threshold
+    }
+}
+

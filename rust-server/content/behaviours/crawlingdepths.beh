@@ -1,0 +1,293 @@
+enemy "Son of Arachna" {
+    realm_portal_drop()
+    state default {
+        on player_within(7.2) -> fight
+    }
+    state fight {
+        if() {
+            entity_count_greater_than("Yellow Son of Arachna Giant Egg Sac", 9999, 0)
+            shoot(25, projectile: 0, count: 8, cooldown: 3000, cooldown_offset: 4000)
+        }
+    }
+    state shrink {
+        wander(0.4)
+        conditional_effect(invulnerable)
+        change_size(-15, 25)
+        on timed(1000) -> smallAttack
+    }
+    state smallAttack {
+        prioritize() {
+            follow(1, acquire_range: 15, range: 8)
+            wander(1)
+        }
+        shoot(10, predictive: 1, cooldown: 750)
+        shoot(10, 6, projectile: 1, predictive: 1, cooldown: 1000)
+        on timed(10000) -> grow
+    }
+    state grow {
+        wander(0.1)
+        conditional_effect(invulnerable)
+        change_size(35, 200)
+        on timed(1050) -> bigAttack
+    }
+    state bigAttack {
+        prioritize() {
+            follow(0.2)
+            wander(0.1)
+        }
+        shoot(10, projectile: 2, predictive: 1, cooldown: 2000)
+        shoot(10, projectile: 2, predictive: 1, cooldown_offset: 300, cooldown: 2000)
+        shoot(10, 3, projectile: 3, predictive: 1, cooldown_offset: 100, cooldown: 2000)
+        shoot(10, 3, projectile: 3, predictive: 1, cooldown_offset: 400, cooldown: 2000)
+        on timed(10000) -> normalize
+    }
+    state normalize {
+        wander(0.3)
+        conditional_effect(invulnerable)
+        change_size(-20, 100)
+    }
+    loot {
+        threshold
+    }
+}
+
+enemy "Son of Arachna" {
+    realm_portal_drop()
+    state Idle {
+        conditional_effect(invulnerable)
+        on player_within(9) -> MakeWeb
+    }
+    state MakeWeb {
+        conditional_effect(invulnerable)
+        toss_object("Epic Arachna Web Spoke 1", range: 10, angle: 0, cooldown: 100000)
+        toss_object("Epic Arachna Web Spoke 7", range: 6, angle: 0, cooldown: 100000)
+        toss_object("Epic Arachna Web Spoke 2", range: 10, angle: 60, cooldown: 100000)
+        toss_object("Epic Arachna Web Spoke 3", range: 10, angle: 120, cooldown: 100000)
+        toss_object("Epic Arachna Web Spoke 8", range: 6, angle: 120, cooldown: 100000)
+        toss_object("Epic Arachna Web Spoke 4", range: 10, angle: 180, cooldown: 100000)
+        toss_object("Epic Arachna Web Spoke 5", range: 10, angle: 240, cooldown: 100000)
+        toss_object("Epic Arachna Web Spoke 9", range: 6, angle: 240, cooldown: 100000)
+        toss_object("Epic Arachna Web Spoke 6", range: 10, angle: 300, cooldown: 100000)
+        on timed(3500) -> Attack
+    }
+    state Attack {
+        shoot(1, projectile: 0, count: 8, cooldown: 2200, shoot_angle: 45, fixed_angle: 0)
+        shoot(10, projectile: 1, cooldown: 3000)
+        state Follow {
+            prioritize() {
+                stay_above(0.6, 1)
+                stay_back(0.6, distance: 8)
+                wander(0.7)
+            }
+            on timed(1500) -> Return
+        }
+        state Return {
+            stay_close_to_spawn(0.4, 1)
+            on timed(2500) -> Follow
+        }
+    }
+    loot {
+        threshold
+        threshold
+    }
+}
+
+enemy "Crawling Depths Egg Sac" {
+    state CheckOrDeath {
+        on player_within(2) -> Urclose
+        transform_on_death("Crawling Spider Hatchling", 5, 7)
+    }
+    state Urclose {
+        spawn("Crawling Spider Hatchling", 6)
+        suicide()
+    }
+}
+
+enemy "Crawling Spider Hatchling" {
+    prioritize() {
+        wander(0.4)
+    }
+    shoot(7, count: 1, shoot_angle: 0, cooldown: 650)
+    shoot(7, count: 1, shoot_angle: 0, projectile: 1, predictive: 1, cooldown: 850)
+}
+
+enemy "Crawling Grey Spotted Spider" {
+    prioritize() {
+        charge(2, 8, 1050)
+        wander(0.4)
+    }
+    shoot(10, count: 1, shoot_angle: 0, cooldown: 500)
+    loot {
+        item("Healing Ichor", 0.2)
+        item("Health Potion", 0.3)
+    }
+}
+
+enemy "Crawling Grey Spider" {
+    prioritize() {
+        charge(2, 8, 1050)
+        wander(0.4)
+    }
+    shoot(9, count: 1, shoot_angle: 0, cooldown: 850)
+    loot {
+        item("Healing Ichor", 0.2)
+        item("Health Potion", 0.3)
+    }
+}
+
+enemy "Crawling Red Spotted Spider" {
+    prioritize() {
+        wander(0.4)
+    }
+    shoot(8, count: 1, shoot_angle: 0, cooldown: 750)
+    loot {
+        item("Healing Ichor", 0.2)
+        item("Health Potion", 0.3)
+    }
+}
+
+enemy "Crawling Green Spider" {
+    prioritize() {
+        follow(0.6, 11, 1)
+        wander(0.4)
+    }
+    shoot(8, count: 3, shoot_angle: 10, cooldown: 400)
+    loot {
+        item("Healing Ichor", 0.2)
+        item("Health Potion", 0.3)
+    }
+}
+
+enemy "Yellow Son of Arachna Giant Egg Sac" {
+    transform_on_death("Yellow Egg Summoner")
+    state Spawn {
+        spawn("Crawling Green Spider", 2)
+        on entity_not_exists("Crawling Green Spider", 20) -> Spawn2
+    }
+    state Spawn2 {
+        spawn("Crawling Grey Spider", 2)
+        on entity_not_exists("Crawling Grey Spider", 20) -> Spawn3
+    }
+    state Spawn3 {
+        spawn("Crawling Red Spotted Spider", 2)
+        on entity_not_exists("Crawling Red Spotted Spider", 20) -> Spawn4
+    }
+    state Spawn4 {
+        spawn("Crawling Spider Hatchling", 2)
+        on entity_not_exists("Crawling Spider Hatchling", 20) -> Spawn5
+    }
+    state Spawn5 {
+        spawn("Crawling Grey Spotted Spider", 2)
+        on entity_not_exists("Crawling Grey Spotted Spider", 20) -> Spawn
+    }
+    loot {
+        threshold
+    }
+}
+
+enemy "Blue Son of Arachna Giant Egg Sac" {
+    state DeathSpawn {
+        transform_on_death("Crawling Spider Hatchling", 5, 7)
+    }
+    loot {
+        threshold
+    }
+}
+
+enemy "Red Son of Arachna Giant Egg Sac" {
+    state DeathSpawn {
+        transform_on_death("Crawling Red Spotted Spider", 3, 3)
+    }
+    loot {
+        threshold
+    }
+}
+
+enemy "Silver Son of Arachna Giant Egg Sac" {
+    state DeathSpawn {
+        transform_on_death("Crawling Grey Spider", 3, 3)
+    }
+    loot {
+        threshold
+    }
+}
+
+enemy "Silver Egg Summoner" {
+    conditional_effect(invincible)
+}
+
+enemy "Yellow Egg Summoner" {
+    conditional_effect(invincible)
+}
+
+enemy "Red Egg Summoner" {
+    conditional_effect(invincible)
+}
+
+enemy "Blue Egg Summoner" {
+    conditional_effect(invincible)
+}
+
+enemy "Epic Arachna Web Spoke 1" {
+    conditional_effect(invulnerable)
+    shoot(200, count: 1, fixed_angle: 180, cooldown: 150)
+    shoot(200, count: 1, fixed_angle: 120, cooldown: 150)
+    shoot(200, count: 1, fixed_angle: 240, cooldown: 150)
+}
+
+enemy "Epic Arachna Web Spoke 2" {
+    conditional_effect(invulnerable)
+    shoot(200, count: 1, fixed_angle: 240, cooldown: 150)
+    shoot(200, count: 1, fixed_angle: 180, cooldown: 150)
+    shoot(200, count: 1, fixed_angle: 300, cooldown: 150)
+}
+
+enemy "Epic Arachna Web Spoke 3" {
+    conditional_effect(invulnerable)
+    shoot(200, count: 1, fixed_angle: 300, cooldown: 150)
+    shoot(200, count: 1, fixed_angle: 240, cooldown: 150)
+    shoot(200, count: 1, fixed_angle: 0, cooldown: 150)
+}
+
+enemy "Epic Arachna Web Spoke 4" {
+    conditional_effect(invulnerable)
+    shoot(200, count: 1, fixed_angle: 0, cooldown: 150)
+    shoot(200, count: 1, fixed_angle: 60, cooldown: 150)
+    shoot(200, count: 1, fixed_angle: 300, cooldown: 150)
+}
+
+enemy "Epic Arachna Web Spoke 5" {
+    conditional_effect(invulnerable)
+    shoot(200, count: 1, fixed_angle: 60, cooldown: 150)
+    shoot(200, count: 1, fixed_angle: 0, cooldown: 150)
+    shoot(200, count: 1, fixed_angle: 120, cooldown: 150)
+}
+
+enemy "Epic Arachna Web Spoke 6" {
+    conditional_effect(invulnerable)
+    shoot(200, count: 1, fixed_angle: 120, cooldown: 150)
+    shoot(200, count: 1, fixed_angle: 60, cooldown: 150)
+    shoot(200, count: 1, fixed_angle: 180, cooldown: 150)
+}
+
+enemy "Epic Arachna Web Spoke 7" {
+    conditional_effect(invulnerable)
+    shoot(200, count: 1, fixed_angle: 180, cooldown: 150)
+    shoot(200, count: 1, fixed_angle: 120, cooldown: 150)
+    shoot(200, count: 1, fixed_angle: 240, cooldown: 150)
+}
+
+enemy "Epic Arachna Web Spoke 8" {
+    conditional_effect(invulnerable)
+    shoot(200, count: 1, fixed_angle: 360, cooldown: 150)
+    shoot(200, count: 1, fixed_angle: 240, cooldown: 150)
+    shoot(200, count: 1, fixed_angle: 300, cooldown: 150)
+}
+
+enemy "Epic Arachna Web Spoke 9" {
+    conditional_effect(invulnerable)
+    shoot(200, count: 1, fixed_angle: 0, cooldown: 150)
+    shoot(200, count: 1, fixed_angle: 60, cooldown: 150)
+    shoot(200, count: 1, fixed_angle: 120, cooldown: 150)
+}
+

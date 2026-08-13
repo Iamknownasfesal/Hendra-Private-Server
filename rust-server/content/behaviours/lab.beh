@@ -1,0 +1,430 @@
+enemy "Dr Terrible" {
+    state idle {
+        on player_within(12) -> GP
+        on hp_below(0.2) -> rage
+    }
+    state rage {
+        order(100, "Monster Cage", "no spawn")
+        order(100, "Dr Terrible Bubble", "nothing change")
+        order(100, "Red Gas Spawner UL", "OFF")
+        order(100, "Red Gas Spawner UR", "OFF")
+        order(100, "Red Gas Spawner LL", "OFF")
+        order(100, "Red Gas Spawner LR", "OFF")
+        wander(0.5)
+        set_alt_texture(0)
+        toss_object("Green Potion", cooldown: 1500, cooldown_offset: 0)
+        on timed(12000, "rage TA") -> rage_TA
+    }
+    state rage_TA {
+        order(100, "Monster Cage", "no spawn")
+        order(100, "Dr Terrible Bubble", "nothing change")
+        order(100, "Red Gas Spawner UL", "OFF")
+        order(100, "Red Gas Spawner UR", "OFF")
+        order(100, "Red Gas Spawner LL", "OFF")
+        order(100, "Red Gas Spawner LR", "OFF")
+        wander(0.5)
+        set_alt_texture(0)
+        toss_object("Turret Attack", cooldown: 1500, cooldown_offset: 0)
+        on timed(10000) -> rage
+    }
+    state GP {
+        order(100, "Monster Cage", "no spawn")
+        order(100, "Dr Terrible Bubble", "nothing change")
+        order(100, "Red Gas Spawner UL", "OFF")
+        order(100, "Red Gas Spawner UR", "ON")
+        order(100, "Red Gas Spawner LL", "ON")
+        order(100, "Red Gas Spawner LR", "ON")
+        wander(0.5)
+        set_alt_texture(0)
+        taunt(0.5, "For Science")
+        toss_object("Green Potion", cooldown: 2000, cooldown_offset: 0)
+        on timed(12000) -> TA
+    }
+    state TA {
+        order(100, "Monster Cage", "no spawn")
+        order(100, "Dr Terrible Bubble", "nothing change")
+        order(100, "Red Gas Spawner UL", "OFF")
+        order(100, "Red Gas Spawner UR", "ON")
+        order(100, "Red Gas Spawner LL", "ON")
+        order(100, "Red Gas Spawner LR", "ON")
+        wander(0.5)
+        set_alt_texture(0)
+        toss_object("Turret Attack", cooldown: 2000, cooldown_offset: 0)
+        on timed(10000) -> hide
+    }
+    state hide {
+        order(100, "Monster Cage", "spawn")
+        order(100, "Dr Terrible Bubble", "Bubble time")
+        order(100, "Red Gas Spawner UL", "OFF")
+        order(100, "Red Gas Spawner UR", "OFF")
+        order(100, "Red Gas Spawner LL", "OFF")
+        order(100, "Red Gas Spawner LR", "OFF")
+        return_to_spawn(speed: 1)
+        conditional_effect(invincible)
+        set_alt_texture(1)
+        on timed(15000) -> nohide
+    }
+    state nohide {
+        order(100, "Monster Cage", "no spawn")
+        order(100, "Dr Terrible Bubble", "nothing change")
+        order(100, "Red Gas Spawner UL", "ON")
+        order(100, "Red Gas Spawner UR", "OFF")
+        order(100, "Red Gas Spawner LL", "ON")
+        order(100, "Red Gas Spawner LR", "ON")
+        wander(0.5)
+        set_alt_texture(0)
+        toss_object("Green Potion", cooldown: 2000, cooldown_offset: 0)
+        on timed(12000) -> TA2
+    }
+    state TA2 {
+        order(100, "Monster Cage", "no spawn")
+        order(100, "Dr Terrible Bubble", "nothing change")
+        order(100, "Red Gas Spawner UL", "ON")
+        order(100, "Red Gas Spawner UR", "OFF")
+        order(100, "Red Gas Spawner LL", "ON")
+        order(100, "Red Gas Spawner LR", "ON")
+        wander(0.5)
+        set_alt_texture(0)
+        toss_object("Green Potion", cooldown: 2000, cooldown_offset: 0)
+        on timed(10000) -> hide2
+    }
+    state hide2 {
+        order(100, "Monster Cage", "spawn")
+        order(100, "Dr Terrible Bubble", "Bubble time")
+        order(100, "Red Gas Spawner UL", "OFF")
+        order(100, "Red Gas Spawner UR", "OFF")
+        order(100, "Red Gas Spawner LL", "OFF")
+        order(100, "Red Gas Spawner LR", "OFF")
+        return_to_spawn(speed: 1)
+        conditional_effect(invincible)
+        set_alt_texture(1)
+        on timed(15000) -> nohide2
+    }
+    state nohide2 {
+        order(100, "Monster Cage", "no spawn")
+        order(100, "Dr Terrible Bubble", "nothing change")
+        order(100, "Red Gas Spawner UL", "ON")
+        order(100, "Red Gas Spawner UR", "ON")
+        order(100, "Red Gas Spawner LL", "OFF")
+        order(100, "Red Gas Spawner LR", "ON")
+        wander(0.5)
+        set_alt_texture(0)
+        toss_object("Green Potion", cooldown: 2000, cooldown_offset: 0)
+        on timed(12000) -> TA3
+    }
+    state TA3 {
+        order(100, "Monster Cage", "no spawn")
+        order(100, "Dr Terrible Bubble", "nothing change")
+        order(100, "Red Gas Spawner UL", "ON")
+        order(100, "Red Gas Spawner UR", "ON")
+        order(100, "Red Gas Spawner LL", "OFF")
+        order(100, "Red Gas Spawner LR", "ON")
+        wander(0.5)
+        set_alt_texture(0)
+        toss_object("Green Potion", cooldown: 2000, cooldown_offset: 0)
+        on timed(10000) -> hide3
+    }
+    state hide3 {
+        order(100, "Monster Cage", "spawn")
+        order(100, "Dr Terrible Bubble", "Bubble time")
+        order(100, "Red Gas Spawner UL", "OFF")
+        order(100, "Red Gas Spawner UR", "OFF")
+        order(100, "Red Gas Spawner LL", "OFF")
+        order(100, "Red Gas Spawner LR", "OFF")
+        return_to_spawn(speed: 1)
+        conditional_effect(invincible)
+        set_alt_texture(1)
+        on timed(15000) -> nohide3
+    }
+    state nohide3 {
+        order(100, "Monster Cage", "no spawn")
+        order(100, "Dr Terrible Bubble", "nothing change")
+        order(100, "Red Gas Spawner UL", "ON")
+        order(100, "Red Gas Spawner UR", "ON")
+        order(100, "Red Gas Spawner LL", "ON")
+        order(100, "Red Gas Spawner LR", "OFF")
+        wander(0.5)
+        set_alt_texture(0)
+        toss_object("Green Potion", cooldown: 2000, cooldown_offset: 0)
+        on timed(12000) -> TA4
+    }
+    state TA4 {
+        order(100, "Monster Cage", "no spawn")
+        order(100, "Dr Terrible Bubble", "nothing change")
+        order(100, "Red Gas Spawner UL", "ON")
+        order(100, "Red Gas Spawner UR", "ON")
+        order(100, "Red Gas Spawner LL", "ON")
+        order(100, "Red Gas Spawner LR", "OFF")
+        wander(0.5)
+        set_alt_texture(0)
+        toss_object("Green Potion", cooldown: 2000, cooldown_offset: 0)
+        on timed(10000) -> hide4
+    }
+    state hide4 {
+        order(100, "Monster Cage", "spawn")
+        order(100, "Dr Terrible Bubble", "Bubble time")
+        order(100, "Red Gas Spawner UL", "OFF")
+        order(100, "Red Gas Spawner UR", "OFF")
+        order(100, "Red Gas Spawner LL", "OFF")
+        order(100, "Red Gas Spawner LR", "OFF")
+        return_to_spawn(speed: 1)
+        conditional_effect(invincible)
+        set_alt_texture(1)
+        on timed(15000) -> idle
+    }
+    loot {
+        threshold
+        threshold
+    }
+}
+
+enemy "Dr Terrible Mini Bot" {
+    wander(0.5)
+    shoot(10, 2, 20, angle_offset: 0, projectile: 0, cooldown: 1000)
+}
+
+enemy "Dr Terrible Rampage Cyborg" {
+    state idle {
+        on player_within(10) -> normal
+        state normal {
+            wander(0.5)
+            follow(0.6, range: 1, duration: 5000, cooldown: 0)
+            shoot(10, 1, 0, default_angle: 0, angle_offset: 0, projectile: 0, predictive: 1, cooldown: 800, cooldown_offset: 0)
+            on hp_below(0.2) -> blink
+            on timed(10000, "rage blink") -> rage_blink
+        }
+        state rage_blink {
+            wander(0.5)
+            flash(15787660, flash_repeats: 5, flash_period: 0.1)
+            follow(0.6, range: 1, duration: 5000, cooldown: 0)
+            shoot(10, 1, 0, default_angle: 0, angle_offset: 0, projectile: 1, predictive: 1, cooldown: 800, cooldown_offset: 0)
+            on hp_below(0.2) -> blink
+            on timed(3000) -> rage
+        }
+        state rage {
+            wander(0.5)
+            flash(15787660, flash_repeats: 5, flash_period: 0.1)
+            follow(0.6, range: 1, duration: 5000, cooldown: 0)
+            shoot(10, 1, 0, default_angle: 0, angle_offset: 0, projectile: 1, predictive: 1, cooldown: 800, cooldown_offset: 0)
+            on hp_below(0.2) -> blink
+        }
+        state blink {
+            wander(0.5)
+            follow(0.6, range: 1, duration: 5000, cooldown: 0)
+            flash(268369920, flash_repeats: 10000, flash_period: 0.1)
+            on timed(2000) -> explode
+        }
+        state explode {
+            flash(268369920, 1, 9000001)
+            shoot(10, count: 8, projectile: 2, fixed_angle: 22.5)
+            suicide()
+        }
+    }
+}
+
+enemy "Dr Terrible Escaped Experiment" {
+    wander(0.5)
+    shoot(10, 1, 0, default_angle: 0, angle_offset: 0, projectile: 1, predictive: 1, cooldown: 800, cooldown_offset: 0)
+}
+
+enemy "Mini Bot" {
+    wander(0.5)
+    shoot(10, 2, 20, angle_offset: 0, projectile: 0, cooldown: 1000)
+}
+
+enemy "Rampage Cyborg" {
+    state idle {
+        on player_within(10) -> normal
+        state normal {
+            wander(0.5)
+            follow(0.6, range: 1, duration: 5000, cooldown: 0)
+            shoot(10, 1, 0, default_angle: 0, angle_offset: 0, projectile: 0, predictive: 1, cooldown: 800, cooldown_offset: 0)
+            on hp_below(0.2) -> blink
+            on timed(10000, "rage blink") -> rage_blink
+        }
+        state rage_blink {
+            wander(0.5)
+            flash(15787660, flash_repeats: 5, flash_period: 0.1)
+            follow(0.6, range: 1, duration: 5000, cooldown: 0)
+            shoot(10, 1, 0, default_angle: 0, angle_offset: 0, projectile: 1, predictive: 1, cooldown: 800, cooldown_offset: 0)
+            on hp_below(0.2) -> blink
+            on timed(3000) -> rage
+        }
+        state rage {
+            wander(0.5)
+            flash(15787660, flash_repeats: 5, flash_period: 0.1)
+            follow(0.6, range: 1, duration: 5000, cooldown: 0)
+            shoot(10, 1, 0, default_angle: 0, angle_offset: 0, projectile: 1, predictive: 1, cooldown: 800, cooldown_offset: 0)
+            on hp_below(0.2) -> blink
+        }
+        state blink {
+            wander(0.5)
+            follow(0.6, range: 1, duration: 5000, cooldown: 0)
+            flash(268369920, flash_repeats: 10000, flash_period: 0.1)
+            on timed(2000) -> explode
+        }
+        state explode {
+            flash(268369920, 1, 9000001)
+            shoot(10, count: 8, projectile: 2, fixed_angle: 22.5)
+            suicide()
+        }
+    }
+}
+
+enemy "Escaped Experiment" {
+    wander(0.5)
+    shoot(10, 1, 0, default_angle: 0, angle_offset: 0, projectile: 0, predictive: 1, cooldown: 800, cooldown_offset: 0)
+}
+
+enemy "West Automated Defense Turret" {
+    conditional_effect(invincible)
+    shoot(32, fixed_angle: 0)
+}
+
+enemy "East Automated Defense Turret" {
+    conditional_effect(invincible)
+    shoot(32, fixed_angle: 180)
+}
+
+enemy "Crusher Abomination" {
+    state s1_step {
+        wander(0.5)
+        shoot(10, 3, 20, angle_offset: 0, projectile: 0, cooldown: 1000)
+        on hp_below(0.75, "2 step") -> s2_step
+    }
+    state s2_step {
+        wander(0.5)
+        change_size(11, 150)
+        shoot(10, 2, 20, angle_offset: 0, projectile: 1, cooldown: 1000)
+        on hp_below(0.5, "3 step") -> s3_step
+    }
+    state s3_step {
+        wander(0.5)
+        change_size(11, 175)
+        shoot(10, 2, 20, angle_offset: 0, projectile: 2, cooldown: 1000)
+        on hp_below(0.25, "4 step") -> s4_step
+    }
+    state s4_step {
+        wander(0.5)
+        change_size(11, 200)
+        shoot(10, 2, 20, angle_offset: 0, projectile: 3, cooldown: 1000)
+    }
+}
+
+enemy "Enforcer Bot 3000" {
+    wander(0.5)
+    shoot(10, 3, 20, angle_offset: 0, projectile: 0, cooldown: 1000)
+    shoot(10, 4, 20, angle_offset: 0, projectile: 1, cooldown: 1000)
+    transform_on_death("Mini Bot", 0, 3)
+}
+
+enemy "Green Potion" {
+    state Idle {
+        on timed(2000) -> explode
+    }
+    state explode {
+        shoot(10, count: 6, projectile: 0, fixed_angle: 22.5)
+        suicide()
+    }
+}
+
+enemy "Red Gas Spawner UL" {
+    on entity_not_exists("Dr Terrible", 50) -> OFF
+    state OFF {
+        conditional_effect(invincible)
+    }
+    state ON {
+        conditional_effect(invincible)
+        shoot(10, count: 20, projectile: 0, fixed_angle: 22.5)
+    }
+}
+
+enemy "Red Gas Spawner UR" {
+    on entity_not_exists("Dr Terrible", 50) -> OFF
+    state OFF {
+        conditional_effect(invincible)
+    }
+    state ON {
+        conditional_effect(invincible)
+        shoot(10, count: 20, projectile: 0, fixed_angle: 22.5)
+    }
+}
+
+enemy "Red Gas Spawner LL" {
+    on entity_not_exists("Dr Terrible", 50) -> OFF
+    state OFF {
+        conditional_effect(invincible)
+    }
+    state ON {
+        conditional_effect(invincible)
+        shoot(10, count: 20, projectile: 0, fixed_angle: 22.5)
+    }
+}
+
+enemy "Red Gas Spawner LR" {
+    on entity_not_exists("Dr Terrible", 50) -> OFF
+    state OFF {
+        conditional_effect(invincible)
+    }
+    state ON {
+        conditional_effect(invincible)
+        shoot(10, count: 20, projectile: 0, fixed_angle: 22.5)
+    }
+}
+
+enemy "Turret Attack" {
+    shoot(10, 2, 20, angle_offset: 0, projectile: 0, cooldown: 1000)
+}
+
+enemy "Mad Lab Open Wall" {
+    transform_on_death("Invisible")
+    conditional_effect(invincible)
+    state destroy_all_tesla_coils {
+        conditional_effect(invincible)
+        on entity_not_exists("Tesla Coil", 1000, "Suicide :D") -> Suicide__D
+    }
+    state Suicide__D {
+        suicide()
+    }
+}
+
+enemy "Mad Scientist Summoner" {
+    conditional_effect(invincible, true)
+    state idle {
+        on entities_not_exists(300, "Dr Terrible") -> Death
+    }
+    state Death {
+        suicide()
+    }
+}
+
+enemy "Dr Terrible Bubble" {
+    state nothing_change {
+        conditional_effect(invincible)
+    }
+    state Bubble_time {
+        conditional_effect(invincible)
+        on timed(1000, "Bubble time2") -> Bubble_time2
+    }
+    state Bubble_time2 {
+        conditional_effect(invincible)
+        on timed(1000, "Bubble time") -> Bubble_time
+    }
+}
+
+enemy "Mad Gas Controller" {
+    conditional_effect(invincible, true)
+}
+
+enemy "Monster Cage" {
+    state no_spawn {
+        conditional_effect(invincible)
+    }
+    state spawn {
+        conditional_effect(invincible)
+        spawn("Dr Terrible Rampage Cyborg", max_children: 1, initial_spawn: 0.5)
+        spawn("Dr Terrible Mini Bot", max_children: 1, initial_spawn: 0.5)
+        spawn("Dr Terrible Escaped Experiment", max_children: 1, initial_spawn: 0.5)
+    }
+}
+

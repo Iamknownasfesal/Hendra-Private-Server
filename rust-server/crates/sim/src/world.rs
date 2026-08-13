@@ -114,6 +114,15 @@ pub struct Entity {
     /// Whether killing this awards experience. Summons set this so they cannot be farmed.
     pub no_experience: bool,
 
+    /// A colour to blink, its period and how many times, for a phase change the eye can catch.
+    pub flash: Option<(u32, u32, u32)>,
+
+    /// The health this entity had before any scaling to the crowd.
+    ///
+    /// Kept so scaling is measured from the base each time rather than compounded — without it a
+    /// boss in a busy room grows every two seconds forever.
+    pub base_max_hp: Option<i32>,
+
     /// Effects currently held, and how long each has left.
     ///
     /// A list rather than an array indexed by effect number: there are forty effects and almost
@@ -151,6 +160,8 @@ impl Entity {
             resizing: None,
             no_experience: false,
             effects: Vec::new(),
+            flash: None,
+            base_max_hp: None,
         }
     }
 
@@ -181,6 +192,8 @@ impl Entity {
             resizing: None,
             no_experience: false,
             effects: Vec::new(),
+            flash: None,
+            base_max_hp: None,
         }
     }
 
@@ -1068,6 +1081,71 @@ impl World {
                     return;
                 };
                 self.reshape_ground(catalog, x, y, *radius, kind);
+            }
+
+            Action::Flash {
+                colour,
+                period_ms,
+                repeats,
+            } => {
+                if let Some(entity) = self.entities.get_mut(handle) {
+                    entity.flash = Some((*colour, *period_ms, *repeats));
+                }
+            }
+
+            Action::RemoveEffect { effect } => {
+                if let Some(entity) = self.entities.get_mut(handle) {
+                    entity.effects.retain(|(held, _)| held != effect);
+
+                    let mut conditions = hendra_content::ConditionSet::EMPTY;
+                    for (held, _) in &entity.effects {
+                        if let Some(known) =
+                            hendra_content::ConditionEffect::from_index(*held as u16)
+                        {
+                            conditions.insert(known);
+                        }
+                    }
+                    entity.conditions = conditions;
+                }
+            }
+
+            // Health follows the crowd, so a boss built for forty people is not trivial when two
+            // find it. Measured from the base rather than compounded, or a boss in a busy room
+            // would grow without bound.
+            Action::ScaleHealth {
+                per_player,
+                maximum_extra,
+                radius,
+            } => {
+                let Some((x, y)) = self.entities.get(handle).map(|e| (e.x, e.y)) else {
+                    return;
+                };
+                self.grid.within(x, y, *radius, &mut self.nearby);
+                let found = std::mem::take(&mut self.nearby);
+
+                let players = found
+                    .iter()
+                    .filter(|other| {
+                        self.entities
+                            .get(**other)
+                            .is_some_and(|entity| entity.kind == Kind::Player && !entity.dead)
+                    })
+                    .count();
+                self.nearby = found;
+
+                if let Some(entity) = self.entities.get_mut(handle) {
+                    let base = entity.base_max_hp.unwrap_or(entity.max_hp);
+                    entity.base_max_hp = Some(base);
+
+                    let extra = (per_player.saturating_mul(players.saturating_sub(1) as i32))
+                        .clamp(0, (*maximum_extra).max(0));
+                    let before = entity.max_hp;
+                    entity.max_hp = base.saturating_add(extra).max(1);
+
+                    // The health added is granted rather than left as a hole, and health lost when
+                    // the room empties comes off the top rather than killing anything.
+                    entity.hp = (entity.hp + (entity.max_hp - before)).clamp(1, entity.max_hp);
+                }
             }
 
             Action::NoExperience => {

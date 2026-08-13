@@ -1,0 +1,334 @@
+enemy "Garnet Statue" {
+    state Wait {
+        conditional_effect(invincible, true)
+    }
+    state Activate {
+        on timed(20) -> RemINVINC
+    }
+    state RemINVINC {
+        flash(16777215, 2, 100)
+        conditional_effect(invincible)
+        on timed(2000) -> Shotgun
+    }
+    state FlashRING {
+        flash(13893632, 2, 100)
+        conditional_effect(invulnerable)
+        on timed(2000) -> RingCharge
+        on entities_not_exists(50, "Jade Statue") -> JadeDied
+    }
+    state RingCharge {
+        follow(1.8, range: 1, duration: 5000, cooldown: 0)
+        shoot(10, count: 20, shoot_angle: 18, cooldown: 99999, projectile: 1, cooldown_offset: 5)
+        shoot(10, count: 20, shoot_angle: 18, cooldown: 99999, projectile: 1, cooldown_offset: 220)
+        shoot(10, count: 20, shoot_angle: 18, cooldown: 99999, projectile: 1, cooldown_offset: 420)
+        shoot(10, count: 20, shoot_angle: 18, cooldown: 99999, projectile: 1, cooldown_offset: 620)
+        on timed(800) -> ChooseRandom
+        on entities_not_exists(50, "Jade Statue") -> JadeDied
+    }
+    state Shotgun {
+        follow(0.7, range: 1, duration: 5000, cooldown: 0)
+        shoot(10, count: 5, predictive: 1, shoot_angle: 5, cooldown: 500, projectile: 0)
+        on timed(3700) -> ChooseRandom
+        on entities_not_exists(50, "Jade Statue") -> JadeDied
+    }
+    state Singular {
+        follow(0.7, range: 1, duration: 5000, cooldown: 0)
+        shoot(10, count: 1, predictive: 1, cooldown: 90, projectile: 0)
+        on timed(1800) -> ChooseRandom
+        on entities_not_exists(50, "Jade Statue") -> JadeDied
+    }
+    state PetRing {
+        shoot(10, count: 20, shoot_angle: 18, cooldown: 400, projectile: 4)
+        on timed(120) -> ChooseRandom
+        on entities_not_exists(50, "Jade Statue") -> JadeDied
+    }
+    state Spawn {
+        toss_object("Corrupted Spirit", 5, cooldown: 8000)
+        toss_object("Corrupted Spirit", 5, cooldown: 8000)
+        on timed(700) -> ChooseRandom
+    }
+    state ChooseRandom {
+        flash(16777215, 2, 100)
+        conditional_effect(invulnerable)
+        on timed(1200, true) -> Singular
+        on timed(1200, true) -> FlashRING
+        on timed(1200, true) -> Shotgun
+        on timed(1200, true) -> PetRing
+        on timed(1200, true) -> Spawn
+        on entities_not_exists(50, "Jade Statue") -> JadeDied
+    }
+    state JadeDied {
+        conditional_effect(invulnerable, true)
+        heal_self(cooldown: 999999, amount: 7000)
+        change_size(20, 130)
+        flash(16777215, 2, 100)
+        on timed(1500) -> ChooseRandomV2
+    }
+    state ChooseRandomV2 {
+        flash(16777215, 2, 100)
+        conditional_effect(invulnerable)
+        on timed(1200, true) -> SingularV2
+        on timed(1200, true) -> FlashRINGV2
+        on timed(1200, true) -> ShotgunV2
+        on timed(1200, true) -> PetRingV2
+        on timed(1200, true) -> ShotgunWIDER
+        on timed(1200, true) -> Swirl
+        on timed(1200, true) -> SpawnV2
+    }
+    state SpawnV2 {
+        toss_object("Corrupted Spirit", 5, cooldown: 8000)
+        toss_object("Corrupted Spirit", 5, cooldown: 8000)
+        on timed(700) -> ChooseRandomV2
+    }
+    state FlashRINGV2 {
+        flash(13893632, 2, 100)
+        conditional_effect(invulnerable)
+        on timed(2000) -> RingChargeV2
+    }
+    state RingChargeV2 {
+        follow(1.8, range: 1, duration: 5000, cooldown: 0)
+        shoot(10, count: 20, shoot_angle: 18, cooldown: 99999, projectile: 1, cooldown_offset: 5)
+        shoot(10, count: 20, shoot_angle: 18, cooldown: 99999, projectile: 1, cooldown_offset: 220)
+        shoot(10, count: 20, shoot_angle: 18, cooldown: 99999, projectile: 1, cooldown_offset: 420)
+        shoot(10, count: 20, shoot_angle: 18, cooldown: 99999, projectile: 1, cooldown_offset: 620)
+        on timed(800) -> ChooseRandomV2
+    }
+    state ShotgunV2 {
+        follow(0.7, range: 1, duration: 5000, cooldown: 0)
+        shoot(10, count: 5, predictive: 1, shoot_angle: 5, cooldown: 500, projectile: 0)
+        on timed(2300) -> ChooseRandomV2
+    }
+    state ShotgunWIDER {
+        shoot(10, count: 5, predictive: 1, shoot_angle: 5, cooldown: 99999, projectile: 0, cooldown_offset: 50)
+        shoot(10, count: 1, predictive: 1, shoot_angle: 5, cooldown: 99999, projectile: 3, cooldown_offset: 50)
+        shoot(10, count: 10, predictive: 1, shoot_angle: 5, cooldown: 99999, projectile: 0, cooldown_offset: 500)
+        shoot(10, count: 1, predictive: 1, shoot_angle: 5, cooldown: 99999, projectile: 3, cooldown_offset: 500)
+        shoot(10, count: 15, predictive: 1, shoot_angle: 5, cooldown: 99999, projectile: 0, cooldown_offset: 1000)
+        shoot(10, count: 1, predictive: 1, shoot_angle: 5, cooldown: 99999, projectile: 3, cooldown_offset: 1000)
+        on timed(1200) -> ChooseRandomV2
+    }
+    state SingularV2 {
+        follow(0.7, range: 1, duration: 5000, cooldown: 0)
+        shoot(10, count: 1, predictive: 1, cooldown: 90, projectile: 0)
+        on timed(2500) -> ChooseRandomV2
+    }
+    state PetRingV2 {
+        shoot(10, count: 20, shoot_angle: 18, fixed_angle: 0, cooldown: 9400, projectile: 4)
+        shoot(10, count: 20, shoot_angle: 18, fixed_angle: 10, cooldown: 9400, projectile: 4, cooldown_offset: 100)
+        shoot(10, count: 20, shoot_angle: 18, fixed_angle: 20, cooldown: 9400, projectile: 4, cooldown_offset: 300)
+        on timed(120) -> ChooseRandomV2
+    }
+    state Swirl {
+        shoot(10, count: 2, shoot_angle: 20, cooldown: 99999, fixed_angle: 0, projectile: 4, cooldown_offset: 50)
+        shoot(10, count: 2, shoot_angle: 20, cooldown: 99999, fixed_angle: 90, projectile: 4, cooldown_offset: 200)
+        shoot(10, count: 2, shoot_angle: 20, cooldown: 99999, fixed_angle: 180, projectile: 4, cooldown_offset: 400)
+        shoot(10, count: 2, shoot_angle: 20, cooldown: 99999, fixed_angle: 270, projectile: 4, cooldown_offset: 600)
+        shoot(10, count: 2, shoot_angle: 20, cooldown: 99999, fixed_angle: 45, projectile: 4, cooldown_offset: 800)
+        shoot(10, count: 2, shoot_angle: 20, cooldown: 99999, fixed_angle: 135, projectile: 4, cooldown_offset: 1000)
+        shoot(10, count: 2, shoot_angle: 20, cooldown: 99999, fixed_angle: 225, projectile: 4, cooldown_offset: 1200)
+        shoot(10, count: 2, shoot_angle: 20, cooldown: 99999, fixed_angle: 315, projectile: 4, cooldown_offset: 1400)
+        on timed(1500) -> ChooseRandomV2
+    }
+    loot {
+        threshold
+        threshold
+        threshold
+    }
+}
+
+enemy "Jade Statue" {
+    state Wait {
+        conditional_effect(invincible, true)
+    }
+    state Activate {
+        on timed(20) -> RemINVINC
+    }
+    state RemINVINC {
+        flash(16777215, 2, 100)
+        conditional_effect(invincible)
+        on timed(2000) -> Shotgun
+    }
+    state FlashRING {
+        flash(13893632, 2, 100)
+        conditional_effect(invulnerable)
+        on timed(2000) -> RingCharge
+        on entities_not_exists(50, "Garnet Statue") -> GarnetDied
+    }
+    state RingCharge {
+        follow(1.8, range: 1, duration: 5000, cooldown: 0)
+        shoot(10, count: 20, shoot_angle: 18, cooldown: 99999, projectile: 1, cooldown_offset: 5)
+        shoot(10, count: 20, shoot_angle: 18, cooldown: 99999, projectile: 1, cooldown_offset: 220)
+        shoot(10, count: 20, shoot_angle: 18, cooldown: 99999, projectile: 1, cooldown_offset: 420)
+        shoot(10, count: 20, shoot_angle: 18, cooldown: 99999, projectile: 1, cooldown_offset: 620)
+        on timed(800) -> ChooseRandom
+        on entities_not_exists(50, "Garnet Statue") -> GarnetDied
+    }
+    state Shotgun {
+        follow(0.7, range: 1, duration: 5000, cooldown: 0)
+        shoot(10, count: 5, predictive: 1, shoot_angle: 5, cooldown: 500, projectile: 0)
+        on timed(3700) -> ChooseRandom
+        on entities_not_exists(50, "Garnet Statue") -> GarnetDied
+    }
+    state Singular {
+        follow(0.7, range: 1, duration: 5000, cooldown: 0)
+        shoot(10, count: 1, predictive: 1, cooldown: 90, projectile: 0)
+        on timed(1800) -> ChooseRandom
+        on entities_not_exists(50, "Garnet Statue") -> GarnetDied
+    }
+    state PetRing {
+        shoot(10, count: 20, shoot_angle: 18, cooldown: 400, projectile: 4)
+        on timed(120) -> ChooseRandom
+        on entities_not_exists(50, "Garnet Statue") -> GarnetDied
+    }
+    state Spawn {
+        toss_object("Corrupted Sprite", 5, cooldown: 8000)
+        toss_object("Corrupted Sprite", 5, cooldown: 8000)
+        on timed(700) -> ChooseRandom
+    }
+    state ChooseRandom {
+        flash(16777215, 2, 100)
+        conditional_effect(invulnerable)
+        on timed(1200, true) -> Singular
+        on timed(1200, true) -> FlashRING
+        on timed(1200, true) -> Shotgun
+        on timed(1200, true) -> PetRing
+        on timed(1200, true) -> Spawn
+        on entities_not_exists(50, "Garnet Statue") -> GarnetDied
+    }
+    state GarnetDied {
+        conditional_effect(invulnerable, true)
+        heal_self(cooldown: 999999, amount: 7000)
+        change_size(20, 130)
+        flash(16777215, 2, 100)
+        on timed(1500) -> ChooseRandomV2
+    }
+    state ChooseRandomV2 {
+        flash(16777215, 2, 100)
+        conditional_effect(invulnerable)
+        on timed(1200, true) -> SingularV2
+        on timed(1200, true) -> FlashRINGV2
+        on timed(1200, true) -> ShotgunV2
+        on timed(1200, true) -> PetRingV2
+        on timed(1200, true) -> ShotgunWIDER
+        on timed(1200, true) -> Swirl
+        on timed(1200, true) -> SpawnV2
+    }
+    state SpawnV2 {
+        toss_object("Corrupted Sprite", 5, cooldown: 8000)
+        toss_object("Corrupted Sprite", 5, cooldown: 8000)
+        on timed(700) -> ChooseRandomV2
+    }
+    state FlashRINGV2 {
+        flash(13893632, 2, 100)
+        conditional_effect(invulnerable)
+        on timed(2000) -> RingChargeV2
+    }
+    state RingChargeV2 {
+        follow(1.8, range: 1, duration: 5000, cooldown: 0)
+        shoot(10, count: 20, shoot_angle: 18, cooldown: 99999, projectile: 1, cooldown_offset: 5)
+        shoot(10, count: 20, shoot_angle: 18, cooldown: 99999, projectile: 1, cooldown_offset: 220)
+        shoot(10, count: 20, shoot_angle: 18, cooldown: 99999, projectile: 1, cooldown_offset: 420)
+        shoot(10, count: 20, shoot_angle: 18, cooldown: 99999, projectile: 1, cooldown_offset: 620)
+        on timed(800) -> ChooseRandomV2
+    }
+    state ShotgunV2 {
+        follow(0.7, range: 1, duration: 5000, cooldown: 0)
+        shoot(10, count: 5, predictive: 1, shoot_angle: 5, cooldown: 500, projectile: 0)
+        on timed(2300) -> ChooseRandomV2
+    }
+    state ShotgunWIDER {
+        shoot(10, count: 5, predictive: 1, shoot_angle: 5, cooldown: 99999, projectile: 0, cooldown_offset: 50)
+        shoot(10, count: 1, predictive: 1, shoot_angle: 5, cooldown: 99999, projectile: 3, cooldown_offset: 50)
+        shoot(10, count: 10, predictive: 1, shoot_angle: 5, cooldown: 99999, projectile: 0, cooldown_offset: 500)
+        shoot(10, count: 1, predictive: 1, shoot_angle: 5, cooldown: 99999, projectile: 3, cooldown_offset: 500)
+        shoot(10, count: 15, predictive: 1, shoot_angle: 5, cooldown: 99999, projectile: 0, cooldown_offset: 1000)
+        shoot(10, count: 1, predictive: 1, shoot_angle: 5, cooldown: 99999, projectile: 3, cooldown_offset: 1000)
+        on timed(1200) -> ChooseRandomV2
+    }
+    state SingularV2 {
+        follow(0.7, range: 1, duration: 5000, cooldown: 0)
+        shoot(10, count: 1, predictive: 1, cooldown: 90, projectile: 0)
+        on timed(2500) -> ChooseRandomV2
+    }
+    state PetRingV2 {
+        shoot(10, count: 20, shoot_angle: 18, fixed_angle: 0, cooldown: 9400, projectile: 4)
+        shoot(10, count: 20, shoot_angle: 18, fixed_angle: 10, cooldown: 9400, projectile: 4, cooldown_offset: 100)
+        shoot(10, count: 20, shoot_angle: 18, fixed_angle: 20, cooldown: 9400, projectile: 4, cooldown_offset: 300)
+        on timed(120) -> ChooseRandomV2
+    }
+    state Swirl {
+        shoot(10, count: 2, shoot_angle: 20, cooldown: 99999, fixed_angle: 0, projectile: 4, cooldown_offset: 50)
+        shoot(10, count: 2, shoot_angle: 20, cooldown: 99999, fixed_angle: 90, projectile: 4, cooldown_offset: 200)
+        shoot(10, count: 2, shoot_angle: 20, cooldown: 99999, fixed_angle: 180, projectile: 4, cooldown_offset: 400)
+        shoot(10, count: 2, shoot_angle: 20, cooldown: 99999, fixed_angle: 270, projectile: 4, cooldown_offset: 600)
+        shoot(10, count: 2, shoot_angle: 20, cooldown: 99999, fixed_angle: 45, projectile: 4, cooldown_offset: 800)
+        shoot(10, count: 2, shoot_angle: 20, cooldown: 99999, fixed_angle: 135, projectile: 4, cooldown_offset: 1000)
+        shoot(10, count: 2, shoot_angle: 20, cooldown: 99999, fixed_angle: 225, projectile: 4, cooldown_offset: 1200)
+        shoot(10, count: 2, shoot_angle: 20, cooldown: 99999, fixed_angle: 315, projectile: 4, cooldown_offset: 1400)
+        on timed(1500) -> ChooseRandomV2
+    }
+    loot {
+        threshold
+        threshold
+        threshold
+    }
+}
+
+enemy "Corrupted Sprite" {
+    state One {
+        follow(0.4, range: 1, duration: 5000, cooldown: 0)
+        shoot(10, count: 1, predictive: 1, projectile: 0, cooldown: 99999)
+        shoot(10, count: 1, predictive: 1, projectile: 0, cooldown: 99999, cooldown_offset: 400)
+        shoot(10, count: 2, predictive: 1, shoot_angle: 25, projectile: 0, cooldown: 99999, cooldown_offset: 1200)
+        shoot(10, count: 2, predictive: 1, shoot_angle: 25, projectile: 0, cooldown: 99999, cooldown_offset: 1600)
+        shoot(10, count: 8, predictive: 1, shoot_angle: 30, projectile: 0, cooldown: 99999, cooldown_offset: 2300)
+        shoot(10, count: 8, predictive: 1, shoot_angle: 30, projectile: 0, cooldown: 99999, cooldown_offset: 2800)
+        shoot(10, count: 2, predictive: 1, shoot_angle: 25, projectile: 0, cooldown: 99999, cooldown_offset: 3200)
+        shoot(10, count: 2, predictive: 1, shoot_angle: 25, projectile: 0, cooldown: 99999, cooldown_offset: 3500)
+        shoot(10, count: 1, predictive: 1, projectile: 0, cooldown: 99999, cooldown_offset: 4000)
+        shoot(10, count: 1, predictive: 1, projectile: 0, cooldown: 99999, cooldown_offset: 4400)
+        on timed(10000) -> KYS
+    }
+    state KYS {
+        suicide()
+    }
+}
+
+enemy "Corrupted Spirit" {
+    state One {
+        follow(0.4, range: 1, duration: 5000, cooldown: 0)
+        shoot(10, count: 1, predictive: 1, projectile: 0, cooldown: 99999)
+        shoot(10, count: 1, predictive: 1, projectile: 0, cooldown: 99999, cooldown_offset: 400)
+        shoot(10, count: 2, predictive: 1, shoot_angle: 25, projectile: 0, cooldown: 99999, cooldown_offset: 1200)
+        shoot(10, count: 2, predictive: 1, shoot_angle: 25, projectile: 0, cooldown: 99999, cooldown_offset: 1600)
+        shoot(10, count: 8, predictive: 1, shoot_angle: 30, projectile: 0, cooldown: 99999, cooldown_offset: 2300)
+        shoot(10, count: 8, predictive: 1, shoot_angle: 30, projectile: 0, cooldown: 99999, cooldown_offset: 2800)
+        shoot(10, count: 2, predictive: 1, shoot_angle: 25, projectile: 0, cooldown: 99999, cooldown_offset: 3200)
+        shoot(10, count: 2, predictive: 1, shoot_angle: 25, projectile: 0, cooldown: 99999, cooldown_offset: 3500)
+        shoot(10, count: 1, predictive: 1, projectile: 0, cooldown: 99999, cooldown_offset: 4000)
+        shoot(10, count: 1, predictive: 1, projectile: 0, cooldown: 99999, cooldown_offset: 4400)
+        on timed(10000) -> KYS
+    }
+    state KYS {
+        suicide()
+    }
+}
+
+enemy "Encounter Altar" {
+    state Wait {
+        conditional_effect(invincible, true)
+        on player_within(6, "ActivateG&J") -> ActivateG_J
+    }
+    state ActivateG_J {
+        order(100, "Garnet Statue", "Activate")
+        order(100, "Jade Statue", "Activate")
+        on timed(170, "IsG&JDead?") -> IsG_JDead_
+    }
+    state IsG_JDead_ {
+        on entities_not_exists(50, "Garnet Statue", "Jade Statue") -> DropPortal
+    }
+    state DropPortal {
+        suicide()
+    }
+}
+

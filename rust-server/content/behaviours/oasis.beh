@@ -1,0 +1,58 @@
+enemy "Oasis Giant" {
+    shoot(10, count: 4, shoot_angle: 7, predictive: 1)
+    prioritize() {
+        stay_close_to_spawn(0.3, 2)
+        wander(0.4)
+    }
+    spawn_group("Oasis", max_children: 20, cooldown: 5000)
+    taunt(0.7, 10000, "Come closer, {PLAYER}! Yes, closer!", "I rule this place, {PLAYER}!", "Surrender to my aquatic army, {PLAYER}!", "You must be thirsty, {PLAYER}. Enter my waters!", "Minions! We shall have {PLAYER} for dinner!")
+}
+
+enemy "Oasis Ruler" {
+    prioritize() {
+        protect(0.5, "Oasis Giant", acquire_range: 15, protection_range: 10, reprotect_range: 3)
+        follow(1, range: 9)
+        wander(0.5)
+    }
+    shoot(10)
+    loot {
+        item("Magic Potion", 0.05)
+    }
+}
+
+enemy "Oasis Soldier" {
+    prioritize() {
+        protect(0.5, "Oasis Giant", acquire_range: 15, protection_range: 11, reprotect_range: 3)
+        follow(1, range: 7)
+        wander(0.5)
+    }
+    shoot(10, predictive: 0.5)
+    loot {
+        item("Health Potion", 0.05)
+    }
+}
+
+enemy "Oasis Creature" {
+    prioritize() {
+        protect(0.5, "Oasis Giant", acquire_range: 15, protection_range: 12, reprotect_range: 3)
+        follow(1, range: 5)
+        wander(0.5)
+    }
+    shoot(10, cooldown: 400)
+    loot {
+        item("Health Potion", 0.05)
+    }
+}
+
+enemy "Oasis Monster" {
+    prioritize() {
+        protect(0.5, "Oasis Giant", acquire_range: 15, protection_range: 13, reprotect_range: 3)
+        follow(1, range: 3)
+        wander(0.5)
+    }
+    shoot(10, predictive: 0.5)
+    loot {
+        item("Magic Potion", 0.05)
+    }
+}
+

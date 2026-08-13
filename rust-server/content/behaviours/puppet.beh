@@ -1,0 +1,351 @@
+enemy "Puppet Knight" {
+    prioritize() {
+        follow(0.58, 8, 1)
+        wander(0.2)
+    }
+    shoot(8.4, count: 1, projectile: 0, cooldown: 1750)
+    shoot(8, count: 1, projectile: 1, cooldown: 2000)
+    loot {
+        item("Magic Potion", 0.1)
+        threshold
+    }
+}
+
+enemy "Archer Puppet" {
+    wander(0.42)
+    shoot(8.4, count: 3, projectile: 0, cooldown: 1550)
+    shoot(8, count: 1, projectile: 1, cooldown: 2700)
+    loot {
+        item("Magic Potion", 0.1)
+        threshold
+    }
+}
+
+enemy "Paladin Puppet" {
+    prioritize() {
+        follow(0.35, 8, 1)
+        wander(0.2)
+    }
+    heal_self(cooldown: 5000)
+    shoot(8.4, count: 1, projectile: 0, cooldown: 1000)
+    loot {
+        item("Health Potion", 0.1)
+        threshold
+    }
+}
+
+enemy "Assassin Puppet" {
+    prioritize() {
+        follow(0.35, 8, 1)
+        wander(0.2)
+    }
+    grenade(3, 100, 4, cooldown: 3000)
+    shoot(8.4, count: 1, projectile: 0, cooldown: 1500)
+    loot {
+        item("Health Potion", 0.1)
+        threshold
+    }
+}
+
+enemy "Warrior Puppet" {
+    state jugg {
+        conditional_effect(armored)
+        wander(0.6)
+        on timed(4700) -> berserk
+    }
+    state berserk {
+        shoot(8.4, count: 1, projectile: 0, cooldown: 1)
+        on timed(4700) -> jugg
+    }
+}
+
+enemy "Rogue Puppet" {
+    state jugg {
+        set_alt_texture(1)
+        wander(0.6)
+        on timed(3000) -> berserk
+    }
+    state berserk {
+        wander(0.4)
+        set_alt_texture(0)
+        shoot(8.4, count: 1, projectile: 0, cooldown: 1500)
+        on timed(3000) -> jugg
+    }
+}
+
+enemy "Trickster Puppet" {
+    state wait {
+        wander(0.3)
+        on player_within(6) -> start
+    }
+    state start {
+        reproduce("Trickster Decoys", density_max: 1, density_radius: 1, cooldown: 5250)
+        prioritize() {
+            wander(0.6)
+            stay_back(0.3, 3)
+        }
+        shoot(8.4, count: 1, projectile: 0, cooldown: 1300)
+    }
+}
+
+enemy "Trickster Decoys" {
+    wander(0.31)
+    shoot(8.4, count: 1, projectile: 0, cooldown: 1400)
+    loot {
+        item("Health Potion", 0.1)
+        threshold
+    }
+}
+
+enemy "Mystic Puppet" {
+    wander(0.27)
+    shoot(8.4, count: 1, projectile: 0, cooldown: 1350)
+    shoot(8.4, count: 1, projectile: 1, cooldown: 1950)
+    loot {
+        item("Health Potion", 0.1)
+        threshold
+    }
+}
+
+enemy "Puppet Wizard" {
+    prioritize() {
+        orbit(0.37, 4, 20, "The Puppet Master")
+        wander(0.4)
+    }
+    shoot(8.4, count: 10, projectile: 0, cooldown: 2650)
+    loot {
+        item("Health Potion", 0.1)
+        threshold
+    }
+}
+
+enemy "Puppet Priest" {
+    orbit(0.37, 4, 20, "The Puppet Master")
+    heal_group(8, "Master", cooldown: 4500, heal_amount: 75)
+    loot {
+        item("Health Potion", 0.1)
+        threshold
+    }
+}
+
+enemy "Healer Puppet" {
+    wander(0.4)
+    shoot(8.4, count: 1, projectile: 0, cooldown: 1250)
+    heal_group(10, "Healers", cooldown: 3000)
+    loot {
+        item("Health Potion", 0.1)
+        threshold
+    }
+}
+
+enemy "Sorcerer Puppet" {
+    prioritize() {
+        follow(0.2, 8, 1)
+        wander(0.6)
+    }
+    toss_object("Puppet Bomb", 5, cooldown: 7500)
+    shoot(8.4, count: 1, projectile: 0, cooldown: 2000)
+    loot {
+        item("Magic Potion", 0.1)
+    }
+}
+
+enemy "Puppet Bomb" {
+    transform_on_death("Sorc Bomb Thrower", 1, 1, 1)
+    state BOUTTOEXPLODE {
+        on timed(2750) -> boom
+    }
+    state boom {
+        shoot(8.4, count: 1, fixed_angle: 0, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 90, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 180, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 270, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 45, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 135, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 235, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 315, projectile: 0, cooldown: 1000)
+        suicide()
+    }
+}
+
+enemy "Puppet Bomb 2" {
+    state BOUTTOEXPLODE {
+        on timed(2750) -> boom
+    }
+    state boom {
+        shoot(8.4, count: 1, fixed_angle: 0, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 90, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 180, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 270, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 45, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 135, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 235, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 315, projectile: 0, cooldown: 1000)
+        suicide()
+    }
+}
+
+enemy "Sorc Bomb Thrower" {
+    conditional_effect(invincible)
+    state throw {
+        toss_object("Puppet Bomb 2", 5, angle: 135, cooldown: 1500)
+        toss_object("Puppet Bomb 2", 5, angle: 60, cooldown: 1500)
+        on timed(1000) -> die
+    }
+    state die {
+        suicide()
+    }
+}
+
+enemy "False Puppet Master" {
+    transform_on_death("Rogue Puppet", 1, 1, 1)
+    transform_on_death("Assassin Puppet", 1, 1, 1)
+    swirl(0.45, 6, 6)
+    shoot(8.4, count: 7, projectile: 0, cooldown: 2850)
+    shoot(8.4, count: 3, shoot_angle: 30, projectile: 2, cooldown: 3500)
+    on hp_below(0.11) -> dead
+    state dead {
+        conditional_effect(invulnerable)
+        taunt(1, "You may have killed me, but I am only a pretender. Get ready for the plot twist!")
+        on timed(2500) -> die
+    }
+    state die {
+        conditional_effect(invulnerable)
+        shoot(8.4, count: 8, projectile: 1, cooldown: 2850)
+        suicide()
+    }
+}
+
+enemy "Puppet Loot Chest" {
+    state Idle {
+        conditional_effect(invulnerable)
+        on timed(5000) -> UnsetEffect
+    }
+    state UnsetEffect {
+    }
+    loot {
+        threshold
+        threshold
+    }
+}
+
+enemy "The Puppet Master" {
+    transform_on_death("Puppet Loot Chest", 1, 1)
+    realm_portal_drop()
+    state default {
+        conditional_effect(invincible)
+        on player_within(6) -> move
+    }
+    state move {
+        conditional_effect(invulnerable)
+        move_to(speed: 1, x: 38, y: 65)
+        taunt(1, "My puppets need life essence to live! Your sad, sad lives will have to do.")
+        on timed(5250) -> middleShots
+    }
+    state middleShots {
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 160, cooldown_offset: 1400, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 170, cooldown_offset: 1600, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 180, cooldown_offset: 1800, shoot_angle: 90)
+        shoot(1, 8, projectile: 3, cooldown: 4575, fixed_angle: 180, cooldown_offset: 2000, shoot_angle: 45)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 180, cooldown_offset: 0, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 170, cooldown_offset: 200, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 160, cooldown_offset: 400, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 150, cooldown_offset: 600, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 140, cooldown_offset: 800, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 130, cooldown_offset: 1000, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 120, cooldown_offset: 1200, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 110, cooldown_offset: 1400, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 100, cooldown_offset: 1600, shoot_angle: 90)
+        on damage_taken(5200) -> sadTime
+    }
+    state sadTime {
+        follow(0.34, 8, 5)
+        shoot(10, projectile: 2, predictive: 0.5, cooldown: 1000)
+        on timed(6000) -> customspiral
+    }
+    state customspiral {
+        spawn("Puppet Wizard 2", initial_spawn: 1, max_children: 1, cooldown: 6000)
+        spawn("Puppet Priest", initial_spawn: 1, max_children: 1, cooldown: 6000)
+        spawn("Puppet Knight", initial_spawn: 1, max_children: 1, cooldown: 6000)
+        shoot(1, 4, projectile: 3, cooldown: 10000, fixed_angle: 90, cooldown_offset: 0, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 10000, fixed_angle: 100, cooldown_offset: 200, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 10000, fixed_angle: 110, cooldown_offset: 400, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 10000, fixed_angle: 120, cooldown_offset: 600, shoot_angle: 90)
+        shoot(8.4, count: 1, fixed_angle: 0, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 90, projectile: 0, cooldown: 4500)
+        shoot(8.4, count: 1, fixed_angle: 180, projectile: 0, cooldown: 4500)
+        shoot(8.4, count: 1, fixed_angle: 270, projectile: 0, cooldown: 4500)
+        shoot(8.4, count: 1, fixed_angle: 45, projectile: 0, cooldown: 4500)
+        shoot(8.4, count: 1, fixed_angle: 135, projectile: 0, cooldown: 2250)
+        shoot(8.4, count: 1, fixed_angle: 235, projectile: 0, cooldown: 2250)
+        shoot(8.4, count: 1, fixed_angle: 315, projectile: 0, cooldown: 2250)
+        shoot(1, 4, projectile: 3, cooldown: 10000, fixed_angle: 90, cooldown_offset: 0, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 10000, fixed_angle: 100, cooldown_offset: 200, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 10000, fixed_angle: 110, cooldown_offset: 400, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 10000, fixed_angle: 120, cooldown_offset: 600, shoot_angle: 90)
+        shoot(8.4, count: 1, fixed_angle: 0, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 90, projectile: 0, cooldown: 4500)
+        shoot(8.4, count: 1, fixed_angle: 180, projectile: 0, cooldown: 4500)
+        shoot(8.4, count: 1, fixed_angle: 270, projectile: 0, cooldown: 4500)
+        shoot(8.4, count: 1, fixed_angle: 45, projectile: 0, cooldown: 4500)
+        shoot(8.4, count: 1, fixed_angle: 135, projectile: 0, cooldown: 2250)
+        shoot(8.4, count: 1, fixed_angle: 235, projectile: 0, cooldown: 2250)
+        shoot(8.4, count: 1, fixed_angle: 315, projectile: 0, cooldown: 2250)
+        on timed(7950) -> spookclone
+    }
+    state spookclone {
+        spawn("False Puppet Master", max_children: 5, cooldown: 5500)
+        conditional_effect(armored)
+        wander(0.3)
+        shoot(7, count: 7, projectile: 0, cooldown: 4500)
+        shoot(8, count: 3, shoot_angle: 16, projectile: 2, cooldown: 3000)
+        on timed(11000) -> luckyguess
+    }
+    state luckyguess {
+        remove_entity(9999, "False Puppet Master")
+        flash(16777215, 2, 2)
+        taunt(1, "Lucky guess hero, but I've run out of time to play games with you. It is time that you die!")
+        conditional_effect(invulnerable)
+        move_to(speed: 0.7, x: 38, y: 54)
+        on timed(3250) -> OutofTime
+    }
+    state OutofTime {
+        spawn("Puppet Wizard", initial_spawn: 1, max_children: 2, cooldown: 4500)
+        spawn("Puppet Priest", initial_spawn: 1, max_children: 1, cooldown: 5000)
+        spawn("Puppet Knight", initial_spawn: 1, max_children: 1, cooldown: 5000)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 90, cooldown_offset: 0, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 100, cooldown_offset: 200, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 110, cooldown_offset: 400, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 120, cooldown_offset: 600, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 130, cooldown_offset: 800, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 140, cooldown_offset: 1000, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 150, cooldown_offset: 1200, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 160, cooldown_offset: 1400, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 170, cooldown_offset: 1600, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 180, cooldown_offset: 1800, shoot_angle: 90)
+        shoot(1, 8, projectile: 3, cooldown: 4575, fixed_angle: 180, cooldown_offset: 2000, shoot_angle: 45)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 180, cooldown_offset: 0, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 170, cooldown_offset: 200, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 160, cooldown_offset: 400, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 150, cooldown_offset: 600, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 140, cooldown_offset: 800, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 130, cooldown_offset: 1000, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 120, cooldown_offset: 1200, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 110, cooldown_offset: 1400, shoot_angle: 90)
+        shoot(1, 4, projectile: 3, cooldown: 4575, fixed_angle: 100, cooldown_offset: 1600, shoot_angle: 90)
+    }
+    state NopeImDead {
+        conditional_effect(invulnerable)
+        flash(16777215, 2, 2)
+        move_to(speed: 1, x: 38, y: 54)
+        taunt(1, "NO!! This cannot be how my story ends!! I WILL HAVE MY ENCORE, HERO!")
+        on timed(3250) -> YepDead
+    }
+    state YepDead {
+        conditional_effect(invulnerable)
+        transform_on_death("Puppet Loot Chest", 1, 1, 1)
+        shoot(7, count: 8, projectile: 1, cooldown: 5000)
+        suicide()
+    }
+}
+

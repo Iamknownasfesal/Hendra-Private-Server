@@ -61,6 +61,10 @@ fn main() {
     let started = Instant::now();
     let mut converted = 0usize;
     let mut failed = 0usize;
+
+    // Output names already used, so a second source cannot quietly replace the first.
+    let mut written_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut collisions: Vec<(String, String)> = Vec::new();
     let mut legacy_bytes = 0usize;
     let mut ours_bytes = 0usize;
     let mut squares = 0usize;
@@ -123,10 +127,28 @@ fn main() {
         }
 
         if let Some(dir) = &out {
-            let target = dir.join(format!(
-                "{}.hmap",
-                path.file_stem().unwrap_or_default().to_string_lossy()
-            ));
+            // Two of these exist as both `.jm` and `.wmap` — snakepit and tomb — and dropping the
+            // extension made them the same output file, so one silently overwrote the other and
+            // which one won depended on the order the directory happened to be read in. The first
+            // writer keeps the plain name and the rest are qualified, so both survive and the
+            // choice is deterministic.
+            let stem = path
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            let plain = format!("{stem}.hmap");
+
+            let name = if written_names.insert(plain.clone()) {
+                plain
+            } else {
+                let extension = path.extension().unwrap_or_default().to_string_lossy();
+                let qualified = format!("{stem}.{extension}.hmap");
+                collisions.push((name_of(path), qualified.clone()));
+                qualified
+            };
+
+            let target = dir.join(name);
             std::fs::write(&target, &encoded).expect("writing the converted map");
         }
 
@@ -147,6 +169,16 @@ fn main() {
         "squares   {squares} total ({:.1} million)",
         squares as f64 / 1_000_000.0
     );
+    if !collisions.is_empty() {
+        println!(
+            "\n{} maps exist under two source formats and were kept apart:",
+            collisions.len()
+        );
+        for (source, written) in &collisions {
+            println!("  {source} -> {written}");
+        }
+    }
+
     println!(
         "size      {:.1} KB legacy -> {:.1} KB ours  ({:+.0}%)",
         legacy_bytes as f64 / 1024.0,

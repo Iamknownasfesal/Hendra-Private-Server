@@ -1,0 +1,238 @@
+enemy "Ent Ancient" {
+    state Idle {
+        stay_close_to_spawn(0.1, range: 6)
+        wander(0.1)
+        on hp_below(0.99999) -> EvaluationStart1
+    }
+    state EvaluationStart1 {
+        taunt("Uhh. So... sleepy...")
+        conditional_effect(invulnerable)
+        prioritize() {
+            stay_close_to_spawn(0.2, range: 3)
+            wander(0.2)
+        }
+        on timed(2500) -> EvaluationStart2
+    }
+    state EvaluationStart2 {
+        flash(255, 0.1, 60)
+        shoot(10, count: 2, shoot_angle: 180, cooldown: 800)
+        prioritize() {
+            stay_close_to_spawn(0.3, range: 5)
+            wander(0.3)
+        }
+        on hp_below(0.87) -> EvaluationEnd
+        on timed(6000) -> EvaluationEnd
+    }
+    state EvaluationEnd {
+        on hp_below(0.875) -> HugeMob
+        on hp_below(0.952) -> Mob
+        on hp_below(0.985) -> SmallGroup
+        on hp_below(0.99999) -> Solo
+    }
+    state HugeMob {
+        taunt("You are many, yet the sum of your years is nothing.")
+        spawn("Greater Nature Sprite", max_children: 6, initial_spawn: 0, cooldown: 400)
+        toss_object("Ent", range: 3, angle: 0, cooldown: 100000)
+        toss_object("Ent", range: 3, angle: 180, cooldown: 100000)
+        toss_object("Ent", range: 5, angle: 10, cooldown: 100000)
+        toss_object("Ent", range: 5, angle: 190, cooldown: 100000)
+        toss_object("Ent", range: 5, angle: 70, cooldown: 100000)
+        toss_object("Ent", range: 7, angle: 20, cooldown: 100000)
+        toss_object("Ent", range: 7, angle: 200, cooldown: 100000)
+        toss_object("Ent", range: 7, angle: 80, cooldown: 100000)
+        toss_object("Ent", range: 10, angle: 30, cooldown: 100000)
+        toss_object("Ent", range: 10, angle: 210, cooldown: 100000)
+        toss_object("Ent", range: 10, angle: 90, cooldown: 100000)
+        on timed(5000) -> Wait
+    }
+    state Mob {
+        taunt("Little flies, little flies... we will swat you.")
+        spawn("Greater Nature Sprite", max_children: 3, initial_spawn: 0, cooldown: 1000)
+        toss_object("Ent", range: 3, angle: 0, cooldown: 100000)
+        toss_object("Ent", range: 4, angle: 180, cooldown: 100000)
+        toss_object("Ent", range: 5, angle: 10, cooldown: 100000)
+        toss_object("Ent", range: 6, angle: 190, cooldown: 100000)
+        toss_object("Ent", range: 7, angle: 20, cooldown: 100000)
+        on timed(5000) -> Wait
+    }
+    state SmallGroup {
+        taunt("It will be trivial to dispose of you.")
+        spawn("Greater Nature Sprite", max_children: 1, initial_spawn: 1, cooldown: 100000)
+        toss_object("Ent", range: 3, angle: 0, cooldown: 100000)
+        toss_object("Ent", range: 4.5, angle: 180, cooldown: 100000)
+        on timed(3000) -> Wait
+    }
+    state Solo {
+        taunt("Mmm? Did you say something, mortal?")
+        on timed(3000) -> Wait
+    }
+    state Wait {
+        transform("Actual Ent Ancient")
+    }
+}
+
+enemy "Actual Ent Ancient" {
+    prioritize() {
+        stay_close_to_spawn(0.2, range: 6)
+        wander(0.2)
+    }
+    spawn("Ent Sapling", max_children: 3, initial_spawn: 0, cooldown: 3000, gives_no_xp: false)
+    state Start {
+        conditional_effect(invulnerable)
+        change_size(11, 160)
+        shoot(10, projectile: 0, count: 1)
+        on timed(1600) -> Growing1
+        on hp_below(0.9) -> Growing1
+    }
+    state Growing1 {
+        conditional_effect(invulnerable)
+        change_size(11, 180)
+        shoot(10, projectile: 1, count: 3, shoot_angle: 120)
+        on timed(1600) -> Growing2
+        on hp_below(0.8) -> Growing2
+    }
+    state Growing2 {
+        conditional_effect(invulnerable)
+        change_size(11, 200)
+        taunt(0.35, "Little mortals, your years are my minutes.")
+        shoot(10, projectile: 2, count: 1)
+        on timed(1600) -> Growing3
+        on hp_below(0.7) -> Growing3
+    }
+    state Growing3 {
+        conditional_effect(invulnerable)
+        change_size(11, 220)
+        shoot(10, projectile: 3, count: 1)
+        on timed(1600) -> Growing4
+        on hp_below(0.6) -> Growing4
+    }
+    state Growing4 {
+        conditional_effect(invulnerable)
+        change_size(11, 240)
+        taunt(0.35, "No axe can fell me!")
+        shoot(10, projectile: 4, count: 3, shoot_angle: 120)
+        on timed(1600) -> Growing5
+        on hp_below(0.5) -> Growing5
+    }
+    state Growing5 {
+        conditional_effect(invulnerable)
+        change_size(11, 260)
+        shoot(10, projectile: 5, count: 1)
+        on timed(1600) -> Growing6
+        on hp_below(0.45) -> Growing6
+    }
+    state Growing6 {
+        conditional_effect(invulnerable)
+        change_size(11, 280)
+        taunt(0.35, "Yes, YES...")
+        shoot(10, projectile: 6, count: 1)
+        on timed(1600) -> Growing7
+        on hp_below(0.4) -> Growing7
+    }
+    state Growing7 {
+        conditional_effect(invulnerable)
+        change_size(11, 300)
+        shoot(10, projectile: 7, count: 3, shoot_angle: 120)
+        on timed(1600) -> Growing8
+        on hp_below(0.36) -> Growing8
+    }
+    state Growing8 {
+        conditional_effect(invulnerable)
+        change_size(11, 320)
+        taunt(0.35, "I am the FOREST!!")
+        shoot(10, projectile: 8, count: 1)
+        on timed(1600) -> Growing9
+        on hp_below(0.32) -> Growing9
+    }
+    state Growing9 {
+        change_size(11, 340)
+        taunt(1, "YOU WILL DIE!!!")
+        shoot(10, projectile: 9, count: 1)
+        state convert_sprites {
+            conditional_effect(invulnerable)
+            order(50, "Greater Nature Sprite", "Transform")
+            on timed(2000) -> shielded
+        }
+        state received_armor {
+            conditional_effect(invulnerable)
+            conditional_effect(armored, perm: true)
+            on timed(1000) -> shielded
+        }
+        state shielded {
+            conditional_effect(invulnerable)
+            on timed(4000) -> unshielded
+        }
+        state unshielded {
+            shoot(10, projectile: 3, count: 3, shoot_angle: 120, cooldown: 700)
+            on timed(4000) -> shielded
+        }
+    }
+    loot {
+        threshold
+        item("Health Potion", 0.7)
+        item("Magic Potion", 0.7)
+    }
+}
+
+enemy "Ent" {
+    prioritize() {
+        protect(0.25, "Ent Ancient", acquire_range: 12, protection_range: 7, reprotect_range: 7)
+        follow(0.25, range: 1, acquire_range: 9)
+        shoot(10, count: 5, shoot_angle: 72, fixed_angle: 30, cooldown: 1600, cooldown_offset: 800)
+    }
+    shoot(10, predictive: 0.4, cooldown: 600)
+    decay(90000)
+    loot {
+        item("Tincture of Dexterity", 0.02)
+    }
+}
+
+enemy "Ent Sapling" {
+    prioritize() {
+        protect(0.55, "Ent Ancient", acquire_range: 10, protection_range: 4, reprotect_range: 4)
+        wander(0.55)
+    }
+    shoot(10, cooldown: 1000)
+}
+
+enemy "Greater Nature Sprite" {
+    conditional_effect(invulnerable)
+    shoot(10, count: 4, shoot_angle: 10)
+    prioritize() {
+        stay_close_to_spawn(1.5, 11)
+        orbit(1.5, 4, acquire_range: 7)
+        follow(200, acquire_range: 7, range: 2)
+        follow(0.3, acquire_range: 7, range: 0.2)
+    }
+    state Idle {
+    }
+    state Transform {
+        transform("Actual Greater Nature Sprite")
+    }
+    decay(90000)
+}
+
+enemy "Actual Greater Nature Sprite" {
+    flash(4282927176, 0.6, 1000)
+    spawn("Ent", max_children: 2, initial_spawn: 0, cooldown: 3000, gives_no_xp: false)
+    heal_group(15, "Heros", cooldown: 200)
+    state armor_ent_ancient {
+        order(30, "Actual Ent Ancient", "received_armor")
+        on timed(1000) -> last_fight
+    }
+    state last_fight {
+        shoot(10, count: 4, shoot_angle: 10)
+        prioritize() {
+            stay_close_to_spawn(1.5, 11)
+            orbit(1.5, 4, acquire_range: 7)
+            follow(200, acquire_range: 7, range: 2)
+            follow(0.3, acquire_range: 7, range: 0.2)
+        }
+    }
+    decay(60000)
+    loot {
+        item("Magic Potion", 0.25)
+        threshold
+    }
+}
+

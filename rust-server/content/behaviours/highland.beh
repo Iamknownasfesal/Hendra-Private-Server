@@ -1,0 +1,683 @@
+enemy "Minotaur" {
+    state idle {
+        stay_above(0.6, 160)
+        on player_within(10) -> charge
+    }
+    state charge {
+        prioritize() {
+            stay_above(0.6, 160)
+            follow(6, acquire_range: 11, range: 1.6)
+        }
+        on timed(200) -> spam_blades
+    }
+    state spam_blades {
+        shoot(8, projectile: 0, count: 1, cooldown: 100000, cooldown_offset: 1000)
+        shoot(8, projectile: 0, count: 2, shoot_angle: 16, cooldown: 100000, cooldown_offset: 1200)
+        shoot(8, projectile: 0, count: 3, predictive: 0.2, cooldown: 100000, cooldown_offset: 1600)
+        shoot(8, projectile: 0, count: 1, shoot_angle: 24, cooldown: 100000, cooldown_offset: 2200)
+        shoot(8, projectile: 0, count: 2, predictive: 0.2, cooldown: 100000, cooldown_offset: 2800)
+        shoot(8, projectile: 0, count: 3, shoot_angle: 16, cooldown: 100000, cooldown_offset: 3200)
+        prioritize() {
+            stay_above(0.6, 160)
+            wander(0.6)
+        }
+        on timed(4400) -> blade_ring
+    }
+    state blade_ring {
+        shoot(7, fixed_angle: 0, count: 12, shoot_angle: 30, cooldown: 800, projectile: 1, cooldown_offset: 600)
+        shoot(7, fixed_angle: 15, count: 6, shoot_angle: 60, cooldown: 800, projectile: 2, cooldown_offset: 1000)
+        prioritize() {
+            stay_above(0.6, 160)
+            follow(0.6, acquire_range: 10, range: 1)
+            wander(0.6)
+        }
+        on timed(3500) -> pause
+    }
+    state pause {
+        prioritize() {
+            stay_above(0.6, 160)
+            wander(0.6)
+        }
+        on timed(1000) -> idle
+    }
+    loot {
+        threshold
+    }
+}
+
+enemy "Ogre King" {
+    spawn("Ogre Warrior", max_children: 4, cooldown: 12000, gives_no_xp: false)
+    spawn("Ogre Mage", max_children: 2, cooldown: 16000, gives_no_xp: false)
+    spawn("Ogre Wizard", max_children: 2, cooldown: 20000, gives_no_xp: false)
+    state idle {
+        prioritize() {
+            stay_above(0.3, 160)
+            wander(0.3)
+        }
+        on player_within(10) -> grenade_blade_combo
+    }
+    state grenade_blade_combo {
+        state grenade1 {
+            grenade(3, 60, cooldown: 100000)
+            prioritize() {
+                stay_above(0.3, 160)
+                wander(0.3)
+            }
+            on timed(2000) -> grenade2
+        }
+        state grenade2 {
+            grenade(3, 60, cooldown: 100000)
+            prioritize() {
+                stay_above(0.5, 160)
+                wander(0.5)
+            }
+            on timed(3000) -> slow_follow
+        }
+        state slow_follow {
+            shoot(13, cooldown: 1000)
+            prioritize() {
+                stay_above(0.4, 160)
+                follow(0.4, acquire_range: 9, range: 3.5, duration: 4)
+                wander(0.4)
+            }
+            on timed(4000) -> grenade1
+        }
+        on hp_below(0.45) -> furious
+    }
+    state furious {
+        grenade(2.4, 55, range: 9, cooldown: 1500)
+        prioritize() {
+            stay_above(0.6, 160)
+            wander(0.6)
+        }
+        on timed(12000) -> idle
+    }
+    loot {
+        threshold
+    }
+}
+
+enemy "Ogre Warrior" {
+    shoot(3, predictive: 0.5)
+    prioritize() {
+        stay_above(1.2, 160)
+        protect(1.2, "Ogre King", acquire_range: 15, protection_range: 10, reprotect_range: 5)
+        follow(1.4, acquire_range: 10.5, range: 1.6, duration: 2600, cooldown: 2200)
+        orbit(0.6, 6)
+        wander(0.4)
+    }
+}
+
+enemy "Ogre Mage" {
+    shoot(10, predictive: 0.3)
+    prioritize() {
+        stay_above(1.2, 160)
+        protect(1.2, "Ogre King", acquire_range: 30, protection_range: 10, reprotect_range: 1)
+        orbit(0.5, 6)
+        wander(0.4)
+    }
+}
+
+enemy "Ogre Wizard" {
+    shoot(10, cooldown: 300)
+    prioritize() {
+        stay_above(1.2, 160)
+        protect(1.2, "Ogre King", acquire_range: 30, protection_range: 10, reprotect_range: 1)
+        orbit(0.5, 6)
+        wander(0.4)
+    }
+}
+
+enemy "Lizard God" {
+    spawn("Night Elf Archer", max_children: 4, gives_no_xp: false)
+    spawn("Night Elf Warrior", max_children: 3, gives_no_xp: false)
+    spawn("Night Elf Mage", max_children: 2, gives_no_xp: false)
+    spawn("Night Elf Veteran", max_children: 2, gives_no_xp: false)
+    spawn("Night Elf King", max_children: 1, gives_no_xp: false)
+    prioritize() {
+        stay_above(0.3, 160)
+        follow(1, range: 7)
+        wander(0.4)
+    }
+    state idle {
+        on player_within(10.2) -> normal_attack
+    }
+    state normal_attack {
+        shoot(10, count: 3, shoot_angle: 3, predictive: 0.5)
+        on timed(4000) -> if_cloaked
+    }
+    state if_cloaked {
+        shoot(10, count: 8, shoot_angle: 45, fixed_angle: 20, cooldown: 1600, cooldown_offset: 400)
+        shoot(10, count: 8, shoot_angle: 45, fixed_angle: 42, cooldown: 1600, cooldown_offset: 1200)
+        on player_within(10) -> normal_attack
+    }
+    loot {
+        threshold
+    }
+}
+
+enemy "Night Elf Archer" {
+    shoot(10, predictive: 1)
+    prioritize() {
+        stay_above(0.4, 160)
+        follow(1.5, range: 7)
+        wander(0.4)
+    }
+}
+
+enemy "Night Elf Warrior" {
+    shoot(3, predictive: 1)
+    prioritize() {
+        stay_above(0.4, 160)
+        follow(1.5, range: 1)
+        wander(0.4)
+    }
+}
+
+enemy "Night Elf Mage" {
+    shoot(10, predictive: 1)
+    prioritize() {
+        stay_above(0.4, 160)
+        follow(1.5, range: 7)
+        wander(0.4)
+    }
+}
+
+enemy "Night Elf Veteran" {
+    shoot(10, predictive: 1)
+    prioritize() {
+        stay_above(0.4, 160)
+        follow(1.5, range: 7)
+        wander(0.4)
+    }
+}
+
+enemy "Night Elf King" {
+    shoot(10, predictive: 1)
+    prioritize() {
+        stay_above(0.4, 160)
+        follow(1.5, range: 7)
+        wander(0.4)
+    }
+}
+
+enemy "Undead Dwarf God" {
+    spawn("Undead Dwarf Warrior", max_children: 3, gives_no_xp: false)
+    spawn("Undead Dwarf Axebearer", max_children: 3, gives_no_xp: false)
+    spawn("Undead Dwarf Mage", max_children: 3, gives_no_xp: false)
+    spawn("Undead Dwarf King", max_children: 2, gives_no_xp: false)
+    spawn("Soulless Dwarf", max_children: 1, gives_no_xp: false)
+    prioritize() {
+        stay_above(0.3, 160)
+        follow(1, range: 7)
+        wander(0.4)
+    }
+    shoot(10, projectile: 0, count: 3, shoot_angle: 15)
+    shoot(10, projectile: 1, predictive: 0.5, cooldown: 1200)
+    loot {
+        threshold
+    }
+}
+
+enemy "Undead Dwarf Warrior" {
+    shoot(3)
+    prioritize() {
+        stay_above(1, 160)
+        follow(1, range: 1)
+        wander(0.4)
+    }
+}
+
+enemy "Undead Dwarf Axebearer" {
+    shoot(3)
+    prioritize() {
+        stay_above(1, 160)
+        follow(1, range: 1)
+        wander(0.4)
+    }
+}
+
+enemy "Undead Dwarf Mage" {
+    state circle_player {
+        shoot(8, predictive: 0.3, cooldown: 1000, cooldown_offset: 500)
+        prioritize() {
+            stay_above(0.7, 160)
+            protect(0.7, "Undead Dwarf King", acquire_range: 11, protection_range: 10, reprotect_range: 3)
+            orbit(0.7, 3.5, acquire_range: 11)
+            wander(0.7)
+        }
+        on timed(3500) -> circle_king
+    }
+    state circle_king {
+        shoot(8, count: 5, shoot_angle: 72, default_angle: 20, predictive: 0.3, cooldown: 1600, cooldown_offset: 500)
+        shoot(8, count: 5, shoot_angle: 72, default_angle: 33, predictive: 0.3, cooldown: 1600, cooldown_offset: 1300)
+        prioritize() {
+            stay_above(0.7, 160)
+            orbit(1.2, 2.5, target: "Undead Dwarf King", acquire_range: 12, radius_variance: 0.1, speed_variance: 0.1)
+            wander(0.7)
+        }
+        on timed(3500) -> circle_player
+    }
+}
+
+enemy "Undead Dwarf King" {
+    shoot(3)
+    prioritize() {
+        stay_above(1, 160)
+        follow(0.8, range: 1.4)
+        wander(0.4)
+    }
+}
+
+enemy "Soulless Dwarf" {
+    shoot(10)
+    state idle {
+        on player_within(10.5) -> run1
+    }
+    state run1 {
+        prioritize() {
+            stay_above(0.4, 160)
+            protect(1.1, "Undead Dwarf God", acquire_range: 16, protection_range: 10, reprotect_range: 1)
+            wander(0.4)
+        }
+        on timed(2000) -> run2
+    }
+    state run2 {
+        prioritize() {
+            stay_above(0.4, 160)
+            stay_back(0.8, distance: 4)
+            wander(0.4)
+        }
+        on timed(1400) -> run3
+    }
+    state run3 {
+        prioritize() {
+            stay_above(0.4, 160)
+            protect(1, "Undead Dwarf King", acquire_range: 16, protection_range: 2, reprotect_range: 2)
+            protect(1, "Undead Dwarf Axebearer", acquire_range: 16, protection_range: 2, reprotect_range: 2)
+            protect(1, "Undead Dwarf Warrior", acquire_range: 16, protection_range: 2, reprotect_range: 2)
+            wander(0.4)
+        }
+        on timed(2000) -> idle
+    }
+}
+
+enemy "Flayer God" {
+    spawn("Flayer", max_children: 2, gives_no_xp: false)
+    spawn("Flayer Veteran", max_children: 3, gives_no_xp: false)
+    reproduce("Flayer God", density_max: 2)
+    prioritize() {
+        stay_above(0.4, 155)
+        follow(1, range: 7)
+        wander(0.4)
+    }
+    shoot(10, projectile: 0, predictive: 0.5, cooldown: 400)
+    shoot(10, projectile: 1, predictive: 1)
+    loot {
+        threshold
+    }
+}
+
+enemy "Flayer" {
+    shoot(10, predictive: 0.5)
+    prioritize() {
+        stay_above(1, 155)
+        follow(1.2, range: 7)
+        wander(0.4)
+    }
+}
+
+enemy "Flayer Veteran" {
+    shoot(10, predictive: 0.5)
+    prioritize() {
+        stay_above(1, 155)
+        follow(1.2, range: 7)
+        wander(0.4)
+    }
+}
+
+enemy "Flamer King" {
+    spawn("Flamer", max_children: 5, cooldown: 10000, gives_no_xp: false)
+    state Attacking {
+        state Charge {
+            follow(0.7, range: 0.1)
+            on player_within(2) -> Bullet
+        }
+        state Bullet {
+            flash(4294945280, 0.2, 20)
+            change_size(20, 140)
+            shoot(8, cooldown: 200)
+            on timed(4000) -> Wait
+        }
+        state Wait {
+            change_size(-20, 80)
+            on timed(500) -> Charge
+        }
+        on hp_below(0.2) -> FlashBeforeExplode
+    }
+    state FlashBeforeExplode {
+        flash(4294901760, 1, 1)
+        on timed(300) -> Explode
+    }
+    state Explode {
+        shoot(0, count: 10, shoot_angle: 36, fixed_angle: 0)
+        decay(0)
+    }
+    loot {
+        tier(2, ring, 0.04)
+    }
+}
+
+enemy "Flamer" {
+    state Attacking {
+        state Charge {
+            prioritize() {
+                protect(0.7, "Flamer King")
+                follow(0.7, range: 0.1)
+            }
+            on player_within(2) -> Bullet
+        }
+        state Bullet {
+            flash(4294945280, 0.2, 20)
+            change_size(20, 130)
+            shoot(8, cooldown: 200)
+            on timed(4000) -> Wait
+        }
+        state Wait {
+            change_size(-20, 70)
+            on timed(600) -> Charge
+        }
+        on hp_below(0.2) -> FlashBeforeExplode
+    }
+    state FlashBeforeExplode {
+        flash(4294901760, 1, 1)
+        on timed(300) -> Explode
+    }
+    state Explode {
+        shoot(0, count: 10, shoot_angle: 36, fixed_angle: 0)
+        decay(0)
+    }
+    loot {
+        tier(5, weapon, 0.04)
+    }
+}
+
+enemy "Dragon Egg" {
+    transform_on_death("White Dragon Whelp", probability: 0.3)
+    transform_on_death("Juvenile White Dragon", probability: 0.2)
+    transform_on_death("Adult White Dragon", probability: 0.1)
+}
+
+enemy "White Dragon Whelp" {
+    shoot(10, count: 2, shoot_angle: 20, predictive: 0.3, cooldown: 750)
+    prioritize() {
+        stay_above(1, 150)
+        follow(2, range: 2.5, acquire_range: 10.5, duration: 2200, cooldown: 3200)
+        wander(0.9)
+    }
+}
+
+enemy "Juvenile White Dragon" {
+    shoot(10, count: 2, shoot_angle: 20, predictive: 0.3, cooldown: 750)
+    prioritize() {
+        stay_above(9, 150)
+        follow(1.8, range: 2.2, acquire_range: 10.5, duration: 3000, cooldown: 3000)
+        wander(0.75)
+    }
+    loot {
+        threshold
+    }
+}
+
+enemy "Adult White Dragon" {
+    shoot(10, count: 3, shoot_angle: 15, predictive: 0.3, cooldown: 750)
+    prioritize() {
+        stay_above(9, 150)
+        follow(1.4, range: 1.8, acquire_range: 10.5, duration: 4000, cooldown: 2000)
+        wander(0.75)
+    }
+    loot {
+        threshold
+    }
+}
+
+enemy "Shield Orc Shield" {
+    prioritize() {
+        orbit(1, 3, target: "Shield Orc Flooder")
+        wander(0.1)
+    }
+    state Attacking {
+        state Attack {
+            flash(4278190080, 10, 100)
+            shoot(10, cooldown: 500)
+            on hp_below(0.5) -> Heal
+            on entity_not_exists("Shield Orc Key", 7) -> Idling
+        }
+        state Heal {
+            heal_group(7, "Shield Orcs", cooldown: 500)
+            on timed(500) -> Attack
+            on entity_not_exists("Shield Orc Key", 7) -> Idling
+        }
+    }
+    state Flash {
+        flash(16711680, 1, 1)
+        on timed(300) -> Idling
+    }
+    state Idling {
+    }
+    loot {
+        tier(2, ring, 0.01)
+    }
+}
+
+enemy "Shield Orc Flooder" {
+    prioritize() {
+        wander(0.1)
+    }
+    state Attacking {
+        state Attack {
+            flash(4278190080, 10, 100)
+            shoot(10, cooldown: 500)
+            on hp_below(0.5) -> Heal
+            on entity_not_exists("Shield Orc Key", 7) -> Idling
+        }
+        state Heal {
+            heal_group(7, "Shield Orcs", cooldown: 500)
+            on timed(500) -> Attack
+            on entity_not_exists("Shield Orc Key", 7) -> Idling
+        }
+    }
+    state Flash {
+        flash(16711680, 1, 1)
+        on timed(300) -> Idling
+    }
+    state Idling {
+    }
+    loot {
+        tier(4, ability, 0.01)
+    }
+}
+
+enemy "Shield Orc Key" {
+    spawn("Shield Orc Flooder", max_children: 1, initial_spawn: 1, cooldown: 10000, gives_no_xp: false)
+    spawn("Shield Orc Shield", max_children: 1, initial_spawn: 1, cooldown: 10000, gives_no_xp: false)
+    spawn("Shield Orc Shield", max_children: 1, initial_spawn: 1, cooldown: 10000, gives_no_xp: false)
+    state Start {
+        on timed(500) -> Attacking
+    }
+    state Attacking {
+        orbit(1, 3, target: "Shield Orc Flooder")
+        order(7, "Shield Orc Flooder", "Attacking")
+        order(7, "Shield Orc Shield", "Attacking")
+        on hp_below(0.5) -> FlashBeforeExplode
+    }
+    state FlashBeforeExplode {
+        order(7, "Shield Orc Flooder", "Flash")
+        order(7, "Shield Orc Shield", "Flash")
+        flash(16711680, 1, 1)
+        on timed(300) -> Explode
+    }
+    state Explode {
+        shoot(0, count: 10, shoot_angle: 36, fixed_angle: 0)
+        decay(0)
+    }
+    loot {
+        tier(4, armor, 0.01)
+    }
+}
+
+enemy "Left Horizontal Trap" {
+    conditional_effect(invulnerable)
+    state weak_effect {
+        shoot(1, fixed_angle: 0, projectile: 0, cooldown: 200)
+        on timed(2000) -> blind_effect
+    }
+    state blind_effect {
+        shoot(1, fixed_angle: 0, projectile: 1, cooldown: 200)
+        on timed(2000) -> pierce_effect
+    }
+    state pierce_effect {
+        shoot(1, fixed_angle: 0, projectile: 2, cooldown: 200)
+        on timed(2000) -> weak_effect
+    }
+    decay(6000)
+}
+
+enemy "Top Vertical Trap" {
+    conditional_effect(invulnerable)
+    state weak_effect {
+        shoot(1, fixed_angle: 90, projectile: 0, cooldown: 200)
+        on timed(2000) -> blind_effect
+    }
+    state blind_effect {
+        shoot(1, fixed_angle: 90, projectile: 1, cooldown: 200)
+        on timed(2000) -> pierce_effect
+    }
+    state pierce_effect {
+        shoot(1, fixed_angle: 90, projectile: 2, cooldown: 200)
+        on timed(2000) -> weak_effect
+    }
+    decay(6000)
+}
+
+enemy "45-225 Diagonal Trap" {
+    conditional_effect(invulnerable)
+    state weak_effect {
+        shoot(1, fixed_angle: 45, projectile: 0, cooldown: 200)
+        on timed(2000) -> blind_effect
+    }
+    state blind_effect {
+        shoot(1, fixed_angle: 45, projectile: 1, cooldown: 200)
+        on timed(2000) -> pierce_effect
+    }
+    state pierce_effect {
+        shoot(1, fixed_angle: 45, projectile: 2, cooldown: 200)
+        on timed(2000) -> weak_effect
+    }
+    decay(6000)
+}
+
+enemy "135-315 Diagonal Trap" {
+    conditional_effect(invulnerable)
+    state weak_effect {
+        shoot(1, fixed_angle: 135, projectile: 0, cooldown: 200)
+        on timed(2000) -> blind_effect
+    }
+    state blind_effect {
+        shoot(1, fixed_angle: 135, projectile: 1, cooldown: 200)
+        on timed(2000) -> pierce_effect
+    }
+    state pierce_effect {
+        shoot(1, fixed_angle: 135, projectile: 2, cooldown: 200)
+        on timed(2000) -> weak_effect
+    }
+    decay(6000)
+}
+
+enemy "Urgle" {
+    drop_portal_on_death("Spider Den Portal", 0.9)
+    prioritize() {
+        stay_close_to_spawn(0.8, 3)
+        wander(0.5)
+    }
+    shoot(8, predictive: 0.3)
+    state idle {
+        on player_within(10.5) -> toss_horizontal_traps
+    }
+    state toss_horizontal_traps {
+        toss_object("Left Horizontal Trap", range: 9, angle: 230, cooldown: 100000)
+        toss_object("Left Horizontal Trap", range: 10, angle: 180, cooldown: 100000)
+        toss_object("Left Horizontal Trap", range: 9, angle: 140, cooldown: 100000)
+        on timed(1000) -> toss_vertical_traps
+    }
+    state toss_vertical_traps {
+        toss_object("Top Vertical Trap", range: 8, angle: 200, cooldown: 100000)
+        toss_object("Top Vertical Trap", range: 10, angle: 240, cooldown: 100000)
+        toss_object("Top Vertical Trap", range: 10, angle: 280, cooldown: 100000)
+        toss_object("Top Vertical Trap", range: 8, angle: 320, cooldown: 100000)
+        on timed(1000) -> toss_diagonal_traps
+    }
+    state toss_diagonal_traps {
+        toss_object("45-225 Diagonal Trap", range: 2, angle: 45, cooldown: 100000)
+        toss_object("45-225 Diagonal Trap", range: 7, angle: 45, cooldown: 100000)
+        toss_object("45-225 Diagonal Trap", range: 11, angle: 225, cooldown: 100000)
+        toss_object("45-225 Diagonal Trap", range: 6, angle: 225, cooldown: 100000)
+        toss_object("135-315 Diagonal Trap", range: 2, angle: 135, cooldown: 100000)
+        toss_object("135-315 Diagonal Trap", range: 7, angle: 135, cooldown: 100000)
+        toss_object("135-315 Diagonal Trap", range: 11, angle: 315, cooldown: 100000)
+        toss_object("135-315 Diagonal Trap", range: 6, angle: 315, cooldown: 100000)
+        on timed(1000) -> wait
+    }
+    state wait {
+        on timed(2400) -> idle
+    }
+    loot {
+        threshold
+    }
+}
+
+enemy "Kage Kami" {
+    drop_portal_on_death("Manor of the Immortals Portal", 0.5)
+    state yay_i_am_good {
+        taunt(0.5, "Kyoufu no kage!")
+        conditional_effect(invincible)
+        change_size(20, 120)
+        set_alt_texture(1)
+        on timed(2000) -> Attack
+    }
+    state Attack {
+        wander(0.4)
+        set_alt_texture(1)
+        on timed(5000) -> Charge
+        toss_object("Specter Mine", cooldown: 2000)
+        state Shoot1 {
+            shoot(0, count: 1, default_angle: 0, rotate_angle: 30, cooldown: 300, projectile: 1)
+            shoot(0, count: 1, default_angle: 180, rotate_angle: 30, cooldown: 300, projectile: 1)
+            on timed(1000) -> Shoot2
+        }
+        state Shoot2 {
+            shoot(20, count: 2, shoot_angle: 180, cooldown: 400, projectile: 1)
+            on timed(400) -> Shoot1
+        }
+    }
+    state Charge {
+        conditional_effect(invincible)
+        toss_object("Specter Mine", cooldown: 2000)
+        set_alt_texture(2)
+        follow(0.8, 20, 1)
+        shoot(20, count: 2, shoot_angle: 50, cooldown: 400)
+        on timed(4000) -> Attack
+    }
+}
+
+enemy "Specter Mine" {
+    state Waiting {
+        on player_within(3) -> Suicide
+        on timed(4000) -> Suicide
+    }
+    state Suicide {
+        shoot(60, count: 4, shoot_angle: 45)
+        suicide()
+    }
+}
+

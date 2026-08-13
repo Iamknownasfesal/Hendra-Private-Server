@@ -77,16 +77,24 @@ pub struct CsEnemy {
 /// Finds every `.Init(...)` in a source file and parses its arguments.
 ///
 /// Unparseable entries are skipped rather than fatal: one malformed dungeon should not stop the
-/// other forty from converting.
+/// other forty from converting. They are also *counted*, because a silent skip is how three whole
+/// files went missing behind a total that looked like success.
 pub fn read_enemies(source: &str) -> Vec<CsEnemy> {
+    read_enemies_reporting(source).0
+}
+
+/// The same, with the number of `.Init(` entries that could not be read.
+pub fn read_enemies_reporting(source: &str) -> (Vec<CsEnemy>, usize) {
     let characters: Vec<char> = source.chars().collect();
     let mut enemies = Vec::new();
+    let mut unreadable = 0usize;
     let mut at = 0usize;
 
     while let Some(start) = find_init(&characters, at) {
         // Position just after `.Init(`.
         let open = start + ".Init(".len();
         let Some(close) = matching_paren(&characters, open - 1) else {
+            unreadable += 1;
             at = open;
             continue;
         };
@@ -98,6 +106,7 @@ pub fn read_enemies(source: &str) -> Vec<CsEnemy> {
         match parser.arguments() {
             Ok(arguments) => {
                 let Some(CsValue::Text(name)) = arguments.first().map(|a| a.value.clone()) else {
+                    unreadable += 1;
                     continue;
                 };
                 enemies.push(CsEnemy {
@@ -105,11 +114,11 @@ pub fn read_enemies(source: &str) -> Vec<CsEnemy> {
                     arguments: arguments.into_iter().skip(1).map(|a| a.value).collect(),
                 });
             }
-            Err(_) => continue,
+            Err(_) => unreadable += 1,
         }
     }
 
-    enemies
+    (enemies, unreadable)
 }
 
 /// Finds the next `.Init(` that is real code rather than text or a comment.
@@ -231,6 +240,15 @@ impl CsParser {
                 }
                 continue;
             }
+            // Preprocessor directives, which Oryx uses to fold its dance phases. They sit in the
+            // middle of an argument list and are not part of it.
+            if self.characters.get(self.at) == Some(&'#') {
+                while self.at < self.characters.len() && self.characters[self.at] != '\n' {
+                    self.at += 1;
+                }
+                continue;
+            }
+
             // Block comments appear in a few places, usually around commented-out behaviours.
             if self.characters.get(self.at) == Some(&'/')
                 && self.characters.get(self.at + 1) == Some(&'*')
@@ -310,9 +328,43 @@ impl CsParser {
     }
 
     fn value(&mut self) -> Result<CsValue, CsError> {
+        let first = self.single_value()?;
+
+        // An arithmetic expression, which a few cooldowns and damages are written as. The left
+        // side is kept and the rest is stepped over: nothing downstream reads these closely enough
+        // for the arithmetic to matter, and refusing to parse one loses the whole enemy.
+        while matches!(self.peek(), Some('+') | Some('*') | Some('/'))
+            || (self.peek() == Some('-') && !self.at_argument_end())
+        {
+            self.at += 1;
+            let _ = self.single_value()?;
+        }
+
+        Ok(first)
+    }
+
+    /// Whether what follows is the end of this argument rather than more of its value.
+    fn at_argument_end(&mut self) -> bool {
+        matches!(self.peek(), None | Some(',') | Some(')') | Some('}'))
+    }
+
+    fn single_value(&mut self) -> Result<CsValue, CsError> {
         let Some(current) = self.peek() else {
             return Err(CsError);
         };
+
+        // A character literal. Only ever a separator in these files, and never read.
+        if current == '\'' {
+            self.at += 1;
+            if self.characters.get(self.at) == Some(&'\\') {
+                self.at += 1;
+            }
+            self.at += 1;
+            if self.characters.get(self.at) == Some(&'\'') {
+                self.at += 1;
+            }
+            return Ok(CsValue::Null);
+        }
 
         if current == '"' {
             return Ok(CsValue::Text(self.text()?));
@@ -367,7 +419,7 @@ impl CsParser {
             _ => {}
         }
 
-        // A dotted path, possibly with a trailing call we do not care about.
+        // A dotted path.
         let mut path = word;
         while self.peek() == Some('.') {
             self.at += 1;
@@ -378,6 +430,21 @@ impl CsParser {
                 }
                 None => break,
             }
+        }
+
+        // A path followed by parentheses is a static call — `LootTemplates.DefaultLoot(5)`. Its
+        // arguments have to be consumed even though nothing reads them, because leaving `(5)`
+        // sitting there makes the enclosing argument list fail at the very next token. Harmless at
+        // the top level and fatal one layer in, which is exactly how it went unnoticed.
+        if self.peek() == Some('(') {
+            let arguments = self.list('(', ')')?;
+            return Ok(CsValue::Call(CsCall {
+                name: path,
+                arguments: arguments
+                    .into_iter()
+                    .map(|value| CsArgument { name: None, value })
+                    .collect(),
+            }));
         }
 
         Ok(CsValue::Path(path))
@@ -527,10 +594,61 @@ impl CsParser {
         if self.characters.get(self.at) == Some(&'-') {
             self.at += 1;
         }
+
+        // Hex, which the content writes for colours: `new Flash(0x00FF0C, .25, 8)`. Reading it as
+        // a decimal made the whole enemy unparseable, and an enemy that fails to parse is dropped
+        // — three dungeons were lost to this one literal.
+        let hex = self.characters.get(self.at) == Some(&'0')
+            && matches!(self.characters.get(self.at + 1), Some('x') | Some('X'));
+
+        if hex {
+            self.at += 2;
+            let digits = self.at;
+            while self
+                .characters
+                .get(self.at)
+                .is_some_and(char::is_ascii_hexdigit)
+            {
+                self.at += 1;
+            }
+            if self.at == digits {
+                return Err(CsError);
+            }
+
+            let text: String = self.characters[digits..self.at].iter().collect();
+            let value = i64::from_str_radix(&text, 16).map_err(|_| CsError)?;
+            let signed = if self.characters[start] == '-' {
+                -value
+            } else {
+                value
+            };
+            return Ok(CsValue::Number(signed as f64));
+        }
+
         while self.at < self.characters.len()
             && (self.characters[self.at].is_ascii_digit() || self.characters[self.at] == '.')
         {
             self.at += 1;
+        }
+
+        // An exponent, which a handful of cooldowns are written with.
+        if self
+            .characters
+            .get(self.at)
+            .is_some_and(|c| matches!(c, 'e' | 'E'))
+            && self
+                .characters
+                .get(self.at + 1)
+                .is_some_and(|c| c.is_ascii_digit() || matches!(c, '+' | '-'))
+        {
+            self.at += 2;
+            while self
+                .characters
+                .get(self.at)
+                .is_some_and(char::is_ascii_digit)
+            {
+                self.at += 1;
+            }
         }
 
         let text: String = self.characters[start..self.at].iter().collect();
@@ -552,6 +670,60 @@ impl CsParser {
 
 #[cfg(test)]
 mod tests {
+    use super::read_enemies_reporting;
+
+    #[test]
+    fn a_hex_literal_is_a_number() {
+        // `new Flash(0x00FF0C, .25, 8)` — reading this as a decimal failed the whole argument
+        // list, which drops the enemy. Three files were lost to it, and the loss was silent.
+        let (enemies, unreadable) =
+            read_enemies_reporting(r#".Init("X", new State(new Flash(0x00FF0C, .25, 8)))"#);
+
+        assert_eq!(unreadable, 0);
+        assert_eq!(enemies.len(), 1);
+    }
+
+    #[test]
+    fn a_nested_static_call_is_consumed_rather_than_left_behind() {
+        // `LootTemplates.DefaultLoot(5)` parses as a path and leaves `(5)` sitting there. Harmless
+        // at the top level and fatal one layer in, which is why it went unnoticed.
+        let (enemies, unreadable) = read_enemies_reporting(
+            r#".Init("X", new State(new Wander(0.4)), new Threshold(0.05, LootTemplates.Loot(5)))"#,
+        );
+
+        assert_eq!(unreadable, 0);
+        assert_eq!(enemies.len(), 1);
+    }
+
+    #[test]
+    fn arithmetic_and_character_literals_do_not_lose_the_enemy() {
+        let (enemies, unreadable) =
+            read_enemies_reporting(r#".Init("X", new State(new Shoot(50, 12, 360 / 12, 3, 45)))"#);
+
+        assert_eq!(unreadable, 0);
+        assert_eq!(enemies.len(), 1);
+    }
+
+    #[test]
+    fn preprocessor_directives_are_not_part_of_an_argument_list() {
+        // Oryx folds its dance phases with #region, in the middle of its argument list.
+        let (enemies, unreadable) = read_enemies_reporting(
+            ".Init(\"X\",\n#region dance\n new State(new Wander(0.4))\n#endregion dance\n)",
+        );
+
+        assert_eq!(unreadable, 0);
+        assert_eq!(enemies.len(), 1);
+    }
+
+    #[test]
+    fn an_unreadable_entry_is_counted_rather_than_swallowed() {
+        // The reason all of the above went unnoticed: a total that looked exactly like success.
+        let (enemies, unreadable) = read_enemies_reporting(r#".Init("X", new State(@@@))"#);
+
+        assert!(enemies.is_empty());
+        assert_eq!(unreadable, 1, "the drop has to be visible");
+    }
+
     use super::*;
 
     #[test]

@@ -1,0 +1,440 @@
+enemy "Stheno the Snake Queen" {
+    state Idle {
+        on player_within(20, "Silver Blasts") -> Silver_Blasts
+    }
+    state Silver_Blasts {
+        state Silver_Blasts_1 {
+            conditional_effect(invulnerable, true)
+            shoot(10, count: 2, shoot_angle: 10, angle_offset: 45, projectile: 0)
+            shoot(10, count: 1, angle_offset: 135, projectile: 0)
+            shoot(10, count: 1, angle_offset: 225, projectile: 0)
+            shoot(10, count: 2, shoot_angle: 10, angle_offset: 315, projectile: 0)
+            on timed(1000, "Silver Blasts 2") -> Silver_Blasts_2
+        }
+        state Silver_Blasts_2 {
+            conditional_effect(invulnerable)
+            shoot(10, count: 2, shoot_angle: 10, angle_offset: 45, projectile: 0)
+            shoot(10, count: 1, angle_offset: 135, projectile: 0)
+            shoot(10, count: 1, angle_offset: 225, projectile: 0)
+            shoot(10, count: 2, shoot_angle: 10, angle_offset: 315, projectile: 0)
+            on timed(1000, "Silver Blasts 3") -> Silver_Blasts_3
+        }
+        state Silver_Blasts_3 {
+            shoot(10, count: 2, shoot_angle: 10, angle_offset: 45, projectile: 0)
+            shoot(10, count: 1, angle_offset: 135, projectile: 0)
+            shoot(10, count: 1, angle_offset: 225, projectile: 0)
+            shoot(10, count: 2, shoot_angle: 10, angle_offset: 315, projectile: 0)
+            on timed(1000, "Silver Blasts 4") -> Silver_Blasts_4
+        }
+        state Silver_Blasts_4 {
+            conditional_effect(invulnerable, true)
+            shoot(10, count: 2, shoot_angle: 10, angle_offset: 45, projectile: 0)
+            shoot(10, count: 1, angle_offset: 135, projectile: 0)
+            shoot(10, count: 1, angle_offset: 225, projectile: 0)
+            shoot(10, count: 2, shoot_angle: 10, angle_offset: 315, projectile: 0)
+            on timed(1000, "Silver Blasts 5") -> Silver_Blasts_5
+        }
+        state Silver_Blasts_5 {
+            conditional_effect(invulnerable)
+            shoot(10, count: 2, shoot_angle: 10, angle_offset: 45, projectile: 0)
+            shoot(10, count: 1, angle_offset: 135, projectile: 0)
+            shoot(10, count: 1, angle_offset: 225, projectile: 0)
+            shoot(10, count: 2, shoot_angle: 10, angle_offset: 315, projectile: 0)
+            on timed(1000, "Silver Blasts 6") -> Silver_Blasts_6
+        }
+        state Silver_Blasts_6 {
+            shoot(10, count: 2, shoot_angle: 10, angle_offset: 45, projectile: 0)
+            shoot(10, count: 1, angle_offset: 135, projectile: 0)
+            shoot(10, count: 1, angle_offset: 225, projectile: 0)
+            shoot(10, count: 2, shoot_angle: 10, angle_offset: 315, projectile: 0)
+            on timed(1000, "Silver Blasts 7") -> Silver_Blasts_7
+        }
+        state Silver_Blasts_7 {
+            conditional_effect(invulnerable, true)
+            shoot(10, count: 2, shoot_angle: 10, angle_offset: 45, projectile: 0)
+            shoot(10, count: 1, angle_offset: 135, projectile: 0)
+            shoot(10, count: 1, angle_offset: 225, projectile: 0)
+            shoot(10, count: 2, shoot_angle: 10, angle_offset: 315, projectile: 0)
+            on timed(1000, "Silver Blasts 8") -> Silver_Blasts_8
+        }
+        state Silver_Blasts_8 {
+            conditional_effect(invulnerable, true)
+            shoot(10, count: 2, shoot_angle: 10, angle_offset: 45, projectile: 0)
+            shoot(10, count: 1, angle_offset: 135, projectile: 0)
+            shoot(10, count: 1, angle_offset: 225, projectile: 0)
+            shoot(10, count: 2, shoot_angle: 10, angle_offset: 315, projectile: 0)
+            on timed(1000, "Spawn Stheno Swarm") -> Spawn_Stheno_Swarm
+        }
+    }
+    state Spawn_Stheno_Swarm {
+        prioritize() {
+            stay_close_to_spawn(0.4, 2)
+            wander(0.4)
+        }
+        reproduce("Stheno Swarm", 2.5, 8, cooldown: 750)
+        state Silver_Blast_1 {
+            conditional_effect(invulnerable)
+            shoot(10, count: 1, projectile: 0)
+            shoot(10, count: 1, angle_offset: 270, projectile: 0)
+            shoot(10, count: 1, angle_offset: 90, projectile: 0)
+            on timed(1000, "Silver Blast 2") -> Silver_Blast_2
+        }
+        state Silver_Blast_2 {
+            shoot(10, count: 1, projectile: 0)
+            shoot(10, count: 1, angle_offset: 270, projectile: 0)
+            shoot(10, count: 1, angle_offset: 90, projectile: 0)
+            on timed(1000, "Silver Blast 3") -> Silver_Blast_3
+        }
+        state Silver_Blast_3 {
+            conditional_effect(invulnerable, true)
+            shoot(10, count: 1, projectile: 0)
+            shoot(10, count: 1, angle_offset: 270, projectile: 0)
+            shoot(10, count: 1, angle_offset: 90, projectile: 0)
+            on timed(1000, "Silver Blast 4") -> Silver_Blast_4
+        }
+        state Silver_Blast_4 {
+            conditional_effect(invulnerable)
+            shoot(10, count: 1, projectile: 0)
+            shoot(10, count: 1, angle_offset: 270, projectile: 0)
+            shoot(10, count: 1, angle_offset: 90, projectile: 0)
+            on timed(1000, "Silver Blast 5") -> Silver_Blast_5
+        }
+        state Silver_Blast_5 {
+            shoot(10, count: 1, projectile: 0)
+            shoot(10, count: 1, angle_offset: 270, projectile: 0)
+            shoot(10, count: 1, angle_offset: 90, projectile: 0)
+            on timed(1000, "Silver Blast 6") -> Silver_Blast_6
+        }
+        state Silver_Blast_6 {
+            conditional_effect(invulnerable, true)
+            shoot(10, count: 1, projectile: 0)
+            shoot(10, count: 1, angle_offset: 270, projectile: 0)
+            shoot(10, count: 1, angle_offset: 90, projectile: 0)
+            on timed(1000, "Silver Blast 7") -> Silver_Blast_7
+        }
+        state Silver_Blast_7 {
+            conditional_effect(invulnerable)
+            shoot(10, count: 1, projectile: 0)
+            shoot(10, count: 1, angle_offset: 270, projectile: 0)
+            shoot(10, count: 1, angle_offset: 90, projectile: 0)
+            on timed(1000, "Silver Blast 8") -> Silver_Blast_8
+        }
+        state Silver_Blast_8 {
+            shoot(10, count: 1, projectile: 0)
+            shoot(10, count: 1, angle_offset: 270, projectile: 0)
+            shoot(10, count: 1, angle_offset: 90, projectile: 0)
+            on timed(1000, "Silver Blast 9") -> Silver_Blast_9
+        }
+        state Silver_Blast_9 {
+            conditional_effect(invulnerable, true)
+            shoot(10, count: 1, projectile: 0)
+            shoot(10, count: 1, angle_offset: 270, projectile: 0)
+            shoot(10, count: 1, angle_offset: 90, projectile: 0)
+            on timed(1000, "Silver Blast 10") -> Silver_Blast_10
+        }
+        state Silver_Blast_10 {
+            conditional_effect(invulnerable)
+            shoot(10, count: 1, projectile: 0)
+            shoot(10, count: 1, angle_offset: 270, projectile: 0)
+            shoot(10, count: 1, angle_offset: 90, projectile: 0)
+            on timed(1000, "Silver Blast 11") -> Silver_Blast_11
+        }
+        state Silver_Blast_11 {
+            shoot(10, count: 1, projectile: 0)
+            shoot(10, count: 1, angle_offset: 270, projectile: 0)
+            shoot(10, count: 1, angle_offset: 90, projectile: 0)
+            on timed(1000, "Silver Blast 12") -> Silver_Blast_12
+        }
+        state Silver_Blast_12 {
+            conditional_effect(invulnerable, true)
+            shoot(10, count: 1, projectile: 0)
+            shoot(10, count: 1, angle_offset: 270, projectile: 0)
+            shoot(10, count: 1, angle_offset: 90, projectile: 0)
+            on timed(1000, "Silver Blast 13") -> Silver_Blast_13
+        }
+        state Silver_Blast_13 {
+            conditional_effect(invulnerable)
+            shoot(10, count: 1, projectile: 0)
+            shoot(10, count: 1, angle_offset: 270, projectile: 0)
+            shoot(10, count: 1, angle_offset: 90, projectile: 0)
+            on timed(1000, "Silver Blast 14") -> Silver_Blast_14
+        }
+        state Silver_Blast_14 {
+            shoot(10, count: 1, projectile: 0)
+            shoot(10, count: 1, angle_offset: 270, projectile: 0)
+            shoot(10, count: 1, angle_offset: 90, projectile: 0)
+            on timed(1000, "Silver Blast 15") -> Silver_Blast_15
+        }
+        state Silver_Blast_15 {
+            conditional_effect(invulnerable, true)
+            shoot(10, count: 1, projectile: 0)
+            shoot(10, count: 1, angle_offset: 270, projectile: 0)
+            shoot(10, count: 1, angle_offset: 90, projectile: 0)
+            on timed(1000, "Silver Blast 16") -> Silver_Blast_16
+        }
+        state Silver_Blast_16 {
+            shoot(10, count: 1, projectile: 0)
+            shoot(10, count: 1, angle_offset: 270, projectile: 0)
+            shoot(10, count: 1, angle_offset: 90, projectile: 0)
+            on timed(1000, "Leave me") -> Leave_me
+        }
+        state Leave_me {
+            conditional_effect(invulnerable)
+            order(100, "Stheno Swarm", "Despawn")
+            on timed(1000, "Blind Ring Attack + ThrowAttack") -> Blind_Ring_Attack___ThrowAttack
+        }
+    }
+    state Blind_Ring_Attack___ThrowAttack {
+        return_to_spawn(speed: 0.3)
+        state Blind_Ring_Attack___ThrowAttack_1 {
+            shoot(10, count: 6, projectile: 1)
+            grenade(2.5, 100, 10)
+            on timed(500, "Blind Ring Attack + ThrowAttack 2") -> Blind_Ring_Attack___ThrowAttack_2
+        }
+        state Blind_Ring_Attack___ThrowAttack_2 {
+            shoot(10, count: 6, projectile: 1)
+            grenade(2.5, 100, 10)
+            on timed(500, "Blind Ring Attack + ThrowAttack 3") -> Blind_Ring_Attack___ThrowAttack_3
+        }
+        state Blind_Ring_Attack___ThrowAttack_3 {
+            shoot(10, count: 6, projectile: 1)
+            grenade(2.5, 100, 10)
+            on timed(500, "Blind Ring Attack + ThrowAttack 4") -> Blind_Ring_Attack___ThrowAttack_4
+        }
+        state Blind_Ring_Attack___ThrowAttack_4 {
+            conditional_effect(invulnerable, true)
+            shoot(10, count: 6, projectile: 1)
+            grenade(2.5, 100, 10)
+            on timed(500, "Blind Ring Attack + ThrowAttack 5") -> Blind_Ring_Attack___ThrowAttack_5
+        }
+        state Blind_Ring_Attack___ThrowAttack_5 {
+            shoot(10, count: 6, projectile: 1)
+            grenade(2.5, 100, 10)
+            on timed(500, "Blind Ring Attack + ThrowAttack 6") -> Blind_Ring_Attack___ThrowAttack_6
+        }
+        state Blind_Ring_Attack___ThrowAttack_6 {
+            shoot(10, count: 6, projectile: 1)
+            grenade(2.5, 100, 10)
+            on timed(500, "Blind Ring Attack + ThrowAttack 7") -> Blind_Ring_Attack___ThrowAttack_7
+        }
+        state Blind_Ring_Attack___ThrowAttack_7 {
+            conditional_effect(invulnerable)
+            shoot(10, count: 6, projectile: 1)
+            grenade(2.5, 100, 10)
+            on timed(500, "Blind Ring Attack + ThrowAttack 8") -> Blind_Ring_Attack___ThrowAttack_8
+        }
+        state Blind_Ring_Attack___ThrowAttack_8 {
+            shoot(10, count: 6, projectile: 1)
+            grenade(2.5, 100, 10)
+            on timed(500, "Blind Ring Attack + ThrowAttack 9") -> Blind_Ring_Attack___ThrowAttack_9
+        }
+        state Blind_Ring_Attack___ThrowAttack_9 {
+            shoot(10, count: 6, projectile: 1)
+            grenade(2.5, 100, 10)
+            on timed(500, "Blind Ring Attack + ThrowAttack 10") -> Blind_Ring_Attack___ThrowAttack_10
+        }
+        state Blind_Ring_Attack___ThrowAttack_10 {
+            shoot(10, count: 6, projectile: 1)
+            grenade(2.5, 100, 10)
+            on timed(500, "Blind Ring Attack + ThrowAttack 11") -> Blind_Ring_Attack___ThrowAttack_11
+        }
+        state Blind_Ring_Attack___ThrowAttack_11 {
+            conditional_effect(invulnerable, true)
+            shoot(10, count: 6, projectile: 1)
+            grenade(2.5, 100, 10)
+            on timed(500, "Blind Ring Attack + ThrowAttack 12") -> Blind_Ring_Attack___ThrowAttack_12
+        }
+        state Blind_Ring_Attack___ThrowAttack_12 {
+            shoot(10, count: 6, projectile: 1)
+            grenade(2.5, 100, 10)
+            on timed(500, "Silver Blasts") -> Silver_Blasts
+        }
+    }
+    loot {
+        threshold
+    }
+}
+
+enemy "Stheno Swarm" {
+    state Protect {
+        prioritize() {
+            protect(0.3, "Stheno the Snake Queen")
+            wander(0.3)
+        }
+        shoot(10)
+    }
+    state Despawn {
+        suicide()
+    }
+}
+
+enemy "Stheno Pet" {
+    state Protect_2 {
+        shoot(25, cooldown: 1000)
+        state Protect {
+            on entity_not_exists("Stheno the Snake Queen", 100) -> Wander
+            orbit(7.5, 10, acquire_range: 50, target: "Stheno the Snake Queen")
+        }
+        state Wander {
+            prioritize() {
+                wander(1)
+            }
+        }
+    }
+}
+
+enemy "Pit Snake" {
+    prioritize() {
+        stay_close_to_spawn(1)
+        wander(1)
+    }
+    shoot(20, cooldown: 1000)
+}
+
+enemy "Pit Viper" {
+    prioritize() {
+        stay_close_to_spawn(1)
+        wander(1)
+    }
+    shoot(20, cooldown: 1000)
+}
+
+enemy "Yellow Python" {
+    prioritize() {
+        follow(1, 10, 1)
+        stay_close_to_spawn(1)
+        wander(1)
+    }
+    shoot(20, cooldown: 1000)
+    loot {
+        item("Snake Oil", 0.1)
+        item("Ring of Speed", 0.1)
+        item("Ring of Vitality", 0.1)
+    }
+}
+
+enemy "Brown Python" {
+    prioritize() {
+        stay_close_to_spawn(1)
+        wander(1)
+    }
+    shoot(20, cooldown: 1000)
+    loot {
+        item("Snake Oil", 0.1)
+        item("Leather Armor", 0.1)
+        item("Ring of Wisdom", 0.1)
+    }
+}
+
+enemy "Fire Python" {
+    prioritize() {
+        follow(1, 10, 1, cooldown: 2000)
+        wander(1)
+    }
+    shoot(15, count: 3, shoot_angle: 5, cooldown: 1000)
+    loot {
+        item("Snake Oil", 0.1)
+        item("Fire Bow", 0.1)
+        item("Fire Nova Spell", 0.1)
+    }
+}
+
+enemy "Greater Pit Snake" {
+    prioritize() {
+        follow(1, 10, 5)
+        wander(1)
+    }
+    shoot(15, count: 3, shoot_angle: 5, cooldown: 1000)
+    loot {
+        item("Snake Oil", 0.1)
+        item("Glass Sword", 0.1)
+        item("Avenger Staff", 0.1)
+        item("Wand of Dark Magic", 0.1)
+    }
+}
+
+enemy "Greater Pit Viper" {
+    prioritize() {
+        follow(1, 10, 5)
+        wander(1)
+    }
+    shoot(15, cooldown: 300)
+    loot {
+        item("Snake Oil", 0.1)
+        threshold
+    }
+}
+
+enemy "Snakepit Guard" {
+    change_size(100, 100)
+    shoot(25, count: 3, shoot_angle: 25, projectile: 0)
+    shoot(10, count: 6, projectile: 1, cooldown: 1000)
+    state Phase_1 {
+        prioritize() {
+            stay_close_to_spawn(0.2, 4)
+            wander(0.2)
+        }
+        on hp_below(0.6, "Phase 2") -> Phase_2
+    }
+    state Phase_2 {
+        prioritize() {
+            follow(0.2, acquire_range: 10, range: 3)
+            wander(0.2)
+        }
+        shoot(15, count: 3, projectile: 2, cooldown: 2000)
+    }
+    loot {
+        threshold
+        threshold
+    }
+}
+
+enemy "Snakepit Dart Thrower" {
+    conditional_effect(invincible, true)
+    state Idle {
+    }
+    state Protect_the_Guard {
+        on entity_not_exists("Snakepit Guard", 40) -> Idle
+    }
+}
+
+enemy "Snakepit Button" {
+    conditional_effect(invincible, true)
+    state Idle {
+        on player_within(0.5) -> Order
+    }
+    state Order {
+        order(15, "Snakepit Guard Spawner", "Spawn the Guard")
+        set_alt_texture(1)
+        on timed(0, "I am out") -> I_am_out
+    }
+    state I_am_out {
+    }
+}
+
+enemy "Snakepit Guard Spawner" {
+    conditional_effect(invincible, true)
+    state Idle {
+    }
+    state Spawn_the_Guard {
+        order(15, "Snakepit Dart Thrower", "Protect the Guard")
+        spawn("Snakepit Guard", max_children: 1, initial_spawn: 1)
+        on timed(0) -> Idle
+    }
+}
+
+enemy "Snake Grate" {
+    state Idle {
+        on entity_not_exists("Pit Snake", 5, "Spawn Pit Snake") -> Spawn_Pit_Snake
+        on entity_not_exists("Pit Viper", 5, "Spawn Pit Viper") -> Spawn_Pit_Viper
+    }
+    state Spawn_Pit_Snake {
+        spawn("Pit Snake", 1, 1)
+        on timed(2000) -> Idle
+    }
+    state Spawn_Pit_Viper {
+        spawn("Pit Viper", 1, 1)
+        on timed(2000) -> Idle
+    }
+}
+

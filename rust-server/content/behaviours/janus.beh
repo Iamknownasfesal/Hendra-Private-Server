@@ -1,0 +1,277 @@
+enemy "md dwGenerator" {
+    state nokillswag {
+        conditional_effect(invincible)
+    }
+}
+
+enemy "md LightKey" {
+    state Bullet15 {
+        shoot(10, count: 15, projectile: 0, cooldown: 800)
+        on entity_exists("md dwGenerator", 9999) -> MoveToJanus
+    }
+    state MoveToJanus {
+        move_to2(0, 6, speed: 0.5, is_map_position: false, once: true)
+        on timed(2000) -> Bullet8
+    }
+    state Bullet8 {
+        shoot(10, count: 8, projectile: 1)
+        heal_entity(20, "md Janus the Doorwarden", 2000, cooldown: 9999)
+        on entities_not_exists(9999, "md dwGenerator") -> MoveAwayJanus
+    }
+    state MoveAwayJanus {
+        move_to2(0, -6, speed: 0.5, is_map_position: false, once: true)
+        on timed(2000) -> Bullet15
+    }
+}
+
+enemy "md LightKey 2" {
+    state Bullet15 {
+        shoot(10, count: 15, projectile: 0, cooldown: 800)
+        on entity_exists("md dwGenerator", 9999) -> MoveToJanus
+    }
+    state MoveToJanus {
+        move_to2(0, -6, speed: 0.5, is_map_position: false, once: true)
+        on timed(2000) -> Bullet8
+    }
+    state Bullet8 {
+        shoot(10, count: 8, projectile: 1)
+        heal_entity(20, "md Janus the Doorwarden", 2000, cooldown: 9999)
+        on entities_not_exists(9999, "md dwGenerator") -> MoveAwayJanus
+    }
+    state MoveAwayJanus {
+        move_to2(0, 6, speed: 0.5, is_map_position: false, once: true)
+        on timed(2000) -> Bullet15
+    }
+}
+
+enemy "md LightKey 3" {
+    state Bullet15 {
+        shoot(10, count: 15, projectile: 0, cooldown: 800)
+        on entity_exists("md dwGenerator", 9999) -> MoveToJanus
+    }
+    state MoveToJanus {
+        move_to2(-6, 0, speed: 0.5, is_map_position: false, once: true)
+        on timed(2000) -> Bullet8
+    }
+    state Bullet8 {
+        shoot(10, count: 8, projectile: 1)
+        heal_entity(20, "md Janus the Doorwarden", 2000, cooldown: 9999)
+        on entities_not_exists(9999, "md dwGenerator") -> MoveAwayJanus
+    }
+    state MoveAwayJanus {
+        move_to2(6, 0, speed: 0.5, is_map_position: false, once: true)
+        on timed(2000) -> Bullet15
+    }
+}
+
+enemy "md LightKey 4" {
+    state Bullet15 {
+        shoot(10, count: 15, projectile: 0, cooldown: 800)
+        on entity_exists("md dwGenerator", 9999) -> MoveToJanus
+    }
+    state MoveToJanus {
+        move_to2(6, 0, speed: 0.5, is_map_position: false, once: true)
+        on timed(2000) -> Bullet8
+    }
+    state Bullet8 {
+        shoot(10, count: 8, projectile: 1)
+        heal_entity(20, "md Janus the Doorwarden", 2000, cooldown: 9999)
+        on entities_not_exists(9999, "md dwGenerator") -> MoveAwayJanus
+    }
+    state MoveAwayJanus {
+        move_to2(-6, 0, speed: 0.5, is_map_position: false, once: true)
+        on timed(2000) -> Bullet15
+    }
+}
+
+enemy "md DarkKey" {
+    state Bullet15 {
+        shoot(10, count: 15, projectile: 0, cooldown: 800)
+        on entity_exists("md dwGenerator", 9999) -> MoveToJanus
+    }
+    state MoveToJanus {
+        move_to2(6, 6, speed: 0.5, is_map_position: false, once: true)
+        on timed(2000) -> Bullet8
+    }
+    state Bullet8 {
+        shoot(10, count: 8, projectile: 1)
+        heal_entity(20, "md Janus the Doorwarden", 2000, cooldown: 9999)
+        on entities_not_exists(9999, "md dwGenerator") -> MoveAwayJanus
+    }
+    state MoveAwayJanus {
+        move_to2(-6, -6, speed: 0.5, is_map_position: false, once: true)
+        on timed(2000) -> Bullet15
+    }
+}
+
+enemy "md DarkKey 2" {
+    state Bullet15 {
+        shoot(10, count: 15, projectile: 0, cooldown: 800)
+        on entity_exists("md dwGenerator", 9999) -> MoveToJanus
+    }
+    state MoveToJanus {
+        move_to2(-6, -6, speed: 0.5, is_map_position: false, once: true)
+        on timed(2000) -> Bullet8
+    }
+    state Bullet8 {
+        shoot(10, count: 8, projectile: 1)
+        heal_entity(20, "md Janus the Doorwarden", 2000, cooldown: 9999)
+        on entities_not_exists(9999, "md dwGenerator") -> MoveAwayJanus
+    }
+    state MoveAwayJanus {
+        move_to2(6, 6, speed: 0.5, is_map_position: false, once: true)
+        on timed(2000) -> Bullet15
+    }
+}
+
+enemy "md DarkKey 3" {
+    state Bullet15 {
+        shoot(10, count: 15, projectile: 0, cooldown: 800)
+        on entity_exists("md dwGenerator", 9999) -> MoveToJanus
+    }
+    state MoveToJanus {
+        move_to2(6, -6, speed: 0.5, is_map_position: false, once: true)
+        on timed(2000) -> Bullet8
+    }
+    state Bullet8 {
+        shoot(10, count: 8, projectile: 1)
+        heal_entity(20, "md Janus the Doorwarden", 2000, cooldown: 9999)
+        on entities_not_exists(9999, "md dwGenerator") -> MoveAwayJanus
+    }
+    state MoveAwayJanus {
+        move_to2(-6, 6, speed: 0.5, is_map_position: false, once: true)
+        on timed(2000) -> Bullet15
+    }
+}
+
+enemy "md DarkKey 4" {
+    state Bullet15 {
+        shoot(10, count: 15, projectile: 0, cooldown: 800)
+        on entity_exists("md dwGenerator", 9999) -> MoveToJanus
+    }
+    state MoveToJanus {
+        move_to2(-6, 6, speed: 0.5, is_map_position: false, once: true)
+        on timed(2000) -> Bullet8
+    }
+    state Bullet8 {
+        shoot(10, count: 8, projectile: 1)
+        heal_entity(20, "md Janus the Doorwarden", 2000, cooldown: 9999)
+        on entities_not_exists(9999, "md dwGenerator") -> MoveAwayJanus
+    }
+    state MoveAwayJanus {
+        move_to2(6, -6, speed: 0.5, is_map_position: false, once: true)
+        on timed(2000) -> Bullet15
+    }
+}
+
+enemy "BD Portal Spawner 5" {
+    remove_object_on_death("Blue Torch Wall", 99)
+    conditional_effect(invincible)
+    state idle {
+        on entities_not_exists(9999, "Suit of Armor") -> activate
+    }
+    state activate {
+        taunt(true, "You thrash His Lordship's castle, kill his brothers and challenge us. Come, come if you dare.")
+        suicide()
+    }
+}
+
+enemy "md Janus the Doorwarden" {
+    drop_portal_on_death("Puppet Encore Portal", 1, 120)
+    on hp_below(0.15) -> ragetime
+    state idle {
+        on entities_not_exists(9999, "BD Portal Spawner 5") -> activate
+    }
+    state activate {
+        on player_within(8) -> taunt
+    }
+    state taunt {
+        flash(16711680, 2, 2)
+        conditional_effect(invincible)
+        taunt("You bare witness to Janus, Doorwarden of Oryx. You will soon regret your decisions, your soul sealed away -- forever")
+        on timed(5000) -> tosskeys
+    }
+    state tosskeys {
+        taunt(1, "Keys, protect your master")
+        conditional_effect(invincible)
+        toss_object("md LightKey 3", 8, 0, cooldown: 9999999)
+        toss_object("md DarkKey 2", 10, 45, cooldown: 9999999)
+        toss_object("md LightKey 2", 8, 90, cooldown: 9999999)
+        toss_object("md DarkKey 3", 10, 135, cooldown: 9999999)
+        toss_object("md LightKey 4", 8, 180, cooldown: 9999999)
+        toss_object("md DarkKey", 10, 225, cooldown: 9999999)
+        toss_object("md LightKey", 8, 270, cooldown: 9999999)
+        toss_object("md DarkKey 4", 10, 315, cooldown: 9999999)
+        on timed(2000) -> ringattacks
+    }
+    on entities_not_exists(9999, "md DarkKey", "md DarkKey 2", "md DarkKey 3", "md DarkKey 4", "md LightKey", "md LightKey 2", "md LightKey 3", "md LightKey 4") -> warn1
+    state ringattacks {
+        remove_entity(9999, "md dwGenerator")
+        conditional_effect(invulnerable)
+        shoot(10, 10, projectile: 0, cooldown: 100)
+        on timed(10000) -> keyshelp
+    }
+    state keyshelp {
+        spawn("md dwGenerator", 1, 1, cooldown: 999999)
+        on timed(11000) -> ringattacks
+    }
+    state warn1 {
+        flash(16711680, 1, 2)
+        taunt(1, "Up and Down!")
+        on timed(3000) -> UpDown
+    }
+    state UpDown {
+        shoot(10, count: 8, fixed_angle: 0, shoot_angle: 6, projectile: 1, cooldown: 50)
+        shoot(10, count: 8, fixed_angle: 180, shoot_angle: 6, projectile: 1, cooldown: 50)
+        on timed(5000) -> warn2
+    }
+    state warn2 {
+        flash(16711680, 1, 2)
+        taunt(1, "Left and Right!")
+        on timed(3000) -> LeftRight
+    }
+    state LeftRight {
+        shoot(10, count: 8, fixed_angle: 90, shoot_angle: 6, projectile: 1, cooldown: 50)
+        shoot(10, count: 8, fixed_angle: 270, shoot_angle: 6, projectile: 1, cooldown: 50)
+        on timed(5000) -> warn3
+    }
+    state warn3 {
+        flash(16711680, 1, 2)
+        taunt(1, "Quick! Up and Down!")
+        on timed(3000) -> UpDown2
+    }
+    state UpDown2 {
+        shoot(10, count: 8, fixed_angle: 0, shoot_angle: 6, projectile: 1, cooldown: 50)
+        shoot(10, count: 8, fixed_angle: 180, shoot_angle: 6, projectile: 1, cooldown: 50)
+        on timed(5000) -> warn4
+    }
+    state warn4 {
+        flash(16711680, 1, 2)
+        taunt(1, "Hurry! Left and Right!")
+        on timed(3000) -> LeftRight2
+    }
+    state LeftRight2 {
+        shoot(10, count: 8, fixed_angle: 90, shoot_angle: 6, projectile: 1, cooldown: 50)
+        shoot(10, count: 8, fixed_angle: 270, shoot_angle: 6, projectile: 1, cooldown: 50)
+        on timed(5000) -> tosskeys
+    }
+    state ragetime {
+        state s1 {
+            prioritize() {
+                wander(0.4)
+                follow(0.6, 8, 1)
+            }
+            shoot(10, 10, projectile: 0)
+            on timed(6000, "2") -> s2
+        }
+        state s2 {
+            stay_back(1, 6)
+            shoot(10, 10, projectile: 0)
+            on timed(6000, "1") -> s1
+        }
+    }
+    loot {
+        threshold
+    }
+}
+

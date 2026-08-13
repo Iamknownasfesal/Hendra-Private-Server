@@ -1,0 +1,249 @@
+enemy "Mysterious Crystal" {
+    state Waiting {
+        on player_within(10, true) -> Idle
+    }
+    state Idle {
+        taunt(0.1, "Break the crystal for great rewards...")
+        taunt(0.1, "Help me...")
+        on hp_below(0.9999) -> Instructions
+        on timed(10000) -> Idle
+    }
+    state Instructions {
+        flash(4294967295, 2, 100)
+        taunt(0.8, "Fire upon this crystal with all your might for 5 seconds")
+        taunt(0.8, "If your attacks are weak, the crystal magically heals")
+        taunt(0.8, "Gather a large group to smash it open")
+        on hp_below(0.998) -> Evaluation
+    }
+    state Evaluation {
+        state Comment1 {
+            taunt(true, "Sweet treasure awaits for powerful adventurers!")
+            taunt(0.4, "Yes!  Smash my prison for great rewards!")
+            on timed(5000) -> Comment2
+        }
+        state Comment2 {
+            taunt(0.3, "If you are not very strong, this could kill you", "If you are not yet powerful, stay away from the Crystal", "New adventurers should stay away", "That's the spirit. Lay your fire upon me.", "So close...")
+            on timed(5000) -> Comment3
+        }
+        state Comment3 {
+            taunt(0.4, "I think you need more people...", "Call all your friends to help you break the crystal!")
+            on timed(10000) -> Comment2
+        }
+        heal_group(1, "Crystals", cooldown: 5000)
+        on hp_below(0.95) -> StartBreak
+        on timed(60000) -> Fail
+    }
+    state Fail {
+        taunt("Perhaps you need a bigger group. Ask others to join you!")
+        flash(4278190080, 5, 1)
+        shoot(10, count: 16, shoot_angle: 22.5, fixed_angle: 0, cooldown: 100000)
+        heal_group(1, "Crystals", cooldown: 1000)
+        on timed(5000) -> Idle
+    }
+    state StartBreak {
+        taunt("You cracked the crystal! Soon we shall emerge!")
+        change_size(-2, 80)
+        conditional_effect(invulnerable)
+        flash(4278190080, 2, 10)
+        on timed(4000) -> BreakCrystal
+    }
+    state BreakCrystal {
+        taunt("This your reward! Imagine what evil even Oryx needs to keep locked up!")
+        shoot(0, count: 16, shoot_angle: 22.5, fixed_angle: 0, cooldown: 100000)
+        spawn("Crystal Prisoner", max_children: 1, initial_spawn: 1, cooldown: 100000, gives_no_xp: false)
+        decay(0)
+    }
+}
+
+enemy "Crystal Prisoner" {
+    spawn("Crystal Prisoner Steed", max_children: 3, initial_spawn: 0, cooldown: 200, gives_no_xp: false)
+    state pause {
+        conditional_effect(invulnerable)
+        on timed(2000) -> start_the_fun
+    }
+    state start_the_fun {
+        conditional_effect(invulnerable)
+        taunt("I'm finally free! Yesss!!!")
+        on timed(1500) -> Daisy_attack
+    }
+    state Daisy_attack {
+        prioritize() {
+            stay_close_to_spawn(0.3, range: 7)
+            wander(0.3)
+        }
+        state Quadforce1 {
+            conditional_effect(invulnerable)
+            shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 0, cooldown: 300)
+            on timed(200) -> Quadforce2
+        }
+        state Quadforce2 {
+            conditional_effect(invulnerable)
+            shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 15, cooldown: 300)
+            on timed(200) -> Quadforce3
+        }
+        state Quadforce3 {
+            conditional_effect(invulnerable)
+            shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 30, cooldown: 300)
+            on timed(200) -> Quadforce4
+        }
+        state Quadforce4 {
+            shoot(10, projectile: 3, cooldown: 1000)
+            shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 300)
+            on timed(200) -> Quadforce5
+        }
+        state Quadforce5 {
+            shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 60, cooldown: 300)
+            on timed(200) -> Quadforce6
+        }
+        state Quadforce6 {
+            conditional_effect(invulnerable)
+            shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 75, cooldown: 300)
+            on timed(200) -> Quadforce7
+        }
+        state Quadforce7 {
+            conditional_effect(invulnerable)
+            shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 90, cooldown: 300)
+            on timed(200) -> Quadforce8
+        }
+        state Quadforce8 {
+            conditional_effect(invulnerable)
+            shoot(10, projectile: 3, cooldown: 1000)
+            shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 105, cooldown: 300)
+            on timed(200) -> Quadforce1
+        }
+        on hp_below(0.3) -> Whoa_nelly
+        on timed(18000) -> Warning
+    }
+    state Warning {
+        prioritize() {
+            stay_close_to_spawn(0.5, range: 7)
+            wander(0.5)
+        }
+        conditional_effect(invulnerable)
+        flash(4278255360, 0.2, 15)
+        follow(0.4, acquire_range: 9, range: 2)
+        on timed(3000) -> Summon_the_clones
+    }
+    state Summon_the_clones {
+        prioritize() {
+            stay_close_to_spawn(0.85, range: 7)
+            wander(0.85)
+        }
+        shoot(10, projectile: 0, cooldown: 1000)
+        spawn("Crystal Prisoner Clone", max_children: 4, initial_spawn: 0, cooldown: 200)
+        toss_object("Crystal Prisoner Clone", range: 5, angle: 0, cooldown: 100000)
+        toss_object("Crystal Prisoner Clone", range: 5, angle: 240, cooldown: 100000)
+        toss_object("Crystal Prisoner Clone", range: 7, angle: 60, cooldown: 100000)
+        toss_object("Crystal Prisoner Clone", range: 7, angle: 300, cooldown: 100000)
+        state invulnerable_clone {
+            conditional_effect(invulnerable)
+            on timed(3000) -> vulnerable_clone
+        }
+        state vulnerable_clone {
+            on timed(1200) -> invulnerable_clone
+        }
+        on timed(16000) -> Warning2
+    }
+    state Warning2 {
+        prioritize() {
+            stay_close_to_spawn(0.85, range: 7)
+            wander(0.85)
+        }
+        conditional_effect(invulnerable)
+        flash(4278255360, 0.2, 25)
+        on timed(5000) -> Whoa_nelly
+    }
+    state Whoa_nelly {
+        prioritize() {
+            stay_close_to_spawn(0.6, range: 7)
+            wander(0.6)
+        }
+        shoot(10, projectile: 3, count: 3, shoot_angle: 120, cooldown: 900)
+        shoot(10, projectile: 2, count: 3, shoot_angle: 15, fixed_angle: 40, cooldown: 1600, cooldown_offset: 0)
+        shoot(10, projectile: 2, count: 3, shoot_angle: 15, fixed_angle: 220, cooldown: 1600, cooldown_offset: 0)
+        shoot(10, projectile: 2, count: 3, shoot_angle: 15, fixed_angle: 130, cooldown: 1600, cooldown_offset: 800)
+        shoot(10, projectile: 2, count: 3, shoot_angle: 15, fixed_angle: 310, cooldown: 1600, cooldown_offset: 800)
+        state invulnerable_whoa {
+            conditional_effect(invulnerable)
+            on timed(2600) -> vulnerable_whoa
+        }
+        state vulnerable_whoa {
+            on timed(1200) -> invulnerable_whoa
+        }
+        on timed(10000) -> Absolutely_Massive
+    }
+    state Absolutely_Massive {
+        change_size(13, 260)
+        prioritize() {
+            stay_close_to_spawn(0.2, range: 7)
+            wander(0.2)
+        }
+        shoot(10, projectile: 1, count: 9, shoot_angle: 40, fixed_angle: 40, cooldown: 2000, cooldown_offset: 400)
+        shoot(10, projectile: 1, count: 9, shoot_angle: 40, fixed_angle: 60, cooldown: 2000, cooldown_offset: 800)
+        shoot(10, projectile: 1, count: 9, shoot_angle: 40, fixed_angle: 50, cooldown: 2000, cooldown_offset: 1200)
+        shoot(10, projectile: 1, count: 9, shoot_angle: 40, fixed_angle: 70, cooldown: 2000, cooldown_offset: 1600)
+        state invulnerable_mass {
+            conditional_effect(invulnerable)
+            on timed(2600) -> vulnerable_mass
+        }
+        state vulnerable_mass {
+            on timed(1000) -> invulnerable_mass
+        }
+        on timed(14000) -> Start_over_again
+    }
+    state Start_over_again {
+        change_size(-20, 100)
+        conditional_effect(invulnerable)
+        flash(4278255360, 0.2, 15)
+        on timed(3000) -> Daisy_attack
+    }
+    loot {
+        threshold
+        threshold
+    }
+}
+
+enemy "Crystal Prisoner Clone" {
+    prioritize() {
+        stay_close_to_spawn(0.85, range: 5)
+        wander(0.85)
+    }
+    shoot(10, cooldown: 1400)
+    state taunt {
+        taunt(0.09, "I am everywhere and nowhere!")
+        on timed(1000) -> no_taunt
+    }
+    state no_taunt {
+        on timed(1000) -> taunt
+    }
+    decay(17000)
+}
+
+enemy "Crystal Prisoner Steed" {
+    state change_position_fast {
+        conditional_effect(invulnerable)
+        prioritize() {
+            stay_close_to_spawn(3.6, range: 12)
+            wander(3.6)
+        }
+        on timed(800) -> attack
+    }
+    state attack {
+        shoot(10, predictive: 0.3, cooldown: 500)
+        state keep_distance {
+            prioritize() {
+                stay_close_to_spawn(1, range: 12)
+                orbit(1, 9, target: "Crystal Prisoner", radius_variance: 0)
+            }
+            on timed(2000) -> go_anywhere
+        }
+        state go_anywhere {
+            prioritize() {
+                stay_close_to_spawn(1, range: 12)
+                wander(1)
+            }
+            on timed(2000) -> keep_distance
+        }
+    }
+}
+

@@ -40,6 +40,12 @@ const CHARGE_MS: u32 = 600;
 /// How close counts as having arrived somewhere.
 const ARRIVED: f32 = 0.3;
 
+/// How often health is rescaled to the crowd.
+///
+/// Not every tick: the count changes as people walk in and out, and rescaling constantly would
+/// make a boss's health bar jitter throughout the fight.
+const SCALE_INTERVAL_MS: u32 = 2000;
+
 /// One enemy's running behaviour.
 #[derive(Debug, Clone)]
 pub struct Mind {
@@ -78,6 +84,15 @@ pub struct Mind {
     /// repeating one line.
     said: u32,
 
+    /// Which child of a `sequence` acts next.
+    step: u32,
+
+    /// How long the entity has been standing still, for the transition that watches for it.
+    still_for_ms: u32,
+
+    /// Where it was last tick, which is how standing still is noticed at all.
+    was_at: Option<(f32, f32)>,
+
     /// Scratch for the ancestry walk, reused so a tick allocates nothing.
     chain: Vec<usize>,
 }
@@ -101,6 +116,9 @@ impl Mind {
             phase: 0.0,
             charge: None,
             said: 0,
+            step: 0,
+            still_for_ms: 0,
+            was_at: None,
             chain: Vec::new(),
         }
     }
@@ -181,6 +199,17 @@ impl Mind {
         self.in_state_ms = self.in_state_ms.saturating_add(elapsed_ms);
         self.damage_in_state = self.damage_in_state.saturating_add(senses.damage_taken);
 
+        // Movement is measured rather than asked about: a behaviour that wanted to move and was
+        // stopped by a wall has not moved, and that is what the transition is watching for.
+        const STILL: f32 = 0.01;
+        match self.was_at {
+            Some((x, y)) if (senses.x - x).abs() < STILL && (senses.y - y).abs() < STILL => {
+                self.still_for_ms = self.still_for_ms.saturating_add(elapsed_ms);
+            }
+            _ => self.still_for_ms = 0,
+        }
+        self.was_at = Some((senses.x, senses.y));
+
         if let Some((_, left)) = &mut self.charge {
             *left = left.saturating_sub(elapsed_ms);
             if *left == 0 {
@@ -246,6 +275,8 @@ impl Mind {
             }
 
             Condition::DamageTaken { amount } => self.damage_in_state >= *amount,
+
+            Condition::NotMoving { after_ms } => self.still_for_ms >= *after_ms,
 
             Condition::EntityWithin { kind, radius } => program
                 .kind_of(*kind)
@@ -681,6 +712,7 @@ impl Mind {
                 radius,
                 kind,
                 state,
+                once,
             } => {
                 // Once per entry rather than every tick: an order repeated every tick would hold
                 // its targets at the start of the state they were sent to and they would never
@@ -695,9 +727,77 @@ impl Mind {
                     state: state.clone(),
                 });
                 if let Some(cooldown) = self.cooldowns.get_mut(slot) {
-                    *cooldown = ORDER_INTERVAL_MS;
+                    // A once-only order is held for longer than any state lasts, so entering the
+                    // state again is what gives it a second time rather than waiting it out.
+                    *cooldown = if *once { u32::MAX } else { ORDER_INTERVAL_MS };
                 }
                 1
+            }
+
+            Primitive::Flash {
+                colour,
+                period_ms,
+                repeats,
+            } => {
+                // Once on entering the state. Restarting the blink every tick would leave it
+                // permanently on its first frame.
+                if self.cooldowns.get(slot).copied().unwrap_or(0) > 0 {
+                    return 1;
+                }
+                out.push(Action::Flash {
+                    colour: *colour,
+                    period_ms: *period_ms,
+                    repeats: *repeats,
+                });
+                if let Some(cooldown) = self.cooldowns.get_mut(slot) {
+                    *cooldown = u32::MAX;
+                }
+                1
+            }
+
+            Primitive::RemoveEffect { effect } => {
+                out.push(Action::RemoveEffect { effect: *effect });
+                1
+            }
+
+            Primitive::ScaleHealth {
+                per_player,
+                maximum_extra,
+                radius,
+            } => {
+                if self.cooldowns.get(slot).copied().unwrap_or(0) > 0 {
+                    return 1;
+                }
+                out.push(Action::ScaleHealth {
+                    per_player: *per_player,
+                    maximum_extra: *maximum_extra,
+                    radius: *radius,
+                });
+                if let Some(cooldown) = self.cooldowns.get_mut(slot) {
+                    *cooldown = SCALE_INTERVAL_MS;
+                }
+                1
+            }
+
+            Primitive::Sequence { children } => {
+                // One child per turn, advancing only when the current one actually does something.
+                // Advancing regardless would step through a pattern while the enemy stood idle.
+                let mut used = 1;
+                let before = out.len();
+                let turn = self.step as usize;
+
+                for (index, child) in children.iter().enumerate() {
+                    if index == turn % children.len().max(1) {
+                        used += self.run(program, child, slot + used, senses, has_moved, out);
+                    } else {
+                        used += child.slots();
+                    }
+                }
+
+                if out.len() > before {
+                    self.step = self.step.wrapping_add(1);
+                }
+                used
             }
 
             Primitive::Transform { into } => {

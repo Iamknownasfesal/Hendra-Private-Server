@@ -1,0 +1,155 @@
+enemy "Mixcoatl the Masked God" {
+    drop_portal_on_death("Realm Portal", 100)
+    state Idle {
+        conditional_effect(invulnerable)
+        wander(0.5)
+        on player_within(10) -> Start
+    }
+    state Start {
+        conditional_effect(invulnerable)
+        return_to_spawn(2)
+        set_alt_texture(3)
+        on timed(200, "Start 2") -> Start_2
+    }
+    state Start_2 {
+        conditional_effect(invulnerable)
+        set_alt_texture(4)
+        on timed(200, "Start 3") -> Start_3
+    }
+    state Start_3 {
+        conditional_effect(invulnerable)
+        set_alt_texture(5)
+        on timed(200, "Start 4") -> Start_4
+    }
+    state Start_4 {
+        conditional_effect(invulnerable)
+        return_to_spawn(2)
+        set_alt_texture(6)
+        on timed(400, "Start Fight") -> Start_Fight
+    }
+    state Start_Fight {
+        return_to_spawn(2)
+        shoot(20, 3, shoot_angle: 5, fixed_angle: 0, projectile: 1, angle_offset: 0, cooldown_offset: 200)
+        shoot(20, 3, shoot_angle: 5, fixed_angle: 0, projectile: 1, angle_offset: 45, cooldown_offset: 400)
+        shoot(20, 3, shoot_angle: 5, fixed_angle: 0, projectile: 1, angle_offset: 90, cooldown_offset: 600)
+        shoot(20, 3, shoot_angle: 5, fixed_angle: 0, projectile: 1, angle_offset: 135, cooldown_offset: 800)
+        shoot(20, 3, shoot_angle: 5, fixed_angle: 0, projectile: 1, angle_offset: 180, cooldown_offset: 1000)
+        shoot(20, 3, shoot_angle: 5, fixed_angle: 0, projectile: 1, angle_offset: 225, cooldown_offset: 1200)
+        shoot(20, 3, shoot_angle: 5, fixed_angle: 0, projectile: 1, angle_offset: 270, cooldown_offset: 1400)
+        shoot(20, 3, shoot_angle: 5, fixed_angle: 0, projectile: 1, angle_offset: 315, cooldown_offset: 1600)
+        on timed(4000, "Start Fight 2") -> Start_Fight_2
+    }
+    state Start_Fight_2 {
+        return_to_spawn(2)
+        order(50, "Boss Totem", "Fire!")
+        set_alt_texture(1)
+        shoot(20, 8, fixed_angle: 45, projectile: 0, cooldown: 400)
+        on timed(5000) -> Charge
+    }
+    state Charge {
+        prioritize() {
+            follow(0.5, 10, 10)
+            wander(0.5)
+        }
+        return_to_spawn(2)
+        order(50, "Boss Totem", "Fire!")
+        set_alt_texture(1)
+        shoot(20, 8, fixed_angle: 45, projectile: 0, cooldown: 400)
+        on timed(8000, "Start Fight") -> Start_Fight
+    }
+    loot {
+        threshold
+        item("Pollen Powder", 1)
+        item("Pollen Powder", 0.99)
+        item("Pollen Powder", 0.88)
+    }
+}
+
+enemy "Boss Totem" {
+    state Idle {
+        conditional_effect(invincible)
+    }
+    state Fire_ {
+        conditional_effect(invincible)
+        shoot(10, 6, fixed_angle: 60, cooldown: 400)
+        on entity_not_exists("Mixcoatl the Masked God", 100) -> Idle
+        on timed(4000) -> Idle
+    }
+}
+
+enemy "Totem Spirit" {
+    state Wander {
+        wander(0.4)
+        stay_close_to_spawn(0.5, 3)
+        shoot(8, 1, 0, 0, cooldown: 750)
+    }
+}
+
+enemy "Jungle Totem" {
+    state Stand {
+        spawn("Totem Spirit", 3)
+        shoot(9, 9, 15, 0, cooldown: 1500)
+    }
+}
+
+enemy "Basilisk Baby" {
+    state Protect_Mommy {
+        protect(0.4, "Basilisk", 8, 5, 4)
+        shoot(7, 1, 0, 0, cooldown: 750)
+    }
+}
+
+enemy "Basilisk" {
+    state Kill {
+        prioritize() {
+            follow(0.6, 6, 1)
+            wander(0.5)
+        }
+        shoot(6, 1, projectile: 0, cooldown: 750)
+        shoot(6, 1, projectile: 1, cooldown: 750)
+        shoot(6, 1, projectile: 2, cooldown: 750)
+        shoot(6, 1, projectile: 3, cooldown: 750)
+    }
+}
+
+enemy "Mask Shaman" {
+    state Circle {
+        orbit(0.4, 3, 10, "Jungle Fire")
+        heal_group(8, "Mask Men", cooldown: 2000)
+        shoot(7, 8, 45, 0, cooldown: 1500)
+        on entity_not_exists("Jungle Fire", 5) -> Wander
+    }
+    state Wander {
+        wander(0.4)
+        heal_group(8, "Mask Men", cooldown: 2000)
+        shoot(7, 8, 45, 0, cooldown: 1500)
+    }
+}
+
+enemy "Mask Warrior" {
+    state Protect {
+        protect(0.3, "Mask Shaman", 10, 2, 1)
+        shoot(7, 8, 45, 0, cooldown: 1500)
+    }
+}
+
+enemy "Mask Hunter" {
+    state Killa {
+        prioritize() {
+            follow(0.8, 8, 1)
+            wander(0.5)
+        }
+        shoot(8, 1, cooldown: 1000)
+    }
+}
+
+enemy "Jungle Fire" {
+    state Burn {
+        shoot(1, 1, 0, 0, cooldown: 1000)
+        shoot(7, 1, 0, 1, cooldown_offset: 500)
+        shoot(7, 1, 0, 1, cooldown_offset: 600)
+        shoot(7, 1, 0, 1, cooldown_offset: 700)
+        shoot(7, 1, 0, 1, cooldown_offset: 800)
+    }
+}
+

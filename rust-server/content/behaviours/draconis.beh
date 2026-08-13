@@ -1,0 +1,782 @@
+enemy "NM Altar of Draconis" {
+    conditional_effect(invincible)
+    state idle {
+        spawn("Dragon Table MM", 1, 1, cooldown: 99999)
+        on entities_not_exists(9999, "NM Red Dragon God", "NM Blue Dragon God", "NM Green Dragon God", "NM Black Dragon God") -> dropportal
+    }
+    state dropportal {
+        suicide()
+    }
+}
+
+enemy "Ivory Taskmaster 22" {
+    drop_portal_on_death("Ivory Wyvern Portal", 1, 120)
+    conditional_effect(invincible)
+    state idle {
+        on entities_not_exists(9999, "NM Red Dragon Soul", "NM Blue Dragon Soul", "NM Green Dragon Soul", "NM Black Dragon Soul") -> activate
+    }
+    state activate {
+        suicide()
+    }
+}
+
+enemy "NM Red Dragon Soul" {
+    set_no_x_p()
+    conditional_effect(invincible)
+    state idle {
+        orbit(0.2, 2.5, 20, "NM Altar of Draconis")
+    }
+    state goToRedDragon {
+        order(670, "NM Green Dragon Soul", "redinactive")
+        order(670, "NM Black Dragon Soul", "redinactive")
+        order(670, "NM Red Dragon Soul", "redinactive")
+        order(670, "NM Blue Dragon Soul", "redinactive")
+        remove_tile_object("Iron Brick", 99)
+        orbit(0.45, 2.5, 9999, "NM Red Dragon God")
+        suicide()
+    }
+    state rip {
+        suicide()
+    }
+    state greeninactive {
+        on entities_not_exists(9999, "NM Green Dragon God") -> idle
+        orbit(0.2, 2.5, 20, "NM Altar of Draconis")
+    }
+    state redinactive {
+        on entities_not_exists(9999, "NM Red Dragon God") -> rip
+        orbit(0.2, 2.5, 20, "NM Altar of Draconis")
+    }
+    state blackinactive {
+        on entities_not_exists(9999, "NM Black Dragon God") -> idle
+        orbit(0.2, 2.5, 20, "NM Altar of Draconis")
+    }
+    state blueinactive {
+        on entities_not_exists(9999, "NM Blue Dragon God") -> idle
+        orbit(0.2, 2.5, 20, "NM Altar of Draconis")
+    }
+}
+
+enemy "NM Blue Dragon Soul" {
+    set_no_x_p()
+    conditional_effect(invincible)
+    state idle {
+        orbit(0.2, 2.5, 20, "NM Altar of Draconis")
+    }
+    state goToBlueDragon {
+        order(670, "NM Green Dragon Soul", "blueinactive")
+        order(670, "NM Black Dragon Soul", "blueinactive")
+        order(670, "NM Red Dragon Soul", "blueinactive")
+        order(670, "NM Blue Dragon Soul", "blueinactive")
+        remove_tile_object("Ice Cave Wall", 99)
+        orbit(0.45, 2.5, 9999, "NM Blue Dragon God")
+        suicide()
+    }
+    state rip {
+        suicide()
+    }
+    state greeninactive {
+        on entities_not_exists(9999, "NM Green Dragon God") -> idle
+        orbit(0.2, 2.5, 20, "NM Altar of Draconis")
+    }
+    state redinactive {
+        on entities_not_exists(9999, "NM Red Dragon God") -> idle
+        orbit(0.2, 2.5, 20, "NM Altar of Draconis")
+    }
+    state blackinactive {
+        on entities_not_exists(9999, "NM Black Dragon God") -> idle
+        orbit(0.2, 2.5, 20, "NM Altar of Draconis")
+    }
+    state blueinactive {
+        on entities_not_exists(9999, "NM Blue Dragon God") -> rip
+        orbit(0.2, 2.5, 20, "NM Altar of Draconis")
+    }
+}
+
+enemy "NM Green Dragon Soul" {
+    set_no_x_p()
+    conditional_effect(invincible)
+    state idle {
+        orbit(0.2, 2.5, 20, "NM Altar of Draconis")
+    }
+    state goToGreenDragon {
+        order(670, "NM Green Dragon Soul", "greeninactive")
+        order(670, "NM Black Dragon Soul", "greeninactive")
+        order(670, "NM Red Dragon Soul", "greeninactive")
+        order(670, "NM Blue Dragon Soul", "greeninactive")
+        remove_tile_object("Jungle Temple Walls", 99)
+        orbit(0.45, 2.5, 9999, "NM Green Dragon God")
+        suicide()
+    }
+    state rip {
+        suicide()
+    }
+    state greeninactive {
+        on entities_not_exists(9999, "NM Green Dragon God") -> rip
+        orbit(0.2, 2.5, 20, "NM Altar of Draconis")
+    }
+    state redinactive {
+        on entities_not_exists(9999, "NM Red Dragon God") -> idle
+        orbit(0.2, 2.5, 20, "NM Altar of Draconis")
+    }
+    state blackinactive {
+        on entities_not_exists(9999, "NM Black Dragon God") -> idle
+        orbit(0.2, 2.5, 20, "NM Altar of Draconis")
+    }
+    state blueinactive {
+        on entities_not_exists(9999, "NM Blue Dragon God") -> idle
+        orbit(0.2, 2.5, 20, "NM Altar of Draconis")
+    }
+}
+
+enemy "NM Black Dragon Soul" {
+    set_no_x_p()
+    conditional_effect(invincible)
+    state idle {
+        orbit(0.3, 2.5, 20, "NM Altar of Draconis")
+    }
+    state goToBlackDragon {
+        order(670, "NM Green Dragon Soul", "blackinactive")
+        order(670, "NM Black Dragon Soul", "blackinactive")
+        order(670, "NM Red Dragon Soul", "blackinactive")
+        order(670, "NM Blue Dragon Soul", "blackinactive")
+        remove_tile_object("Blue Wall", 99)
+        orbit(0.45, 2.5, 9999, "NM Black Dragon God")
+        suicide()
+    }
+    state rip {
+        suicide()
+    }
+    state greeninactive {
+        on entities_not_exists(9999, "NM Green Dragon God") -> idle
+        orbit(0.2, 2.5, 20, "NM Altar of Draconis")
+    }
+    state redinactive {
+        on entities_not_exists(9999, "NM Red Dragon God") -> idle
+        orbit(0.2, 2.5, 20, "NM Altar of Draconis")
+    }
+    state blackinactive {
+        on entities_not_exists(9999, "NM Black Dragon God") -> rip
+        orbit(0.2, 2.5, 20, "NM Altar of Draconis")
+    }
+    state blueinactive {
+        on entities_not_exists(9999, "NM Blue Dragon God") -> idle
+        orbit(0.2, 2.5, 20, "NM Altar of Draconis")
+    }
+}
+
+enemy "lod Blue Loot Balloon" {
+    state Idle {
+        conditional_effect(invulnerable)
+        on timed(5000) -> UnsetEffect
+    }
+    state UnsetEffect {
+    }
+    loot {
+        threshold
+        threshold
+    }
+}
+
+enemy "lod Green Loot Balloon" {
+    state Idle {
+        conditional_effect(invulnerable)
+        on timed(5000) -> UnsetEffect
+    }
+    state UnsetEffect {
+    }
+    loot {
+        threshold
+        threshold
+    }
+}
+
+enemy "lod Black Loot Balloon" {
+    state Idle {
+        conditional_effect(invulnerable)
+        on timed(5000) -> UnsetEffect
+    }
+    state UnsetEffect {
+    }
+    loot {
+        threshold
+        threshold
+    }
+}
+
+enemy "lod Red Loot Balloon" {
+    state Idle {
+        conditional_effect(invulnerable)
+        on timed(5000) -> UnsetEffect
+    }
+    state UnsetEffect {
+    }
+    loot {
+        threshold
+        threshold
+    }
+}
+
+enemy "lod Ivory Loot" {
+    state Idle {
+        conditional_effect(invulnerable)
+        on timed(5000) -> UnsetEffect
+    }
+    state UnsetEffect {
+    }
+    loot {
+        threshold
+    }
+}
+
+enemy "NM Blue Dragon Minion" {
+    prioritize() {
+        orbit(0.48, 2.5, 20, "NM Blue Dragon God", speed_variance: 0.1)
+        follow(0.25, 8, 1)
+        wander(0.11)
+    }
+    shoot(8.4, count: 1, projectile: 2, cooldown: 1100, cooldown_offset: 1500)
+    shoot(8.4, count: 1, projectile: 2, cooldown: 2000)
+}
+
+enemy "NM Red Dragon Minion" {
+    prioritize() {
+        follow(0.65, 8, 1)
+        swirl(0.3, 8, 10, targeted: false)
+    }
+    shoot(8.4, count: 1, projectile: 0, cooldown: 2760, cooldown_offset: 1500)
+}
+
+enemy "NM Red Dragon Lava Bomb" {
+    conditional_effect(invincible)
+    apply_setpiece("LavaSquare")
+    suicide()
+}
+
+enemy "NM Red Dragon Lava Trigger" {
+    conditional_effect(invincible)
+    apply_setpiece("LavaSafe")
+    suicide()
+}
+
+enemy "NM Black Dragon Minion" {
+    state idle_heal {
+        conditional_effect(invincible)
+        set_alt_texture(0)
+        heal_self()
+        on player_within(3) -> active
+    }
+    state active {
+        wander(0.5)
+        set_alt_texture(1)
+        shoot(8.4, count: 1, projectile: 0, cooldown: 450)
+        on timed(3000, "idle&heal") -> idle_heal
+        on no_player_within(3, "idle&heal") -> idle_heal
+    }
+}
+
+enemy "NM Black Dragon Shadow" {
+    orbit(0.25, 3, 20, "NM Black Dragon God")
+    state orbitandattack {
+        shoot(8.4, count: 2, shoot_angle: 30, projectile: 0, cooldown: 1450)
+        shoot(8.4, count: 2, shoot_angle: 20, projectile: 1, cooldown: 1750)
+        on hp_below(0.11) -> blam
+    }
+    state blam {
+        flash(16777215, 2, 3)
+        shoot(8.4, count: 4, projectile: 0, cooldown: 1000)
+        suicide()
+    }
+}
+
+enemy "NM Green Dragon Minion" {
+    prioritize() {
+        protect(0.5, "NM Blue Dragon God", protection_range: 15, reprotect_range: 3)
+        follow(0.3, 8, 1)
+        wander(0.35)
+    }
+    shoot(8.4, count: 1, projectile: 2, cooldown_offset: 1500)
+    shoot(8.4, count: 1, projectile: 2, cooldown: 1800)
+}
+
+enemy "NM Green Dragon Shield" {
+    transform_on_death("NM Green Dragon Minion", 1, 1, 1)
+    heal_group(8, "Dragon Gods", heal_amount: 100)
+    shoot(8.4, count: 1, projectile: 0, cooldown_offset: 1500)
+    orbit(0.3, 3, 20, "NM Green Dragon God")
+}
+
+enemy "lod Mirror Wyvern1" {
+    conditional_effect(invulnerable)
+    shoot(8.4, count: 1, projectile: 0, cooldown: 1)
+}
+
+enemy "lod White Dragon Orb" {
+    conditional_effect(invincible)
+    shoot(8.4, count: 6, projectile: 0, cooldown: 3000)
+    shoot(8.4, count: 6, projectile: 1, cooldown: 2671)
+}
+
+enemy "lod Red Soul Flame" {
+    shoot(8.4, count: 6, shoot_angle: 22, projectile: 0, fixed_angle: 90)
+}
+
+enemy "lod Green Soul Flame" {
+    shoot(8.4, count: 6, shoot_angle: 22, projectile: 0, fixed_angle: 90)
+}
+
+enemy "lod Blue Soul Flame" {
+    shoot(8.4, count: 6, shoot_angle: 22, projectile: 0, fixed_angle: 90)
+}
+
+enemy "lod Black Soul Flame" {
+    shoot(8.4, count: 6, shoot_angle: 22, projectile: 0, fixed_angle: 90)
+}
+
+enemy "NM Blue Dragon God" {
+    transform_on_death("lod Blue Loot Balloon", 1, 1, 1)
+    on hp_below(0.12) -> DyingPhase
+    state idle {
+        set_alt_texture(1)
+        conditional_effect(invincible)
+        on entity_not_exists("NM Blue Dragon Soul", 9999) -> Awakening
+    }
+    state Awakening {
+        conditional_effect(invincible)
+        flash(16777215, 2, 3)
+        on timed(4768) -> mychildren
+    }
+    state mychildren {
+        set_alt_texture(0)
+        taunt(0.8, "My children will feast on your soul!", "Look out! My minions will help me!", "If I don't kill you, my minions will!")
+        spawn("NM Blue Dragon Minion", 2, 1, cooldown: 5000)
+        prioritize() {
+            follow(0.75, 8, 1)
+            stay_back(0.2, 4)
+        }
+        shoot(10, count: 9, shoot_angle: 26, projectile: 3, predictive: 1.6, cooldown: 500)
+        shoot(10, count: 5, shoot_angle: 20, projectile: 1, cooldown: 2000)
+        shoot(10, count: 3, projectile: 2, cooldown: 1570)
+        on timed(8950) -> tastymostrels
+    }
+    state tastymostrels {
+        taunt(0.8, "You're a nasty little pest!", "You look like a tasty morsel! *SCREEEEEECH*")
+        prioritize() {
+            stay_back(0.3, 3)
+            wander(0.12)
+        }
+        shoot(10, count: 16, projectile: 3, predictive: 1.5, cooldown: 1050)
+        shoot(10, count: 5, shoot_angle: 20, projectile: 1, predictive: 0.5, cooldown: 1475)
+        on timed(7450) -> tastymostrels2
+    }
+    state tastymostrels2 {
+        taunt(0.8, "You can not handle the full power of my onslaught")
+        prioritize() {
+            follow(0.885, 8, 1)
+            stay_back(0.3, 3)
+        }
+        shoot(10, count: 16, projectile: 3, predictive: 2.25, cooldown: 2550)
+        shoot(10, count: 8, shoot_angle: 20, projectile: 3, predictive: 2.25, cooldown: 1250)
+        shoot(10, count: 5, shoot_angle: 20, projectile: 1, predictive: 0.5, cooldown: 1600)
+        shoot(10, count: 7, shoot_angle: 18, projectile: 2, cooldown: 2000, cooldown_offset: 2000)
+        on timed(9000) -> returntospawn
+    }
+    state returntospawn {
+        return_to_spawn(speed: 0.5)
+        shoot(10, count: 16, projectile: 3, cooldown: 1000)
+        on timed(2000) -> standandrek
+    }
+    state standandrek {
+        taunt(1, "You look tasty! I'm going to eat you!", "Yum! I can already taste you!")
+        shoot(10, count: 21, projectile: 3, cooldown: 2000)
+        shoot(10, count: 5, shoot_angle: 26, projectile: 2, predictive: 0.5, cooldown: 500)
+        shoot(10, count: 3, shoot_angle: 26, projectile: 3, predictive: 4.5, cooldown: 1500)
+        on timed(8500) -> mychildren
+    }
+    conditional_effect(invincible)
+    state DyingPhase {
+        remove_entity(9999, "NM Blue Dragon Minion")
+        return_to_spawn(speed: 0.3)
+        flash(16777215, 2, 3)
+        taunt(1, "I have underestimated your power!", "WHY! YOU WERE GOING TO BE SO DELICIOUS IN MY STOMACH!")
+        on timed(4750) -> restinwater
+    }
+    state restinwater {
+        suicide()
+    }
+}
+
+enemy "NM Green Dragon God" {
+    transform_on_death("lod Green Loot Balloon", 1, 1, 1)
+    on hp_below(0.12) -> DyingPhase
+    state idle {
+        set_alt_texture(1)
+        conditional_effect(invincible)
+        on entity_not_exists("NM Green Dragon Soul", 9999) -> Awakening
+    }
+    state Awakening {
+        conditional_effect(invincible)
+        flash(16777215, 2, 3)
+        on timed(4768) -> myhide
+    }
+    state myhide {
+        set_alt_texture(0)
+        taunt(1, "My own hide is but one of my defenses!", "My hide is tougher than your boots!")
+        toss_object("NM Green Dragon Shield", 4, 0, cooldown: 9999999)
+        toss_object("NM Green Dragon Shield", 4, 45, cooldown: 9999999)
+        toss_object("NM Green Dragon Shield", 4, 90, cooldown: 9999999)
+        toss_object("NM Green Dragon Shield", 4, 135, cooldown: 9999999)
+        toss_object("NM Green Dragon Shield", 4, 180, cooldown: 9999999)
+        toss_object("NM Green Dragon Shield", 4, 225, cooldown: 9999999)
+        toss_object("NM Green Dragon Shield", 4, 270, cooldown: 9999999)
+        toss_object("NM Green Dragon Shield", 4, 315, cooldown: 9999999)
+        invisi_toss("NM Green Dragon Minion", 4, 180, cooldown: 9999999)
+        invisi_toss("NM Green Dragon Minion", 4, 225, cooldown: 9999999)
+        invisi_toss("NM Green Dragon Minion", 4, 270, cooldown: 9999999)
+        invisi_toss("NM Green Dragon Minion", 4, 315, cooldown: 9999999)
+        on timed(3250) -> actualhidephase
+    }
+    state actualhidephase {
+        shoot(10, count: 12, projectile: 0, cooldown: 1700)
+        shoot(10, count: 5, shoot_angle: 20, projectile: 1, predictive: 0.5, cooldown: 1475)
+        shoot(10, count: 2, shoot_angle: 30, projectile: 2, predictive: 0.5, cooldown: 1675)
+        on entities_not_exists(9999, "NM Green Dragon Shield") -> chaseandrek
+    }
+    state chaseandrek {
+        taunt(0.8, "Taste my wrath!")
+        invisi_toss("NM Green Dragon Minion", 4, 180, cooldown: 9999999)
+        invisi_toss("NM Green Dragon Minion", 4, 225, cooldown: 9999999)
+        invisi_toss("NM Green Dragon Minion", 4, 270, cooldown: 9999999)
+        invisi_toss("NM Green Dragon Minion", 4, 315, cooldown: 9999999)
+        follow(0.78, 8, 1)
+        shoot(10, count: 12, projectile: 0)
+        shoot(10, count: 7, shoot_angle: 38, projectile: 4, predictive: 0.5, cooldown: 325)
+        shoot(10, count: 5, shoot_angle: 38, projectile: 1, predictive: 0.5, cooldown: 325)
+        on timed(9000) -> returntospawn
+    }
+    state returntospawn {
+        return_to_spawn(speed: 0.5)
+        shoot(10, count: 10, projectile: 0, cooldown: 500)
+        shoot(10, count: 10, shoot_angle: 40, projectile: 1, cooldown: 500)
+        on timed(2750) -> standandrek
+    }
+    state standandrek {
+        taunt(1, "Give me strength!", "I will fight until death!")
+        on timed(2500) -> SpinShot
+    }
+    state SpinShot {
+        shoot(10, count: 10, projectile: 0, predictive: 2.25, cooldown: 1000)
+        on timed(3000) -> myhide
+        state Quadforce1 {
+            shoot(0, projectile: 0, count: 5, shoot_angle: 60, fixed_angle: 0, cooldown: 300)
+            on timed(75) -> Quadforce2
+        }
+        state Quadforce2 {
+            shoot(0, projectile: 0, count: 5, shoot_angle: 60, fixed_angle: 15, cooldown: 300)
+            on timed(75) -> Quadforce3
+        }
+        state Quadforce3 {
+            shoot(0, projectile: 0, count: 5, shoot_angle: 60, fixed_angle: 30, cooldown: 300)
+            on timed(75) -> Quadforce4
+        }
+        state Quadforce4 {
+            shoot(0, projectile: 0, count: 5, shoot_angle: 60, fixed_angle: 45, cooldown: 300)
+            on timed(75) -> Quadforce5
+        }
+        state Quadforce5 {
+            shoot(0, projectile: 0, count: 5, shoot_angle: 60, fixed_angle: 45, cooldown: 300)
+            on timed(75) -> Quadforce6
+        }
+        state Quadforce6 {
+            shoot(0, projectile: 0, count: 5, shoot_angle: 60, fixed_angle: 30, cooldown: 300)
+            on timed(75) -> Quadforce7
+        }
+        state Quadforce7 {
+            shoot(0, projectile: 0, count: 5, shoot_angle: 60, fixed_angle: 15, cooldown: 300)
+            on timed(75) -> Quadforce8
+        }
+        state Quadforce8 {
+            shoot(0, projectile: 0, count: 5, shoot_angle: 60, fixed_angle: 0, cooldown: 300)
+            on timed(75) -> Quadforce1
+        }
+    }
+    conditional_effect(invincible)
+    state DyingPhase {
+        remove_entity(9999, "NM Green Dragon Minion")
+        remove_entity(9999, "NM Green Dragon Shield")
+        return_to_spawn(speed: 0.3)
+        flash(16777215, 2, 3)
+        taunt(1, "Flee my servants, I can protect you no longer!", "The salad was too bad for me.")
+        on timed(4750) -> restinhides
+    }
+    state restinhides {
+        suicide()
+    }
+}
+
+enemy "NM Black Dragon God" {
+    transform_on_death("lod Black Loot Balloon", 1, 1, 1)
+    on hp_below(0.12) -> DyingPhase
+    state idle {
+        set_alt_texture(1)
+        conditional_effect(invincible)
+        on entity_not_exists("NM Black Dragon Soul", 9999) -> Awakening
+    }
+    state Awakening {
+        conditional_effect(invincible)
+        flash(16777215, 2, 3)
+        on timed(4768) -> backandforth
+    }
+    state backandforth {
+        shoot(10, count: 8, shoot_angle: 28, projectile: 6, cooldown: 3451)
+        shoot(10, count: 5, shoot_angle: 28, projectile: 5, cooldown: 2600)
+        shoot(10, count: 3, shoot_angle: 28, projectile: 7, cooldown: 2982)
+        on timed(8875) -> spawnshades
+        state s2_2 {
+            set_alt_texture(0)
+            taunt(1, "Prepare to meet your doom! There is no mercy here.")
+            prioritize() {
+                follow(0.34, 8, 1)
+                stay_back(0.3, 5)
+            }
+            shoot(10, count: 12, projectile: 0, cooldown: 3000)
+            shoot(10, count: 6, shoot_angle: 60, projectile: 2, cooldown: 2000)
+            shoot(10, count: 2, projectile: 1, cooldown: 1500)
+            on timed(3250, "1") -> s1
+        }
+        state s1_2 {
+            set_alt_texture(0)
+            grenade(5, 100, range: 6, cooldown: 2000)
+            return_to_spawn(speed: 0.4)
+            shoot(10, count: 8, shoot_angle: 28, projectile: 6, cooldown: 2600)
+            shoot(10, count: 2, shoot_angle: 36, projectile: 0, cooldown: 3000)
+            shoot(10, count: 8, shoot_angle: 60, projectile: 2, cooldown: 2000)
+            shoot(10, count: 2, projectile: 1, cooldown: 1500)
+            on timed(3250, "2") -> s2
+        }
+    }
+    state spawnshades {
+        invisi_toss("NM Black Dragon Shadow", 4, 180, cooldown: 9999999)
+        invisi_toss("NM Black Dragon Shadow", 4, 225, cooldown: 9999999)
+        on timed(500) -> shadesandrek
+    }
+    state shadesandrek {
+        shoot(10, count: 8, shoot_angle: 28, projectile: 6, cooldown: 3451)
+        shoot(10, count: 5, shoot_angle: 28, projectile: 5, cooldown: 2600)
+        shoot(10, count: 3, shoot_angle: 28, projectile: 7, cooldown: 2982)
+        on timed(12875) -> returntospawn
+        state s1 {
+            set_alt_texture(0)
+            taunt(0.8, "I shall devour you whole.")
+            prioritize() {
+                follow(0.34, 8, 1)
+                stay_back(0.3, 5)
+            }
+            shoot(10, count: 12, projectile: 0, cooldown: 3000)
+            shoot(10, count: 6, shoot_angle: 60, projectile: 2, cooldown: 2000)
+            shoot(10, count: 2, projectile: 1, cooldown: 1000)
+            shoot(10, count: 2, projectile: 3, predictive: 2, cooldown: 2500)
+            on timed(3250, "2") -> s2
+        }
+        state s2 {
+            set_alt_texture(0)
+            return_to_spawn(speed: 0.4)
+            shoot(10, count: 2, shoot_angle: 36, projectile: 0, cooldown: 3000)
+            shoot(10, count: 8, shoot_angle: 60, projectile: 2, cooldown: 2000)
+            shoot(10, count: 2, projectile: 1, cooldown: 1500)
+            shoot(10, count: 2, projectile: 3, predictive: 2, cooldown: 1700)
+            grenade(5, 100, range: 6, cooldown: 2000)
+            on timed(3250, "1") -> s1
+        }
+    }
+    state returntospawn {
+        return_to_spawn(speed: 0.5)
+        shoot(10, count: 4, shoot_angle: 36, projectile: 3, cooldown: 3000)
+        on timed(2000) -> invisibleattack
+    }
+    state invisibleattack {
+        shoot(10, count: 8, shoot_angle: 28, projectile: 6, cooldown: 2600)
+        set_alt_texture(2)
+        wander(0.2)
+        remove_entity(9999, "NM Black Dragon Shadow")
+        conditional_effect(invincible)
+        shoot(10, count: 2, shoot_angle: 36, projectile: 0, cooldown: 3000)
+        shoot(10, count: 8, shoot_angle: 60, projectile: 2, cooldown: 2000)
+        shoot(10, count: 2, projectile: 1, cooldown: 1500)
+        shoot(10, count: 2, projectile: 3, predictive: 2, cooldown: 1700)
+        on timed(7000) -> backandforth
+    }
+    conditional_effect(invincible)
+    state DyingPhase {
+        remove_entity(9999, "NM Black Dragon Shadow")
+        remove_entity(9999, "NM Black Dragon Minion")
+        return_to_spawn(speed: 0.3)
+        flash(16777215, 2, 3)
+        taunt(1, "Until we meet again...sub-creature...")
+        on timed(4750) -> restindark
+    }
+    state restindark {
+        suicide()
+    }
+}
+
+enemy "NM Red Dragon God" {
+    transform_on_death("lod Red Loot Balloon", 1, 1, 1)
+    on hp_below(0.12) -> DyingPhase
+    state idle {
+        set_alt_texture(1)
+        conditional_effect(invincible)
+        on entity_not_exists("NM Red Dragon Soul", 9999) -> Awakening
+    }
+    state Awakening {
+        conditional_effect(invincible)
+        flash(16777215, 2, 3)
+        on timed(4768) -> mychildren
+    }
+    state mychildren {
+        set_alt_texture(0)
+        on timed(3000) -> shootbigballs
+    }
+    state shootbigballs {
+        reproduce("NM Red Dragon Minion", 5, 5, cooldown: 4750)
+        return_to_spawn(speed: 0.6)
+        shoot(10, count: 9, projectile: 0, cooldown: 2500)
+        shoot(10, count: 12, projectile: 1, cooldown: 5000)
+        conditional_effect(armored)
+        on timed(6000) -> chase
+    }
+    state chase {
+        taunt(1, "Eat these delicious flames and balls!", "Fire is my favorite!")
+        prioritize() {
+            follow(0.885, 8, 1)
+            stay_back(0.3, 3)
+        }
+        shoot(10, count: 12, projectile: 3, predictive: 2.25, cooldown: 2550)
+        shoot(10, count: 4, shoot_angle: 8, projectile: 0, cooldown: 3250)
+        on timed(9000) -> breath
+    }
+    state breath {
+        taunt(1, "I shall breathe straight fire onto you!", "Check out this mixtape!")
+        swirl(1.1, 5, 8, false)
+        shoot(10, count: 3, shoot_angle: 3, projectile: 0, cooldown: 1)
+        on timed(7500) -> breatah
+    }
+    state breatah {
+        taunt(1, "You can't stop the FLAMING FIRESZ!")
+        wander(1)
+        shoot(10, count: 18, shoot_angle: 3, projectile: 1, cooldown: 1500)
+        on timed(6000) -> shootbigballs
+    }
+    conditional_effect(invincible)
+    state DyingPhase {
+        remove_entity(9999, "NM Red Dragon Minion")
+        return_to_spawn(speed: 0.3)
+        flash(16777215, 2, 3)
+        taunt(1, "The flame has been put out! Darn.")
+        on timed(4750) -> restinwater
+    }
+    state restinwater {
+        suicide()
+    }
+}
+
+enemy "lod Ivory Wyvern" {
+    realm_portal_drop()
+    on hp_below(0.11) -> ripwyvern
+    realm_portal_drop()
+    state default {
+        conditional_effect(invincible)
+        on player_within(7) -> talk1
+    }
+    conditional_effect(invincible)
+    state talk1 {
+        taunt(1, "Thank you adventurer, you have freed the souls of the four dragons so that I may consume their powers.")
+        on timed(4500) -> talk2
+    }
+    state talk2 {
+        taunt(1, "I owe you much, but I cannot let you leave. These walls will make a fine graveyard for your bones.")
+        on timed(4500) -> talk3
+    }
+    state talk3 {
+        taunt(1, "Behold the glory of my true powers!", "Time to munch on you like potato chips.")
+        on timed(2000) -> Mirrors
+    }
+    state Mirrors {
+        back_and_forth(0.35, 10)
+        toss_object("lod Mirror Wyvern1", 10, angle: 180, cooldown: 99999)
+        toss_object("lod Mirror Wyvern1", 6, angle: 180, cooldown: 99999)
+        toss_object("lod Mirror Wyvern1", 10, angle: 0, cooldown: 99999)
+        toss_object("lod Mirror Wyvern1", 5, angle: 0, cooldown: 99999)
+        shoot(8.4, count: 7, shoot_angle: 16, projectile: 0, cooldown: 1)
+        on damage_taken(14000) -> movetothemiddle2
+    }
+    state movetothemiddle2 {
+        conditional_effect(invulnerable)
+        move_to(speed: 0.5, x: 13, y: 5)
+        taunt("Look at these beautiful flames!")
+        on timed(2000) -> Flames
+    }
+    state Flames {
+        conditional_effect(invulnerable)
+        remove_entity(9999, "lod Mirror Wyvern1")
+        toss_object("lod Black Soul Flame", 10, angle: 180, cooldown: 99999)
+        toss_object("lod Red Soul Flame", 6, angle: 180, cooldown: 99999)
+        toss_object("lod Green Soul Flame", 10, angle: 0, cooldown: 99999)
+        toss_object("lod Blue Soul Flame", 5, angle: 0, cooldown: 99999)
+        on timed(2000) -> checkforflames
+    }
+    conditional_effect(invincible)
+    state checkforflames {
+        on entities_not_exists(9999, "lod Black Soul Flame", "lod Blue Soul Flame", "lod Red Soul Flame", "lod Green Soul Flame") -> movetothemiddle
+    }
+    state movetothemiddle {
+        move_to(speed: 0.5, x: 13, y: 16)
+        taunt("You darith try to beatith me ith, preparith to dieith in theith Ivoryith Wyvernith where youith will cryith everyith timeith.")
+        on timed(4000) -> alldshots
+    }
+    state alldshots {
+        conditional_effect(armored)
+        heal_self(cooldown: 1750, amount: 1000)
+        shoot(8.4, count: 10, shoot_angle: 14, projectile: 0, cooldown: 3500)
+        shoot(8.4, count: 8, shoot_angle: 10, fixed_angle: 45, projectile: 1, cooldown: 2000)
+        shoot(8.4, count: 8, shoot_angle: 10, fixed_angle: 135, projectile: 2, cooldown: 2000)
+        shoot(8.4, count: 8, shoot_angle: 10, fixed_angle: 225, projectile: 3, cooldown: 2000)
+        shoot(8.4, count: 8, shoot_angle: 10, fixed_angle: 315, projectile: 4, cooldown: 2000)
+        on timed(8250) -> whiteorbs
+    }
+    state whiteorbs {
+        toss_object("lod White Dragon Orb", 10, angle: 45, cooldown: 99999)
+        toss_object("lod White Dragon Orb", 10, angle: 135, cooldown: 99999)
+        toss_object("lod White Dragon Orb", 10, angle: 225, cooldown: 99999)
+        toss_object("lod White Dragon Orb", 10, angle: 315, cooldown: 99999)
+        toss_object("lod White Dragon Orb", 10, angle: 90, cooldown: 99999)
+        toss_object("lod White Dragon Orb", 10, angle: 0, cooldown: 99999)
+        toss_object("lod White Dragon Orb", 10, angle: 180, cooldown: 99999)
+        toss_object("lod White Dragon Orb", 10, angle: 270, cooldown: 99999)
+        on timed(2000) -> chaseandfight
+    }
+    state chaseandfight {
+        follow(0.2, 8, 1)
+        shoot(8.4, count: 12, shoot_angle: 14, projectile: 0, cooldown: 6000)
+        shoot(8.4, count: 24, projectile: 0, cooldown: 10000)
+        shoot(8.4, count: 1, projectile: 0, cooldown: 4812)
+        shoot(8.4, count: 1, projectile: 1, cooldown: 6812)
+        shoot(8.4, count: 1, projectile: 2, cooldown: 8912)
+        shoot(8.4, count: 1, projectile: 3, cooldown: 7212)
+        shoot(8.4, count: 1, projectile: 4, cooldown: 9812)
+    }
+    conditional_effect(invincible)
+    state ripwyvern {
+        remove_entity(9999, "lod White Dragon Orb")
+        move_to(speed: 0.5, x: 13, y: 16)
+        taunt("You may have beaten me this time, but I will find a way to leave this place! And on that day, you will suffer greatly!")
+        on timed(3000) -> rip4evs
+    }
+    state rip4evs {
+        suicide()
+    }
+    loot {
+        threshold
+        threshold
+    }
+}
+

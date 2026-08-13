@@ -1,0 +1,176 @@
+enemy "Dreadstump the Pirate King" {
+    realm_portal_drop()
+    state Idle {
+        on player_within(15) -> swiggity
+    }
+    state swiggity {
+        stay_close_to_spawn(1, 7)
+        wander(0.3)
+        shoot(radius: 8, count: 1, projectile: 1, cooldown: 2000, predictive: 0.9)
+        shoot(radius: 8, count: 1, projectile: 0, cooldown: 1000, predictive: 0.9)
+        taunt(0.3, 14000, "Hah! I'll drink my rum out of your skull!", "Eat cannonballs!", "Arrrr...")
+    }
+    loot {
+        tier(4, weapon, 0.01)
+        tier(3, weapon, 0.05)
+        tier(2, weapon, 0.15)
+        tier(1, armor, 0.2)
+        tier(2, armor, 0.1)
+        tier(3, armor, 0.05)
+        tier(4, armor, 0.01)
+        tier(1, ring, 0.1)
+        item("Pirate Rum", 0.01)
+    }
+}
+
+enemy "Pirate Lieutenant" {
+    prioritize() {
+        protect(0.4, "Dreadstump the Pirate King", protection_range: 6)
+        wander(0.5)
+        follow(1, 6, 1, -1, 0)
+    }
+    shoot(radius: 7, projectile: 0, predictive: 1, cooldown: 1500)
+    loot {
+        tier(3, weapon, 0.05)
+        tier(2, weapon, 0.15)
+        tier(1, armor, 0.2)
+        tier(1, ring, 0.1)
+        item("Pirate Rum", 0.01)
+    }
+}
+
+enemy "Pirate Captain" {
+    prioritize() {
+        protect(0.4, "Dreadstump the Pirate King", protection_range: 6)
+        wander(0.5)
+        follow(1, 6, 1, -1, 0)
+    }
+    shoot(radius: 7, projectile: 0, predictive: 1, cooldown: 1500)
+    loot {
+        tier(3, weapon, 0.05)
+        tier(2, weapon, 0.15)
+        tier(1, armor, 0.2)
+        tier(1, ring, 0.1)
+        item("Pirate Rum", 0.01)
+    }
+}
+
+enemy "Pirate Commander" {
+    prioritize() {
+        protect(0.4, "Dreadstump the Pirate King", protection_range: 6)
+        wander(0.5)
+    }
+    shoot(radius: 7, projectile: 0, predictive: 1, cooldown: 1500)
+    loot {
+        tier(3, weapon, 0.05)
+        tier(2, weapon, 0.15)
+        tier(1, armor, 0.2)
+        tier(1, ring, 0.1)
+        item("Pirate Rum", 0.01)
+    }
+}
+
+enemy "Cave Pirate Brawler" {
+    state that {
+        follow(1, 6, 1, -1, 0)
+        wander(0.3)
+        shoot(radius: 5, count: 1, projectile: 0, cooldown: 1000)
+    }
+    loot {
+        item("Magic Potion", 0.2)
+    }
+}
+
+enemy "Cave Pirate Sailor" {
+    state booty {
+        wander(0.8)
+        follow(0.8, 6, 1, -1, 0)
+        shoot(radius: 5, count: 1, projectile: 0, cooldown: 1000)
+    }
+    loot {
+        item("Magic Potion", 0.2)
+    }
+}
+
+enemy "Cave Pirate Cabin Boy" {
+    prioritize() {
+        wander(0.5)
+    }
+    loot {
+        tier(1, weapon, 0.4)
+    }
+}
+
+enemy "Cave Pirate Macaw" {
+    prioritize() {
+        wander(0.5)
+    }
+    loot {
+        tier(1, ability, 0.2)
+    }
+}
+
+enemy "Cave Pirate Moll" {
+    prioritize() {
+        wander(0.1)
+    }
+    loot {
+        tier(1, ability, 0.2)
+    }
+}
+
+enemy "Cave Pirate Monkey" {
+    prioritize() {
+        wander(0.1)
+    }
+    loot {
+        tier(1, ability, 0.2)
+    }
+}
+
+enemy "Cave Pirate Parrot" {
+    prioritize() {
+        wander(0.1)
+    }
+    loot {
+        tier(1, ability, 0.2)
+    }
+}
+
+enemy "Cave Pirate Hunchback" {
+    prioritize() {
+        wander(0.5)
+    }
+    loot {
+        tier(1, ability, 0.2)
+    }
+}
+
+enemy "Cave Pirate Veteran" {
+    state woot {
+        follow(1, 6, 1, -1, 0)
+        wander(0.8)
+        shoot(radius: 5, count: 1, projectile: 0, cooldown: 1000)
+    }
+    loot {
+        item("Magic Potion", 0.2)
+    }
+}
+
+enemy "Pirate Admiral" {
+    prioritize() {
+        protect(0.4, "Dreadstump the Pirate King", protection_range: 6)
+        wander(0.5)
+        follow(1, 6, 1, -1, 0)
+    }
+    shoot(radius: 7, projectile: 0, predictive: 1, cooldown: 1500)
+    loot {
+        tier(3, weapon, 0.05)
+        tier(2, weapon, 0.15)
+        tier(1, armor, 0.2)
+        tier(2, armor, 0.1)
+        tier(1, ring, 0.1)
+        item("Pirate Rum", 0.01)
+    }
+}
+

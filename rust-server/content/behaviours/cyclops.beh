@@ -1,0 +1,118 @@
+enemy "Cyclops God" {
+    drop_portal_on_death("Spider Den Portal", 0.1)
+    state idle {
+        on player_within(11) -> blade_attack
+        on hp_below(0.8) -> blade_attack
+    }
+    state blade_attack {
+        prioritize() {
+            follow(0.4, range: 7)
+            wander(0.4)
+        }
+        shoot(10, projectile: 4, count: 1, shoot_angle: 15, predictive: 0.5, cooldown: 100000)
+        shoot(10, projectile: 4, count: 2, shoot_angle: 10, predictive: 0.5, cooldown: 100000, cooldown_offset: 700)
+        shoot(10, projectile: 4, count: 3, shoot_angle: 8.5, predictive: 0.5, cooldown: 100000, cooldown_offset: 1400)
+        shoot(10, projectile: 4, count: 4, shoot_angle: 7, predictive: 0.5, cooldown: 100000, cooldown_offset: 2100)
+        on timed(4000) -> if_cloaked1
+    }
+    state if_cloaked1 {
+        shoot(10, projectile: 4, count: 15, shoot_angle: 24, fixed_angle: 8, cooldown: 1500, cooldown_offset: 400)
+        on timed(10000) -> wave_attack
+        on player_within(10.5) -> wave_attack
+    }
+    state wave_attack {
+        prioritize() {
+            follow(0.6, range: 5)
+            wander(0.6)
+        }
+        shoot(9, projectile: 0, cooldown: 700, cooldown_offset: 700)
+        shoot(9, projectile: 1, cooldown: 700, cooldown_offset: 700)
+        shoot(9, projectile: 2, cooldown: 700, cooldown_offset: 700)
+        shoot(9, projectile: 3, cooldown: 700, cooldown_offset: 700)
+        on timed(3800) -> if_cloaked2
+    }
+    state if_cloaked2 {
+        shoot(10, projectile: 4, count: 15, shoot_angle: 24, fixed_angle: 8, cooldown: 1500, cooldown_offset: 400)
+        on timed(10000) -> idle
+        on player_within(10.5) -> idle
+    }
+    taunt(0.7, 10000, "I will floss with your tendons!", "I smell the blood of an Englishman!", "I will suck the marrow from your bones!", "You will be my food, {PLAYER}!", "Blargh!!", "Leave my castle!", "More wine!")
+    stay_close_to_spawn(1.2, 5)
+    spawn("Cyclops", max_children: 5, cooldown: 10000, gives_no_xp: false)
+    spawn("Cyclops Warrior", max_children: 5, cooldown: 10000, gives_no_xp: false)
+    spawn("Cyclops Noble", max_children: 5, cooldown: 10000, gives_no_xp: false)
+    spawn("Cyclops Prince", max_children: 5, cooldown: 10000, gives_no_xp: false)
+    spawn("Cyclops King", max_children: 5, cooldown: 10000, gives_no_xp: false)
+}
+
+enemy "Cyclops" {
+    prioritize() {
+        stay_close_to_spawn(1.2, 5)
+        follow(1.2, range: 1)
+        wander(0.4)
+    }
+    shoot(3)
+    loot {
+        item("Golden Sword", 0.02)
+        item("Studded Leather Armor", 0.02)
+        item("Health Potion", 0.05)
+    }
+}
+
+enemy "Cyclops Warrior" {
+    prioritize() {
+        stay_close_to_spawn(1.2, 5)
+        follow(1.2, range: 1)
+        wander(0.4)
+    }
+    shoot(3)
+    loot {
+        item("Golden Sword", 0.03)
+        item("Golden Shield", 0.02)
+        item("Health Potion", 0.05)
+    }
+}
+
+enemy "Cyclops Noble" {
+    prioritize() {
+        stay_close_to_spawn(1.2, 5)
+        follow(1.2, range: 1)
+        wander(0.4)
+    }
+    shoot(3)
+    loot {
+        item("Golden Dagger", 0.02)
+        item("Studded Leather Armor", 0.02)
+        item("Health Potion", 0.05)
+    }
+}
+
+enemy "Cyclops Prince" {
+    prioritize() {
+        stay_close_to_spawn(1.2, 5)
+        follow(1.2, range: 1)
+        wander(0.4)
+    }
+    shoot(3)
+    loot {
+        item("Mithril Dagger", 0.02)
+        item("Plate Mail", 0.02)
+        item("Seal of the Divine", 0.01)
+        item("Health Potion", 0.05)
+    }
+}
+
+enemy "Cyclops King" {
+    prioritize() {
+        stay_close_to_spawn(1.2, 5)
+        follow(1.2, range: 1)
+        wander(0.4)
+    }
+    shoot(3)
+    loot {
+        item("Golden Sword", 0.02)
+        item("Mithril Armor", 0.02)
+        item("Health Potion", 0.05)
+    }
+}
+

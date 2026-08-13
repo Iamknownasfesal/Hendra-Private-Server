@@ -405,6 +405,8 @@ mod tests {
             resizing: None,
             no_experience: false,
             effects: Vec::new(),
+            flash: None,
+            base_max_hp: None,
         }
     }
 

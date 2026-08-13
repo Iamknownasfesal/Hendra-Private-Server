@@ -1,0 +1,52 @@
+enemy "Cube God" {
+    wander(0.3)
+    shoot(30, 9, 10, 0, predictive: 0.5, cooldown: 750)
+    shoot(30, 4, 10, 1, predictive: 0.5, cooldown: 1500)
+    reproduce("Cube Overseer", 30, 10, cooldown: 1500)
+    loot {
+        threshold
+    }
+}
+
+enemy "Cube Overseer" {
+    prioritize() {
+        orbit(0.375, 10, 30, "Cube God", 0.075, 5)
+        wander(0.375)
+    }
+    reproduce("Cube Defender", 12, 10, cooldown: 1000)
+    reproduce("Cube Blaster", 30, 10, cooldown: 1000)
+    shoot(10, 4, 10, 0, cooldown: 750)
+    shoot(10, projectile: 1, cooldown: 1500)
+    loot {
+        threshold
+    }
+}
+
+enemy "Cube Defender" {
+    prioritize() {
+        orbit(1.05, 5, 15, "Cube Overseer", 0.15, 3)
+        wander(1.05)
+    }
+    shoot(10, cooldown: 500)
+}
+
+enemy "Cube Blaster" {
+    state Orbit {
+        prioritize() {
+            orbit(1.05, 7.5, 40, "Cube Overseer", 0.15, 3)
+            wander(1.05)
+        }
+        on entity_not_exists("Cube Overseer", 10) -> Follow
+    }
+    state Follow {
+        prioritize() {
+            follow(0.75, 10, 1, 5000)
+            wander(1.05)
+        }
+        on entity_not_exists("Cube Defender", 10) -> Orbit
+        on timed(5000) -> Orbit
+    }
+    shoot(10, 2, 10, 1, predictive: 1, cooldown: 500)
+    shoot(10, predictive: 1, cooldown: 1500)
+}
+

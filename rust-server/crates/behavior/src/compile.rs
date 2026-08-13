@@ -73,8 +73,15 @@ const KNOWN_BEHAVIOURS: &[&str] = &[
     "order_on_death",
     "transfer_damage_on_death",
     "prioritize",
+    "sequence",
     "timed",
     "if",
+    "flash",
+    "invisi_toss",
+    "order_once",
+    "remove_conditional_effect",
+    "scale_h_p",
+    "on_death_behavior",
 ];
 
 /// Every transition condition the runtime understands.
@@ -88,6 +95,7 @@ const KNOWN_CONDITIONS: &[&str] = &[
     "entity_not_exists",
     "entities_not_exists",
     "damage_taken",
+    "not_moving",
 ];
 
 /// Compiles a parsed file.
@@ -161,6 +169,14 @@ fn compile_enemy(enemy: &ast::Enemy, diagnostics: &mut Vec<Diagnostic>) -> Progr
 
                     match call.name.as_str() {
                         "prioritize" => behaviours.push(Primitive::Prioritize(inner)),
+
+                        // One child per turn, which is what makes an attack pattern a pattern.
+                        "sequence" => behaviours.push(Primitive::Sequence { children: inner }),
+
+                        // A wrapper whose child runs at death rather than during a tick. Its
+                        // contents are kept as they are: whether a primitive is a death effect is
+                        // already decided by what it is.
+                        "on_death_behavior" => behaviours.extend(inner),
 
                         // A timer around a group: everything inside runs together, on a period.
                         // The C# writes it as `Timed(600, new Shoot(...))`.
@@ -280,6 +296,12 @@ fn number(call: &Call, name: &str, index: usize, fallback: f64) -> f64 {
         .and_then(Value::as_number)
         .unwrap_or(fallback)
 }
+
+/// How far a health-scaling behaviour counts players when the content gives no distance.
+///
+/// A boss written for a crowd is trivial when two people find it and impossible when forty do, so
+/// "no distance" has to mean the room rather than nowhere.
+const SCALE_RADIUS: f32 = 20.0;
 
 /// How far around itself a `reproduce_children` counts its own kind.
 ///
@@ -504,7 +526,9 @@ fn behaviour(call: &Call, names: &mut Names, diagnostics: &mut Vec<Diagnostic>) 
             cooldown_ms: number(call, "cooldown", 3, 1000.0).max(0.0) as u32,
         },
 
-        "toss_object" => Primitive::TossObject {
+        // `InvisiToss` throws the same way but without the thrower being seen doing it. Nothing
+        // downstream distinguishes them, since the difference is what the client draws.
+        "toss_object" | "invisi_toss" => Primitive::TossObject {
             child: entity(call, names, "child", 0),
             // Written `range` rather than `radius` in every real use.
             radius: number(call, "range", 1, 5.0) as f32,
@@ -564,6 +588,33 @@ fn behaviour(call: &Call, names: &mut Names, diagnostics: &mut Vec<Diagnostic>) 
             index: number(call, "index", 0, 0.0).clamp(0.0, 255.0) as u8,
         },
 
+        // `Flash(color, flashPeriod, flashRepeats)`. The period is seconds here, unlike almost
+        // everything else in these files.
+        "flash" => Primitive::Flash {
+            colour: number(call, "color", 0, 0.0).clamp(0.0, u32::MAX as f64) as u32,
+            period_ms: (number(call, "flash_period", 1, 0.5).max(0.0) * 1000.0) as u32,
+            repeats: number(call, "flash_repeats", 2, 1.0).clamp(0.0, 255.0) as u32,
+        },
+
+        "remove_conditional_effect" => Primitive::RemoveEffect {
+            effect: effect_of(call, "effect", 0, diagnostics),
+        },
+
+        // `ScaleHP(amountPerPlayer, maxAdditional, healAfterMax, dist, scaleAfter)`.
+        "scale_h_p" => Primitive::ScaleHealth {
+            per_player: number(call, "amount_per_player", 0, 0.0) as i32,
+            maximum_extra: number(call, "max_additional", 1, 0.0).max(0.0) as i32,
+            radius: {
+                // A distance of zero means the whole room rather than nowhere.
+                let written = number(call, "dist", 3, 0.0) as f32;
+                if written <= 0.0 {
+                    SCALE_RADIUS
+                } else {
+                    written
+                }
+            },
+        },
+
         "change_size" => Primitive::ChangeSize {
             rate: number(call, "rate", 0, 0.0) as f32,
             target: number(call, "target", 1, 100.0).clamp(0.0, 65_535.0) as u16,
@@ -591,10 +642,12 @@ fn behaviour(call: &Call, names: &mut Names, diagnostics: &mut Vec<Diagnostic>) 
             }
         }
 
-        "order" => Primitive::Order {
+        // `Order(range, children, targetState)`, and its once-only twin.
+        "order" | "order_once" => Primitive::Order {
             radius: number(call, "range", 0, 10.0) as f32,
             kind: maybe_entity(call, names, "children", 1),
             state: Arc::from(text(call, "target_state", 2).unwrap_or_default().trim()),
+            once: call.name == "order_once",
         },
 
         "transform" => Primitive::Transform {
@@ -760,6 +813,12 @@ fn behaviour(call: &Call, names: &mut Names, diagnostics: &mut Vec<Diagnostic>) 
         // A `prioritize` written without a block has nothing to prioritise, and the same is true
         // of the other two group forms.
         "prioritize" => Primitive::Prioritize(Vec::new()),
+        "sequence" => Primitive::Sequence {
+            children: Vec::new(),
+        },
+        "on_death_behavior" => Primitive::Unsupported {
+            name: "on_death_behavior".to_string(),
+        },
         "timed" => Primitive::Every {
             period_ms: number(call, "period", 0, 1000.0).max(0.0) as u32,
             children: Vec::new(),
@@ -874,6 +933,10 @@ fn condition(call: &Call, names: &mut Names, diagnostics: &mut Vec<Diagnostic>) 
 
         "damage_taken" => Condition::DamageTaken {
             amount: number(call, "amount", 0, 1.0).max(0.0) as i32,
+        },
+
+        "not_moving" => Condition::NotMoving {
+            after_ms: number(call, "delay", 0, 250.0).max(0.0) as u32,
         },
 
         other => {

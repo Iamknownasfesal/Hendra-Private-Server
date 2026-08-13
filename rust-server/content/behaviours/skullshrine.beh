@@ -1,0 +1,34 @@
+enemy "Skull Shrine" {
+    shoot(30, 9, 10, cooldown: 750, predictive: 1)
+    reproduce("Red Flaming Skull", 40, 20, cooldown: 500)
+    reproduce("Blue Flaming Skull", 40, 20, cooldown: 500)
+    loot {
+        threshold
+    }
+}
+
+enemy "Red Flaming Skull" {
+    state Orbit_Skull_Shrine {
+        prioritize() {
+            protect(0.3, "Skull Shrine", 30, 15, 15)
+            wander(0.3)
+        }
+        on entity_not_exists("Skull Shrine", 40) -> Wander
+    }
+    state Wander {
+        wander(0.3)
+    }
+    shoot(12, 2, 10, cooldown: 750)
+}
+
+enemy "Blue Flaming Skull" {
+    state Orbit_Skull_Shrine {
+        orbit(1.5, 15, 40, "Skull Shrine", 0.6, 10)
+        on entity_not_exists("Skull Shrine", 40) -> Wander
+    }
+    state Wander {
+        wander(1.5)
+    }
+    shoot(12, 2, 10, cooldown: 750)
+}
+

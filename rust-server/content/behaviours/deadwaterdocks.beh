@@ -1,0 +1,143 @@
+enemy "Deadwater Docks Parrot" {
+    on entity_not_exists("Jon Bilgewater the Pirate King", 90000) -> rip
+    state CircleOrWander {
+        prioritize() {
+            orbit(0.55, 2, 5, "Parrot Cage")
+            wander(0.12)
+        }
+    }
+    state Orbit_HealJon {
+        orbit(0.55, 2, 20, "Jon Bilgewater the Pirate King")
+        heal_self(cooldown: 2000, amount: 100)
+    }
+    state rip {
+        suicide()
+    }
+}
+
+enemy "Parrot Cage" {
+    conditional_effect(invincible)
+    state NoSpawn {
+    }
+    state SpawnParrots {
+        reproduce("Deadwater Docks Parrot", density_radius: 5, density_max: 5, cooldown: 2500)
+    }
+}
+
+enemy "Bottled Evil Water" {
+    state water {
+        conditional_effect(invincible)
+        on timed(2000) -> drop
+    }
+    state drop {
+        apply_setpiece("BottledEvil")
+        suicide()
+    }
+}
+
+enemy "Deadwater Docks Lieutenant" {
+    follow(1, 8, 1)
+    shoot(8, 1, 10, cooldown: 1000)
+    toss_object("Bottled Evil Water", cooldown: 6750)
+    loot {
+        item("Magic Potion", 0.1)
+        item("Health Potion", 0.1)
+    }
+}
+
+enemy "Deadwater Docks Veteran" {
+    follow(0.8, 8, 1)
+    shoot(8, 1, 10, cooldown: 500)
+    loot {
+        tier(10, weapon, 0.05)
+        item("Magic Potion", 0.1)
+        item("Health Potion", 0.1)
+    }
+}
+
+enemy "Deadwater Docks Admiral" {
+    follow(0.6, 8, 1)
+    shoot(8, 3, 10, cooldown: 1325)
+    loot {
+        item("Magic Potion", 0.1)
+        item("Health Potion", 0.1)
+    }
+}
+
+enemy "Deadwater Docks Brawler" {
+    follow(1.12, 8, 1)
+    shoot(8, 1, 10, cooldown: 350)
+    loot {
+        item("Magic Potion", 0.1)
+        item("Health Potion", 0.1)
+    }
+}
+
+enemy "Deadwater Docks Sailor" {
+    follow(0.9, 8, 1)
+    shoot(8, 1, 10, cooldown: 525)
+    loot {
+        item("Magic Potion", 0.1)
+        item("Health Potion", 0.1)
+    }
+}
+
+enemy "Deadwater Docks Commander" {
+    follow(0.9, 8, 1)
+    shoot(8, 1, 10, cooldown: 900)
+    toss_object("Bottled Evil Water", cooldown: 8750)
+    loot {
+        item("Magic Potion", 0.1)
+        item("Health Potion", 0.1)
+    }
+}
+
+enemy "Deadwater Docks Captain" {
+    follow(0.47, 8, 1)
+    shoot(8, 1, 10, cooldown: 3500)
+    loot {
+        item("Magic Potion", 0.1)
+        item("Health Potion", 0.1)
+    }
+}
+
+enemy "Jon Bilgewater the Pirate King" {
+    realm_portal_drop()
+    state default {
+        on player_within(8) -> coinphase
+    }
+    order(90, "Parrot Cage", "SpawnParrots")
+    on damage_taken(32500) -> gotoSpawn
+    state coinphase {
+        wander(0.11)
+        shoot(10, count: 1, projectile: 0, cooldown: 2000)
+        on timed(4500) -> cannonballs
+    }
+    state cannonballs {
+        follow(0.32, 8, cooldown: 1000)
+        shoot(10, count: 7, shoot_angle: 30, projectile: 1, cooldown: 2150)
+        on timed(5000) -> coinphase
+    }
+    state gotoSpawn {
+        return_to_spawn(speed: 0.52)
+        conditional_effect(invincible)
+        conditional_effect(stun_immune)
+        on timed(3500) -> blastcannonballs
+    }
+    state blastcannonballs {
+        conditional_effect(stun_immune)
+        order(90, "Deadwater Docks Parrot", "CircleOrWander")
+        shoot(10, count: 7, shoot_angle: 30, projectile: 1, cooldown: 1750)
+        on timed(6000) -> parrotcircle
+    }
+    state parrotcircle {
+        conditional_effect(stun_immune)
+        order(90, "Deadwater Docks Parrot", "Orbit&HealJon")
+        on timed(6000) -> blastcannonballs
+    }
+    loot {
+        threshold
+        threshold
+    }
+}
+

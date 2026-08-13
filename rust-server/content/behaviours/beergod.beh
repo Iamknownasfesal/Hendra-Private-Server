@@ -1,0 +1,21 @@
+enemy "Beer God" {
+    conditional_effect(invincible)
+    state default {
+        on player_within(6) -> grow
+    }
+    state grow {
+        change_size(30, 145)
+        on timed(5500) -> fight1
+    }
+    state fight1 {
+        taunt("These drunken barrels are cylinders to perfection")
+        wander(0.5)
+        shoot(10, count: 6, projectile: 1, cooldown: 1000)
+        shoot(8.4, count: 1, projectile: 0)
+    }
+    loot {
+        threshold
+        threshold
+    }
+}
+

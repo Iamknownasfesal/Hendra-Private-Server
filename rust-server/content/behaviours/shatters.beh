@@ -1,0 +1,2402 @@
+enemy "shtrs Stone Paladin" {
+    state Idle {
+        prioritize() {
+            wander(0.8)
+        }
+        conditional_effect(invulnerable)
+        reproduce(density_max: 4)
+        on player_within(8) -> Attacking
+    }
+    state Attacking {
+        state Bullet {
+            shoot(1, 4, cooldown: 10000, fixed_angle: 90, cooldown_offset: 0, shoot_angle: 90)
+            shoot(1, 4, cooldown: 10000, fixed_angle: 100, cooldown_offset: 200, shoot_angle: 90)
+            shoot(1, 4, cooldown: 10000, fixed_angle: 110, cooldown_offset: 400, shoot_angle: 90)
+            shoot(1, 4, cooldown: 10000, fixed_angle: 120, cooldown_offset: 600, shoot_angle: 90)
+            shoot(1, 4, cooldown: 10000, fixed_angle: 130, cooldown_offset: 800, shoot_angle: 90)
+            shoot(1, 4, cooldown: 10000, fixed_angle: 140, cooldown_offset: 1000, shoot_angle: 90)
+            shoot(1, 4, cooldown: 10000, fixed_angle: 150, cooldown_offset: 1200, shoot_angle: 90)
+            shoot(1, 4, cooldown: 10000, fixed_angle: 160, cooldown_offset: 1400, shoot_angle: 90)
+            shoot(1, 4, cooldown: 10000, fixed_angle: 170, cooldown_offset: 1600, shoot_angle: 90)
+            shoot(1, 4, cooldown: 10000, fixed_angle: 180, cooldown_offset: 1800, shoot_angle: 90)
+            shoot(1, 4, cooldown: 10000, fixed_angle: 180, cooldown_offset: 2000, shoot_angle: 45)
+            shoot(1, 4, cooldown: 10000, fixed_angle: 180, cooldown_offset: 0, shoot_angle: 90)
+            shoot(1, 4, cooldown: 10000, fixed_angle: 170, cooldown_offset: 200, shoot_angle: 90)
+            shoot(1, 4, cooldown: 10000, fixed_angle: 160, cooldown_offset: 400, shoot_angle: 90)
+            shoot(1, 4, cooldown: 10000, fixed_angle: 150, cooldown_offset: 600, shoot_angle: 90)
+            shoot(1, 4, cooldown: 10000, fixed_angle: 140, cooldown_offset: 800, shoot_angle: 90)
+            shoot(1, 4, cooldown: 10000, fixed_angle: 130, cooldown_offset: 1000, shoot_angle: 90)
+            shoot(1, 4, cooldown: 10000, fixed_angle: 120, cooldown_offset: 1200, shoot_angle: 90)
+            shoot(1, 4, cooldown: 10000, fixed_angle: 110, cooldown_offset: 1400, shoot_angle: 90)
+            shoot(1, 4, cooldown: 10000, fixed_angle: 100, cooldown_offset: 1600, shoot_angle: 90)
+            shoot(1, 4, cooldown: 10000, fixed_angle: 90, cooldown_offset: 1800, shoot_angle: 90)
+            shoot(1, 4, cooldown: 10000, fixed_angle: 90, cooldown_offset: 2000, shoot_angle: 22.5)
+            on timed(2000) -> Wait
+        }
+        state Wait {
+            follow(0.4, range: 2)
+            flash(4278255360, 0.1, 20)
+            conditional_effect(invulnerable)
+            on timed(2000) -> Bullet
+        }
+        on no_player_within(13) -> Idle
+    }
+}
+
+enemy "shtrs Stone Knight" {
+    state Follow {
+        follow(0.6, 10, 5)
+        on player_within(5) -> Charge
+    }
+    state Charge {
+        on timed(2000) -> Follow
+        charge(2.5, 6, cooldown: 2000)
+        shoot(5, 16, projectile: 0, cooldown: 2400, cooldown_offset: 400)
+    }
+}
+
+enemy "shtrs Lava Souls" {
+    state active {
+        follow(0.7, range: 0)
+        on player_within(2) -> blink
+    }
+    state blink {
+        flash(268369920, flash_repeats: 10000, flash_period: 0.1)
+        on timed(2000) -> explode
+    }
+    state explode {
+        flash(268369920, flash_repeats: 5, flash_period: 0.1)
+        shoot(5, 9)
+        suicide()
+    }
+}
+
+enemy "shtrs Glassier Archmage" {
+    stay_back(0.5, 5)
+    state s1st {
+        follow(0.8, range: 7)
+        shoot(20, projectile: 2, count: 1, cooldown: 50)
+        on timed(5000) -> next
+    }
+    state next {
+        shoot(35, projectile: 0, count: 25, cooldown: 5000)
+        on timed(25, "1st") -> s1st
+    }
+}
+
+enemy "shtrs Ice Adept" {
+    state Main {
+        on timed(5000) -> Throw
+        follow(0.8, range: 1)
+        shoot(10, 1, projectile: 0, cooldown: 100, predictive: 1)
+        shoot(10, 3, projectile: 1, shoot_angle: 10, cooldown: 4000, predictive: 1)
+    }
+    state Throw {
+        toss_object("shtrs Ice Portal", 5, cooldown: 8000, cooldown_offset: 7000)
+        on timed(1000) -> Main
+    }
+}
+
+enemy "shtrs Fire Adept" {
+    state Main {
+        on timed(5000) -> Throw
+        follow(0.8, range: 1)
+        shoot(10, 1, projectile: 0, cooldown: 100, predictive: 1)
+        shoot(10, 3, projectile: 1, shoot_angle: 10, cooldown: 4000, predictive: 1)
+    }
+    state Throw {
+        toss_object("shtrs Fire Portal", 5, cooldown: 8000, cooldown_offset: 7000)
+        on timed(1000) -> Main
+    }
+}
+
+enemy "shtrs MagiGenerators" {
+    state Main {
+        conditional_effect(invulnerable)
+        shoot(15, 10, cooldown: 1000)
+        shoot(15, 1, projectile: 1, cooldown: 2500)
+        on entities_not_exists(30, "Shtrs Twilight Archmage", "shtrs Inferno", "shtrs Blizzard") -> Hide
+    }
+    state Hide {
+        set_alt_texture(1)
+        conditional_effect(invulnerable)
+    }
+    state vulnerable {
+        conditional_effect(armored)
+    }
+    state Despawn {
+        decay()
+    }
+}
+
+enemy "shtrs Ice Portal" {
+    state Idle {
+        on timed(1000) -> Spin
+    }
+    state Spin {
+        shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 0, cooldown: 1200)
+        shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 15, cooldown: 1200, cooldown_offset: 200)
+        shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 30, cooldown: 1200, cooldown_offset: 400)
+        shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 45, cooldown: 1200, cooldown_offset: 600)
+        shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 60, cooldown: 1200, cooldown_offset: 800)
+        shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 75, cooldown: 1200, cooldown_offset: 1000)
+        on timed(1200) -> Pause
+    }
+    state Pause {
+        on timed(5000) -> Idle
+    }
+}
+
+enemy "shtrs Fire Portal" {
+    state Idle {
+        on timed(1000) -> Spin
+    }
+    state Spin {
+        shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 0, cooldown: 1200)
+        shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 15, cooldown: 1200, cooldown_offset: 200)
+        shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 30, cooldown: 1200, cooldown_offset: 400)
+        shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 45, cooldown: 1200, cooldown_offset: 600)
+        shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 60, cooldown: 1200, cooldown_offset: 800)
+        shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 75, cooldown: 1200, cooldown_offset: 1000)
+        on timed(1200) -> Pause
+    }
+    state Pause {
+        on timed(5000) -> Idle
+    }
+}
+
+enemy "shtrs Ice Shield" {
+    on hp_below(0.2) -> Death
+    charge(0.6, 7, cooldown: 5000)
+    shoot(3, 6, 60, projectile: 0, fixed_angle: 0, cooldown: 1200)
+    shoot(3, 6, 60, projectile: 0, fixed_angle: 10, cooldown: 1200, cooldown_offset: 200)
+    shoot(3, 6, 60, projectile: 0, fixed_angle: 20, cooldown: 1200, cooldown_offset: 400)
+    shoot(3, 6, 60, projectile: 0, fixed_angle: 30, cooldown: 1200, cooldown_offset: 600)
+    shoot(3, 6, 60, projectile: 0, fixed_angle: 40, cooldown: 1200, cooldown_offset: 800)
+    shoot(3, 6, 60, projectile: 0, fixed_angle: 50, cooldown: 1200, cooldown_offset: 1000)
+    state Death {
+        conditional_effect(invulnerable)
+        shoot(13, 45, 8, projectile: 1, fixed_angle: 1, cooldown: 10000)
+        timed(1000) {
+            suicide()
+        }
+    }
+}
+
+enemy "shtrs Ice Shield 2" {
+    on hp_below(0.3) -> Death
+    orbit(0.5, 5, 1, "shtrs Twilight Archmage")
+    charge(0.1, 6, cooldown: 10000)
+    shoot(13, 10, 8, projectile: 0, cooldown: 1000, fixed_angle: 1)
+    state Death {
+        conditional_effect(invincible)
+        shoot(13, 45, projectile: 1, cooldown: 10000)
+        timed(1000) {
+            suicide()
+        }
+    }
+}
+
+enemy "shtrs Bridge Sentinel" {
+    shoot(2, projectile: 5, count: 3, fixed_angle: 0, cooldown: 10)
+    shoot(2, projectile: 5, count: 3, fixed_angle: 45, cooldown: 10)
+    shoot(2, projectile: 5, count: 3, fixed_angle: 90, cooldown: 10)
+    shoot(2, projectile: 5, count: 3, fixed_angle: 135, cooldown: 10)
+    shoot(2, projectile: 5, count: 3, fixed_angle: 180, cooldown: 10)
+    on hp_below(0.1) -> Death
+    state Idle {
+        conditional_effect(invulnerable)
+        on player_within(15, "Close Bridge") -> Close_Bridge
+    }
+    state Close_Bridge {
+        conditional_effect(invulnerable)
+        order(46, "shtrs Bridge Closer", "Closer")
+        on timed(5000, "Close Bridge2") -> Close_Bridge2
+    }
+    state Close_Bridge2 {
+        conditional_effect(invulnerable)
+        order(46, "shtrs Bridge Closer2", "Closer")
+        on timed(5000, "Close Bridge3") -> Close_Bridge3
+    }
+    state Close_Bridge3 {
+        conditional_effect(invulnerable)
+        order(46, "shtrs Bridge Closer3", "Closer")
+        on timed(5000, "Close Bridge4") -> Close_Bridge4
+    }
+    state Close_Bridge4 {
+        conditional_effect(invulnerable)
+        order(46, "shtrs Bridge Closer4", "Closer")
+        on timed(6000) -> BEGIN
+    }
+    state BEGIN {
+        conditional_effect(invulnerable)
+        on entities_not_exists(30, "shtrs Bridge Obelisk A", "shtrs Bridge Obelisk B", "shtrs Bridge Obelisk D", "shtrs Bridge Obelisk E") -> Wake
+    }
+    state Wake {
+        conditional_effect(invulnerable)
+        taunt("Who has woken me...? Leave this place.")
+        timed(2100) {
+            shoot(15, 15, 12, projectile: 0, fixed_angle: 180, cooldown: 700, cooldown_offset: 3000)
+        }
+        on timed(8000, "Swirl Shot") -> Swirl_Shot
+    }
+    state Swirl_Shot {
+        taunt("Go.")
+        on timed(10000) -> Blobomb
+        state Swirl1 {
+            shoot(50, projectile: 0, count: 1, shoot_angle: 102, fixed_angle: 102, cooldown: 6000)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 114, fixed_angle: 114, cooldown: 6000, cooldown_offset: 200)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 126, fixed_angle: 126, cooldown: 6000, cooldown_offset: 400)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 138, fixed_angle: 138, cooldown: 6000, cooldown_offset: 600)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 150, fixed_angle: 150, cooldown: 6000, cooldown_offset: 800)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 162, fixed_angle: 162, cooldown: 6000, cooldown_offset: 1000)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 174, fixed_angle: 174, cooldown: 6000, cooldown_offset: 1200)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 186, fixed_angle: 186, cooldown: 6000, cooldown_offset: 1400)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 198, fixed_angle: 198, cooldown: 6000, cooldown_offset: 1600)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 210, fixed_angle: 210, cooldown: 6000, cooldown_offset: 1800)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 222, fixed_angle: 222, cooldown: 6000, cooldown_offset: 2000)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 234, fixed_angle: 234, cooldown: 6000, cooldown_offset: 2200)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 246, fixed_angle: 246, cooldown: 6000, cooldown_offset: 2400)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 258, fixed_angle: 258, cooldown: 6000, cooldown_offset: 2600)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 270, fixed_angle: 270, cooldown: 6000, cooldown_offset: 2800)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 282, fixed_angle: 282, cooldown: 6000, cooldown_offset: 3000)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 270, fixed_angle: 270, cooldown: 6000, cooldown_offset: 3200)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 258, fixed_angle: 258, cooldown: 6000, cooldown_offset: 3400)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 246, fixed_angle: 246, cooldown: 6000, cooldown_offset: 3600)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 234, fixed_angle: 234, cooldown: 6000, cooldown_offset: 3800)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 222, fixed_angle: 222, cooldown: 6000, cooldown_offset: 4000)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 210, fixed_angle: 210, cooldown: 6000, cooldown_offset: 4200)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 198, fixed_angle: 198, cooldown: 6000, cooldown_offset: 4400)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 186, fixed_angle: 186, cooldown: 6000, cooldown_offset: 4600)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 174, fixed_angle: 174, cooldown: 6000, cooldown_offset: 4800)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 162, fixed_angle: 162, cooldown: 6000, cooldown_offset: 5000)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 150, fixed_angle: 150, cooldown: 6000, cooldown_offset: 5200)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 138, fixed_angle: 138, cooldown: 6000, cooldown_offset: 5400)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 126, fixed_angle: 126, cooldown: 6000, cooldown_offset: 5600)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 114, fixed_angle: 114, cooldown: 6000, cooldown_offset: 5800)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 102, fixed_angle: 102, cooldown: 6000, cooldown_offset: 6000)
+            on timed(6000) -> Swirl1
+        }
+    }
+    state Blobomb {
+        taunt("You live still? DO NOT TEMPT FATE!")
+        taunt("CONSUME!")
+        order(20, "shtrs blobomb maker", "Spawn")
+        on entity_not_exists("shtrs Blobomb", 30) -> SwirlAndShoot
+    }
+    state SwirlAndShoot {
+        on timed(10000) -> Blobomb
+        taunt("FOOLS! YOU DO NOT UNDERSTAND!")
+        change_size(20, 130)
+        shoot(15, 15, 11, projectile: 0, fixed_angle: 180, cooldown: 700, cooldown_offset: 700)
+        state Swirl1_2 {
+            shoot(50, projectile: 0, count: 1, shoot_angle: 102, fixed_angle: 102, cooldown: 6000)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 114, fixed_angle: 114, cooldown: 6000, cooldown_offset: 200)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 126, fixed_angle: 126, cooldown: 6000, cooldown_offset: 400)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 138, fixed_angle: 138, cooldown: 6000, cooldown_offset: 600)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 150, fixed_angle: 150, cooldown: 6000, cooldown_offset: 800)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 162, fixed_angle: 162, cooldown: 6000, cooldown_offset: 1000)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 174, fixed_angle: 174, cooldown: 6000, cooldown_offset: 1200)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 186, fixed_angle: 186, cooldown: 6000, cooldown_offset: 1400)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 198, fixed_angle: 198, cooldown: 6000, cooldown_offset: 1600)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 210, fixed_angle: 210, cooldown: 6000, cooldown_offset: 1800)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 222, fixed_angle: 222, cooldown: 6000, cooldown_offset: 2000)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 234, fixed_angle: 234, cooldown: 6000, cooldown_offset: 2200)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 246, fixed_angle: 246, cooldown: 6000, cooldown_offset: 2400)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 258, fixed_angle: 258, cooldown: 6000, cooldown_offset: 2600)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 270, fixed_angle: 270, cooldown: 6000, cooldown_offset: 2800)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 282, fixed_angle: 282, cooldown: 6000, cooldown_offset: 3000)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 270, fixed_angle: 270, cooldown: 6000, cooldown_offset: 3200)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 258, fixed_angle: 258, cooldown: 6000, cooldown_offset: 3400)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 246, fixed_angle: 246, cooldown: 6000, cooldown_offset: 3600)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 234, fixed_angle: 234, cooldown: 6000, cooldown_offset: 3800)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 222, fixed_angle: 222, cooldown: 6000, cooldown_offset: 4000)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 210, fixed_angle: 210, cooldown: 6000, cooldown_offset: 4200)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 198, fixed_angle: 198, cooldown: 6000, cooldown_offset: 4400)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 186, fixed_angle: 186, cooldown: 6000, cooldown_offset: 4600)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 174, fixed_angle: 174, cooldown: 6000, cooldown_offset: 4800)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 162, fixed_angle: 162, cooldown: 6000, cooldown_offset: 5000)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 150, fixed_angle: 150, cooldown: 6000, cooldown_offset: 5200)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 138, fixed_angle: 138, cooldown: 6000, cooldown_offset: 5400)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 126, fixed_angle: 126, cooldown: 6000, cooldown_offset: 5600)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 114, fixed_angle: 114, cooldown: 6000, cooldown_offset: 5800)
+            shoot(50, projectile: 0, count: 1, shoot_angle: 102, fixed_angle: 102, cooldown: 6000, cooldown_offset: 6000)
+            on timed(6000) -> Swirl1_2
+        }
+    }
+    state Death {
+        conditional_effect(invulnerable)
+        copy_damage_on_death("shtrs Loot Balloon Bridge")
+        taunt("I tried to protect you... I have failed. You release a great evil upon this realm....")
+        on timed(2000) -> Suicide
+    }
+    state Suicide {
+        shoot(35, projectile: 0, count: 30)
+        order(1, "shtrs Chest Spawner 1", "Open")
+        suicide()
+    }
+}
+
+enemy "shtrs Blobomb" {
+    state active {
+        follow(0.7, acquire_range: 40, range: 0)
+        on player_within(2) -> blink
+    }
+    state blink {
+        flash(268369920, flash_repeats: 10000, flash_period: 0.1)
+        on timed(2000) -> explode
+    }
+    state explode {
+        flash(268369920, flash_repeats: 5, flash_period: 0.1)
+        shoot(30, 36, fixed_angle: 0)
+        suicide()
+    }
+}
+
+enemy "shtrs Twilight Archmage" {
+    on hp_below(0.1) -> Death
+    state Idle {
+        conditional_effect(invulnerable)
+        on entities_not_exists(6, "shtrs Archmage of Flame") -> Wake
+    }
+    state Wake {
+        state Comment1 {
+            conditional_effect(invulnerable)
+            set_alt_texture(1)
+            taunt("Ha...ha........hahahahahaha! You will make a fine sacrifice!")
+            on timed(3000) -> Comment2
+        }
+        set_alt_texture(1)
+        state Comment2 {
+            conditional_effect(invulnerable)
+            taunt("You will find that it was...unwise...to wake me.")
+            on timed(1000) -> Comment3
+        }
+        state Comment3 {
+            conditional_effect(invulnerable)
+            set_alt_texture(1)
+            taunt("Let us see what can conjure up!")
+            on timed(1000) -> Comment4
+        }
+        state Comment4 {
+            conditional_effect(invulnerable)
+            set_alt_texture(1)
+            taunt("I will freeze the life from you!")
+            on timed(1000) -> Shoot
+        }
+    }
+    state TossShit {
+        toss_object("shtrs Ice Portal", 10, cooldown: 25000)
+        toss_object("shtrs FireBomb", 15, cooldown: 25000)
+        toss_object("shtrs FireBomb", 15, cooldown: 25000)
+        toss_object("shtrs FireBomb", 7, cooldown: 25000)
+        toss_object("shtrs FireBomb", 1, cooldown: 25000)
+        toss_object("shtrs FireBomb", 4, cooldown: 25000)
+        toss_object("shtrs FireBomb", 8, cooldown: 25000)
+        toss_object("shtrs FireBomb", 9, cooldown: 25000)
+        toss_object("shtrs FireBomb", 5, cooldown: 25000)
+        toss_object("shtrs FireBomb", 7, cooldown: 25000)
+        toss_object("shtrs FireBomb", 11, cooldown: 25000)
+        toss_object("shtrs FireBomb", 13, cooldown: 25000)
+        toss_object("shtrs FireBomb", 12, cooldown: 25000)
+        toss_object("shtrs FireBomb", 10, cooldown: 25000)
+        spawn("shtrs Ice Shield 2", max_children: 1, initial_spawn: 1, cooldown: 25000)
+        on timed(1) -> Shoot
+    }
+    state Shoot {
+        shoot(15, 5, 5, projectile: 1, cooldown: 800)
+        shoot(15, 5, 5, projectile: 1, cooldown: 800, cooldown_offset: 200)
+        shoot(15, 5, 5, projectile: 1, cooldown: 800, cooldown_offset: 400)
+        shoot(15, 5, 5, projectile: 1, cooldown: 800, cooldown_offset: 600)
+        shoot(15, 5, 5, projectile: 1, cooldown: 800, cooldown_offset: 800)
+        on timed(800) -> Shoot
+        on hp_below(0.5, "Pre Birds") -> Pre_Birds
+    }
+    state Pre_Birds {
+        conditional_effect(invulnerable)
+        taunt("You leave me no choice...Inferno! Blizzard!")
+        on timed(2000) -> Birds
+    }
+    state Birds {
+        conditional_effect(invulnerable)
+        spawn("shtrs Inferno", max_children: 1, initial_spawn: 1, cooldown: 1000000000)
+        spawn("shtrs Blizzard", max_children: 1, initial_spawn: 1, cooldown: 1000000000)
+        on entities_not_exists(500, "shtrs Inferno", "shtrs Blizzard") -> PreNewShit2
+    }
+    state PreNewShit2 {
+        conditional_effect(invulnerable)
+        return_to_spawn(1)
+        on timed(3000) -> NewShit2
+    }
+    state NewShit2 {
+        conditional_effect(invulnerable)
+        move_to2(0, -6, 1)
+        on timed(3000) -> Active2
+    }
+    state Active2 {
+        taunt("THE POWER...IT CONSUMES ME!")
+        order(2, "shtrs MagiGenerators", "vulnerable")
+        shoot(15, 20, projectile: 2, cooldown: 100000000, cooldown_offset: 100)
+        shoot(15, 20, projectile: 3, cooldown: 100000000, cooldown_offset: 200)
+        shoot(15, 20, projectile: 4, cooldown: 100000000, cooldown_offset: 300)
+        shoot(15, 20, projectile: 2, cooldown: 100000000, cooldown_offset: 400)
+        shoot(15, 20, projectile: 5, cooldown: 100000000, cooldown_offset: 500)
+        shoot(15, 20, projectile: 6, cooldown: 100000000, cooldown_offset: 600)
+        on timed(2000) -> NewShit3
+    }
+    state NewShit3 {
+        conditional_effect(invulnerable)
+        move_to2(4, 0, 1)
+        on timed(3000) -> Active3
+    }
+    state Active3 {
+        taunt("THE POWER...IT CONSUMES ME!")
+        order(2, "shtrs MagiGenerators", "vulnerable")
+        shoot(15, 20, projectile: 2, cooldown: 100000000, cooldown_offset: 100)
+        shoot(15, 20, projectile: 3, cooldown: 100000000, cooldown_offset: 200)
+        shoot(15, 20, projectile: 4, cooldown: 100000000, cooldown_offset: 300)
+        shoot(15, 20, projectile: 2, cooldown: 100000000, cooldown_offset: 400)
+        shoot(15, 20, projectile: 5, cooldown: 100000000, cooldown_offset: 500)
+        shoot(15, 20, projectile: 6, cooldown: 100000000, cooldown_offset: 600)
+        on timed(2000) -> NewShit4
+    }
+    state NewShit4 {
+        conditional_effect(invulnerable)
+        move_to2(0, 13, 1)
+        on timed(3000) -> Active4
+    }
+    state Active4 {
+        taunt("THE POWER...IT CONSUMES ME!")
+        order(2, "shtrs MagiGenerators", "vulnerable")
+        shoot(15, 20, projectile: 2, cooldown: 100000000, cooldown_offset: 100)
+        shoot(15, 20, projectile: 3, cooldown: 100000000, cooldown_offset: 200)
+        shoot(15, 20, projectile: 4, cooldown: 100000000, cooldown_offset: 300)
+        shoot(15, 20, projectile: 2, cooldown: 100000000, cooldown_offset: 400)
+        shoot(15, 20, projectile: 5, cooldown: 100000000, cooldown_offset: 500)
+        shoot(15, 20, projectile: 6, cooldown: 100000000, cooldown_offset: 600)
+        on timed(2000) -> NewShit5
+    }
+    state NewShit5 {
+        conditional_effect(invulnerable)
+        move_to2(-4, 0, 1)
+        on timed(3000) -> Active5
+    }
+    state Active5 {
+        taunt("THE POWER...IT CONSUMES ME!")
+        order(2, "shtrs MagiGenerators", "vulnerable")
+        shoot(15, 20, projectile: 2, cooldown: 100000000, cooldown_offset: 100)
+        shoot(15, 20, projectile: 3, cooldown: 100000000, cooldown_offset: 200)
+        shoot(15, 20, projectile: 4, cooldown: 100000000, cooldown_offset: 300)
+        shoot(15, 20, projectile: 2, cooldown: 100000000, cooldown_offset: 400)
+        shoot(15, 20, projectile: 5, cooldown: 100000000, cooldown_offset: 500)
+        shoot(15, 20, projectile: 6, cooldown: 100000000, cooldown_offset: 600)
+        on timed(2000) -> NewShit6
+    }
+    state NewShit6 {
+        conditional_effect(invulnerable)
+        move_to2(-4, 0, 1)
+        on timed(3000) -> Active6
+    }
+    state Active6 {
+        taunt("THE POWER...IT CONSUMES ME!")
+        order(2, "shtrs MagiGenerators", "vulnerable")
+        shoot(15, 20, projectile: 2, cooldown: 100000000, cooldown_offset: 100)
+        shoot(15, 20, projectile: 3, cooldown: 100000000, cooldown_offset: 200)
+        shoot(15, 20, projectile: 4, cooldown: 100000000, cooldown_offset: 300)
+        shoot(15, 20, projectile: 2, cooldown: 100000000, cooldown_offset: 400)
+        shoot(15, 20, projectile: 5, cooldown: 100000000, cooldown_offset: 500)
+        shoot(15, 20, projectile: 6, cooldown: 100000000, cooldown_offset: 600)
+        on timed(2000) -> NewShit7
+    }
+    state NewShit7 {
+        conditional_effect(invulnerable)
+        move_to2(0, -13, 1)
+        on timed(3000) -> Active7
+    }
+    state Active7 {
+        taunt("THE POWER...IT CONSUMES ME!")
+        order(2, "shtrs MagiGenerators", "vulnerable")
+        shoot(15, 20, projectile: 2, cooldown: 100000000, cooldown_offset: 100)
+        shoot(15, 20, projectile: 3, cooldown: 100000000, cooldown_offset: 200)
+        shoot(15, 20, projectile: 4, cooldown: 100000000, cooldown_offset: 300)
+        shoot(15, 20, projectile: 2, cooldown: 100000000, cooldown_offset: 400)
+        shoot(15, 20, projectile: 5, cooldown: 100000000, cooldown_offset: 500)
+        shoot(15, 20, projectile: 6, cooldown: 100000000, cooldown_offset: 600)
+    }
+    state Death {
+        conditional_effect(invulnerable)
+        taunt("IM..POSSI...BLE!")
+        copy_damage_on_death("shtrs Loot Balloon Mage")
+        order(1, "shtrs Chest Spawner 2", "Open")
+        on timed(2000) -> Suicide
+    }
+    state Suicide {
+        shoot(35, projectile: 0, count: 30)
+        suicide()
+    }
+}
+
+enemy "shtrs Inferno" {
+    orbit(0.5, 4, 15, "shtrs Blizzard")
+    shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 15, cooldown: 4333)
+    shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 30, cooldown: 3500)
+    shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 60, cooldown: 7250)
+    shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 90, cooldown: 10000)
+}
+
+enemy "shtrs Blizzard" {
+    state Follow {
+        follow(0.3, range: 1, cooldown: 1000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 25)
+        on timed(7000) -> Spin
+    }
+    state Spin {
+        state Quadforce1 {
+            shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 0, cooldown: 300)
+            on timed(10) -> Quadforce2
+        }
+        state Quadforce2 {
+            shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 15, cooldown: 300)
+            on timed(10) -> Quadforce3
+        }
+        state Quadforce3 {
+            shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 30, cooldown: 300)
+            on timed(10) -> Quadforce4
+        }
+        state Quadforce4 {
+            shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 45, cooldown: 300)
+            on timed(10) -> Quadforce5
+        }
+        state Quadforce5 {
+            shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 60, cooldown: 300)
+            on timed(10) -> Quadforce6
+        }
+        state Quadforce6 {
+            shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 75, cooldown: 300)
+            on timed(10) -> Quadforce7
+        }
+        state Quadforce7 {
+            shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 90, cooldown: 300)
+            on timed(10) -> Quadforce8
+        }
+        state Quadforce8 {
+            shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 105, cooldown: 300)
+            on timed(10) -> Quadforce9
+        }
+        state Quadforce9 {
+            shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 120, cooldown: 300)
+            on timed(10) -> Quadforce10
+        }
+        state Quadforce10 {
+            shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 135, cooldown: 300)
+            on timed(10) -> Quadforce11
+        }
+        state Quadforce11 {
+            shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 150, cooldown: 300)
+            on timed(10) -> Quadforce12
+        }
+        state Quadforce12 {
+            shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 165, cooldown: 300)
+            on timed(10) -> Quadforce13
+        }
+        state Quadforce13 {
+            shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 180, cooldown: 300)
+            on timed(10) -> Quadforce14
+        }
+        state Quadforce14 {
+            shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 195, cooldown: 300)
+            on timed(10) -> Quadforce15
+        }
+        state Quadforce15 {
+            shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 210, cooldown: 300)
+            on timed(10) -> Quadforce16
+        }
+        state Quadforce16 {
+            shoot(0, projectile: 0, count: 6, shoot_angle: 60, fixed_angle: 225, cooldown: 300)
+            on timed(10) -> Follow
+        }
+    }
+}
+
+enemy "shtrs Loot Balloon Bridge" {
+    state Idle {
+        conditional_effect(invulnerable)
+        order(46, "shtrs Spawn Bridge", "Open")
+        on timed(5000) -> Bridge
+    }
+    state Bridge {
+    }
+    loot {
+        threshold
+    }
+}
+
+enemy "shtrs Loot Balloon Mage" {
+    state Idle {
+        conditional_effect(invulnerable)
+        on timed(5000) -> Mage
+    }
+    state Mage {
+    }
+    loot {
+        threshold
+    }
+}
+
+enemy "shtrs Bridge Obelisk A" {
+    state Idle {
+        conditional_effect(invulnerable)
+        on entity_not_exists("Shtrs Bridge Closer4", 100) -> TALK
+    }
+    state TALK {
+        conditional_effect(invulnerable)
+        taunt("DO NOT WAKE THE BRIDGE GUARDIAN!")
+        on timed(2000) -> AFK
+    }
+    state AFK {
+        conditional_effect(invulnerable)
+        flash(65292, 0.5, 4)
+        on timed(2500) -> activatetimer
+    }
+    state activatetimer {
+        conditional_effect(invulnerable)
+        order(60, "shtrs obelisk timer", "timer1")
+        on timed(1) -> stopsettingoffmytimer
+    }
+    state stopsettingoffmytimer {
+        conditional_effect(invulnerable)
+    }
+    state Shoot {
+        conditional_effect(invulnerable)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 10000)
+    }
+    state Pause {
+        remove_conditional_effect(invulnerable)
+        spawn("shtrs Stone Knight", max_children: 1, initial_spawn: 1, cooldown: 7500)
+        spawn("shtrs Stone Mage", max_children: 1, initial_spawn: 1, cooldown: 7500)
+    }
+}
+
+enemy "shtrs Bridge Obelisk B" {
+    state Idle {
+        conditional_effect(invulnerable)
+        on entity_not_exists("Shtrs Bridge Closer4", 100) -> TALK
+    }
+    state TALK {
+        conditional_effect(invulnerable)
+        taunt("DO NOT WAKE THE BRIDGE GUARDIAN!")
+        on timed(2000) -> AFK
+    }
+    state AFK {
+        conditional_effect(invulnerable)
+        flash(65292, 0.5, 4)
+    }
+    state Shoot {
+        conditional_effect(invulnerable)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 10000)
+    }
+    state guardiancheck {
+        on entities_not_exists(30, "shtrs Bridge Obelisk A") -> Pause
+    }
+    state Pause {
+        remove_conditional_effect(invulnerable)
+        spawn("shtrs Stone Knight", max_children: 1, initial_spawn: 1)
+        spawn("shtrs Stone Mage", max_children: 1, initial_spawn: 1)
+    }
+}
+
+enemy "shtrs Bridge Obelisk D" {
+    state Idle {
+        conditional_effect(invulnerable)
+        on entity_not_exists("Shtrs Bridge Closer4", 100) -> TALK
+    }
+    state TALK {
+        conditional_effect(invulnerable)
+        taunt("DO NOT WAKE THE BRIDGE GUARDIAN!")
+        on timed(2000) -> AFK
+    }
+    state AFK {
+        conditional_effect(invulnerable)
+        flash(65292, 0.5, 4)
+    }
+    state Shoot {
+        conditional_effect(invulnerable)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 10000)
+    }
+    state guardiancheck {
+        on entities_not_exists(30, "shtrs Bridge Obelisk B") -> Pause
+    }
+    state Pause {
+        remove_conditional_effect(invulnerable)
+        spawn("shtrs Stone Knight", max_children: 1, initial_spawn: 1)
+        spawn("shtrs Stone Mage", max_children: 1, initial_spawn: 1)
+    }
+}
+
+enemy "shtrs Bridge Obelisk E" {
+    state Idle {
+        conditional_effect(invulnerable)
+        on entity_not_exists("Shtrs Bridge Closer4", 100) -> TALK
+    }
+    state TALK {
+        conditional_effect(invulnerable)
+        taunt("DO NOT WAKE THE BRIDGE GUARDIAN!")
+        on timed(2000) -> AFK
+    }
+    state AFK {
+        conditional_effect(invulnerable)
+        flash(65292, 0.5, 4)
+    }
+    state Shoot {
+        conditional_effect(invulnerable)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 10000)
+    }
+    state guardiancheck {
+        on entities_not_exists(30, "shtrs Bridge Obelisk D") -> Pause
+    }
+    state Pause {
+        remove_conditional_effect(invulnerable)
+        spawn("shtrs Stone Knight", max_children: 1, initial_spawn: 1)
+        spawn("shtrs Stone Mage", max_children: 1, initial_spawn: 1)
+    }
+}
+
+enemy "shtrs Bridge Obelisk C" {
+    state Idle {
+        conditional_effect(invulnerable)
+        conditional_effect(armored)
+        on entity_not_exists("Shtrs Bridge Closer4", 100) -> JustKillMe
+    }
+    state JustKillMe {
+        conditional_effect(armored)
+        conditional_effect(invulnerable)
+        on timed(2000) -> AFK
+    }
+    state AFK {
+        conditional_effect(armored)
+        conditional_effect(invulnerable)
+        flash(65292, 0.5, 4)
+        on timed(2500) -> Shoot
+    }
+    state Shoot {
+        conditional_effect(invulnerable)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 10000)
+        on timed(10000) -> Pause
+    }
+    state Pause {
+        conditional_effect(armored)
+        spawn("shtrs Stone Paladin", max_children: 1, initial_spawn: 1, cooldown: 7500)
+        on timed(7000) -> Shoot
+    }
+}
+
+enemy "shtrs Bridge Obelisk F" {
+    state Idle {
+        conditional_effect(invulnerable)
+        conditional_effect(armored)
+        on entity_not_exists("Shtrs Bridge Closer4", 100) -> JustKillMe
+    }
+    state JustKillMe {
+        conditional_effect(armored)
+        conditional_effect(invulnerable)
+        on timed(2000) -> AFK
+    }
+    state AFK {
+        conditional_effect(invulnerable)
+        conditional_effect(armored)
+        flash(65292, 0.5, 4)
+        on timed(2500) -> Shoot
+    }
+    state Shoot {
+        conditional_effect(invulnerable)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 1800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 2800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 3800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 4800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 5800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 6800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 7800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 8800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9000)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9200)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9400)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9600)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 9800)
+        shoot(0, projectile: 0, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 10000, cooldown_offset: 10000)
+        on timed(10000) -> Pause
+    }
+    state Pause {
+        conditional_effect(armored)
+        spawn("shtrs Stone Paladin", max_children: 1, initial_spawn: 1, cooldown: 7500)
+        on timed(7000) -> Shoot
+    }
+}
+
+enemy "shtrs obelisk controller" {
+    conditional_effect(invincible)
+    state wait {
+        on entities_not_exists(30, "shtrs Bridge Obelisk A", "shtrs Bridge Obelisk B", "shtrs Bridge Obelisk D", "shtrs Bridge Obelisk E") -> obeliskshoot
+    }
+    state obeliskshoot {
+        order(60, "shtrs Bridge Obelisk A", "Shoot")
+        order(60, "shtrs Bridge Obelisk B", "Shoot")
+        order(60, "shtrs Bridge Obelisk D", "Shoot")
+        order(60, "shtrs Bridge Obelisk E", "Shoot")
+    }
+    state guardiancheck {
+        order(60, "shtrs Bridge Obelisk A", "Pause")
+        order(60, "shtrs Bridge Obelisk B", "guardiancheck")
+        order(60, "shtrs Bridge Obelisk D", "guardiancheck")
+        order(60, "shtrs Bridge Obelisk E", "guardiancheck")
+        on timed(1) -> leavemychecksalone
+    }
+    state leavemychecksalone {
+        conditional_effect(invincible)
+    }
+}
+
+enemy "shtrs obelisk timer" {
+    conditional_effect(invincible)
+    state wait {
+        on entities_not_exists(30, "shtrs Bridge Obelisk A", "shtrs Bridge Obelisk B", "shtrs Bridge Obelisk D", "shtrs Bridge Obelisk E") -> timer1
+    }
+    state timer1 {
+        order(60, "shtrs obelisk controller", "obeliskshoot")
+        on timed(10000) -> guardiancheck
+    }
+    state guardiancheck {
+        order(60, "shtrs obelisk controller", "guardiancheck")
+        on timed(1) -> leavemychecksalone
+    }
+    state leavemychecksalone {
+        on timed(7000) -> timer1
+    }
+}
+
+enemy "shtrs Titanum" {
+    state Wait {
+        on player_within(7) -> spawn
+    }
+    state spawn {
+        spawn("shtrs Stone Knight", max_children: 1, initial_spawn: 1, cooldown: 5000)
+        spawn("shtrs Stone Mage", max_children: 1, initial_spawn: 1, cooldown: 7500)
+        on timed(5000) -> Wait
+    }
+}
+
+enemy "shtrs Paladin Obelisk" {
+    state Wait {
+        on player_within(5) -> spawn
+    }
+    state spawn {
+        spawn("shtrs Stone Paladin", max_children: 1, initial_spawn: 1, cooldown: 7500)
+    }
+}
+
+enemy "shtrs Ice Mage" {
+    state Wait {
+        on player_within(5) -> fire
+    }
+    state fire {
+        follow(0.5, range: 1)
+        shoot(10, 5, 10, projectile: 0, cooldown: 1500)
+        on timed(15000) -> Spawn
+    }
+    state Spawn {
+        spawn("shtrs Ice Shield", max_children: 1, initial_spawn: 1, cooldown: 750000000)
+        on timed(25) -> fire
+    }
+}
+
+enemy "shtrs Archmage of Flame" {
+    state wait {
+        conditional_effect(invincible)
+        on player_within(7) -> Follow
+    }
+    state Follow {
+        follow(1, range: 1)
+        on timed(5000) -> Throw
+    }
+    state Throw {
+        conditional_effect(invulnerable)
+        toss_object("shtrs Firebomb", 1, angle: 90, cooldown: 5000)
+        toss_object("shtrs Firebomb", 2, angle: 20, cooldown: 5000)
+        toss_object("shtrs Firebomb", 3, angle: 72, cooldown: 5000)
+        toss_object("shtrs Firebomb", 4, angle: 270, cooldown: 5000)
+        toss_object("shtrs Firebomb", 5, angle: 140, cooldown: 5000)
+        toss_object("shtrs Firebomb", 6, angle: 220, cooldown: 5000)
+        toss_object("shtrs Firebomb", 6, angle: 48, cooldown: 5000)
+        toss_object("shtrs Firebomb", 5, angle: 56, cooldown: 5000)
+        toss_object("shtrs Firebomb", 4, angle: 180, cooldown: 5000)
+        toss_object("shtrs Firebomb", 3, angle: 30, cooldown: 5000)
+        toss_object("shtrs Firebomb", 2, angle: 0, cooldown: 5000)
+        toss_object("shtrs Firebomb", 1, angle: 190, cooldown: 5000)
+        on timed(4000) -> Fire
+    }
+    state Fire {
+        shoot(0, projectile: 0, count: 1, shoot_angle: 45, fixed_angle: 45, cooldown: 1, cooldown_offset: 0)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 90, fixed_angle: 90, cooldown: 1, cooldown_offset: 0)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 135, fixed_angle: 135, cooldown: 1, cooldown_offset: 0)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 180, fixed_angle: 180, cooldown: 1, cooldown_offset: 0)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 225, fixed_angle: 225, cooldown: 1, cooldown_offset: 0)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 270, fixed_angle: 270, cooldown: 1, cooldown_offset: 0)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 315, fixed_angle: 315, cooldown: 1, cooldown_offset: 0)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 360, fixed_angle: 360, cooldown: 1, cooldown_offset: 0)
+        on timed(5000) -> wait
+    }
+}
+
+enemy "shtrs Firebomb" {
+    state Idle {
+        conditional_effect(invincible)
+        on timed(2000) -> Explode
+    }
+    state Explode {
+        conditional_effect(invincible)
+        shoot(100, projectile: 0, count: 8)
+        suicide()
+    }
+}
+
+enemy "shtrs Fire Mage" {
+    state Wait {
+        on player_within(5) -> fire
+    }
+    state fire {
+        follow(0.5, range: 1)
+        shoot(10, 5, 10, projectile: 0, cooldown: 1500)
+        on timed(10000) -> nothing
+    }
+    state nothing {
+        on timed(1000) -> fire
+    }
+}
+
+enemy "shtrs Stone Mage" {
+    state Wait {
+        on player_within(5) -> fire
+    }
+    state fire {
+        follow(0.5, range: 1)
+        shoot(10, 2, 10, projectile: 1, cooldown: 200)
+        on timed(10000) -> invulnerable
+    }
+    state invulnerable {
+        conditional_effect(invulnerable)
+        shoot(10, 2, 10, projectile: 0, cooldown: 200)
+        on timed(3000) -> fire
+    }
+}
+
+enemy "shtrs Wooden Gate 3" {
+    state Despawn {
+        decay(0)
+    }
+}
+
+enemy "shtrs Wooden Gate" {
+    state Idle {
+        on entity_not_exists("shtrs Abandoned Switch 1", 10) -> Despawn
+    }
+    state Despawn {
+        decay(0)
+    }
+}
+
+enemy "shtrs Abandoned Switch 1" {
+    remove_object_on_death("shtrs Wooden Gate", 8)
+}
+
+enemy "Tooky Shatters Master" {
+    set_no_x_p()
+    conditional_effect(invincible)
+    remove_object_on_death("shtrs Wooden Gate 2", 14)
+}
+
+enemy "shtrs Wooden Gate 2" {
+    state Idle {
+        on entity_not_exists("shtrs Abandoned Switch 2", 60) -> Despawn
+    }
+    state Despawn {
+        decay(0)
+    }
+}
+
+enemy "shtrs Bridge Closer" {
+    state Idle {
+        conditional_effect(invincible, true)
+    }
+    state Closer {
+        change_ground_on_death(1)
+        suicide()
+    }
+    state TwilightClose {
+        change_ground_on_death(1)
+        suicide()
+    }
+}
+
+enemy "shtrs Bridge Closer2" {
+    state Idle {
+        conditional_effect(invincible, true)
+    }
+    state Closer {
+        change_ground_on_death(1)
+        suicide()
+    }
+    state TwilightClose {
+        change_ground_on_death(1)
+        suicide()
+    }
+}
+
+enemy "shtrs Bridge Closer3" {
+    state Idle {
+        conditional_effect(invincible, true)
+    }
+    state Closer {
+        change_ground_on_death(1)
+        suicide()
+    }
+    state TwilightClose {
+        change_ground_on_death(1)
+        suicide()
+    }
+}
+
+enemy "shtrs Bridge Closer4" {
+    state Idle {
+        conditional_effect(invincible, true)
+    }
+    state Closer {
+        change_ground_on_death(1)
+        suicide()
+    }
+    state TwilightClose {
+        change_ground_on_death(1)
+        suicide()
+    }
+}
+
+enemy "shtrs Spawn Bridge" {
+    state Idle {
+        conditional_effect(invincible, true)
+    }
+    state Open {
+        change_ground_on_death(1)
+        suicide()
+    }
+}
+
+enemy "shtrs Spawn Bridge 2" {
+    state Idle {
+        conditional_effect(invincible, true)
+        on entity_not_exists("shtrs Abandoned Switch 3", 500) -> Open
+    }
+    state Open {
+        change_ground_on_death(1)
+        suicide()
+    }
+    state CloseBridge2 {
+        change_ground_on_death(1)
+        suicide()
+    }
+}
+
+enemy "shtrs Spawn Bridge 3" {
+    state Idle {
+        conditional_effect(invincible, true)
+        on entity_not_exists("shtrs Twilight Archmage", 500) -> Open
+    }
+    state Open {
+        change_ground_on_death(1)
+        suicide()
+    }
+}
+
+enemy "shtrs Spawn Bridge 5" {
+    state Idle {
+        conditional_effect(invincible, true)
+        on entity_not_exists("shtrs Royal Guardian L", 100) -> Open
+    }
+    state Open {
+        change_ground_on_death(1)
+        suicide()
+    }
+}
+
+enemy "shtrs The Forgotten King" {
+    on hp_below(0.1) -> Death
+    state Idle {
+        conditional_effect(invincible)
+        conditional_effect(invisible)
+        conditional_effect(stasis)
+        on timed(2000, "1st") -> s1st
+    }
+    state s1st {
+        conditional_effect(invincible)
+        conditional_effect(invisible)
+        conditional_effect(stasis)
+        taunt("You have made a grave mistake coming here I will destroy you, and reclaim my place in the Realm.")
+        on timed(2500) -> crystals
+    }
+    state crystals {
+        conditional_effect(invincible)
+        conditional_effect(invisible)
+        conditional_effect(stasis)
+        spawn("shtrs Crystal Tracker", max_children: 1, initial_spawn: 1, cooldown: 999999)
+        spawn("shtrs Green Crystal", max_children: 1, initial_spawn: 1, cooldown: 999999)
+        spawn("shtrs Yellow Crystal", max_children: 1, initial_spawn: 1, cooldown: 999999)
+        spawn("shtrs Red Crystal", max_children: 1, initial_spawn: 1, cooldown: 999999)
+        spawn("shtrs Blue Crystal", max_children: 1, initial_spawn: 1, cooldown: 999999)
+        on entities_not_exists(40, "shtrs Green Crystal", "shtrs Yellow Crystal", "shtrs Red Crystal", "shtrs Blue Crystal") -> fireandice
+    }
+    state fireandice {
+        shoot(40, 2, 45, projectile: 2, cooldown: 500, cooldown_offset: 200)
+        shoot(40, 2, 45, projectile: 3, cooldown: 500)
+        shoot(40, 1, fixed_angle: 180, projectile: 1, cooldown: 9999)
+        shoot(40, 1, fixed_angle: 0, projectile: 1, cooldown: 9999)
+        shoot(40, 1, fixed_angle: 169, projectile: 1, cooldown: 9999, cooldown_offset: 400)
+        shoot(40, 1, fixed_angle: 11, projectile: 1, cooldown: 9999, cooldown_offset: 400)
+        shoot(40, 1, fixed_angle: 158, projectile: 1, cooldown: 9999, cooldown_offset: 400)
+        shoot(40, 1, fixed_angle: 22, projectile: 1, cooldown: 9999, cooldown_offset: 400)
+        shoot(40, 1, fixed_angle: 147, projectile: 1, cooldown: 9999, cooldown_offset: 700)
+        shoot(40, 1, fixed_angle: 33, projectile: 1, cooldown: 9999, cooldown_offset: 700)
+        shoot(40, 1, fixed_angle: 135, projectile: 1, cooldown: 9999, cooldown_offset: 700)
+        shoot(40, 1, fixed_angle: 45, projectile: 1, cooldown: 9999, cooldown_offset: 700)
+        shoot(40, 1, fixed_angle: 124, projectile: 1, cooldown: 9999, cooldown_offset: 700)
+        shoot(40, 1, fixed_angle: 56, projectile: 1, cooldown: 9999, cooldown_offset: 700)
+        shoot(40, 1, fixed_angle: 117, projectile: 1, cooldown: 9999, cooldown_offset: 1000)
+        shoot(40, 1, fixed_angle: 63, projectile: 1, cooldown: 9999, cooldown_offset: 1000)
+        shoot(40, 1, fixed_angle: 103, projectile: 1, cooldown: 9999, cooldown_offset: 1150)
+        shoot(40, 1, fixed_angle: 77, projectile: 1, cooldown: 9999, cooldown_offset: 1150)
+        shoot(40, 1, fixed_angle: 90, projectile: 1, cooldown: 9999, cooldown_offset: 1250)
+        shoot(40, 1, fixed_angle: 90, projectile: 1, cooldown: 9999, cooldown_offset: 1250)
+        shoot(40, 1, fixed_angle: 100, projectile: 1, cooldown: 9999, cooldown_offset: 1310)
+        shoot(40, 1, fixed_angle: 80, projectile: 1, cooldown: 9999, cooldown_offset: 1310)
+        shoot(40, 1, fixed_angle: 124, projectile: 1, cooldown: 9999, cooldown_offset: 1400)
+        shoot(40, 1, fixed_angle: 56, projectile: 1, cooldown: 9999, cooldown_offset: 1400)
+        shoot(40, 1, fixed_angle: 135, projectile: 1, cooldown: 9999, cooldown_offset: 1550)
+        shoot(40, 1, fixed_angle: 45, projectile: 1, cooldown: 9999, cooldown_offset: 1550)
+        shoot(40, 1, fixed_angle: 147, projectile: 1, cooldown: 9999, cooldown_offset: 1650)
+        shoot(40, 1, fixed_angle: 33, projectile: 1, cooldown: 9999, cooldown_offset: 1650)
+        shoot(40, 1, fixed_angle: 180, projectile: 1, cooldown: 9999, cooldown_offset: 1750)
+        shoot(40, 1, fixed_angle: 0, projectile: 1, cooldown: 9999, cooldown_offset: 1750)
+        shoot(40, 1, fixed_angle: 169, projectile: 1, cooldown: 9999, cooldown_offset: 1850)
+        shoot(40, 1, fixed_angle: 11, projectile: 1, cooldown: 9999, cooldown_offset: 1850)
+        shoot(40, 1, fixed_angle: 169, projectile: 1, cooldown: 9999, cooldown_offset: 1950)
+        shoot(40, 1, fixed_angle: 11, projectile: 1, cooldown: 9999, cooldown_offset: 1950)
+        shoot(40, 1, fixed_angle: 158, projectile: 1, cooldown: 9999, cooldown_offset: 2050)
+        shoot(40, 1, fixed_angle: 22, projectile: 1, cooldown: 9999, cooldown_offset: 2050)
+        shoot(40, 1, fixed_angle: 147, projectile: 1, cooldown: 9999, cooldown_offset: 2150)
+        shoot(40, 1, fixed_angle: 33, projectile: 1, cooldown: 9999, cooldown_offset: 2150)
+        shoot(40, 1, fixed_angle: 135, projectile: 1, cooldown: 9999, cooldown_offset: 2250)
+        shoot(40, 1, fixed_angle: 45, projectile: 1, cooldown: 9999, cooldown_offset: 2250)
+        shoot(40, 1, fixed_angle: 124, projectile: 1, cooldown: 9999, cooldown_offset: 2350)
+        shoot(40, 1, fixed_angle: 56, projectile: 1, cooldown: 9999, cooldown_offset: 2350)
+        shoot(40, 1, fixed_angle: 117, projectile: 1, cooldown: 9999, cooldown_offset: 2450)
+        shoot(40, 1, fixed_angle: 63, projectile: 1, cooldown: 9999, cooldown_offset: 2450)
+        shoot(40, 1, fixed_angle: 90, projectile: 1, cooldown: 9999, cooldown_offset: 2550)
+        shoot(40, 1, fixed_angle: 90, projectile: 1, cooldown: 9999, cooldown_offset: 2550)
+        shoot(40, 1, fixed_angle: 100, projectile: 1, cooldown: 9999, cooldown_offset: 2610)
+        shoot(40, 1, fixed_angle: 80, projectile: 1, cooldown: 9999, cooldown_offset: 2610)
+        shoot(40, 1, fixed_angle: 124, projectile: 1, cooldown: 9999, cooldown_offset: 2680)
+        shoot(40, 1, fixed_angle: 56, projectile: 1, cooldown: 9999, cooldown_offset: 2680)
+        shoot(40, 1, fixed_angle: 135, projectile: 1, cooldown: 9999, cooldown_offset: 2830)
+        shoot(40, 1, fixed_angle: 45, projectile: 1, cooldown: 9999, cooldown_offset: 2830)
+        shoot(40, 1, fixed_angle: 147, projectile: 1, cooldown: 9999, cooldown_offset: 2980)
+        shoot(40, 1, fixed_angle: 33, projectile: 1, cooldown: 9999, cooldown_offset: 2980)
+        shoot(40, 1, fixed_angle: 180, projectile: 1, cooldown: 9999, cooldown_offset: 3030)
+        shoot(40, 1, fixed_angle: 0, projectile: 1, cooldown: 9999, cooldown_offset: 3030)
+        shoot(40, 1, fixed_angle: 169, projectile: 1, cooldown: 9999, cooldown_offset: 3180)
+        shoot(40, 1, fixed_angle: 11, projectile: 1, cooldown: 9999, cooldown_offset: 3180)
+        shoot(40, 1, fixed_angle: 169, projectile: 1, cooldown: 9999, cooldown_offset: 3230)
+        shoot(40, 1, fixed_angle: 11, projectile: 1, cooldown: 9999, cooldown_offset: 3230)
+        shoot(40, 1, fixed_angle: 158, projectile: 1, cooldown: 9999, cooldown_offset: 3380)
+        shoot(40, 1, fixed_angle: 22, projectile: 1, cooldown: 9999, cooldown_offset: 3380)
+        shoot(40, 1, fixed_angle: 147, projectile: 1, cooldown: 9999, cooldown_offset: 3530)
+        shoot(40, 1, fixed_angle: 33, projectile: 1, cooldown: 9999, cooldown_offset: 3530)
+        shoot(40, 1, fixed_angle: 135, projectile: 1, cooldown: 9999, cooldown_offset: 3680)
+        shoot(40, 1, fixed_angle: 45, projectile: 1, cooldown: 9999, cooldown_offset: 3680)
+        shoot(40, 1, fixed_angle: 124, projectile: 1, cooldown: 9999, cooldown_offset: 3830)
+        shoot(40, 1, fixed_angle: 56, projectile: 1, cooldown: 9999, cooldown_offset: 3830)
+        shoot(40, 1, fixed_angle: 117, projectile: 1, cooldown: 9999, cooldown_offset: 3980)
+        shoot(40, 1, fixed_angle: 63, projectile: 1, cooldown: 9999, cooldown_offset: 3980)
+        on timed(4000) -> middle
+    }
+    state middle {
+        conditional_effect(invincible)
+        conditional_effect(invisible)
+        conditional_effect(stasis)
+        move_to2(0, 8, 0.5)
+        on timed(3000, "J Guardians") -> J_Guardians
+    }
+    state J_Guardians {
+        conditional_effect(invincible)
+        conditional_effect(invisible)
+        conditional_effect(stasis)
+        spawn("shtrs Royal Guardian J", 10)
+        on timed(50) -> waiting
+    }
+    state waiting {
+        conditional_effect(invincible)
+        conditional_effect(invisible)
+        conditional_effect(stasis)
+        on entity_not_exists("shtrs Royal Guardian J", 10) -> littlerage
+    }
+    state littlerage {
+        shoot(40, 2, 45, projectile: 2, cooldown: 500, cooldown_offset: 200)
+        shoot(40, 2, 45, projectile: 3, cooldown: 500)
+        shoot(40, 8, projectile: 1, cooldown: 1000)
+        on timed(4000) -> tentacles
+    }
+    state tentacles {
+        shoot(40, 2, 45, projectile: 2, cooldown: 500, cooldown_offset: 200)
+        shoot(40, 2, 45, projectile: 3, cooldown: 500)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 3, cooldown: 10800)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 4, cooldown: 10800)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 6, cooldown: 10800, cooldown_offset: 200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 7, cooldown: 10800, cooldown_offset: 200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 9, cooldown: 10800, cooldown_offset: 400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 10, cooldown: 10800, cooldown_offset: 400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 12, cooldown: 10800, cooldown_offset: 600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 13, cooldown: 10800, cooldown_offset: 600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 15, cooldown: 10800, cooldown_offset: 800)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 16, cooldown: 10800, cooldown_offset: 800)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 18, cooldown: 10800, cooldown_offset: 1000)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 19, cooldown: 10800, cooldown_offset: 1000)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 21, cooldown: 10800, cooldown_offset: 1200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 22, cooldown: 10800, cooldown_offset: 1200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 24, cooldown: 10800, cooldown_offset: 1400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 25, cooldown: 10800, cooldown_offset: 1400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 27, cooldown: 10800, cooldown_offset: 1600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 28, cooldown: 10800, cooldown_offset: 1600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 30, cooldown: 10800, cooldown_offset: 1800)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 31, cooldown: 10800, cooldown_offset: 1800)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 33, cooldown: 10800, cooldown_offset: 2000)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 34, cooldown: 10800, cooldown_offset: 2000)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 36, cooldown: 10800, cooldown_offset: 2200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 37, cooldown: 10800, cooldown_offset: 2200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 39, cooldown: 10800, cooldown_offset: 2400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 40, cooldown: 10800, cooldown_offset: 2400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 42, cooldown: 10800, cooldown_offset: 2600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 43, cooldown: 10800, cooldown_offset: 2600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 45, cooldown: 10800, cooldown_offset: 2800)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 46, cooldown: 10800, cooldown_offset: 2800)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 48, cooldown: 10800, cooldown_offset: 3000)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 49, cooldown: 10800, cooldown_offset: 3000)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 51, cooldown: 10800, cooldown_offset: 3200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 52, cooldown: 10800, cooldown_offset: 3200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 54, cooldown: 10800, cooldown_offset: 3400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 55, cooldown: 10800, cooldown_offset: 3400)
+        on hp_below(0.6) -> moveaftertentacles
+        on timed(3400) -> tentacles2
+    }
+    state tentacles2 {
+        conditional_effect(invincible)
+        conditional_effect(invisible)
+        conditional_effect(stasis)
+        order(60, "shtrs Lava Souls maker", "Spawn")
+        order(60, "shtrs king lava1", "lava")
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 3, cooldown: 15000)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 4, cooldown: 15000)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 6, cooldown: 15000, cooldown_offset: 200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 7, cooldown: 15000, cooldown_offset: 200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 9, cooldown: 15000, cooldown_offset: 400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 10, cooldown: 15000, cooldown_offset: 400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 12, cooldown: 15000, cooldown_offset: 600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 13, cooldown: 15000, cooldown_offset: 600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 15, cooldown: 15000, cooldown_offset: 800)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 16, cooldown: 15000, cooldown_offset: 800)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 18, cooldown: 15000, cooldown_offset: 1000)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 19, cooldown: 15000, cooldown_offset: 1000)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 21, cooldown: 15000, cooldown_offset: 1200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 22, cooldown: 15000, cooldown_offset: 1200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 24, cooldown: 15000, cooldown_offset: 1400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 25, cooldown: 15000, cooldown_offset: 1400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 27, cooldown: 15000, cooldown_offset: 1600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 28, cooldown: 15000, cooldown_offset: 1600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 30, cooldown: 15000, cooldown_offset: 1800)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 31, cooldown: 15000, cooldown_offset: 1800)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 33, cooldown: 15000, cooldown_offset: 2000)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 34, cooldown: 15000, cooldown_offset: 2000)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 36, cooldown: 15000, cooldown_offset: 2200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 37, cooldown: 15000, cooldown_offset: 2200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 39, cooldown: 15000, cooldown_offset: 2400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 40, cooldown: 15000, cooldown_offset: 2400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 42, cooldown: 15000, cooldown_offset: 2600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 43, cooldown: 15000, cooldown_offset: 2600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 45, cooldown: 15000, cooldown_offset: 2800)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 46, cooldown: 15000, cooldown_offset: 2800)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 48, cooldown: 15000, cooldown_offset: 3000)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 49, cooldown: 15000, cooldown_offset: 3000)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 51, cooldown: 15000, cooldown_offset: 3200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 52, cooldown: 15000, cooldown_offset: 3200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 54, cooldown: 15000, cooldown_offset: 3400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 55, cooldown: 15000, cooldown_offset: 3400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 57, cooldown: 15000, cooldown_offset: 3600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 58, cooldown: 15000, cooldown_offset: 3600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 60, cooldown: 15000, cooldown_offset: 3800)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 61, cooldown: 15000, cooldown_offset: 3800)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 63, cooldown: 15000, cooldown_offset: 4000)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 64, cooldown: 15000, cooldown_offset: 4000)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 66, cooldown: 15000, cooldown_offset: 4200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 67, cooldown: 15000, cooldown_offset: 4200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 69, cooldown: 15000, cooldown_offset: 4400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 70, cooldown: 15000, cooldown_offset: 4400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 72, cooldown: 15000, cooldown_offset: 4600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 73, cooldown: 15000, cooldown_offset: 4600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 75, cooldown: 15000, cooldown_offset: 4800)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 76, cooldown: 15000, cooldown_offset: 4800)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 78, cooldown: 15000, cooldown_offset: 5000)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 79, cooldown: 15000, cooldown_offset: 5000)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 81, cooldown: 15000, cooldown_offset: 5200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 82, cooldown: 15000, cooldown_offset: 5200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 84, cooldown: 15000, cooldown_offset: 5400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 85, cooldown: 15000, cooldown_offset: 5400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 87, cooldown: 15000, cooldown_offset: 5600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 88, cooldown: 15000, cooldown_offset: 5600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 90, cooldown: 15000, cooldown_offset: 5800)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 91, cooldown: 15000, cooldown_offset: 5800)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 93, cooldown: 15000, cooldown_offset: 6000)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 94, cooldown: 15000, cooldown_offset: 6000)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 96, cooldown: 15000, cooldown_offset: 6200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 97, cooldown: 15000, cooldown_offset: 6200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 99, cooldown: 15000, cooldown_offset: 6400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 100, cooldown: 15000, cooldown_offset: 6400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 102, cooldown: 15000, cooldown_offset: 6600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 103, cooldown: 15000, cooldown_offset: 6600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 105, cooldown: 15000, cooldown_offset: 6800)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 106, cooldown: 15000, cooldown_offset: 6800)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 108, cooldown: 15000, cooldown_offset: 7000)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 109, cooldown: 15000, cooldown_offset: 7000)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 111, cooldown: 15000, cooldown_offset: 7200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 112, cooldown: 15000, cooldown_offset: 7200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 114, cooldown: 15000, cooldown_offset: 7400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 115, cooldown: 15000, cooldown_offset: 7400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 117, cooldown: 15000, cooldown_offset: 7400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 118, cooldown: 15000, cooldown_offset: 7400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 120, cooldown: 15000, cooldown_offset: 7600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 121, cooldown: 15000, cooldown_offset: 7600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 123, cooldown: 15000, cooldown_offset: 7800)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 124, cooldown: 15000, cooldown_offset: 7800)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 126, cooldown: 15000, cooldown_offset: 8000)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 127, cooldown: 15000, cooldown_offset: 8000)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 129, cooldown: 15000, cooldown_offset: 8200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 130, cooldown: 15000, cooldown_offset: 8200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 132, cooldown: 15000, cooldown_offset: 8400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 133, cooldown: 15000, cooldown_offset: 8400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 135, cooldown: 15000, cooldown_offset: 8600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 136, cooldown: 15000, cooldown_offset: 8600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 138, cooldown: 15000, cooldown_offset: 8800)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 139, cooldown: 15000, cooldown_offset: 8800)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 141, cooldown: 15000, cooldown_offset: 9000)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 142, cooldown: 15000, cooldown_offset: 9000)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 144, cooldown: 15000, cooldown_offset: 9200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 145, cooldown: 15000, cooldown_offset: 9200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 147, cooldown: 15000, cooldown_offset: 9400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 148, cooldown: 15000, cooldown_offset: 9400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 150, cooldown: 15000, cooldown_offset: 9600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 151, cooldown: 15000, cooldown_offset: 9600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 153, cooldown: 15000, cooldown_offset: 9800)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 154, cooldown: 15000, cooldown_offset: 10000)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 156, cooldown: 15000, cooldown_offset: 10000)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 157, cooldown: 15000, cooldown_offset: 10200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 159, cooldown: 15000, cooldown_offset: 10200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 160, cooldown: 15000, cooldown_offset: 10400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 162, cooldown: 15000, cooldown_offset: 10400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 163, cooldown: 15000, cooldown_offset: 10600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 165, cooldown: 15000, cooldown_offset: 10600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 166, cooldown: 15000, cooldown_offset: 10800)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 168, cooldown: 15000, cooldown_offset: 10800)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 169, cooldown: 15000, cooldown_offset: 11000)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 171, cooldown: 15000, cooldown_offset: 11200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 172, cooldown: 15000, cooldown_offset: 11200)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 174, cooldown: 15000, cooldown_offset: 11400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 175, cooldown: 15000, cooldown_offset: 11400)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 177, cooldown: 15000, cooldown_offset: 11600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 178, cooldown: 15000, cooldown_offset: 11600)
+        shoot(50, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 180, cooldown: 15000, cooldown_offset: 11800)
+        on timed(11800) -> tentaclestimer
+    }
+    state tentaclestimer {
+        conditional_effect(invincible)
+        conditional_effect(invisible)
+        conditional_effect(stasis)
+        on timed(2500) -> tentacles
+    }
+    state moveaftertentacles {
+        conditional_effect(invincible)
+        conditional_effect(invisible)
+        conditional_effect(stasis)
+        move_to2(0, -8, 0.5, once: true)
+        order(40, "shtrs Lava Souls maker", "Idle")
+        order(60, "shtrs king lava1", "lava")
+        order(60, "shtrs king lava2", "lava")
+        on timed(3000) -> aftertentacles
+    }
+    state aftertentacles {
+        on hp_below(0.4) -> godpatience
+        on timed(3000) -> shootattop
+    }
+    state shootattop {
+        conditional_effect(invincible)
+        conditional_effect(invisible)
+        conditional_effect(stasis)
+        shoot(40, 2, 45, projectile: 2, cooldown: 500, cooldown_offset: 200)
+        shoot(40, 2, 45, projectile: 3, cooldown: 500)
+        shoot(40, 1, fixed_angle: 180, projectile: 1, cooldown: 9999)
+        shoot(40, 1, fixed_angle: 0, projectile: 1, cooldown: 9999)
+        shoot(40, 1, fixed_angle: 169, projectile: 1, cooldown: 9999, cooldown_offset: 400)
+        shoot(40, 1, fixed_angle: 11, projectile: 1, cooldown: 9999, cooldown_offset: 400)
+        shoot(40, 1, fixed_angle: 158, projectile: 1, cooldown: 9999, cooldown_offset: 400)
+        shoot(40, 1, fixed_angle: 22, projectile: 1, cooldown: 9999, cooldown_offset: 400)
+        shoot(40, 1, fixed_angle: 147, projectile: 1, cooldown: 9999, cooldown_offset: 700)
+        shoot(40, 1, fixed_angle: 33, projectile: 1, cooldown: 9999, cooldown_offset: 700)
+        shoot(40, 1, fixed_angle: 135, projectile: 1, cooldown: 9999, cooldown_offset: 700)
+        shoot(40, 1, fixed_angle: 45, projectile: 1, cooldown: 9999, cooldown_offset: 700)
+        shoot(40, 1, fixed_angle: 124, projectile: 1, cooldown: 9999, cooldown_offset: 700)
+        shoot(40, 1, fixed_angle: 56, projectile: 1, cooldown: 9999, cooldown_offset: 700)
+        shoot(40, 1, fixed_angle: 117, projectile: 1, cooldown: 9999, cooldown_offset: 1000)
+        shoot(40, 1, fixed_angle: 63, projectile: 1, cooldown: 9999, cooldown_offset: 1000)
+        shoot(40, 1, fixed_angle: 103, projectile: 1, cooldown: 9999, cooldown_offset: 1150)
+        shoot(40, 1, fixed_angle: 77, projectile: 1, cooldown: 9999, cooldown_offset: 1150)
+        shoot(40, 1, fixed_angle: 90, projectile: 1, cooldown: 9999, cooldown_offset: 1250)
+        shoot(40, 1, fixed_angle: 90, projectile: 1, cooldown: 9999, cooldown_offset: 1250)
+        shoot(40, 1, fixed_angle: 100, projectile: 1, cooldown: 9999, cooldown_offset: 1310)
+        shoot(40, 1, fixed_angle: 80, projectile: 1, cooldown: 9999, cooldown_offset: 1310)
+        shoot(40, 1, fixed_angle: 124, projectile: 1, cooldown: 9999, cooldown_offset: 1400)
+        shoot(40, 1, fixed_angle: 56, projectile: 1, cooldown: 9999, cooldown_offset: 1400)
+        shoot(40, 1, fixed_angle: 135, projectile: 1, cooldown: 9999, cooldown_offset: 1550)
+        shoot(40, 1, fixed_angle: 45, projectile: 1, cooldown: 9999, cooldown_offset: 1550)
+        shoot(40, 1, fixed_angle: 147, projectile: 1, cooldown: 9999, cooldown_offset: 1650)
+        shoot(40, 1, fixed_angle: 33, projectile: 1, cooldown: 9999, cooldown_offset: 1650)
+        shoot(40, 1, fixed_angle: 180, projectile: 1, cooldown: 9999, cooldown_offset: 1750)
+        shoot(40, 1, fixed_angle: 0, projectile: 1, cooldown: 9999, cooldown_offset: 1750)
+        shoot(40, 1, fixed_angle: 169, projectile: 1, cooldown: 9999, cooldown_offset: 1850)
+        shoot(40, 1, fixed_angle: 11, projectile: 1, cooldown: 9999, cooldown_offset: 1850)
+        shoot(40, 1, fixed_angle: 169, projectile: 1, cooldown: 9999, cooldown_offset: 1950)
+        shoot(40, 1, fixed_angle: 11, projectile: 1, cooldown: 9999, cooldown_offset: 1950)
+        shoot(40, 1, fixed_angle: 158, projectile: 1, cooldown: 9999, cooldown_offset: 2050)
+        shoot(40, 1, fixed_angle: 22, projectile: 1, cooldown: 9999, cooldown_offset: 2050)
+        shoot(40, 1, fixed_angle: 147, projectile: 1, cooldown: 9999, cooldown_offset: 2150)
+        shoot(40, 1, fixed_angle: 33, projectile: 1, cooldown: 9999, cooldown_offset: 2150)
+        shoot(40, 1, fixed_angle: 135, projectile: 1, cooldown: 9999, cooldown_offset: 2250)
+        shoot(40, 1, fixed_angle: 45, projectile: 1, cooldown: 9999, cooldown_offset: 2250)
+        shoot(40, 1, fixed_angle: 124, projectile: 1, cooldown: 9999, cooldown_offset: 2350)
+        shoot(40, 1, fixed_angle: 56, projectile: 1, cooldown: 9999, cooldown_offset: 2350)
+        shoot(40, 1, fixed_angle: 117, projectile: 1, cooldown: 9999, cooldown_offset: 2450)
+        shoot(40, 1, fixed_angle: 63, projectile: 1, cooldown: 9999, cooldown_offset: 2450)
+        shoot(40, 1, fixed_angle: 90, projectile: 1, cooldown: 9999, cooldown_offset: 2550)
+        shoot(40, 1, fixed_angle: 90, projectile: 1, cooldown: 9999, cooldown_offset: 2550)
+        shoot(40, 1, fixed_angle: 100, projectile: 1, cooldown: 9999, cooldown_offset: 2610)
+        shoot(40, 1, fixed_angle: 80, projectile: 1, cooldown: 9999, cooldown_offset: 2610)
+        shoot(40, 1, fixed_angle: 124, projectile: 1, cooldown: 9999, cooldown_offset: 2680)
+        shoot(40, 1, fixed_angle: 56, projectile: 1, cooldown: 9999, cooldown_offset: 2680)
+        shoot(40, 1, fixed_angle: 135, projectile: 1, cooldown: 9999, cooldown_offset: 2830)
+        shoot(40, 1, fixed_angle: 45, projectile: 1, cooldown: 9999, cooldown_offset: 2830)
+        shoot(40, 1, fixed_angle: 147, projectile: 1, cooldown: 9999, cooldown_offset: 2980)
+        shoot(40, 1, fixed_angle: 33, projectile: 1, cooldown: 9999, cooldown_offset: 2980)
+        shoot(40, 1, fixed_angle: 180, projectile: 1, cooldown: 9999, cooldown_offset: 3030)
+        shoot(40, 1, fixed_angle: 0, projectile: 1, cooldown: 9999, cooldown_offset: 3030)
+        shoot(40, 1, fixed_angle: 169, projectile: 1, cooldown: 9999, cooldown_offset: 3180)
+        shoot(40, 1, fixed_angle: 11, projectile: 1, cooldown: 9999, cooldown_offset: 3180)
+        shoot(40, 1, fixed_angle: 169, projectile: 1, cooldown: 9999, cooldown_offset: 3230)
+        shoot(40, 1, fixed_angle: 11, projectile: 1, cooldown: 9999, cooldown_offset: 3230)
+        shoot(40, 1, fixed_angle: 158, projectile: 1, cooldown: 9999, cooldown_offset: 3380)
+        shoot(40, 1, fixed_angle: 22, projectile: 1, cooldown: 9999, cooldown_offset: 3380)
+        shoot(40, 1, fixed_angle: 147, projectile: 1, cooldown: 9999, cooldown_offset: 3530)
+        shoot(40, 1, fixed_angle: 33, projectile: 1, cooldown: 9999, cooldown_offset: 3530)
+        shoot(40, 1, fixed_angle: 135, projectile: 1, cooldown: 9999, cooldown_offset: 3680)
+        shoot(40, 1, fixed_angle: 45, projectile: 1, cooldown: 9999, cooldown_offset: 3680)
+        shoot(40, 1, fixed_angle: 124, projectile: 1, cooldown: 9999, cooldown_offset: 3830)
+        shoot(40, 1, fixed_angle: 56, projectile: 1, cooldown: 9999, cooldown_offset: 3830)
+        shoot(40, 1, fixed_angle: 117, projectile: 1, cooldown: 9999, cooldown_offset: 3980)
+        shoot(40, 1, fixed_angle: 63, projectile: 1, cooldown: 9999, cooldown_offset: 3980)
+        on hp_below(0.4) -> godpatience
+        on timed(4000) -> shootattop2
+    }
+    state shootattop2 {
+        conditional_effect(invincible)
+        conditional_effect(invisible)
+        conditional_effect(stasis)
+        shoot(40, 2, 45, projectile: 2, cooldown: 500, cooldown_offset: 200)
+        shoot(40, 2, 45, projectile: 3, cooldown: 500)
+        shoot(40, 1, fixed_angle: 180, projectile: 1, cooldown: 9999)
+        shoot(40, 1, fixed_angle: 0, projectile: 1, cooldown: 9999)
+        shoot(40, 1, fixed_angle: 169, projectile: 1, cooldown: 9999, cooldown_offset: 400)
+        shoot(40, 1, fixed_angle: 11, projectile: 1, cooldown: 9999, cooldown_offset: 400)
+        shoot(40, 1, fixed_angle: 158, projectile: 1, cooldown: 9999, cooldown_offset: 400)
+        shoot(40, 1, fixed_angle: 22, projectile: 1, cooldown: 9999, cooldown_offset: 400)
+        shoot(40, 1, fixed_angle: 147, projectile: 1, cooldown: 9999, cooldown_offset: 700)
+        shoot(40, 1, fixed_angle: 33, projectile: 1, cooldown: 9999, cooldown_offset: 700)
+        shoot(40, 1, fixed_angle: 135, projectile: 1, cooldown: 9999, cooldown_offset: 700)
+        shoot(40, 1, fixed_angle: 45, projectile: 1, cooldown: 9999, cooldown_offset: 700)
+        shoot(40, 1, fixed_angle: 124, projectile: 1, cooldown: 9999, cooldown_offset: 700)
+        shoot(40, 1, fixed_angle: 56, projectile: 1, cooldown: 9999, cooldown_offset: 700)
+        shoot(40, 1, fixed_angle: 117, projectile: 1, cooldown: 9999, cooldown_offset: 1000)
+        shoot(40, 1, fixed_angle: 63, projectile: 1, cooldown: 9999, cooldown_offset: 1000)
+        shoot(40, 1, fixed_angle: 103, projectile: 1, cooldown: 9999, cooldown_offset: 1150)
+        shoot(40, 1, fixed_angle: 77, projectile: 1, cooldown: 9999, cooldown_offset: 1150)
+        shoot(40, 1, fixed_angle: 90, projectile: 1, cooldown: 9999, cooldown_offset: 1250)
+        shoot(40, 1, fixed_angle: 90, projectile: 1, cooldown: 9999, cooldown_offset: 1250)
+        shoot(40, 1, fixed_angle: 100, projectile: 1, cooldown: 9999, cooldown_offset: 1310)
+        shoot(40, 1, fixed_angle: 80, projectile: 1, cooldown: 9999, cooldown_offset: 1310)
+        shoot(40, 1, fixed_angle: 124, projectile: 1, cooldown: 9999, cooldown_offset: 1400)
+        shoot(40, 1, fixed_angle: 56, projectile: 1, cooldown: 9999, cooldown_offset: 1400)
+        shoot(40, 1, fixed_angle: 135, projectile: 1, cooldown: 9999, cooldown_offset: 1550)
+        shoot(40, 1, fixed_angle: 45, projectile: 1, cooldown: 9999, cooldown_offset: 1550)
+        shoot(40, 1, fixed_angle: 147, projectile: 1, cooldown: 9999, cooldown_offset: 1650)
+        shoot(40, 1, fixed_angle: 33, projectile: 1, cooldown: 9999, cooldown_offset: 1650)
+        shoot(40, 1, fixed_angle: 180, projectile: 1, cooldown: 9999, cooldown_offset: 1750)
+        shoot(40, 1, fixed_angle: 0, projectile: 1, cooldown: 9999, cooldown_offset: 1750)
+        shoot(40, 1, fixed_angle: 169, projectile: 1, cooldown: 9999, cooldown_offset: 1850)
+        shoot(40, 1, fixed_angle: 11, projectile: 1, cooldown: 9999, cooldown_offset: 1850)
+        shoot(40, 1, fixed_angle: 169, projectile: 1, cooldown: 9999, cooldown_offset: 1950)
+        shoot(40, 1, fixed_angle: 11, projectile: 1, cooldown: 9999, cooldown_offset: 1950)
+        shoot(40, 1, fixed_angle: 158, projectile: 1, cooldown: 9999, cooldown_offset: 2050)
+        shoot(40, 1, fixed_angle: 22, projectile: 1, cooldown: 9999, cooldown_offset: 2050)
+        shoot(40, 1, fixed_angle: 147, projectile: 1, cooldown: 9999, cooldown_offset: 2150)
+        shoot(40, 1, fixed_angle: 33, projectile: 1, cooldown: 9999, cooldown_offset: 2150)
+        shoot(40, 1, fixed_angle: 135, projectile: 1, cooldown: 9999, cooldown_offset: 2250)
+        shoot(40, 1, fixed_angle: 45, projectile: 1, cooldown: 9999, cooldown_offset: 2250)
+        shoot(40, 1, fixed_angle: 124, projectile: 1, cooldown: 9999, cooldown_offset: 2350)
+        shoot(40, 1, fixed_angle: 56, projectile: 1, cooldown: 9999, cooldown_offset: 2350)
+        shoot(40, 1, fixed_angle: 117, projectile: 1, cooldown: 9999, cooldown_offset: 2450)
+        shoot(40, 1, fixed_angle: 63, projectile: 1, cooldown: 9999, cooldown_offset: 2450)
+        shoot(40, 1, fixed_angle: 90, projectile: 1, cooldown: 9999, cooldown_offset: 2550)
+        shoot(40, 1, fixed_angle: 90, projectile: 1, cooldown: 9999, cooldown_offset: 2550)
+        shoot(40, 1, fixed_angle: 100, projectile: 1, cooldown: 9999, cooldown_offset: 2610)
+        shoot(40, 1, fixed_angle: 80, projectile: 1, cooldown: 9999, cooldown_offset: 2610)
+        shoot(40, 1, fixed_angle: 124, projectile: 1, cooldown: 9999, cooldown_offset: 2680)
+        shoot(40, 1, fixed_angle: 56, projectile: 1, cooldown: 9999, cooldown_offset: 2680)
+        shoot(40, 1, fixed_angle: 135, projectile: 1, cooldown: 9999, cooldown_offset: 2830)
+        shoot(40, 1, fixed_angle: 45, projectile: 1, cooldown: 9999, cooldown_offset: 2830)
+        shoot(40, 1, fixed_angle: 147, projectile: 1, cooldown: 9999, cooldown_offset: 2980)
+        shoot(40, 1, fixed_angle: 33, projectile: 1, cooldown: 9999, cooldown_offset: 2980)
+        shoot(40, 1, fixed_angle: 180, projectile: 1, cooldown: 9999, cooldown_offset: 3030)
+        shoot(40, 1, fixed_angle: 0, projectile: 1, cooldown: 9999, cooldown_offset: 3030)
+        shoot(40, 1, fixed_angle: 169, projectile: 1, cooldown: 9999, cooldown_offset: 3180)
+        shoot(40, 1, fixed_angle: 11, projectile: 1, cooldown: 9999, cooldown_offset: 3180)
+        shoot(40, 1, fixed_angle: 169, projectile: 1, cooldown: 9999, cooldown_offset: 3230)
+        shoot(40, 1, fixed_angle: 11, projectile: 1, cooldown: 9999, cooldown_offset: 3230)
+        shoot(40, 1, fixed_angle: 158, projectile: 1, cooldown: 9999, cooldown_offset: 3380)
+        shoot(40, 1, fixed_angle: 22, projectile: 1, cooldown: 9999, cooldown_offset: 3380)
+        shoot(40, 1, fixed_angle: 147, projectile: 1, cooldown: 9999, cooldown_offset: 3530)
+        shoot(40, 1, fixed_angle: 33, projectile: 1, cooldown: 9999, cooldown_offset: 3530)
+        shoot(40, 1, fixed_angle: 135, projectile: 1, cooldown: 9999, cooldown_offset: 3680)
+        shoot(40, 1, fixed_angle: 45, projectile: 1, cooldown: 9999, cooldown_offset: 3680)
+        shoot(40, 1, fixed_angle: 124, projectile: 1, cooldown: 9999, cooldown_offset: 3830)
+        shoot(40, 1, fixed_angle: 56, projectile: 1, cooldown: 9999, cooldown_offset: 3830)
+        shoot(40, 1, fixed_angle: 117, projectile: 1, cooldown: 9999, cooldown_offset: 3980)
+        shoot(40, 1, fixed_angle: 63, projectile: 1, cooldown: 9999, cooldown_offset: 3980)
+        on hp_below(0.4) -> godpatience
+        on timed(4000) -> aftertentacles
+    }
+    state godpatience {
+        order(60, "shtrs king lava1", "lava")
+        order(60, "shtrs king lava2", "lava")
+        conditional_effect(invincible)
+        conditional_effect(invisible)
+        conditional_effect(stasis)
+        taunt("YOU TEST THE PATIENCE OF A GOD!")
+        order(40, "shtrs Lava Souls Maker", "Spawn")
+        spawn("shtrs king timer", max_children: 1, initial_spawn: 1, cooldown: 999999)
+        on timed(2000) -> diedie
+    }
+    state diedie {
+        order(60, "shtrs king timer", "timer1")
+        conditional_effect(invincible)
+        conditional_effect(invisible)
+        conditional_effect(stasis)
+        on no_player_within(7) -> diewait
+        on player_within(7) -> dieshoot
+    }
+    state dieshoot {
+        conditional_effect(invincible)
+        conditional_effect(invisible)
+        conditional_effect(stasis)
+        on no_player_within(7) -> diewait
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 3, cooldown: 15000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 4, cooldown: 15000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 6, cooldown: 15000, cooldown_offset: 200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 7, cooldown: 15000, cooldown_offset: 200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 9, cooldown: 15000, cooldown_offset: 400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 10, cooldown: 15000, cooldown_offset: 400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 12, cooldown: 15000, cooldown_offset: 600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 13, cooldown: 15000, cooldown_offset: 600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 15, cooldown: 15000, cooldown_offset: 800)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 16, cooldown: 15000, cooldown_offset: 800)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 18, cooldown: 15000, cooldown_offset: 1000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 19, cooldown: 15000, cooldown_offset: 1000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 21, cooldown: 15000, cooldown_offset: 1200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 22, cooldown: 15000, cooldown_offset: 1200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 24, cooldown: 15000, cooldown_offset: 1400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 25, cooldown: 15000, cooldown_offset: 1400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 27, cooldown: 15000, cooldown_offset: 1600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 28, cooldown: 15000, cooldown_offset: 1600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 30, cooldown: 15000, cooldown_offset: 1800)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 31, cooldown: 15000, cooldown_offset: 1800)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 33, cooldown: 15000, cooldown_offset: 2000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 34, cooldown: 15000, cooldown_offset: 2000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 36, cooldown: 15000, cooldown_offset: 2200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 37, cooldown: 15000, cooldown_offset: 2200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 39, cooldown: 15000, cooldown_offset: 2400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 40, cooldown: 15000, cooldown_offset: 2400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 42, cooldown: 15000, cooldown_offset: 2600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 43, cooldown: 15000, cooldown_offset: 2600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 45, cooldown: 15000, cooldown_offset: 2800)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 46, cooldown: 15000, cooldown_offset: 2800)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 48, cooldown: 15000, cooldown_offset: 3000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 49, cooldown: 15000, cooldown_offset: 3000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 51, cooldown: 15000, cooldown_offset: 3200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 52, cooldown: 15000, cooldown_offset: 3200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 54, cooldown: 15000, cooldown_offset: 3400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 55, cooldown: 15000, cooldown_offset: 3400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 57, cooldown: 15000, cooldown_offset: 3600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 58, cooldown: 15000, cooldown_offset: 3600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 60, cooldown: 15000, cooldown_offset: 3800)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 61, cooldown: 15000, cooldown_offset: 3800)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 63, cooldown: 15000, cooldown_offset: 4000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 64, cooldown: 15000, cooldown_offset: 4000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 66, cooldown: 15000, cooldown_offset: 4200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 67, cooldown: 15000, cooldown_offset: 4200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 69, cooldown: 15000, cooldown_offset: 4400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 70, cooldown: 15000, cooldown_offset: 4400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 72, cooldown: 15000, cooldown_offset: 4600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 73, cooldown: 15000, cooldown_offset: 4600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 75, cooldown: 15000, cooldown_offset: 4800)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 76, cooldown: 15000, cooldown_offset: 4800)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 78, cooldown: 15000, cooldown_offset: 5000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 79, cooldown: 15000, cooldown_offset: 5000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 81, cooldown: 15000, cooldown_offset: 5200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 82, cooldown: 15000, cooldown_offset: 5200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 84, cooldown: 15000, cooldown_offset: 5400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 85, cooldown: 15000, cooldown_offset: 5400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 87, cooldown: 15000, cooldown_offset: 5600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 88, cooldown: 15000, cooldown_offset: 5600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 90, cooldown: 15000, cooldown_offset: 5800)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 91, cooldown: 15000, cooldown_offset: 5800)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 93, cooldown: 15000, cooldown_offset: 6000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 94, cooldown: 15000, cooldown_offset: 6000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 96, cooldown: 15000, cooldown_offset: 6200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 97, cooldown: 15000, cooldown_offset: 6200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 99, cooldown: 15000, cooldown_offset: 6400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 100, cooldown: 15000, cooldown_offset: 6400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 102, cooldown: 15000, cooldown_offset: 6600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 103, cooldown: 15000, cooldown_offset: 6600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 105, cooldown: 15000, cooldown_offset: 6800)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 106, cooldown: 15000, cooldown_offset: 6800)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 108, cooldown: 15000, cooldown_offset: 7000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 109, cooldown: 15000, cooldown_offset: 7000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 111, cooldown: 15000, cooldown_offset: 7200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 112, cooldown: 15000, cooldown_offset: 7200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 114, cooldown: 15000, cooldown_offset: 7400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 115, cooldown: 15000, cooldown_offset: 7400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 6, cooldown: 15000, cooldown_offset: 7600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 7, cooldown: 15000, cooldown_offset: 7600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 9, cooldown: 15000, cooldown_offset: 7800)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 10, cooldown: 15000, cooldown_offset: 7800)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 12, cooldown: 15000, cooldown_offset: 8000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 13, cooldown: 15000, cooldown_offset: 8000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 15, cooldown: 15000, cooldown_offset: 8200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 16, cooldown: 15000, cooldown_offset: 8200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 18, cooldown: 15000, cooldown_offset: 8400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 19, cooldown: 15000, cooldown_offset: 8400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 21, cooldown: 15000, cooldown_offset: 8600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 22, cooldown: 15000, cooldown_offset: 8600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 24, cooldown: 15000, cooldown_offset: 8800)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 25, cooldown: 15000, cooldown_offset: 8800)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 27, cooldown: 15000, cooldown_offset: 9000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 28, cooldown: 15000, cooldown_offset: 9000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 30, cooldown: 15000, cooldown_offset: 9200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 31, cooldown: 15000, cooldown_offset: 9200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 33, cooldown: 15000, cooldown_offset: 9400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 34, cooldown: 15000, cooldown_offset: 9400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 36, cooldown: 15000, cooldown_offset: 9600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 37, cooldown: 15000, cooldown_offset: 9600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 39, cooldown: 15000, cooldown_offset: 9800)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 40, cooldown: 15000, cooldown_offset: 10000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 42, cooldown: 15000, cooldown_offset: 10000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 43, cooldown: 15000, cooldown_offset: 10200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 45, cooldown: 15000, cooldown_offset: 10200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 46, cooldown: 15000, cooldown_offset: 10400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 48, cooldown: 15000, cooldown_offset: 10400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 49, cooldown: 15000, cooldown_offset: 10600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 51, cooldown: 15000, cooldown_offset: 10600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 52, cooldown: 15000, cooldown_offset: 10800)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 54, cooldown: 15000, cooldown_offset: 10800)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 55, cooldown: 15000, cooldown_offset: 11000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 57, cooldown: 15000, cooldown_offset: 11200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 58, cooldown: 15000, cooldown_offset: 11200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 60, cooldown: 15000, cooldown_offset: 11400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 61, cooldown: 15000, cooldown_offset: 11400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 63, cooldown: 15000, cooldown_offset: 11600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 64, cooldown: 15000, cooldown_offset: 11600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 66, cooldown: 15000, cooldown_offset: 11800)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 67, cooldown: 15000, cooldown_offset: 11800)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 69, cooldown: 15000, cooldown_offset: 12000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 70, cooldown: 15000, cooldown_offset: 12000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 72, cooldown: 15000, cooldown_offset: 12200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 73, cooldown: 15000, cooldown_offset: 12200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 75, cooldown: 15000, cooldown_offset: 12400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 76, cooldown: 15000, cooldown_offset: 12400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 78, cooldown: 15000, cooldown_offset: 12600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 79, cooldown: 15000, cooldown_offset: 12600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 81, cooldown: 15000, cooldown_offset: 12800)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 82, cooldown: 15000, cooldown_offset: 12800)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 84, cooldown: 15000, cooldown_offset: 13000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 85, cooldown: 15000, cooldown_offset: 13000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 87, cooldown: 15000, cooldown_offset: 13200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 88, cooldown: 15000, cooldown_offset: 13200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 90, cooldown: 15000, cooldown_offset: 13400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 91, cooldown: 15000, cooldown_offset: 13400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 93, cooldown: 15000, cooldown_offset: 13600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 94, cooldown: 15000, cooldown_offset: 13600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 96, cooldown: 15000, cooldown_offset: 13800)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 97, cooldown: 15000, cooldown_offset: 13800)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 99, cooldown: 15000, cooldown_offset: 14000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 100, cooldown: 15000, cooldown_offset: 14000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 102, cooldown: 15000, cooldown_offset: 14200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 103, cooldown: 15000, cooldown_offset: 14200)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 105, cooldown: 15000, cooldown_offset: 14400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 106, cooldown: 15000, cooldown_offset: 14400)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 108, cooldown: 15000, cooldown_offset: 14600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 109, cooldown: 15000, cooldown_offset: 14600)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 111, cooldown: 15000, cooldown_offset: 14800)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 112, cooldown: 15000, cooldown_offset: 14800)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 114, cooldown: 15000, cooldown_offset: 15000)
+        shoot(2, projectile: 4, count: 6, shoot_angle: 60, fixed_angle: 115, cooldown: 15000, cooldown_offset: 15000)
+        shoot(2, 2, 45, projectile: 2, cooldown: 500, cooldown_offset: 200)
+        shoot(2, 2, 45, projectile: 3, cooldown: 500)
+        shoot(2, 1, fixed_angle: 180, projectile: 1, cooldown: 9999)
+        shoot(2, 1, fixed_angle: 0, projectile: 1, cooldown: 9999)
+        shoot(2, 1, fixed_angle: 169, projectile: 1, cooldown: 9999, cooldown_offset: 400)
+        shoot(2, 1, fixed_angle: 11, projectile: 1, cooldown: 9999, cooldown_offset: 400)
+        shoot(2, 1, fixed_angle: 158, projectile: 1, cooldown: 9999, cooldown_offset: 400)
+        shoot(2, 1, fixed_angle: 22, projectile: 1, cooldown: 9999, cooldown_offset: 400)
+        shoot(2, 1, fixed_angle: 147, projectile: 1, cooldown: 9999, cooldown_offset: 700)
+        shoot(2, 1, fixed_angle: 33, projectile: 1, cooldown: 9999, cooldown_offset: 700)
+        shoot(2, 1, fixed_angle: 135, projectile: 1, cooldown: 9999, cooldown_offset: 700)
+        shoot(2, 1, fixed_angle: 45, projectile: 1, cooldown: 9999, cooldown_offset: 700)
+        shoot(2, 1, fixed_angle: 124, projectile: 1, cooldown: 9999, cooldown_offset: 700)
+        shoot(2, 1, fixed_angle: 56, projectile: 1, cooldown: 9999, cooldown_offset: 700)
+        shoot(2, 1, fixed_angle: 117, projectile: 1, cooldown: 9999, cooldown_offset: 1000)
+        shoot(2, 1, fixed_angle: 63, projectile: 1, cooldown: 9999, cooldown_offset: 1000)
+        shoot(2, 1, fixed_angle: 103, projectile: 1, cooldown: 9999, cooldown_offset: 1150)
+        shoot(2, 1, fixed_angle: 77, projectile: 1, cooldown: 9999, cooldown_offset: 1150)
+        shoot(2, 1, fixed_angle: 90, projectile: 1, cooldown: 9999, cooldown_offset: 1250)
+        shoot(2, 1, fixed_angle: 90, projectile: 1, cooldown: 9999, cooldown_offset: 1250)
+        shoot(2, 1, fixed_angle: 100, projectile: 1, cooldown: 9999, cooldown_offset: 1310)
+        shoot(2, 1, fixed_angle: 80, projectile: 1, cooldown: 9999, cooldown_offset: 1310)
+        shoot(2, 1, fixed_angle: 124, projectile: 1, cooldown: 9999, cooldown_offset: 1400)
+        shoot(2, 1, fixed_angle: 56, projectile: 1, cooldown: 9999, cooldown_offset: 1400)
+        shoot(2, 1, fixed_angle: 135, projectile: 1, cooldown: 9999, cooldown_offset: 1550)
+        shoot(2, 1, fixed_angle: 45, projectile: 1, cooldown: 9999, cooldown_offset: 1550)
+        shoot(2, 1, fixed_angle: 147, projectile: 1, cooldown: 9999, cooldown_offset: 1650)
+        shoot(2, 1, fixed_angle: 33, projectile: 1, cooldown: 9999, cooldown_offset: 1650)
+        shoot(2, 1, fixed_angle: 180, projectile: 1, cooldown: 9999, cooldown_offset: 1750)
+        shoot(2, 1, fixed_angle: 0, projectile: 1, cooldown: 9999, cooldown_offset: 1750)
+        shoot(2, 1, fixed_angle: 169, projectile: 1, cooldown: 9999, cooldown_offset: 1850)
+        shoot(2, 1, fixed_angle: 11, projectile: 1, cooldown: 9999, cooldown_offset: 1850)
+        shoot(2, 1, fixed_angle: 169, projectile: 1, cooldown: 9999, cooldown_offset: 1950)
+        shoot(2, 1, fixed_angle: 11, projectile: 1, cooldown: 9999, cooldown_offset: 1950)
+        shoot(2, 1, fixed_angle: 158, projectile: 1, cooldown: 9999, cooldown_offset: 2050)
+        shoot(2, 1, fixed_angle: 22, projectile: 1, cooldown: 9999, cooldown_offset: 2050)
+        shoot(2, 1, fixed_angle: 147, projectile: 1, cooldown: 9999, cooldown_offset: 2150)
+        shoot(2, 1, fixed_angle: 33, projectile: 1, cooldown: 9999, cooldown_offset: 2150)
+        shoot(2, 1, fixed_angle: 135, projectile: 1, cooldown: 9999, cooldown_offset: 2250)
+        shoot(2, 1, fixed_angle: 45, projectile: 1, cooldown: 9999, cooldown_offset: 2250)
+        shoot(2, 1, fixed_angle: 124, projectile: 1, cooldown: 9999, cooldown_offset: 2350)
+        shoot(2, 1, fixed_angle: 56, projectile: 1, cooldown: 9999, cooldown_offset: 2350)
+        shoot(2, 1, fixed_angle: 117, projectile: 1, cooldown: 9999, cooldown_offset: 2450)
+        shoot(2, 1, fixed_angle: 63, projectile: 1, cooldown: 9999, cooldown_offset: 2450)
+        shoot(2, 1, fixed_angle: 90, projectile: 1, cooldown: 9999, cooldown_offset: 2550)
+        shoot(2, 1, fixed_angle: 90, projectile: 1, cooldown: 9999, cooldown_offset: 2550)
+        shoot(2, 1, fixed_angle: 100, projectile: 1, cooldown: 9999, cooldown_offset: 2610)
+        shoot(2, 1, fixed_angle: 80, projectile: 1, cooldown: 9999, cooldown_offset: 2610)
+        shoot(2, 1, fixed_angle: 124, projectile: 1, cooldown: 9999, cooldown_offset: 2680)
+        shoot(2, 1, fixed_angle: 56, projectile: 1, cooldown: 9999, cooldown_offset: 2680)
+        shoot(2, 1, fixed_angle: 135, projectile: 1, cooldown: 9999, cooldown_offset: 2830)
+        shoot(2, 1, fixed_angle: 45, projectile: 1, cooldown: 9999, cooldown_offset: 2830)
+        shoot(2, 1, fixed_angle: 147, projectile: 1, cooldown: 9999, cooldown_offset: 2980)
+        shoot(2, 1, fixed_angle: 33, projectile: 1, cooldown: 9999, cooldown_offset: 2980)
+        shoot(2, 1, fixed_angle: 180, projectile: 1, cooldown: 9999, cooldown_offset: 3030)
+        shoot(2, 1, fixed_angle: 0, projectile: 1, cooldown: 9999, cooldown_offset: 3030)
+        shoot(2, 1, fixed_angle: 169, projectile: 1, cooldown: 9999, cooldown_offset: 3180)
+        shoot(2, 1, fixed_angle: 11, projectile: 1, cooldown: 9999, cooldown_offset: 3180)
+        shoot(2, 1, fixed_angle: 169, projectile: 1, cooldown: 9999, cooldown_offset: 3230)
+        shoot(2, 1, fixed_angle: 11, projectile: 1, cooldown: 9999, cooldown_offset: 3230)
+        shoot(2, 1, fixed_angle: 158, projectile: 1, cooldown: 9999, cooldown_offset: 3380)
+        shoot(2, 1, fixed_angle: 22, projectile: 1, cooldown: 9999, cooldown_offset: 3380)
+        shoot(2, 1, fixed_angle: 147, projectile: 1, cooldown: 9999, cooldown_offset: 3530)
+        shoot(2, 1, fixed_angle: 33, projectile: 1, cooldown: 9999, cooldown_offset: 3530)
+        shoot(2, 1, fixed_angle: 135, projectile: 1, cooldown: 9999, cooldown_offset: 3680)
+        shoot(2, 1, fixed_angle: 45, projectile: 1, cooldown: 9999, cooldown_offset: 3680)
+        shoot(2, 1, fixed_angle: 124, projectile: 1, cooldown: 9999, cooldown_offset: 3830)
+        shoot(2, 1, fixed_angle: 56, projectile: 1, cooldown: 9999, cooldown_offset: 3830)
+        shoot(2, 1, fixed_angle: 117, projectile: 1, cooldown: 9999, cooldown_offset: 3980)
+        shoot(2, 1, fixed_angle: 63, projectile: 1, cooldown: 9999, cooldown_offset: 3980)
+    }
+    state diewait {
+        conditional_effect(invincible)
+        conditional_effect(invisible)
+        conditional_effect(stasis)
+        on player_within(7) -> dieshoot
+    }
+    state heheh {
+        remove_conditional_effect(invincible)
+        remove_conditional_effect(invisible)
+        remove_conditional_effect(stasis)
+        taunt("Ha... haa...")
+        shoot(40, 6, projectile: 4, rotate_angle: 1, cooldown: 999999)
+        shoot(40, 6, projectile: 4, rotate_angle: 1, cooldown: 999999, cooldown_offset: 50)
+        shoot(40, 6, projectile: 4, rotate_angle: 1, cooldown: 999999, cooldown_offset: 100)
+        on timed(8000) -> flash
+    }
+    state flash {
+        flash(268369920, flash_repeats: 10000, flash_period: 0.1)
+        on timed(2000) -> diedie
+    }
+    state Death {
+        conditional_effect(invulnerable)
+        copy_damage_on_death("shtrs Loot Balloon King")
+        order(1, "shtrs Chest Spawner 3", "Open")
+        taunt("Impossible..........IMPOSSIBLE!")
+        on timed(2000) -> Suicide
+    }
+    state Suicide {
+        shoot(35, projectile: 0, count: 30)
+        suicide()
+    }
+}
+
+enemy "shtrs Royal Guardian J" {
+    state shoot {
+        orbit(0.35, 2, 5, "shtrs The Forgotten King")
+        shoot(15, 8, projectile: 0)
+    }
+}
+
+enemy "shtrs Royal Guardian L" {
+    state s1st {
+        follow(1, 8, 5)
+        shoot(15, 20, projectile: 0)
+        on timed(1000, "2nd") -> s2nd
+    }
+    state s2nd {
+        follow(1, 8, 5)
+        shoot(10, projectile: 1)
+        on timed(1000, "3rd") -> s3rd
+    }
+    state s3rd {
+        follow(1, 8, 5)
+        shoot(10, projectile: 1)
+        on timed(1000, "1st") -> s1st
+    }
+}
+
+enemy "shtrs Green Crystal" {
+    heal_group(30, "Crystals", cooldown: 2000, heal_amount: 1500)
+    state spawn {
+        conditional_effect(invincible)
+        orbit(0.4, 1, 5, "shtrs The Forgotten King")
+        on timed(7000) -> follow
+    }
+    state follow {
+        follow(0.4, range: 6)
+        follow(0.6, range: 2)
+        on timed(3000) -> dafuq
+    }
+    state dafuq {
+        orbit(1, 4, 10, "shtrs Crystal Tracker")
+        follow(0.4, range: 6)
+        follow(0.4, range: 2, duration: 2000, cooldown: 1500)
+        on timed(2000) -> follow
+    }
+}
+
+enemy "shtrs Yellow Crystal" {
+    state spawn {
+        conditional_effect(invincible)
+        orbit(0.4, 1, 5, "shtrs The Forgotten King")
+        on timed(7000) -> follow
+    }
+    state follow {
+        follow(0.4, range: 6)
+        follow(0.4, range: 6)
+        on timed(25) -> dafuq
+    }
+    state dafuq {
+        orbit(1, 4, 10, "shtrs Crystal Tracker")
+        follow(0.4, range: 6)
+        shoot(5, 4, 4, projectile: 0, cooldown: 1000)
+    }
+}
+
+enemy "shtrs Red Crystal" {
+    state spawn {
+        conditional_effect(invincible)
+        orbit(0.4, 1, 5, "shtrs The Forgotten King")
+        on timed(7000) -> orbit
+    }
+    state orbit {
+        toss_object("shtrs Fire Portal", 5, cooldown: 8000)
+        orbit(1, 4, 10, "shtrs Crystal Tracker")
+        follow(0.4, range: 6)
+        follow(0.4, range: 6)
+        on timed(5000) -> ThrowPortal
+    }
+    state ThrowPortal {
+        orbit(1, 4, 10, "shtrs Crystal Tracker")
+        follow(0.4, range: 6)
+        follow(0.4, range: 6)
+        toss_object("shtrs Fire Portal", 5, cooldown: 8000)
+        on timed(8000) -> orbit
+    }
+}
+
+enemy "shtrs Blue Crystal" {
+    state spawn {
+        conditional_effect(invincible)
+        orbit(0.4, 1, 5, "shtrs The Forgotten King")
+        on timed(7000) -> orbit
+    }
+    state orbit {
+        toss_object("shtrs Ice Portal", 5, cooldown: 8000)
+        orbit(1, 4, 10, "shtrs Crystal Tracker")
+        follow(0.4, range: 6)
+        on timed(5000) -> ThrowPortal
+    }
+    state ThrowPortal {
+        orbit(1, 4, 10, "shtrs Crystal Tracker")
+        follow(0.4, range: 6)
+        follow(0.4, range: 6)
+        toss_object("shtrs Ice Portal", 5, cooldown: 8000)
+        on timed(8000) -> orbit
+    }
+}
+
+enemy "shtrs Crystal Tracker" {
+    follow(2, 10, 1)
+}
+
+enemy "shtrs king timer" {
+    conditional_effect(invincible)
+    state wait {
+        on entity_not_exists("shtrs The Forgotten King", 100) -> death
+    }
+    state timer1 {
+        on timed(28000) -> heheh
+    }
+    state heheh {
+        order(60, "shtrs The Forgotten King", "heheh")
+        on timed(1) -> wait
+    }
+    state death {
+        suicide()
+    }
+}
+
+enemy "shtrs king lava1" {
+    conditional_effect(invincible)
+    state wait {
+        conditional_effect(invisible)
+    }
+    state lava {
+        replace_tile("Dark Cobblestone", "Hot Lava", 0)
+    }
+    state death {
+        suicide()
+    }
+}
+
+enemy "shtrs king lava2" {
+    conditional_effect(invincible)
+    state wait {
+        conditional_effect(invisible)
+    }
+    state lava {
+        replace_tile("Dark Cobblestone", "Hot Lava", 0)
+    }
+    state death {
+        suicide()
+    }
+}
+
+enemy "shtrs The Cursed Crown" {
+    state Idle {
+        conditional_effect(invincible, true)
+        on entity_not_exists("shtrs Royal Guardian L", 100) -> Open
+    }
+    state Open {
+        conditional_effect(invincible, true)
+        move_to2(0, -15, 0.5)
+        on timed(3000) -> WADAFAK
+    }
+    state WADAFAK {
+        transform_on_death("shtrs The Forgotten King")
+        suicide()
+    }
+}
+
+enemy "shtrs Loot Balloon King" {
+    state Idle {
+        conditional_effect(invulnerable)
+        on timed(5000) -> Crown
+    }
+    state Crown {
+    }
+    loot {
+        threshold
+    }
+}
+
+enemy "shtrs Chest Spawner 1" {
+    state Idle {
+        conditional_effect(invincible, true)
+        on entity_not_exists("shtrs Bridge Sentinel", 500) -> Open
+    }
+    state Open {
+        transform_on_death("shtrs Loot Balloon Bridge")
+        suicide()
+    }
+}
+
+enemy "shtrs Chest Spawner 2" {
+    state Idle {
+        conditional_effect(invincible, true)
+        on entity_not_exists("shtrs Twilight Archmage", 500) -> Open
+    }
+    state Open {
+        transform_on_death("shtrs Loot Balloon Mage")
+        suicide()
+    }
+}
+
+enemy "shtrs blobomb maker" {
+    state Idle {
+        conditional_effect(invincible)
+    }
+    state Spawn {
+        spawn("shtrs Blobomb", cooldown: 1500)
+        on timed(3000) -> Spawn2
+    }
+    state Spawn2 {
+        spawn("shtrs Blobomb", cooldown: 1000)
+        on timed(3000) -> Idle
+    }
+}
+
+enemy "shtrs Lava Souls maker" {
+    state Idle {
+        conditional_effect(invincible)
+    }
+    state Spawn {
+        spawn("shtrs Lava Souls", max_children: 1, cooldown: 8000)
+        on timed(8000) -> Spawn2
+    }
+    state Spawn2 {
+        spawn("shtrs Lava Souls", max_children: 1, cooldown: 8000)
+        on timed(8000) -> Spawn
+    }
+}
+
+enemy "shtrs Chest Spawner 3" {
+    state Idle {
+        conditional_effect(invincible, true)
+        on entities_not_exists(30, "shtrs The Cursed Crown", "shtrs The Forgotten King") -> Open
+    }
+    state Open {
+        transform_on_death("shtrs Loot Balloon King")
+        suicide()
+    }
+}
+

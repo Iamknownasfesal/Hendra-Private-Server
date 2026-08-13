@@ -1,0 +1,597 @@
+enemy "Tomb Defender" {
+    state idle {
+        taunt(true, "THIS WILL NOW BE YOUR TOMB!")
+        conditional_effect(armored)
+        orbit(0.6, 5, target: "Tomb Boss Anchor", radius_variance: 0.5)
+        on hp_below(0.989) -> weakning
+    }
+    state weakning {
+        orbit(0.6, 5, target: "Tomb Boss Anchor", radius_variance: 0.5)
+        conditional_effect(armored)
+        taunt(true, "Impudence! I am an Immortal, I needn't waste time on you!")
+        shoot(50, 20, projectile: 3, cooldown: 6000)
+        state blue_shield_1 {
+            conditional_effect(invulnerable)
+            on timed(3000, "unset blue shield 1") -> unset_blue_shield_1
+        }
+        state unset_blue_shield_1 {
+        }
+        on hp_below(0.979) -> active
+    }
+    state active {
+        orbit(0.7, 5, target: "Tomb Boss Anchor", radius_variance: 0.5)
+        conditional_effect(armored)
+        shoot(50, 8, 45, 2, 0, 0, cooldown: 1000)
+        shoot(50, 3, 120, 1, 0, 0, cooldown: 5000)
+        shoot(50, 5, 72, 0, 0, 0, cooldown: 5000)
+        on hp_below(0.7) -> boomerang
+    }
+    state boomerang {
+        conditional_effect(armored)
+        orbit(0.6, 3, target: "Tomb Boss Anchor", radius_variance: 0.5)
+        taunt(true, "Nut, disable our foes!")
+        shoot(50, 1, projectile: 0, cooldown: 3000)
+        shoot(50, 8, projectile: 2, cooldown: 1000)
+        shoot(50, 3, 15, 1, cooldown: 3000)
+        shoot(50, 2, 90, 1, cooldown: 3000)
+        state blue_shield_2 {
+            conditional_effect(invulnerable)
+            on timed(3000, "unset blue shield 2") -> unset_blue_shield_2
+        }
+        state unset_blue_shield_2 {
+        }
+        on hp_below(0.55, "double shot") -> double_shot
+    }
+    state double_shot {
+        taunt(true, "Geb, eradicate these cretins from our tomb!")
+        orbit(0.7, 5, target: "Tomb Boss Anchor", radius_variance: 0.5)
+        shoot(50, 8, projectile: 2, cooldown: 1000)
+        shoot(50, 2, 10, 0, cooldown: 3000)
+        shoot(50, 4, 15, 1, cooldown: 3000)
+        shoot(50, 2, 90, 1, cooldown: 3000)
+        on hp_below(0.4) -> artifacts
+    }
+    state artifacts {
+        conditional_effect(armored)
+        taunt(true, "Nut, let them wish they were dead!")
+        orbit(0.6, 7, target: "Tomb Boss Anchor", radius_variance: 0.5)
+        shoot(50, 8, projectile: 2, cooldown: 1000)
+        shoot(50, 2, 10, 0, cooldown: 3000)
+        shoot(50, 4, 15, 1, cooldown: 3000)
+        shoot(50, 2, 90, 1, cooldown: 3000)
+        spawn("Pyramid Artifact 1", 1, 0)
+        spawn("Pyramid Artifact 2", 1, 0)
+        state blue_shield_3 {
+            conditional_effect(invulnerable)
+            on timed(3000, "unset blue shield 3") -> unset_blue_shield_3
+        }
+        state unset_blue_shield_3 {
+        }
+        on hp_below(0.25, "artifacts 2") -> artifacts_2
+    }
+    state artifacts_2 {
+        conditional_effect(armored)
+        taunt(true, "My artifacts shall prove my wall of defense is impenetrable!")
+        orbit(0.6, 7, target: "Tomb Boss Anchor", radius_variance: 0.5)
+        shoot(50, 8, projectile: 2, cooldown: 1000)
+        shoot(50, 3, 10, 0, cooldown: 3000)
+        shoot(50, 5, 15, 1, cooldown: 3000)
+        shoot(50, 2, 80, 1, cooldown: 3000)
+        shoot(50, 2, 90, 1, cooldown: 3000)
+        spawn("Pyramid Artifact 1", 2, 0)
+        state blue_shield_4 {
+            conditional_effect(invulnerable)
+            on timed(3000, "unset blue shield 4") -> unset_blue_shield_4
+        }
+        state unset_blue_shield_4 {
+        }
+        on hp_below(0.06) -> rage
+    }
+    state rage {
+        conditional_effect(armored)
+        taunt(true, "The end of your path is here!")
+        follow(0.6, range: 1, duration: 5000, cooldown: 0)
+        flash(268369920, 1, 9000001)
+        shoot(50, 10, 10, 4, cooldown: 750, cooldown_offset: 750)
+        shoot(50, 5, 10, 4, angle_offset: 180, cooldown: 500, cooldown_offset: 500)
+        shoot(50, 1, projectile: 0, cooldown: 1000)
+        shoot(50, 3, 15, 1, cooldown: 2000)
+        shoot(50, 2, 90, 1, cooldown: 2000)
+        spawn("Pyramid Artifact 1", 1, 0)
+        spawn("Pyramid Artifact 2", 1, 0)
+        spawn("Pyramid Artifact 3", 1, 0)
+        state blue_shield_5 {
+            conditional_effect(invulnerable)
+            on timed(3000, "unset blue shield 5") -> unset_blue_shield_5
+        }
+        state unset_blue_shield_5 {
+        }
+    }
+    loot {
+        threshold
+    }
+}
+
+enemy "Tomb Support" {
+    state idle {
+        taunt(true, "ENOUGH OF YOUR VANDALISM!")
+        conditional_effect(armored)
+        orbit(0.6, 5, target: "Tomb Boss Anchor", radius_variance: 0.5)
+        on hp_below(0.9875) -> weakning
+    }
+    state weakning {
+        orbit(0.6, 5, target: "Tomb Boss Anchor", radius_variance: 0.5)
+        taunt("Impudence! I am an immortal, I needn't take your seriously.")
+        shoot(50, 20, projectile: 7, cooldown: 6000, cooldown_offset: 2000)
+        state blue_shield_1 {
+            conditional_effect(invulnerable)
+            on timed(3000, "unset blue shield 1") -> unset_blue_shield_1
+        }
+        state unset_blue_shield_1 {
+        }
+        on hp_below(0.97875) -> active
+    }
+    state active {
+        orbit(0.7, 4, target: "Tomb Boss Anchor", radius_variance: 0.5)
+        shoot(20, 1, projectile: 5, cooldown: 1000)
+        shoot(12, 3, 120, 1, 0, 0, cooldown: 2500, cooldown_offset: 1000)
+        shoot(12, 4, 90, 2, 0, 0, cooldown: 2500, cooldown_offset: 1500)
+        shoot(12, 5, 72, 3, 0, 0, cooldown: 2500, cooldown_offset: 2000)
+        shoot(12, 6, 60, 4, 0, 0, cooldown: 2500, cooldown_offset: 2500)
+        state blue_shield_2 {
+            conditional_effect(invulnerable)
+            on timed(3000, "unset blue shield 2") -> unset_blue_shield_2
+        }
+        state unset_blue_shield_2 {
+        }
+        on hp_below(0.9) -> boomerang
+    }
+    state boomerang {
+        orbit(0.6, 6, target: "Tomb Boss Anchor", radius_variance: 0.5)
+        taunt(true, "Bes, protect me at once!")
+        shoot(20, 1, projectile: 5, cooldown: 1000)
+        shoot(20, 1, projectile: 6, cooldown: 3000)
+        shoot(12, 3, 120, 1, 0, 0, cooldown: 2500, cooldown_offset: 1000)
+        shoot(12, 4, 90, 2, 0, 0, cooldown: 2500, cooldown_offset: 1500)
+        shoot(12, 5, 72, 3, 0, 0, cooldown: 2500, cooldown_offset: 2000)
+        shoot(12, 6, 60, 4, 0, 0, cooldown: 2500, cooldown_offset: 2500)
+        on hp_below(0.7) -> paralyze
+    }
+    state paralyze {
+        orbit(0.6, 7, target: "Tomb Boss Anchor", radius_variance: 0.5)
+        taunt(true, "Geb, eradicate these cretins from our tomb!")
+        shoot(20, 1, projectile: 5, cooldown: 1000)
+        shoot(20, 1, projectile: 6, cooldown: 3000)
+        shoot(999, 2, 10, 8, 0, 180, cooldown: 1000)
+        shoot(12, 3, 120, 1, 0, 0, cooldown: 2500, cooldown_offset: 1000)
+        shoot(12, 4, 90, 2, 0, 0, cooldown: 2500, cooldown_offset: 1500)
+        shoot(12, 5, 72, 3, 0, 0, cooldown: 2500, cooldown_offset: 2000)
+        shoot(12, 6, 60, 4, 0, 0, cooldown: 2500, cooldown_offset: 2500)
+        on hp_below(0.5) -> artifacts
+    }
+    state artifacts {
+        orbit(0.6, 4, target: "Tomb Boss Anchor", radius_variance: 0.5)
+        taunt(true, "My artifacts shall make your lethargic lives end much more swiftly!")
+        shoot(20, 1, projectile: 5, cooldown: 1000)
+        shoot(20, 1, projectile: 6, cooldown: 3000)
+        shoot(12, 3, 120, 1, 0, 0, cooldown: 2500, cooldown_offset: 1000)
+        shoot(12, 4, 90, 2, 0, 0, cooldown: 2500, cooldown_offset: 1500)
+        shoot(12, 5, 72, 3, 0, 0, cooldown: 2500, cooldown_offset: 2000)
+        shoot(12, 6, 60, 4, 0, 0, cooldown: 2500, cooldown_offset: 2500)
+        spawn("Sphinx Artifact 1", 1, 0)
+        state blue_shield_3 {
+            conditional_effect(invulnerable)
+            on timed(3000, "unset blue shield 3") -> unset_blue_shield_3
+        }
+        state unset_blue_shield_3 {
+        }
+        on hp_below(0.3, "double shoot") -> double_shoot
+    }
+    state double_shoot {
+        orbit(0.6, 5, target: "Tomb Boss Anchor", radius_variance: 0.5)
+        shoot(20, 2, 15, 5, cooldown: 1000)
+        shoot(20, 2, 15, 6, cooldown: 3000)
+        shoot(12, 3, 120, 1, 0, 0, cooldown: 2500, cooldown_offset: 1000)
+        shoot(12, 4, 90, 2, 0, 0, cooldown: 2500, cooldown_offset: 1500)
+        shoot(12, 5, 72, 3, 0, 0, cooldown: 2500, cooldown_offset: 2000)
+        shoot(12, 6, 60, 4, 0, 0, cooldown: 2500, cooldown_offset: 2500)
+        spawn("Sphinx Artifact 1", 2, 0)
+        state blue_shield_4 {
+            conditional_effect(invulnerable)
+            on timed(3000, "unset blue shield 4") -> unset_blue_shield_4
+        }
+        state unset_blue_shield_4 {
+        }
+        on hp_below(0.06) -> rage
+    }
+    state rage {
+        taunt(true, "This cannot be! You shall not succeed!")
+        follow(0.6, range: 1, duration: 5000, cooldown: 0)
+        flash(268369920, 1, 9000001)
+        shoot(20, 1, projectile: 5, cooldown: 1000)
+        shoot(20, 1, 15, 0, cooldown: 750)
+        shoot(12, 4, 90, 1, 0, 0, cooldown: 2500, cooldown_offset: 1000)
+        shoot(12, 5, 72, 2, 0, 0, cooldown: 2500, cooldown_offset: 1500)
+        shoot(12, 6, 60, 3, 0, 0, cooldown: 2500, cooldown_offset: 2000)
+        shoot(12, 8, 45, 4, 0, 0, cooldown: 2500, cooldown_offset: 2500)
+        shoot(999, 6, 10, 8, angle_offset: 180, cooldown: 500)
+        spawn("Sphinx Artifact 1", 1, 0)
+        state blue_shield_5 {
+            conditional_effect(invulnerable)
+            on timed(3000, "unset blue shield 5") -> unset_blue_shield_5
+        }
+        state unset_blue_shield_5 {
+        }
+    }
+    loot {
+        threshold
+    }
+}
+
+enemy "Tomb Attacker" {
+    state idle {
+        taunt(true, "ENOUGH OF YOUR VANDALISM!")
+        conditional_effect(armored)
+        orbit(0.6, 5, target: "Tomb Boss Anchor", radius_variance: 0.5)
+        on hp_below(0.988) -> weakning
+    }
+    state weakning {
+        orbit(0.6, 5, target: "Tomb Boss Anchor", radius_variance: 0.5)
+        shoot(50, 20, projectile: 3, cooldown: 6000, cooldown_offset: 2000)
+        state blue_shield_1 {
+            conditional_effect(invulnerable)
+            on timed(3000, "unset blue shield 1") -> unset_blue_shield_1
+        }
+        state unset_blue_shield_1 {
+        }
+        on hp_below(0.9788) -> active
+    }
+    state active {
+        orbit(0.6, 5, target: "Tomb Boss Anchor", radius_variance: 0.5)
+        shoot(14, 2, 10, 2, cooldown: 500)
+        shoot(12, 1, projectile: 0, cooldown: 2000)
+        state Grenade_1 {
+            grenade(3, 160, 10, cooldown: 1500)
+            on timed(1500, "Grenade 2") -> Grenade_2
+        }
+        state Grenade_2 {
+            grenade(4, 120, 10, cooldown: 1500)
+            on timed(1500, "Grenade 1") -> Grenade_1
+        }
+        on hp_below(0.72, "lets dance") -> lets_dance
+    }
+    state lets_dance {
+        orbit(0.6, 5, target: "Tomb Boss Anchor", radius_variance: 0.5)
+        taunt(true, "Bes, protect me at once!")
+        shoot(14, 1, projectile: 2, cooldown: 500)
+        shoot(14, 2, 90, 2, cooldown: 1000)
+        shoot(14, 2, 90, 2, angle_offset: 270, cooldown: 1000)
+        shoot(11, 8, 45, 1, 0, cooldown: 5000)
+        shoot(12, 2, 45, 0, cooldown: 1500)
+        shoot(99, 1, projectile: 4, cooldown: 500)
+        spawn("Scarab", 3, 0, cooldown: 10000)
+        state blue_shield_2 {
+            conditional_effect(invulnerable)
+            on timed(3000, "unset blue shield 2") -> unset_blue_shield_2
+        }
+        state unset_blue_shield_2 {
+            on timed(3000, "Grenade 3") -> Grenade_3
+        }
+        state Grenade_3 {
+            grenade(3, 160, 10, cooldown: 1500)
+            on timed(1500, "Grenade 4") -> Grenade_4
+        }
+        state Grenade_4 {
+            grenade(4, 120, 10, cooldown: 1500)
+            on timed(1500, "Grenade 3") -> Grenade_3
+        }
+        on hp_below(0.675, "more muthafucka") -> more_muthafucka
+    }
+    state more_muthafucka {
+        orbit(0.6, 5, target: "Tomb Boss Anchor", radius_variance: 0.5)
+        taunt(true, "Nut, disable our foes!")
+        spawn("Scarab", 3, 0, cooldown: 10000)
+        shoot(14, 2, 10, 2, cooldown: 500)
+        shoot(14, 1, projectile: 2, cooldown: 500)
+        shoot(14, 2, 90, 2, cooldown: 1000)
+        shoot(14, 2, 90, 2, angle_offset: 270, cooldown: 1000)
+        shoot(11, 10, 36, 1, 0, cooldown: 5000)
+        shoot(12, 1, projectile: 0, cooldown: 2000)
+        shoot(12, 2, 45, 0, cooldown: 2000)
+        shoot(99, 1, projectile: 4, cooldown: 500)
+        shoot(99, 1, projectile: 4, angle_offset: 90, cooldown: 500)
+        state Grenade_5 {
+            grenade(3, 160, 10, cooldown: 1500)
+            on timed(1500, "Grenade 6") -> Grenade_6
+        }
+        state Grenade_6 {
+            grenade(4, 120, 10, cooldown: 1500)
+            on timed(1500, "Grenade 5") -> Grenade_5
+        }
+        on hp_below(0.4) -> artifacts
+    }
+    state artifacts {
+        orbit(0.6, 4, target: "Tomb Boss Anchor", radius_variance: 0.5)
+        taunt(true, "My artifacts shall destroy you from your soul your flesh!")
+        spawn("Scarab", 3, 0, cooldown: 10000)
+        shoot(14, 2, 10, 2, cooldown: 500)
+        shoot(14, 1, projectile: 2, cooldown: 500)
+        shoot(14, 2, 90, 2, cooldown: 1000)
+        shoot(14, 2, 90, 2, angle_offset: 270, cooldown: 1000)
+        shoot(11, 10, 36, 1, 0, cooldown: 5000)
+        shoot(12, 1, projectile: 0, cooldown: 2000)
+        shoot(12, 2, 45, 0, cooldown: 2000)
+        shoot(99, 1, projectile: 4, cooldown: 500)
+        shoot(99, 1, projectile: 4, angle_offset: 90, cooldown: 500)
+        spawn("Nile Artifact 1", 1, 0)
+        state blue_shield_3 {
+            conditional_effect(invulnerable)
+            on timed(3000, "unset blue shield 3") -> unset_blue_shield_3
+        }
+        state unset_blue_shield_3 {
+            on timed(3000, "Grenade 7") -> Grenade_7
+        }
+        state Grenade_7 {
+            grenade(5, 45, 10, cooldown: 1500)
+            on timed(1500, "Grenade 8") -> Grenade_8
+        }
+        state Grenade_8 {
+            grenade(4, 100, 10, cooldown: 1500)
+            on timed(1500, "Grenade 9") -> Grenade_9
+        }
+        state Grenade_9 {
+            grenade(3, 120, 10, cooldown: 1500)
+            on timed(1500, "Grenade 7") -> Grenade_7
+        }
+        on hp_below(0.2, "artifacts 2") -> artifacts_2
+    }
+    state artifacts_2 {
+        orbit(0.6, 4, target: "Tomb Boss Anchor", radius_variance: 0.5)
+        taunt(true, "My artifacts shall destroy you from your soul your flesh!")
+        spawn("Scarab", 3, 0, cooldown: 10000)
+        shoot(14, 2, 10, 2, cooldown: 500)
+        shoot(14, 1, projectile: 2, cooldown: 500)
+        shoot(14, 2, 90, 2, cooldown: 1000)
+        shoot(14, 2, 90, 2, angle_offset: 270, cooldown: 1000)
+        shoot(11, 10, 36, 1, 0, cooldown: 5000)
+        shoot(12, 1, projectile: 0, cooldown: 2000)
+        shoot(12, 2, 45, 0, cooldown: 2000)
+        shoot(99, 1, projectile: 4, cooldown: 500)
+        shoot(99, 1, projectile: 4, angle_offset: 90, cooldown: 500)
+        spawn("Nile Artifact 1", 2, 0)
+        state blue_shield_4 {
+            conditional_effect(invulnerable)
+            on timed(3000, "unset blue shield 4") -> unset_blue_shield_4
+        }
+        state unset_blue_shield_4 {
+            on timed(3000, "Grenade 10") -> Grenade_10
+        }
+        state Grenade_10 {
+            grenade(5, 45, 10, cooldown: 1500)
+            on timed(1500, "Grenade 11") -> Grenade_11
+        }
+        state Grenade_11 {
+            grenade(4, 100, 10, cooldown: 1500)
+            on timed(1500, "Grenade 12") -> Grenade_12
+        }
+        state Grenade_12 {
+            grenade(3, 120, 10, cooldown: 1500)
+            on timed(1500, "Grenade 10") -> Grenade_10
+        }
+        on hp_below(0.06) -> rage
+    }
+    state rage {
+        taunt(true, "This cannot be! You shall not succeed!")
+        flash(268369920, 1, 9000001)
+        stay_back(0.5, 6)
+        shoot(11, 10, 36, 1, 0, cooldown: 5000)
+        shoot(14, 2, 10, 2, cooldown: 500)
+        shoot(14, 1, projectile: 2, cooldown: 500)
+        shoot(14, 2, 90, 2, cooldown: 1000)
+        shoot(14, 2, 90, 2, angle_offset: 270, cooldown: 1000)
+        shoot(12, 1, projectile: 0, cooldown: 2000)
+        shoot(12, 2, 45, 0, cooldown: 2000)
+        spawn("Scarab", 3, 0, cooldown: 10000)
+        spawn("Nile Artifact 1", 1, 0)
+        state blue_shield_5 {
+            conditional_effect(invulnerable)
+            on timed(3000, "unset blue shield 5") -> unset_blue_shield_5
+        }
+        state unset_blue_shield_5 {
+            on timed(3000, "Grenade 13") -> Grenade_13
+        }
+        state Grenade_13 {
+            grenade(3, 150, 10, cooldown: 1500)
+            on timed(1500, "Grenade 14") -> Grenade_14
+        }
+        state Grenade_14 {
+            grenade(4, 120, 10, cooldown: 1500)
+            on timed(1500, "Grenade 13") -> Grenade_13
+        }
+    }
+    loot {
+        threshold
+    }
+}
+
+enemy "Pyramid Artifact 1" {
+    prioritize() {
+        orbit(1, 2, target: "Tomb Defender", radius_variance: 0.5)
+        follow(0.85, range: 1, duration: 5000, cooldown: 0)
+    }
+    shoot(3, 3, 120, cooldown: 2500)
+}
+
+enemy "Pyramid Artifact 2" {
+    prioritize() {
+        orbit(1, 2, target: "Tomb Attacker", radius_variance: 0.5)
+        follow(0.85, range: 1, duration: 5000, cooldown: 0)
+    }
+    shoot(3, 3, 120, cooldown: 2500)
+}
+
+enemy "Pyramid Artifact 3" {
+    prioritize() {
+        orbit(1, 2, target: "Tomb Support", radius_variance: 0.5)
+        follow(0.85, range: 1, duration: 5000, cooldown: 0)
+    }
+    shoot(3, 3, 120, cooldown: 2500)
+}
+
+enemy "Sphinx Artifact 1" {
+    prioritize() {
+        orbit(1, 2, target: "Tomb Defender", radius_variance: 0.5)
+        follow(0.85, range: 1, duration: 5000, cooldown: 0)
+    }
+    shoot(12, 3, 120, cooldown: 2500)
+}
+
+enemy "Sphinx Artifact 2" {
+    prioritize() {
+        orbit(1, 2, target: "Tomb Attacker", radius_variance: 0.5)
+        follow(0.85, range: 1, duration: 5000, cooldown: 0)
+    }
+    shoot(12, 3, 120, cooldown: 2500)
+}
+
+enemy "Sphinx Artifact 3" {
+    prioritize() {
+        orbit(1, 2, target: "Tomb Support", radius_variance: 0.5)
+        follow(0.85, range: 1, duration: 5000, cooldown: 0)
+    }
+    shoot(12, 3, 120, cooldown: 2500)
+}
+
+enemy "Nile Artifact 1" {
+    prioritize() {
+        orbit(1, 2, target: "Tomb Defender", radius_variance: 0.5)
+        follow(0.85, range: 1, duration: 5000, cooldown: 0)
+    }
+    shoot(12, 3, 120, cooldown: 2500)
+}
+
+enemy "Nile Artifact 2" {
+    prioritize() {
+        orbit(1, 2, target: "Tomb Attacker", radius_variance: 0.5)
+        follow(0.85, range: 1, duration: 5000, cooldown: 0)
+    }
+    shoot(12, 3, 120, cooldown: 2500)
+}
+
+enemy "Nile Artifact 3" {
+    prioritize() {
+        orbit(1, 2, target: "Tomb Support", radius_variance: 0.5)
+        follow(0.85, range: 1, duration: 5000, cooldown: 0)
+    }
+    shoot(12, 3, 120, cooldown: 2500)
+}
+
+enemy "Tomb Defender Statue" {
+    conditional_effect(invulnerable)
+    on entity_not_exists("Inactive Sarcophagus", 1000) -> checkActive
+    on entity_not_exists("Active Sarcophagus", 1000) -> checkInactive
+    state checkActive {
+        conditional_effect(invulnerable)
+        on entity_not_exists("Active Sarcophagus", 1000) -> ItsGoTime
+    }
+    state checkInactive {
+        conditional_effect(invulnerable)
+        on entity_not_exists("Inactive Sarcophagus", 1000) -> ItsGoTime
+    }
+    state ItsGoTime {
+        transform("Tomb Defender")
+    }
+}
+
+enemy "Tomb Support Statue" {
+    conditional_effect(invulnerable)
+    on entity_not_exists("Inactive Sarcophagus", 1000) -> checkActive
+    on entity_not_exists("Active Sarcophagus", 1000) -> checkInactive
+    state checkActive {
+        conditional_effect(invulnerable)
+        on entity_not_exists("Active Sarcophagus", 1000) -> ItsGoTime
+    }
+    state checkInactive {
+        conditional_effect(invulnerable)
+        on entity_not_exists("Inactive Sarcophagus", 1000) -> ItsGoTime
+    }
+    state ItsGoTime {
+        transform("Tomb Support")
+    }
+}
+
+enemy "Tomb Attacker Statue" {
+    conditional_effect(invulnerable)
+    on entity_not_exists("Inactive Sarcophagus", 1000) -> checkActive
+    on entity_not_exists("Active Sarcophagus", 1000) -> checkInactive
+    state checkActive {
+        conditional_effect(invulnerable)
+        on entity_not_exists("Active Sarcophagus", 1000) -> ItsGoTime
+    }
+    state checkInactive {
+        conditional_effect(invulnerable)
+        on entity_not_exists("Inactive Sarcophagus", 1000) -> ItsGoTime
+    }
+    state ItsGoTime {
+        transform("Tomb Attacker")
+    }
+}
+
+enemy "Inactive Sarcophagus" {
+    conditional_effect(invulnerable)
+    on entity_not_exists("Beam Priestess", 14) -> checkPriest
+    on entity_not_exists("Beam Priest", 1000) -> checkPriestess
+    state checkPriest {
+        conditional_effect(invulnerable)
+        on entity_not_exists("Beam Priest", 1000) -> activate
+    }
+    state checkPriestess {
+        conditional_effect(invulnerable)
+        on entity_not_exists("Beam Priestess", 1000) -> activate
+    }
+    state activate {
+        transform("Active Sarcophagus")
+    }
+}
+
+enemy "Scarab" {
+    on no_player_within(7) -> Idle
+    on player_within(7) -> Chase
+    state Idle {
+        wander(0.1)
+    }
+    state Chase {
+        follow(1.5, 7, 0)
+        shoot(3, projectile: 1, cooldown: 500)
+    }
+}
+
+enemy "Active Sarcophagus" {
+    on hp_below(60) -> stun
+    state stun {
+        shoot(50, 8, 10, 0, cooldown: 9999999, cooldown_offset: 500)
+        shoot(50, 8, 10, 0, cooldown: 9999999, cooldown_offset: 1000)
+        shoot(50, 8, 10, 0, cooldown: 9999999, cooldown_offset: 1500)
+        on timed(1500) -> idle
+    }
+    state idle {
+        change_size(100, 100)
+    }
+    loot {
+        item("Magic Potion", 0.002)
+        item("Health Potion", 0.15)
+        threshold
+    }
+}
+
+enemy "Tomb Boss Anchor" {
+    conditional_effect(invincible, true)
+    drop_portal_on_death("Realm Portal", 100)
+    state Idle {
+        on entities_not_exists(300, "Tomb Support", "Tomb Attacker", "Tomb Defender", "Active Sarcophagus", "Tomb Defender Statue", "Tomb Support Statue", "Tomb Attacker Statue") -> Death
+    }
+    state Death {
+        suicide()
+    }
+}
+

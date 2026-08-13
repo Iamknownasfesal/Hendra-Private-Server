@@ -88,6 +88,13 @@ fn main() {
     );
     println!("compiled  {compiled} programs, {diagnostics} diagnostics");
 
+    if report.unreadable > 0 {
+        println!(
+            "\nWARNING: {} .Init entries could not be read at all and were dropped.",
+            report.unreadable
+        );
+    }
+
     if !report.skipped.is_empty() {
         println!("\nskipped {} entries:", report.skipped.len());
         for (name, reason) in report.skipped.iter().take(8) {

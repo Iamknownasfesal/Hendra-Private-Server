@@ -1,0 +1,80 @@
+enemy "Phoenix Lord" {
+    shoot(10, count: 4, shoot_angle: 7, predictive: 0.5, cooldown: 600)
+    prioritize() {
+        stay_close_to_spawn(0.3, 2)
+        wander(0.4)
+    }
+    spawn_group("Pyre", max_children: 16, cooldown: 5000)
+    taunt(0.7, 10000, "Alas, {PLAYER}, you will taste death but once!", "I have met many like you, {PLAYER}, in my thrice thousand years!", "Purge yourself, {PLAYER}, in the heat of my flames!", "The ashes of past heroes cover my plains!", "Some die and are ashes, but I am ever reborn!")
+    transform_on_death("Phoenix Egg")
+}
+
+enemy "Birdman Chief" {
+    prioritize() {
+        protect(0.5, "Phoenix Lord", acquire_range: 15, protection_range: 10, reprotect_range: 3)
+        follow(1, range: 9)
+        wander(0.5)
+    }
+    shoot(10)
+    loot {
+        item("Magic Potion", 0.05)
+    }
+}
+
+enemy "Birdman" {
+    prioritize() {
+        protect(0.5, "Phoenix Lord", acquire_range: 15, protection_range: 11, reprotect_range: 3)
+        follow(1, range: 7)
+        wander(0.5)
+    }
+    shoot(10, predictive: 0.5)
+    loot {
+        item("Health Potion", 0.05)
+    }
+}
+
+enemy "Phoenix Egg" {
+    state shielded {
+        conditional_effect(invulnerable)
+        on timed(2000) -> unshielded
+    }
+    state unshielded {
+        flash(16711680, 1, 5000)
+        state grow {
+            change_size(20, 150)
+            on timed(800) -> shrink
+        }
+        state shrink {
+            change_size(-20, 130)
+            on timed(800) -> grow
+        }
+    }
+    transform_on_death("Phoenix Reborn")
+}
+
+enemy "Phoenix Reborn" {
+    prioritize() {
+        stay_close_to_spawn(0.9, 5)
+        wander(0.9)
+    }
+    spawn_group("Pyre", max_children: 4, cooldown: 1000)
+    state born_anew {
+        shoot(10, projectile: 0, count: 12, shoot_angle: 30, fixed_angle: 10, cooldown: 100000, cooldown_offset: 500)
+        shoot(10, projectile: 0, count: 12, shoot_angle: 30, fixed_angle: 25, cooldown: 100000, cooldown_offset: 1000)
+        on timed(1800) -> xxx
+    }
+    state xxx {
+        shoot(10, projectile: 1, count: 4, shoot_angle: 7, predictive: 0.5, cooldown: 600)
+        on timed(2800) -> yyy
+    }
+    state yyy {
+        shoot(10, projectile: 0, count: 12, shoot_angle: 30, fixed_angle: 10, cooldown: 100000, cooldown_offset: 500)
+        shoot(10, projectile: 0, count: 12, shoot_angle: 30, fixed_angle: 25, cooldown: 100000, cooldown_offset: 1000)
+        shoot(10, projectile: 1, predictive: 0.5, cooldown: 350)
+        on timed(4500) -> xxx
+    }
+    loot {
+        threshold
+    }
+}
+

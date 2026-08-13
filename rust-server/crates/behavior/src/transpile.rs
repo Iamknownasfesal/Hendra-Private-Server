@@ -14,7 +14,7 @@
 
 use std::fmt::Write;
 
-use crate::csharp::{CsCall, CsEnemy, CsValue, read_enemies};
+use crate::csharp::{CsCall, CsEnemy, CsValue};
 
 /// What a conversion produced.
 #[derive(Debug, Default)]
@@ -26,6 +26,14 @@ pub struct Report {
 
     /// Enemies that could not be converted, and why.
     pub skipped: Vec<(String, String)>,
+
+    /// `.Init(` entries whose C# could not be read at all.
+    ///
+    /// Distinct from `skipped`, which knows the enemy's name and gave up later. These are not even
+    /// named, because the name is inside the part that would not parse. Counted rather than
+    /// ignored: a silent zero here is how three files went missing behind a total that looked
+    /// exactly like success.
+    pub unreadable: usize,
 
     /// Transitions dropped because they named a state that does not exist.
     ///
@@ -58,7 +66,10 @@ impl Report {
 pub fn transpile(source: &str, report: &mut Report) -> String {
     let mut out = String::new();
 
-    for enemy in read_enemies(source) {
+    let (enemies, unreadable) = crate::csharp::read_enemies_reporting(source);
+    report.unreadable += unreadable;
+
+    for enemy in enemies {
         match emit_enemy(&enemy, report) {
             Ok(text) => {
                 out.push_str(&text);
@@ -141,11 +152,23 @@ fn collect_state_names(value: &CsValue, into: &mut Vec<String>) {
         return;
     }
 
-    if call.name == "Prioritize" {
+    if group_name(&call.name).is_some() {
         for child in &call.arguments {
             collect_state_names(&child.value, into);
         }
     }
+}
+
+/// The emitted name of a wrapper whose arguments are behaviours, if it is one.
+fn group_name(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "Prioritize" => "prioritize",
+        "Sequence" => "sequence",
+        "Timed" => "timed",
+        "If" => "if",
+        "OnDeathBehavior" => "on_death_behavior",
+        _ => return None,
+    })
 }
 
 fn emit_enemy(enemy: &CsEnemy, report: &mut Report) -> Result<String, String> {
@@ -249,15 +272,33 @@ fn emit_item(
         return emit_transition(call, &pad, report, enemy, naming);
     }
 
-    if call.name == "Prioritize" {
-        report.count("prioritize");
+    // The wrappers whose arguments are behaviours rather than settings. Emitting one without its
+    // block loses everything inside it, which is how `on_death_behavior()` ended up empty.
+    if let Some(group) = group_name(&call.name) {
+        report.count(group);
         let mut body = String::new();
+
+        // `Timed` and `OnDeathBehavior` take a leading number or nothing; anything that is not a
+        // constructor is a setting rather than a child.
+        let mut settings = Vec::new();
         for child in &call.arguments {
-            if let Some(text) = emit_item(&child.value, depth + 1, report, enemy, naming) {
-                body.push_str(&text);
+            match &child.value {
+                CsValue::Call(_) => {
+                    if let Some(text) = emit_item(&child.value, depth + 1, report, enemy, naming) {
+                        body.push_str(&text);
+                    }
+                }
+                other => settings.push(other.clone()),
             }
         }
-        return Some(format!("{pad}prioritize {{\n{body}{pad}}}\n"));
+
+        let head = if settings.is_empty() {
+            format!("{group}()")
+        } else {
+            let written: Vec<String> = settings.iter().filter_map(emit_value).collect();
+            format!("{group}({})", written.join(", "))
+        };
+        return Some(format!("{pad}{head} {{\n{body}{pad}}}\n"));
     }
 
     if is_loot(&call.name) {

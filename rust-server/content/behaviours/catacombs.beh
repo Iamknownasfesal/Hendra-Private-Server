@@ -1,0 +1,463 @@
+enemy "Grey Torch Wall" {
+    state Idle {
+        on entities_not_exists(9999, "Arena Spider") -> Rip
+    }
+    state Rip {
+        decay(500)
+    }
+}
+
+enemy "Tooky Catacombs Master" {
+    conditional_effect(invincible)
+    remove_object_on_death("Grey Torch Wall", 99)
+    state Idle {
+        on entities_not_exists(999, "Arena Spider") -> Rip
+    }
+    state Rip {
+        suicide()
+    }
+}
+
+enemy "Tooky Test TaskMastah" {
+    conditional_effect(invincible)
+    state idle {
+        on player_within(24) -> active
+    }
+    state active {
+        taunt(true, "It's been a long time since I have had a visitor..I guess you will be the next soul to be devoured? Stay here. I have something for you.")
+        on timed(12500) -> spawn
+        on no_player_within(24) -> idle
+    }
+    state spawn {
+        spawn("Corrupted Flames of Fate", 1, 1, cooldown: 99999)
+        suicide()
+    }
+}
+
+enemy "Corrupted Flames of Fate" {
+    state default {
+        change_size(35, 200)
+        on player_within(8) -> basic
+    }
+    state basic {
+        taunt(1, "Oh, what a joy! A delicious snack!")
+        prioritize() {
+            follow(0.45, 8, 1)
+            wander(0.2)
+        }
+        shoot(10, count: 5, shoot_angle: 22, projectile: 3, cooldown: 3750)
+        shoot(10, count: 3, shoot_angle: 22, projectile: 3, predictive: 2, cooldown: 2500, cooldown_offset: 1200)
+        on timed(6750) -> trailofdeath
+    }
+    state trailofdeath {
+        heal_self(cooldown: 1300, amount: 500)
+        prioritize() {
+            stay_close_to_spawn(1.2, 6)
+            wander(0.4)
+        }
+        conditional_effect(armored)
+        shoot(10, count: 1, shoot_angle: 8, projectile: 1, cooldown: 1)
+        shoot(10, count: 1, shoot_angle: 8, projectile: 1, cooldown: 1, cooldown_offset: 10)
+        on timed(5250) -> blaster
+    }
+    state blaster {
+        taunt(1, "Your life belongs to me now.")
+        swirl(0.5, 6, 8)
+        shoot(10, count: 7, shoot_angle: 32, projectile: 0, cooldown: 6300)
+        on timed(5750) -> ringblam
+    }
+    state ringblam {
+        wander(0.4)
+        shoot(10, count: 6, shoot_angle: 22, projectile: 3, cooldown: 3750)
+        shoot(10, count: 10, projectile: 2, cooldown: 4000)
+        shoot(10, count: 3, shoot_angle: 12, projectile: 0, cooldown: 6000)
+        on timed(7250) -> ringblam2
+    }
+    state ringblam2 {
+        taunt(1, "You can't survive forever in this scorching heat.")
+        heal_self(cooldown: 500, amount: 1500)
+        follow(0.5, 8, 1)
+        shoot(10, count: 24, projectile: 1, cooldown: 2000)
+        grenade(5, 70, range: 4, cooldown: 3000)
+        on timed(6000) -> basic
+    }
+    loot {
+        threshold
+        threshold
+    }
+}
+
+enemy "Skeleton of War" {
+    prioritize() {
+        follow(0.4, 8, 5)
+        wander(0.25)
+    }
+    shoot(8, count: 1, projectile: 0)
+    shoot(8, count: 1, projectile: 1, cooldown: 9750)
+    loot {
+        tier(4, weapon, 0.03)
+    }
+}
+
+enemy "Skeleton of Death" {
+    prioritize() {
+        follow(0.3, 8, 5)
+        wander(0.25)
+    }
+    shoot(8, count: 2, shoot_angle: 50, projectile: 0)
+    loot {
+        tier(4, armor, 0.03)
+    }
+}
+
+enemy "Demon of the Catacombs" {
+    wander(1)
+    shoot(8, count: 2, shoot_angle: 26, projectile: 0)
+    shoot(8, count: 1, projectile: 1)
+}
+
+enemy "Enlargened Death Slug" {
+    wander(0.45)
+    shoot(8, count: 1, projectile: 0)
+}
+
+enemy "Living Ectoplasm" {
+    stay_close_to_spawn(0.3, 5)
+    shoot(8, count: 3, shoot_angle: 4, projectile: 0)
+}
+
+enemy "Catacombs Turret 2" {
+    conditional_effect(invincible)
+    shoot(6, count: 1, cooldown: 100)
+}
+
+enemy "Catacombs Turret 1" {
+    conditional_effect(invincible)
+    shoot(10, count: 1)
+}
+
+enemy "Wizard of Evil Souls" {
+    state RingofBlast {
+        wander(0.2)
+        shoot(8, count: 5, projectile: 0)
+        on timed(6250) -> Follow
+    }
+    state Follow {
+        prioritize() {
+            stay_above(1, 200)
+            follow(1, range: 7)
+            wander(0.4)
+        }
+        shoot(10, count: 3, shoot_angle: 16, projectile: 1, cooldown: 3500)
+        shoot(10, count: 4, shoot_angle: 12, predictive: 2.5, projectile: 0, cooldown: 6000)
+        on timed(6750) -> Flash
+    }
+    state Flash {
+        taunt("I can already feel the darkest souls go through me!", "I will feast on your corpse...", "You can't survive here for too long!")
+        flash(65280, 4, 4)
+        on timed(3750) -> Rush
+    }
+    state Rush {
+        taunt(0.5, "Hahaha! Run mortal!")
+        prioritize() {
+            follow(1, range: 7)
+            wander(1)
+        }
+        shoot(10, count: 1, projectile: 2, cooldown: 1)
+        on timed(5750) -> RingofBlast
+    }
+}
+
+enemy "Guardian of the Catacombs" {
+    state WalkTowards {
+        prioritize() {
+            follow(0.5, 8, 1)
+            wander(0.45)
+        }
+        shoot(8, count: 1, projectile: 0)
+        on timed(7250) -> Orbit
+    }
+    state Orbit {
+        flash(0, 4, 4)
+        orbit(0.8, 3, 8)
+        shoot(10, count: 3, shoot_angle: 16, projectile: 1, cooldown: 1750)
+        on timed(5000) -> WalkTowards2
+    }
+    state WalkTowards2 {
+        prioritize() {
+            follow(0.2, 8, 1)
+            wander(0.45)
+        }
+        shoot(8, count: 5, shoot_angle: 16, projectile: 2)
+        on timed(6050) -> Heal
+    }
+    state Heal {
+        flash(0, 4, 4)
+        conditional_effect(invulnerable)
+        heal_self(cooldown: 1000, amount: 75)
+        on timed(5000) -> WalkTowards
+    }
+}
+
+enemy "Grotesque of Rock" {
+    on hp_below(0.13) -> BlowUp
+    state PinkBoltin {
+        prioritize() {
+            follow(0.2, 8, 1)
+            wander(0.6)
+        }
+        shoot(8, count: 3, shoot_angle: 26, projectile: 0)
+        on timed(8000) -> DontSitOnMe
+    }
+    state DontSitOnMe {
+        wander(1)
+        flash(0, 4, 4)
+        shoot(10, count: 18, projectile: 1, cooldown: 2000)
+        on timed(6000) -> PinkBoltin
+    }
+    state BlowUp {
+        shoot(8, count: 4, projectile: 2, cooldown: 3000)
+        suicide()
+    }
+}
+
+enemy "Treasure Statue of the Catacombs" {
+    state Waiting {
+        conditional_effect(invulnerable)
+        on player_within(10) -> Idle
+    }
+    state Idle {
+        taunt(0.99, "Gain my wonderful treasures and destroy me!")
+    }
+    loot {
+        threshold
+    }
+}
+
+enemy "Ugajuajn" {
+    state Idle {
+        conditional_effect(invulnerable)
+        on player_within(6) -> Follow
+    }
+    state Follow {
+        prioritize() {
+            follow(0.35, 8, 1)
+            wander(0.6)
+        }
+        shoot(8, count: 6, projectile: 0, cooldown: 4000)
+        shoot(8, count: 8, projectile: 1, cooldown: 4000, cooldown_offset: 1250)
+        on timed(11000) -> Ecto
+    }
+    state Ecto {
+        spawn("Living Ectoplasm", 1, 1, cooldown: 5000)
+        on timed(2000) -> Follow
+    }
+}
+
+enemy "Doomages" {
+    state default {
+        on player_within(8) -> taunt1
+        conditional_effect(invincible)
+    }
+    state taunt1 {
+        taunt(1, "Munching on your bones will have a nice crunch to it!")
+        conditional_effect(invincible)
+        on timed(4500) -> Blargh1
+    }
+    state Blargh1 {
+        conditional_effect(armored)
+        shoot(10, count: 7, shoot_angle: 18, projectile: 1, cooldown: 2750)
+        shoot(10, count: 5, projectile: 3, cooldown: 4000, cooldown_offset: 1000)
+        on timed(5250) -> Blargh2
+    }
+    state Blargh2 {
+        wander(0.4)
+        shoot(10, count: 5, shoot_angle: 14, projectile: 2, cooldown: 1000)
+        on timed(5000) -> Warn1
+    }
+    state Warn1 {
+        flash(16711680, 3, 3)
+        on timed(3000) -> Blargh3
+    }
+    state Blargh3 {
+        shoot(10, count: 16, projectile: 0, cooldown: 850)
+        on timed(4750) -> Blargh4
+    }
+    state Blargh4 {
+        shoot(10, count: 8, shoot_angle: 6, projectile: 0, cooldown: 2850)
+        on timed(3000) -> Blargh1
+    }
+    loot {
+        threshold
+        threshold
+    }
+}
+
+enemy "Tridorno" {
+    on hp_below(0.11) -> TheLightDeath
+    state default {
+        on player_within(8) -> taunt1
+        conditional_effect(invincible)
+    }
+    conditional_effect(invincible)
+    state taunt1 {
+        taunt(1, "You are finally here...")
+        on timed(4500) -> taunt2
+    }
+    state taunt2 {
+        taunt(1, "I heard you move throughout the Catacombs. Was it really worth it though?")
+        on timed(4500) -> taunt3
+    }
+    state taunt3 {
+        taunt(1, "It isn't very easy getting here..I've guarded this place for centuries. Every intruder has only been an addition to my pile of bones.")
+        on timed(4500) -> taunt4
+    }
+    state taunt4 {
+        taunt(1, "I can already see you being added to my collection..")
+        flash(15790320, 3, 3)
+        on timed(5500) -> WanderandShoot
+    }
+    state WanderandShoot {
+        wander(0.75)
+        conditional_effect(armored)
+        shoot(10, count: 6, shoot_angle: 24, projectile: 5, cooldown: 4750)
+        shoot(10, count: 4, shoot_angle: 24, predictive: 2, projectile: 4, cooldown: 3500)
+        shoot(10, count: 14, predictive: 2, projectile: 4, cooldown: 3500)
+        on timed(16500) -> RunandGun
+    }
+    state RunandGun {
+        prioritize() {
+            follow(0.62, 8, 1)
+            wander(0.5)
+        }
+        heal_self(cooldown: 1500, amount: 100)
+        shoot(10, count: 7, shoot_angle: 38, projectile: 0, cooldown: 5000)
+        shoot(10, count: 3, shoot_angle: 24, projectile: 3, cooldown: 3500)
+        grenade(4, 175, 7, cooldown: 3250)
+        on timed(15850) -> LightningFam
+    }
+    state LightningFam {
+        heal_self(cooldown: 99999, amount: 62500)
+        sequence() {
+            timed(3000) {
+                prioritize() {
+                    back_and_forth(0.6, 4)
+                }
+            }
+            timed(4000) {
+                prioritize() {
+                    follow(0.4, 8, 1)
+                    wander(0.8)
+                }
+            }
+            timed(2655) {
+                prioritize() {
+                    stay_back(0.3, 3)
+                    wander(0.5)
+                }
+            }
+        }
+        conditional_effect(armored)
+        shoot(8.4, count: 2, shoot_angle: 20, fixed_angle: 0, projectile: 1, cooldown: 1200)
+        shoot(8.4, count: 2, shoot_angle: 20, fixed_angle: 90, projectile: 1, cooldown: 1200)
+        shoot(8.4, count: 2, shoot_angle: 20, fixed_angle: 180, projectile: 1, cooldown: 1200)
+        shoot(8.4, count: 2, shoot_angle: 20, fixed_angle: 270, projectile: 1, cooldown: 1200)
+        shoot(10, count: 3, shoot_angle: 14, projectile: 4, cooldown: 5000)
+        on damage_taken(45750) -> ReturnToSpawn
+    }
+    state ReturnToSpawn {
+        conditional_effect(invulnerable)
+        flash(0, 3, 3)
+        return_to_spawn(speed: 0.75)
+        on timed(5500) -> taunt11
+    }
+    state taunt11 {
+        conditional_effect(invincible)
+        taunt(1, "Your struggle to live is amusing.", "Having a hard time I see?")
+        on timed(4700) -> spodermen
+    }
+    state spodermen {
+        conditional_effect(stun_immune)
+        conditional_effect(invulnerable)
+        toss_object("Arena Spider", 8, 0, cooldown: 9999999)
+        toss_object("Arena Spider", 10, 45, cooldown: 9999999)
+        toss_object("Arena Spider", 7, 90, cooldown: 9999999)
+        toss_object("Arena Spider", 5, 135, cooldown: 9999999)
+        toss_object("Arena Spider", 12, 180, cooldown: 9999999)
+        toss_object("Arena Spider", 8, 225, cooldown: 9999999)
+        toss_object("Arena Spider", 6, 270, cooldown: 9999999)
+        toss_object("Arena Spider", 8, 315, cooldown: 9999999)
+        toss_object("Arena Spider", 10, 260, cooldown: 9999999)
+        toss_object("Arena Spider", 13, 160, cooldown: 9999999)
+        toss_object("Arena Spider", 12, 70, cooldown: 9999999)
+        toss_object("Arena Spider", 12, 30, cooldown: 9999999)
+        on timed(3000) -> CheckSpoders
+    }
+    state CheckSpoders {
+        conditional_effect(invulnerable)
+        prioritize() {
+            follow(0.2, 8, 1)
+            wander(0.2)
+        }
+        heal_self(cooldown: 2000, amount: 250)
+        shoot(10, count: 6, projectile: 5, cooldown: 5000)
+        toss_object("Catacombs Turret 1", 8, 0, cooldown: 9999999)
+        toss_object("Catacombs Turret 1", 8, 45, cooldown: 9999999)
+        toss_object("Catacombs Turret 1", 8, 90, cooldown: 9999999)
+        toss_object("Catacombs Turret 1", 8, 135, cooldown: 9999999)
+        toss_object("Catacombs Turret 1", 8, 180, cooldown: 9999999)
+        toss_object("Catacombs Turret 1", 8, 225, cooldown: 9999999)
+        toss_object("Catacombs Turret 1", 8, 270, cooldown: 9999999)
+        toss_object("Catacombs Turret 1", 8, 315, cooldown: 9999999)
+        on entities_not_exists(9999, "Arena Spider") -> FireFam
+    }
+    state FireFam {
+        sequence() {
+            timed(3000) {
+                prioritize() {
+                    back_and_forth(0.6, 4)
+                }
+            }
+            timed(4000) {
+                prioritize() {
+                    follow(0.4, 8, 1)
+                    wander(0.8)
+                }
+            }
+            timed(2655) {
+                prioritize() {
+                    stay_back(0.3, 3)
+                    wander(0.5)
+                }
+            }
+        }
+        taunt("I MUST STOP YOU NOW!", "You are over!")
+        conditional_effect(armored)
+        shoot(10, count: 3, shoot_angle: 8, projectile: 2, cooldown: 7000, cooldown_offset: 0)
+        shoot(10, count: 3, shoot_angle: 8, projectile: 2, cooldown: 7000, cooldown_offset: 100)
+        shoot(10, count: 3, shoot_angle: 8, projectile: 2, cooldown: 7000, cooldown_offset: 400)
+        shoot(10, count: 3, shoot_angle: 8, projectile: 2, cooldown: 7000, cooldown_offset: 800)
+        shoot(10, count: 3, shoot_angle: 8, projectile: 2, cooldown: 7000, cooldown_offset: 1200)
+        shoot(10, count: 3, shoot_angle: 8, projectile: 2, cooldown: 7000, cooldown_offset: 1600)
+        shoot(10, count: 3, shoot_angle: 8, projectile: 2, cooldown: 7000, cooldown_offset: 2000)
+        shoot(10, count: 5, shoot_angle: 8, projectile: 2, cooldown: 7000, cooldown_offset: 2400)
+        shoot(10, count: 10, shoot_angle: 18, projectile: 3, cooldown: 5000, predictive: 3)
+        shoot(10, count: 5, projectile: 1, cooldown: 6000)
+        shoot(10, count: 1, projectile: 0, cooldown: 3750)
+    }
+    state TheLightDeath {
+        taunt("THE LIGHT SHINES ON ME...I CAN NO LONGER FEEL DARKNESS!")
+        conditional_effect(invincible)
+        flash(16777215, 3, 3)
+        return_to_spawn(speed: 0.75)
+        on timed(6000) -> rip
+    }
+    state rip {
+        suicide()
+    }
+    loot {
+        threshold
+        threshold
+    }
+}
+

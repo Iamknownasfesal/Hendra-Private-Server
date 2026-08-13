@@ -158,6 +158,25 @@ pub enum Action {
         target: u16,
     },
 
+    /// Blink a colour.
+    Flash {
+        colour: u32,
+        period_ms: u32,
+        repeats: u32,
+    },
+
+    /// Take an effect away.
+    RemoveEffect {
+        effect: u8,
+    },
+
+    /// Raise maximum health by how many players are nearby.
+    ScaleHealth {
+        per_player: i32,
+        maximum_extra: i32,
+        radius: f32,
+    },
+
     /// Say something. Bosses announce their phases, and it is how a fight is legible.
     Say {
         text: Arc<str>,
@@ -345,6 +364,27 @@ pub enum Primitive {
         index: u8,
     },
 
+    /// Blink a colour, which is how the game telegraphs a phase change.
+    Flash {
+        colour: u32,
+        period_ms: u32,
+        repeats: u32,
+    },
+
+    /// Take an effect away, the counterpart to [`Primitive::ConditionalEffect`].
+    RemoveEffect {
+        effect: u8,
+    },
+
+    /// Raise maximum health with the number of players nearby.
+    ///
+    /// What stops a boss built for a crowd being trivial when two people find it, and the reverse.
+    ScaleHealth {
+        per_player: i32,
+        maximum_extra: i32,
+        radius: f32,
+    },
+
     ChangeSize {
         rate: f32,
         target: u16,
@@ -364,6 +404,8 @@ pub enum Primitive {
         /// `None` orders everything in range.
         kind: Option<NameRef>,
         state: Arc<str>,
+        /// Given once on entering the state rather than repeated while in it.
+        once: bool,
     },
 
     /// Become something else.
@@ -472,6 +514,13 @@ pub enum Primitive {
         children: Vec<Primitive>,
     },
 
+    /// Run one child per turn, advancing each time the current one acts.
+    ///
+    /// What makes a boss's attack pattern a pattern rather than a scramble.
+    Sequence {
+        children: Vec<Primitive>,
+    },
+
     /// Run the first child that wants to act, and no others.
     ///
     /// This is what makes an enemy look deliberate rather than twitchy: it chases if it can,
@@ -493,7 +542,8 @@ impl Primitive {
         match self {
             Primitive::Prioritize(children)
             | Primitive::Every { children, .. }
-            | Primitive::When { children, .. } => {
+            | Primitive::When { children, .. }
+            | Primitive::Sequence { children } => {
                 1 + children.iter().map(Primitive::slots).sum::<usize>()
             }
             _ => 1,
@@ -586,6 +636,11 @@ pub enum Condition {
     /// This much damage has been taken since entering the state.
     DamageTaken {
         amount: i32,
+    },
+
+    /// Has not moved for this long.
+    NotMoving {
+        after_ms: u32,
     },
 
     /// A condition the runtime does not implement. Never fires, and is reported at load.

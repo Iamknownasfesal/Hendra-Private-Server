@@ -1,0 +1,306 @@
+enemy "Test Egg" {
+    state Idle {
+        on hp_below(630000, "1") -> s1
+    }
+    state s1 {
+        on hp_below(610000, "2") -> s2
+        set_alt_texture(1)
+    }
+    state s2 {
+        on hp_below(590000, "3") -> s3
+        set_alt_texture(2)
+    }
+    state s3 {
+        on hp_below(570000, "4") -> s4
+        set_alt_texture(3)
+    }
+    state s4 {
+        conditional_effect(invincible)
+        set_alt_texture(4)
+        on timed(250) -> Break
+    }
+    state Break {
+        transform("TestChicken 2")
+    }
+}
+
+enemy "TestChicken 2" {
+    state Idle {
+        change_size(20, 100)
+        on timed(600, "Phase One") -> Phase_One
+    }
+    state Phase_One {
+        taunt("CLUCK!")
+        state Shoot {
+            shoot(15, projectile: 0, count: 4, fixed_angle: 90, angle_offset: 0, cooldown: 4000, cooldown_offset: 200)
+            shoot(15, projectile: 0, count: 4, fixed_angle: 90, angle_offset: 20, cooldown: 4000, cooldown_offset: 400)
+            shoot(15, projectile: 0, count: 4, fixed_angle: 90, angle_offset: 40, cooldown: 4000, cooldown_offset: 600)
+            shoot(15, projectile: 0, count: 4, fixed_angle: 90, angle_offset: 60, cooldown: 4000, cooldown_offset: 800)
+            shoot(15, projectile: 0, count: 4, fixed_angle: 90, angle_offset: 80, cooldown: 4000, cooldown_offset: 1000)
+            shoot(15, projectile: 0, count: 4, fixed_angle: 90, angle_offset: 100, cooldown: 4000, cooldown_offset: 1200)
+            shoot(15, projectile: 0, count: 4, fixed_angle: 90, angle_offset: 120, cooldown: 4000, cooldown_offset: 1400)
+            shoot(15, projectile: 0, count: 4, fixed_angle: 90, angle_offset: 140, cooldown: 4000, cooldown_offset: 1600)
+            shoot(15, projectile: 0, count: 4, fixed_angle: 90, angle_offset: 160, cooldown: 4000, cooldown_offset: 1800)
+            shoot(15, projectile: 0, count: 4, fixed_angle: 90, angle_offset: 180, cooldown: 4000, cooldown_offset: 2000)
+            shoot(15, projectile: 0, count: 4, fixed_angle: 90, angle_offset: 200, cooldown: 4000, cooldown_offset: 2200)
+            shoot(15, projectile: 0, count: 4, fixed_angle: 90, angle_offset: 220, cooldown: 4000, cooldown_offset: 2400)
+            shoot(15, projectile: 0, count: 4, fixed_angle: 90, angle_offset: 240, cooldown: 4000, cooldown_offset: 2600)
+            shoot(15, projectile: 0, count: 4, fixed_angle: 90, angle_offset: 260, cooldown: 4000, cooldown_offset: 2800)
+            shoot(15, projectile: 0, count: 4, fixed_angle: 90, angle_offset: 280, cooldown: 4000, cooldown_offset: 3000)
+            shoot(15, projectile: 0, count: 4, fixed_angle: 90, angle_offset: 300, cooldown: 4000, cooldown_offset: 3200)
+            shoot(15, projectile: 0, count: 4, fixed_angle: 90, angle_offset: 320, cooldown: 4000, cooldown_offset: 3400)
+            shoot(15, projectile: 0, count: 4, fixed_angle: 90, angle_offset: 340, cooldown: 4000, cooldown_offset: 3600)
+            shoot(15, projectile: 0, count: 4, fixed_angle: 90, angle_offset: 360, cooldown: 4000, cooldown_offset: 3800)
+            shoot(15, projectile: 4, count: 3, shoot_angle: 20, cooldown: 1000)
+            stay_close_to_spawn(0.6, 5)
+            wander(0.5)
+            on hp_below(0.8, "Phase Two") -> Phase_Two
+        }
+        state Phase_Two {
+            reproduce("TestChicken Small", 40, 5, 4000)
+            order_once(99, "TestChicken Small", "Orbit")
+            taunt("Cluck cluck cluck ... CLUCK!")
+            shoot(10, count: 5, projectile: 0, cooldown: 100, fixed_angle: 360, angle_offset: 0, shoot_angle: 15)
+            shoot(10, count: 5, projectile: 0, cooldown: 100, fixed_angle: 360, angle_offset: 180, shoot_angle: 15)
+            on timed(100, "1") -> s1
+            on hp_below(0.6) -> Static1
+        }
+        state s1 {
+            reproduce("TestChicken Small", 40, 5, 4000)
+            shoot(10, count: 5, projectile: 0, cooldown: 100, fixed_angle: 360, angle_offset: 30, shoot_angle: 15)
+            shoot(10, count: 5, projectile: 0, cooldown: 100, fixed_angle: 360, angle_offset: 210, shoot_angle: 15)
+            on timed(100, "2") -> s2
+            on hp_below(0.6) -> Static1
+        }
+        state s2 {
+            reproduce("TestChicken Small", 40, 5, 4000)
+            shoot(10, count: 5, projectile: 0, cooldown: 100, fixed_angle: 360, angle_offset: 60, shoot_angle: 15)
+            shoot(10, count: 5, projectile: 0, cooldown: 100, fixed_angle: 360, angle_offset: 240, shoot_angle: 15)
+            on timed(100, "3") -> s3
+            on hp_below(0.6) -> Static1
+        }
+        state s3 {
+            reproduce("TestChicken Small", 40, 5, 4000)
+            shoot(10, count: 5, projectile: 0, cooldown: 100, fixed_angle: 360, angle_offset: 90, shoot_angle: 15)
+            shoot(10, count: 5, projectile: 0, cooldown: 100, fixed_angle: 360, angle_offset: 270, shoot_angle: 15)
+            on timed(100, "4") -> s4
+            on hp_below(0.6) -> Static1
+        }
+        state s4 {
+            reproduce("TestChicken Small", 40, 5, 4000)
+            shoot(10, count: 5, projectile: 0, cooldown: 100, fixed_angle: 360, angle_offset: 120, shoot_angle: 15)
+            shoot(10, count: 5, projectile: 0, cooldown: 100, fixed_angle: 360, angle_offset: 300, shoot_angle: 15)
+            on timed(100, "5") -> s5
+            on hp_below(0.6) -> Static1
+        }
+        state s5 {
+            reproduce("TestChicken Small", 40, 5, 4000)
+            shoot(10, count: 5, projectile: 0, cooldown: 100, fixed_angle: 360, angle_offset: 150, shoot_angle: 15)
+            shoot(10, count: 5, projectile: 0, cooldown: 100, fixed_angle: 360, angle_offset: 330, shoot_angle: 15)
+            on timed(100, "6") -> s6
+            on hp_below(0.6) -> Static1
+        }
+        state s6 {
+            reproduce("TestChicken Small", 40, 5, 4000)
+            shoot(10, count: 5, projectile: 0, cooldown: 100, fixed_angle: 360, angle_offset: 180, shoot_angle: 15)
+            shoot(10, count: 5, projectile: 0, cooldown: 100, fixed_angle: 360, angle_offset: 360, shoot_angle: 15)
+            on timed(100, "Phase Two2") -> Phase_Two2
+            on hp_below(0.6) -> Static1
+        }
+        state Phase_Two2 {
+            conditional_effect(invulnerable, false)
+            reproduce("TestChicken Small", 40, 5, 4000)
+            order_once(99, "TestChicken Small", "Orbit")
+            taunt("Cluck cluck cluck ... CLUCK!")
+            shoot(10, count: 5, projectile: 0, cooldown: 100, fixed_angle: 360, angle_offset: 0, shoot_angle: 15)
+            shoot(10, count: 5, projectile: 0, cooldown: 100, fixed_angle: 360, angle_offset: 180, shoot_angle: 15)
+            on timed(100, "7") -> s7
+            on hp_below(0.6) -> Static1
+        }
+        state s7 {
+            conditional_effect(invulnerable, false)
+            reproduce("TestChicken Small", 40, 5, 4000)
+            shoot(10, count: 5, projectile: 0, cooldown: 100, fixed_angle: 360, angle_offset: 30, shoot_angle: 15)
+            shoot(10, count: 5, projectile: 0, cooldown: 100, fixed_angle: 360, angle_offset: 210, shoot_angle: 15)
+            on timed(100, "8") -> s8
+            on hp_below(0.6) -> Static1
+        }
+        state s8 {
+            conditional_effect(invulnerable, false)
+            reproduce("TestChicken Small", 40, 5, 4000)
+            shoot(10, count: 5, projectile: 0, cooldown: 100, fixed_angle: 360, angle_offset: 60, shoot_angle: 15)
+            shoot(10, count: 5, projectile: 0, cooldown: 100, fixed_angle: 360, angle_offset: 240, shoot_angle: 15)
+            on timed(100, "9") -> s9
+            on hp_below(0.6) -> Static1
+        }
+        state s9 {
+            reproduce("TestChicken Small", 40, 5, 4000)
+            shoot(10, count: 5, projectile: 0, cooldown: 100, fixed_angle: 360, angle_offset: 90, shoot_angle: 15)
+            shoot(10, count: 5, projectile: 0, cooldown: 100, fixed_angle: 360, angle_offset: 270, shoot_angle: 15)
+            on timed(100, "10") -> s10
+            on hp_below(0.6) -> Static1
+        }
+        state s10 {
+            reproduce("TestChicken Small", 40, 5, 4000)
+            shoot(10, count: 5, projectile: 0, cooldown: 100, fixed_angle: 360, angle_offset: 120, shoot_angle: 15)
+            shoot(10, count: 5, projectile: 0, cooldown: 100, fixed_angle: 360, angle_offset: 300, shoot_angle: 15)
+            on timed(100, "11") -> s11
+            on hp_below(0.6) -> Static1
+        }
+        state s11 {
+            reproduce("TestChicken Small", 40, 5, 4000)
+            shoot(10, count: 5, projectile: 0, cooldown: 100, fixed_angle: 360, angle_offset: 150, shoot_angle: 15)
+            shoot(10, count: 5, projectile: 0, cooldown: 100, fixed_angle: 360, angle_offset: 330, shoot_angle: 15)
+            on timed(100, "12") -> s12
+            on hp_below(0.6) -> Static1
+        }
+        state s12 {
+            reproduce("TestChicken Small", 40, 5, 4000)
+            shoot(10, count: 5, projectile: 0, cooldown: 100, fixed_angle: 360, angle_offset: 180, shoot_angle: 15)
+            shoot(10, count: 5, projectile: 0, cooldown: 100, fixed_angle: 360, angle_offset: 360, shoot_angle: 15)
+            on timed(100, "Phase Two") -> Phase_Two
+            on hp_below(0.6) -> Static1
+        }
+        state Static1 {
+            conditional_effect(invulnerable, false)
+            on timed(3000, "Phase Three") -> Phase_Three
+        }
+        state Phase_Three {
+            order_once(1, "TestChicken Small", "OrbitPlayer")
+            conditional_effect(invulnerable, false)
+            reproduce("TestChicken Small", 40, 5, 4000)
+            wander(0.2)
+            follow(0.4, 6, 1)
+            shoot(22, count: 5, projectile: 8, shoot_angle: 20, fixed_angle: 180, cooldown: 500)
+            shoot(22, count: 5, projectile: 7, shoot_angle: 20, fixed_angle: 180, cooldown: 500)
+            shoot(22, count: 5, projectile: 8, shoot_angle: 20, fixed_angle: 360, cooldown: 500)
+            shoot(22, count: 5, projectile: 7, shoot_angle: 20, fixed_angle: 360, cooldown: 500)
+            on timed(500) -> Immune
+            on hp_below(0.3) -> AlotOfBullets
+        }
+        state Immune {
+            conditional_effect(invulnerable, false)
+            reproduce("TestChicken Small", 40, 5, 4000)
+            wander(0.2)
+            follow(0.4, 6, 1)
+            on timed(500, "Phase Three2") -> Phase_Three2
+            on hp_below(0.3) -> AlotOfBullets
+        }
+        state Phase_Three2 {
+            conditional_effect(invulnerable, false)
+            reproduce("TestChicken Small", 40, 5, 4000)
+            wander(0.2)
+            follow(0.4, 6, 1)
+            shoot(22, count: 5, projectile: 8, shoot_angle: 20, fixed_angle: 90, cooldown: 500)
+            shoot(22, count: 5, projectile: 7, shoot_angle: 20, fixed_angle: 90, cooldown: 500)
+            shoot(22, count: 5, projectile: 8, shoot_angle: 20, fixed_angle: 270, cooldown: 500)
+            shoot(22, count: 5, projectile: 7, shoot_angle: 20, fixed_angle: 270, cooldown: 500)
+            on timed(500) -> Damageable
+            on hp_below(0.3) -> AlotOfBullets
+        }
+        state Damageable {
+            reproduce("TestChicken Small", 40, 5, 4000)
+            wander(0.2)
+            follow(0.4, 6, 1)
+            on timed(500, "Phase Three") -> Phase_Three
+            on hp_below(0.3) -> AlotOfBullets
+        }
+        state AlotOfBullets {
+            order_once(1, "TestChicken Small", "orbitattacking")
+            reproduce("TestChicken Small", 40, 5, 4000)
+            conditional_effect(invulnerable, false)
+            wander(0.1)
+            stay_close_to_spawn(0.1, 1)
+            shoot(20, count: 5, projectile: 2, shoot_angle: 25, fixed_angle: 90, cooldown: 1000)
+            shoot(20, count: 5, projectile: 2, shoot_angle: 25, fixed_angle: 270, cooldown: 1000)
+            shoot(20, count: 10, projectile: 3, shoot_angle: 10, fixed_angle: 180, cooldown: 1000)
+            shoot(20, count: 10, projectile: 3, shoot_angle: 10, fixed_angle: 360, cooldown: 1000)
+            on timed(1000) -> Static2
+            on hp_below(0.12) -> FinalPhase
+        }
+        state Static2 {
+            conditional_effect(invulnerable, false)
+            reproduce("TestChicken Small", 40, 5, 4000)
+            wander(0.1)
+            stay_close_to_spawn(0.1, 1)
+            on timed(1000) -> AttackingAgain
+            on hp_below(0.12) -> FinalPhase
+        }
+        state AttackingAgain {
+            reproduce("TestChicken Small", 40, 5, 4000)
+            wander(0.1)
+            stay_close_to_spawn(0.1, 1)
+            shoot(20, count: 5, projectile: 2, shoot_angle: 25, fixed_angle: 90, cooldown: 1000)
+            shoot(20, count: 5, projectile: 2, shoot_angle: 25, fixed_angle: 270, cooldown: 1000)
+            shoot(20, count: 10, projectile: 3, shoot_angle: 10, fixed_angle: 180, cooldown: 1000)
+            shoot(20, count: 10, projectile: 3, shoot_angle: 10, fixed_angle: 360, cooldown: 1000)
+            on timed(1000) -> Static3
+            on hp_below(0.12) -> FinalPhase
+        }
+        state Static3 {
+            conditional_effect(invulnerable, false)
+            reproduce("TestChicken Small", 40, 5, 4000)
+            wander(0.1)
+            stay_close_to_spawn(0.1, 1)
+            on timed(1000) -> AlotOfBullets
+            on hp_below(0.12) -> FinalPhase
+        }
+        state FinalPhase {
+            conditional_effect(invulnerable, false)
+            wander(0.5)
+            follow(0.5, 6, 1)
+            shoot(10, count: 5, projectile: 4, shoot_angle: 20, predictive: 0.4, cooldown: 1000)
+            shoot(10, count: 10, projectile: 3, shoot_angle: 10, predictive: 1, cooldown: 2000)
+            on timed(4000) -> FinalPhase2
+            on hp_below(0.02) -> CloseToDeath
+        }
+        state FinalPhase2 {
+            wander(0.4)
+            follow(0.4, 6, 1)
+            shoot(10, count: 5, projectile: 4, shoot_angle: 20, predictive: 0.4, cooldown: 1000)
+            shoot(10, count: 10, projectile: 3, shoot_angle: 10, predictive: 1, cooldown: 1500)
+            on timed(3000) -> FinalPhase
+            on hp_below(0.02) -> CloseToDeath
+        }
+        state CloseToDeath {
+            conditional_effect(invulnerable, false)
+            flash(16777215, 2, 1)
+            on timed(3000) -> Death
+        }
+        state Death {
+            conditional_effect(invulnerable, false)
+            shoot(100, 10, projectile: 6)
+            suicide()
+        }
+    }
+    loot {
+        threshold
+    }
+}
+
+enemy "TestChicken Small" {
+    state Orbit {
+        wander(0.7)
+        orbit(0.37, 4, 20, "TestChicken 2")
+        shoot(10, 8, projectile: 2, cooldown: 2000)
+    }
+    state FollowAndAttack {
+        wander(0.4)
+        prioritize() {
+            protect(1, "TestChicken 2", 100, 5, 5)
+            follow(1.5, 8, 1)
+        }
+        state OrbitPlayer {
+            orbit(0.8, 3, 10, "TestChicken 2")
+            shoot(7, projectile: 0, count: 10, fixed_angle: 25, cooldown: 750)
+        }
+        state orbitattacking {
+            orbit(0.7, 5.5, 10, "TestChicken 2")
+            shoot(20, projectile: 3, count: 10, fixed_angle: 25, cooldown: 750)
+        }
+        state Despawn {
+            suicide()
+        }
+    }
+}
+

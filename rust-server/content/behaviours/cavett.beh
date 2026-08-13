@@ -1,0 +1,216 @@
+enemy "Golden Oryx Effigy" {
+    drop_portal_on_death(target: "Realm Portal")
+    state Ini {
+        on hp_below(threshold: 0.99, target_state: "Q1 Spawn Minion") -> Q1_Spawn_Minion
+    }
+    state Q1_Spawn_Minion {
+        conditional_effect(invulnerable)
+        toss_object(child: "Gold Planet", range: 7, angle: 0, cooldown: 10000000)
+        toss_object(child: "Gold Planet", range: 7, angle: 45, cooldown: 10000000)
+        toss_object(child: "Gold Planet", range: 7, angle: 90, cooldown: 10000000)
+        toss_object(child: "Gold Planet", range: 7, angle: 135, cooldown: 10000000)
+        toss_object(child: "Gold Planet", range: 7, angle: 180, cooldown: 10000000)
+        toss_object(child: "Gold Planet", range: 7, angle: 225, cooldown: 10000000)
+        toss_object(child: "Gold Planet", range: 7, angle: 270, cooldown: 10000000)
+        toss_object(child: "Gold Planet", range: 7, angle: 315, cooldown: 10000000)
+        toss_object(child: "Treasure Oryx Defender", range: 3, angle: 0, cooldown: 10000000)
+        toss_object(child: "Treasure Oryx Defender", range: 3, angle: 90, cooldown: 10000000)
+        toss_object(child: "Treasure Oryx Defender", range: 3, angle: 180, cooldown: 10000000)
+        toss_object(child: "Treasure Oryx Defender", range: 3, angle: 270, cooldown: 10000000)
+        change_size(rate: -1, target: 60)
+        on timed(time: 4000, target_state: "Q1 Invulnerable") -> Q1_Invulnerable
+    }
+    state Q1_Invulnerable {
+        conditional_effect(invulnerable)
+        on entities_not_exists(99, "Q1 Vulnerable Transition", "Treasure Oryx Defender") -> Q1_Vulnerable_Transition
+    }
+    state Q1_Vulnerable_Transition {
+        state T1 {
+            set_alt_texture(2)
+            on timed(time: 50) -> T2
+        }
+        state T2 {
+            set_alt_texture(min_value: 0, max_value: 1, cooldown: 100, loop: true)
+        }
+        on timed(time: 800, target_state: "Q1 Vulnerable") -> Q1_Vulnerable
+    }
+    state Q1_Vulnerable {
+        set_alt_texture(1)
+        taunt(0.75, "My protectors!", "My guardians are gone!", "What have you done?", "You destroy my guardians in my house? Blasphemy!")
+        on hp_below(threshold: 0.75, target_state: "Q2 Invulnerable Transition") -> Q2_Invulnerable_Transition
+    }
+    state Q2_Invulnerable_Transition {
+        state T1_2 {
+            set_alt_texture(2)
+            on timed(time: 50) -> T2_2
+        }
+        state T2_2 {
+            set_alt_texture(min_value: 0, max_value: 1, cooldown: 100, loop: true)
+        }
+        on timed(time: 800, target_state: "Q2 Spawn Minion") -> Q2_Spawn_Minion
+    }
+    state Q2_Spawn_Minion {
+        set_alt_texture(0)
+        conditional_effect(invulnerable)
+        toss_object(child: "Treasure Oryx Defender", range: 3, angle: 0, cooldown: 10000000)
+        toss_object(child: "Treasure Oryx Defender", range: 3, angle: 90, cooldown: 10000000)
+        toss_object(child: "Treasure Oryx Defender", range: 3, angle: 180, cooldown: 10000000)
+        toss_object(child: "Treasure Oryx Defender", range: 3, angle: 270, cooldown: 10000000)
+        change_size(rate: -1, target: 60)
+        on timed(time: 4000, target_state: "Q2 Invulnerable") -> Q2_Invulnerable
+    }
+    state Q2_Invulnerable {
+        conditional_effect(invulnerable)
+        on entities_not_exists(99, "Q2 Vulnerable Transition", "Treasure Oryx Defender") -> Q2_Vulnerable_Transition
+    }
+    state Q2_Vulnerable_Transition {
+        state T1_3 {
+            set_alt_texture(2)
+            on timed(time: 50) -> T2_3
+        }
+        state T2_3 {
+            set_alt_texture(min_value: 0, max_value: 1, cooldown: 100, loop: true)
+        }
+        on timed(time: 800, target_state: "Q2 Vulnerable") -> Q2_Vulnerable
+    }
+    state Q2_Vulnerable {
+        set_alt_texture(1)
+        taunt(0.75, "My protectors are no more!", "You Mongrels are ruining my beautiful treasure!", "You won't leave with your pilfered loot!", "I'm weakened")
+        on hp_below(threshold: 0.6, target_state: "Q3 Vulnerable Transition") -> Q3_Vulnerable_Transition
+    }
+    state Q3_Vulnerable_Transition {
+        state T1_4 {
+            set_alt_texture(2)
+            on timed(time: 50) -> T2_4
+        }
+        state T2_4 {
+            set_alt_texture(min_value: 0, max_value: 1, cooldown: 100, loop: true)
+        }
+        on timed(time: 800) -> Q3
+    }
+    state Q3 {
+        set_alt_texture(1)
+        state Attack1 {
+            state CardinalBarrage {
+                grenade(radius: 0.5, damage: 70, range: 0, fixed_angle: 0, cooldown: 1000)
+                grenade(radius: 1, damage: 70, range: 3, fixed_angle: 0, cooldown: 1000)
+                grenade(radius: 1, damage: 70, range: 3, fixed_angle: 90, cooldown: 1000)
+                grenade(radius: 1, damage: 70, range: 3, fixed_angle: 180, cooldown: 1000)
+                grenade(radius: 1, damage: 70, range: 3, fixed_angle: 270, cooldown: 1000)
+                on timed(time: 1500) -> OrdinalBarrage
+            }
+            state OrdinalBarrage {
+                grenade(radius: 0.5, damage: 70, range: 0, fixed_angle: 0, cooldown: 1000)
+                grenade(radius: 1, damage: 70, range: 3, fixed_angle: 45, cooldown: 1000)
+                grenade(radius: 1, damage: 70, range: 3, fixed_angle: 135, cooldown: 1000)
+                grenade(radius: 1, damage: 70, range: 3, fixed_angle: 225, cooldown: 1000)
+                grenade(radius: 1, damage: 70, range: 3, fixed_angle: 315, cooldown: 1000)
+                on timed(time: 1500) -> CardinalBarrage2
+            }
+            state CardinalBarrage2 {
+                grenade(radius: 0.5, damage: 70, range: 0, fixed_angle: 0, cooldown: 1000)
+                grenade(radius: 1, damage: 70, range: 3, fixed_angle: 0, cooldown: 1000)
+                grenade(radius: 1, damage: 70, range: 3, fixed_angle: 90, cooldown: 1000)
+                grenade(radius: 1, damage: 70, range: 3, fixed_angle: 180, cooldown: 1000)
+                grenade(radius: 1, damage: 70, range: 3, fixed_angle: 270, cooldown: 1000)
+                on timed(time: 1500) -> OrdinalBarrage2
+            }
+            state OrdinalBarrage2 {
+                grenade(radius: 0.5, damage: 70, range: 0, fixed_angle: 0, cooldown: 1000)
+                grenade(radius: 1, damage: 70, range: 3, fixed_angle: 45, cooldown: 1000)
+                grenade(radius: 1, damage: 70, range: 3, fixed_angle: 135, cooldown: 1000)
+                grenade(radius: 1, damage: 70, range: 3, fixed_angle: 225, cooldown: 1000)
+                grenade(radius: 1, damage: 70, range: 3, fixed_angle: 315, cooldown: 1000)
+                on timed(time: 1500) -> CardinalBarrage
+            }
+            on timed(time: 8500) -> Attack2
+        }
+        state Attack2 {
+            flash(color: 255, flash_period: 0.1, flash_repeats: 10)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 90, cooldown: 10000000, cooldown_offset: 0)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 90, cooldown: 10000000, cooldown_offset: 200)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 80, cooldown: 10000000, cooldown_offset: 400)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 70, cooldown: 10000000, cooldown_offset: 600)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 60, cooldown: 10000000, cooldown_offset: 800)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 50, cooldown: 10000000, cooldown_offset: 1000)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 40, cooldown: 10000000, cooldown_offset: 1200)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 30, cooldown: 10000000, cooldown_offset: 1400)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 20, cooldown: 10000000, cooldown_offset: 1600)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 10, cooldown: 10000000, cooldown_offset: 1800)
+            shoot(radius: 0, count: 4, shoot_angle: 45, projectile: 1, default_angle: 0, cooldown: 10000000, cooldown_offset: 2200)
+            shoot(radius: 0, count: 4, shoot_angle: 45, projectile: 1, default_angle: 0, cooldown: 10000000, cooldown_offset: 2400)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 0, cooldown: 10000000, cooldown_offset: 2600)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 10, cooldown: 10000000, cooldown_offset: 2800)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 20, cooldown: 10000000, cooldown_offset: 3000)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 30, cooldown: 10000000, cooldown_offset: 3200)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 40, cooldown: 10000000, cooldown_offset: 3400)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 50, cooldown: 10000000, cooldown_offset: 3600)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 60, cooldown: 10000000, cooldown_offset: 3800)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 70, cooldown: 10000000, cooldown_offset: 4000)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 80, cooldown: 10000000, cooldown_offset: 4200)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 90, cooldown: 10000000, cooldown_offset: 4400)
+            shoot(radius: 0, count: 4, shoot_angle: 45, projectile: 1, default_angle: 90, cooldown: 10000000, cooldown_offset: 4600)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 90, cooldown: 10000000, cooldown_offset: 4800)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 90, cooldown: 10000000, cooldown_offset: 5000)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 90, cooldown: 10000000, cooldown_offset: 5200)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 80, cooldown: 10000000, cooldown_offset: 5400)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 70, cooldown: 10000000, cooldown_offset: 5600)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 60, cooldown: 10000000, cooldown_offset: 5800)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 50, cooldown: 10000000, cooldown_offset: 6000)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 40, cooldown: 10000000, cooldown_offset: 6200)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 30, cooldown: 10000000, cooldown_offset: 6400)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 20, cooldown: 10000000, cooldown_offset: 6600)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 10, cooldown: 10000000, cooldown_offset: 6800)
+            shoot(radius: 0, count: 4, shoot_angle: 45, projectile: 1, default_angle: 0, cooldown: 10000000, cooldown_offset: 7000)
+            on timed(time: 7000) -> Recuperate
+        }
+        state Recuperate {
+            conditional_effect(invulnerable)
+            heal_self(cooldown: 1000, amount: 200)
+            on timed(time: 3000) -> Attack1
+        }
+    }
+    loot {
+        threshold
+    }
+}
+
+enemy "Treasure Oryx Defender" {
+    prioritize() {
+        orbit(speed: 0.5, radius: 3, acquire_range: 6, target: "Golden Oryx Effigy", speed_variance: 0, radius_variance: 0)
+    }
+    shoot(radius: 0, count: 8, shoot_angle: 45, default_angle: 0, cooldown: 3000)
+}
+
+enemy "Gold Planet" {
+    conditional_effect(invincible)
+    on entity_not_exists(target: "Golden Oryx Effigy", dist: 999) -> Die
+    prioritize() {
+        orbit(speed: 0.5, radius: 7, acquire_range: 20, target: "Golden Oryx Effigy", speed_variance: 0, radius_variance: 0)
+    }
+    state GreySpiral {
+        shoot(radius: 0, count: 2, shoot_angle: 180, projectile: 1, default_angle: 90, cooldown: 10000, cooldown_offset: 0)
+        shoot(radius: 0, count: 2, shoot_angle: 180, projectile: 1, default_angle: 90, cooldown: 10000, cooldown_offset: 400)
+        shoot(radius: 0, count: 2, shoot_angle: 180, projectile: 1, default_angle: 80, cooldown: 10000, cooldown_offset: 800)
+        shoot(radius: 0, count: 2, shoot_angle: 180, projectile: 1, default_angle: 70, cooldown: 10000, cooldown_offset: 1200)
+        shoot(radius: 0, count: 2, shoot_angle: 180, projectile: 0, default_angle: 60, cooldown: 10000, cooldown_offset: 1600)
+        shoot(radius: 0, count: 2, shoot_angle: 180, projectile: 1, default_angle: 50, cooldown: 10000, cooldown_offset: 2000)
+        shoot(radius: 0, count: 2, shoot_angle: 180, projectile: 1, default_angle: 40, cooldown: 10000, cooldown_offset: 2400)
+        shoot(radius: 0, count: 2, shoot_angle: 180, projectile: 1, default_angle: 30, cooldown: 10000, cooldown_offset: 2800)
+        shoot(radius: 0, count: 2, shoot_angle: 180, projectile: 1, default_angle: 20, cooldown: 10000, cooldown_offset: 3200)
+        shoot(radius: 0, count: 2, shoot_angle: 180, projectile: 0, default_angle: 10, cooldown: 10000, cooldown_offset: 3600)
+        shoot(radius: 0, count: 2, shoot_angle: 180, projectile: 1, default_angle: 0, cooldown: 10000, cooldown_offset: 4000)
+        shoot(radius: 0, count: 2, shoot_angle: 180, projectile: 1, default_angle: -10, cooldown: 10000, cooldown_offset: 4400)
+        shoot(radius: 0, count: 2, shoot_angle: 180, projectile: 1, default_angle: -20, cooldown: 10000, cooldown_offset: 4800)
+        shoot(radius: 0, count: 2, shoot_angle: 180, projectile: 1, default_angle: -30, cooldown: 10000, cooldown_offset: 5200)
+        shoot(radius: 0, count: 2, shoot_angle: 180, projectile: 0, default_angle: -40, cooldown: 10000, cooldown_offset: 5600)
+        on timed(time: 5600) -> Reset
+    }
+    state Reset {
+        on timed(time: 0) -> GreySpiral
+    }
+    state Die {
+        suicide()
+    }
+}
+
