@@ -35,9 +35,11 @@ impl FieldMask {
     pub const SIZE: FieldMask = FieldMask(1 << 6);
     pub const NAME: FieldMask = FieldMask(1 << 7);
     pub const OBJECT_TYPE: FieldMask = FieldMask(1 << 8);
+    pub const TEXTURE: FieldMask = FieldMask(1 << 9);
+    pub const STATS: FieldMask = FieldMask(1 << 10);
 
     /// Every field, for an entity the receiver has never seen.
-    pub const ALL: FieldMask = FieldMask(0x1ff);
+    pub const ALL: FieldMask = FieldMask(0x7ff);
 
     pub fn has(self, field: FieldMask) -> bool {
         self.0 & field.0 != 0
@@ -82,6 +84,15 @@ pub struct EntityState {
     pub size: u16,
 
     pub name: Option<Box<str>>,
+
+    /// Which sprite to draw, for entities that change appearance without changing type.
+    pub texture: u8,
+
+    /// The eight stats, in the order the game numbers them.
+    ///
+    /// Only a player's own entity carries meaningful values; everything else sends zeroes, which
+    /// cost one byte each as varints and never change, so they never appear in a delta.
+    pub stats: [i32; 8],
 }
 
 impl EntityState {
@@ -112,6 +123,8 @@ impl EntityState {
             FieldMask::OBJECT_TYPE,
             self.object_type != baseline.object_type,
         );
+        mask.set(FieldMask::TEXTURE, self.texture != baseline.texture);
+        mask.set(FieldMask::STATS, self.stats != baseline.stats);
 
         mask
     }
@@ -164,6 +177,16 @@ impl EntityState {
                     w.string(name);
                 }
                 None => w.bool(false),
+            }
+        }
+        if mask.has(FieldMask::TEXTURE) {
+            w.varint(self.texture as u64);
+        }
+        if mask.has(FieldMask::STATS) {
+            // All eight together. They change as a group at a level-up, and a mask bit each would
+            // cost more than the values do.
+            for stat in self.stats {
+                w.varint_signed(stat as i64);
             }
         }
     }
@@ -223,6 +246,17 @@ impl EntityState {
                 None
             };
         }
+        if mask.has(FieldMask::TEXTURE) {
+            state.texture = u8::try_from(r.varint()?).map_err(|_| CodecError::InvalidValue {
+                what: "texture",
+                value: 0,
+            })?;
+        }
+        if mask.has(FieldMask::STATS) {
+            for stat in state.stats.iter_mut() {
+                *stat = r.varint_signed()? as i32;
+            }
+        }
 
         Ok(state)
     }
@@ -230,6 +264,50 @@ impl EntityState {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn stats_travel_and_only_when_they_change() {
+        let mut before = walking();
+        before.stats = [100, 100, 12, 0, 12, 15, 10, 10];
+
+        let mut after = before.clone();
+        assert_eq!(
+            after.changes_from(&before),
+            FieldMask::EMPTY,
+            "nothing moved, so nothing is sent"
+        );
+
+        after.stats[2] = 18;
+        let mask = after.changes_from(&before);
+        assert!(mask.has(FieldMask::STATS));
+
+        let mut buffer = Vec::new();
+        after.encode(mask, Some(&before), &mut Writer::new(&mut buffer));
+        let read = EntityState::decode(Some(&before), &mut Reader::new(&buffer)).unwrap();
+
+        assert_eq!(read.stats, after.stats);
+    }
+
+    #[test]
+    fn a_texture_change_is_one_field_rather_than_a_new_entity() {
+        // A boss changing phase keeps its type and its id; only what is drawn changes.
+        let before = walking();
+        let mut after = before.clone();
+        after.texture = 3;
+
+        let mask = after.changes_from(&before);
+        assert!(mask.has(FieldMask::TEXTURE));
+        assert!(!mask.has(FieldMask::OBJECT_TYPE));
+
+        let mut buffer = Vec::new();
+        after.encode(mask, Some(&before), &mut Writer::new(&mut buffer));
+        assert_eq!(
+            EntityState::decode(Some(&before), &mut Reader::new(&buffer))
+                .unwrap()
+                .texture,
+            3
+        );
+    }
+
     use super::*;
 
     fn walking() -> EntityState {
@@ -244,6 +322,8 @@ mod tests {
             conditions: 0,
             size: 100,
             name: Some("Hobbit Mage".into()),
+            texture: 0,
+            stats: [0; 8],
         }
     }
 

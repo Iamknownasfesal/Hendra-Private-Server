@@ -153,6 +153,8 @@ fn entity(id: u32, x: f32) -> (EntityId, EntityState) {
             conditions: 0,
             size: 100,
             name: None,
+            texture: 0,
+            stats: [0; 8],
         },
     )
 }

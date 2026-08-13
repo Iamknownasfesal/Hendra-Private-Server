@@ -284,6 +284,30 @@ async fn handshake(
 }
 
 /// Sends the player everything they are carrying and storing.
+/// Recomputes what a player wears and tells the world.
+///
+/// Called after any move that succeeded rather than only after one touching a worn slot, because
+/// the cost is one query and the failure mode of getting the condition wrong is a ring that keeps
+/// working after it has been taken off.
+async fn refresh_equipment(
+    context: &Context,
+    player: &crate::accounts::Session,
+    placement: &Placement,
+) {
+    let Ok(character) = context.store.character(player.character.id).await else {
+        return;
+    };
+
+    let boosts = worn_boosts(&context.catalog, &character.inventory);
+    placement
+        .world
+        .send(ToWorld::Equipment {
+            handle: placement.handle,
+            boosts,
+        })
+        .await;
+}
+
 async fn send_containers(link: &mut Link, store: &Store, player: &crate::accounts::Session) {
     let inventory = store
         .character(player.character.id)
@@ -393,6 +417,7 @@ async fn move_item(
     match context.store.move_item(source, destination, expected).await {
         Ok(_) => {
             send_containers(link, &context.store, player).await;
+            refresh_equipment(context, player, placement).await;
             if touches_vault {
                 place_chests(context, player, placement).await;
             }
@@ -689,6 +714,20 @@ async fn worn_slots_would_accept(
     fits(to, moving) && fits(from, displaced)
 }
 
+/// What the worn slots add, as a stat layer.
+///
+/// Read from what is worn rather than accumulated as items move, so a missed change cannot leave a
+/// stat permanently wrong: the answer is always a function of the inventory as it stands.
+fn worn_boosts(catalog: &hendra_content::Catalog, inventory: &[(i16, i32)]) -> [i32; 8] {
+    let worn = inventory
+        .iter()
+        .filter(|(slot, _)| *slot < hendra_characters::EQUIPPED_SLOTS)
+        .filter_map(|(_, item)| catalog.object(ObjectType(*item as u16)))
+        .filter_map(|desc| desc.item.as_ref());
+
+    hendra_sim::stats::equipment_boosts(worn)
+}
+
 /// The body a character arrives in.
 ///
 /// Health travels with the player rather than resetting at every door, which is the difference
@@ -698,8 +737,18 @@ fn arrival_of(player: &crate::accounts::Session, context: &Context) -> crate::wo
     let avatar = ObjectType(player.character.object_type as u16);
     let max_hp = player.character.max_hp.max(1);
 
+    // The class decides the base stats. A character whose class the catalog does not have keeps
+    // the defaults rather than arriving with nothing.
+    let stats = context
+        .catalog
+        .class(avatar)
+        .map(hendra_sim::stats::Stats::starting)
+        .unwrap_or_default();
+
     crate::world_task::Arrival {
         avatar,
+        stats,
+        boosts: worn_boosts(&context.catalog, &player.character.inventory),
         hp: player.character.hp.clamp(1, max_hp),
         max_hp,
         weapon: player

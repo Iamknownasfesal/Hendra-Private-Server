@@ -225,6 +225,14 @@ impl Entity {
             conditions: self.conditions.0,
             size: self.size,
             name: self.name.clone(),
+            texture: self.texture,
+            // Only players carry meaningful stats. Everything else sends zeroes, which cost a byte
+            // each as varints and never change, so they never appear in a delta.
+            stats: if self.kind == Kind::Player {
+                self.stats.totals()
+            } else {
+                [0; 8]
+            },
         }
     }
 }
@@ -3113,6 +3121,70 @@ mod tests {
                 .is_none(),
             "and movement is unaffected"
         );
+    }
+
+    #[test]
+    fn what_a_player_wears_changes_what_it_can_do() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut player = Entity::player(ObjectType(0x600), 10.0, 10.0, 500);
+        player.weapon = Some(ObjectType(0x901));
+        let player = world.spawn(player).unwrap();
+        world.reindex();
+
+        let rules = crate::effects::Rules::NONE;
+        let bare = world.get(player).unwrap().stats;
+        let bare_speed = bare.movement_speed(&rules);
+        let bare_cooldown = bare.shot_cooldown_ms(&rules, 1.0);
+
+        // A ring of speed and dexterity, as an equipment layer.
+        let mut boosts = [0i32; 8];
+        boosts[hendra_content::Stat::Speed.index()] = 30;
+        boosts[hendra_content::Stat::Dexterity.index()] = 30;
+        world.get_mut(player).unwrap().stats.set_equipment(boosts);
+
+        let worn = world.get(player).unwrap().stats;
+        assert!(worn.movement_speed(&rules) > bare_speed);
+        assert!(worn.shot_cooldown_ms(&rules, 1.0) < bare_cooldown);
+
+        // Taking it off returns exactly where it started.
+        world.get_mut(player).unwrap().stats.set_equipment([0; 8]);
+        let after = world.get(player).unwrap().stats;
+        assert_eq!(after.movement_speed(&rules), bare_speed);
+        assert_eq!(after.shot_cooldown_ms(&rules, 1.0), bare_cooldown);
+    }
+
+    #[test]
+    fn a_players_stats_reach_the_snapshot_and_an_enemys_do_not() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut player = Entity::player(ObjectType(0x600), 10.0, 10.0, 500);
+        player.stats.boost(hendra_content::Stat::Attack, 40);
+        let player = world.spawn(player).unwrap();
+
+        let mut enemy = Entity::fixture(ObjectType(0x502), 12.0, 10.0);
+        enemy.kind = Kind::Enemy;
+        enemy.max_hp = 200;
+        enemy.hp = 200;
+        world.spawn(enemy).unwrap();
+        world.reindex();
+
+        let snapshot = world.snapshot_for(player, 20.0);
+        let seen: Vec<_> = snapshot.iter().collect();
+
+        let (_, mine) = seen
+            .iter()
+            .find(|(_, state)| state.object_type == 0x600)
+            .expect("the player is in its own snapshot");
+        assert_eq!(mine.stats[hendra_content::Stat::Attack.index()], 40);
+
+        let (_, theirs) = seen
+            .iter()
+            .find(|(_, state)| state.object_type == 0x502)
+            .expect("and so is the enemy");
+        assert_eq!(theirs.stats, [0; 8], "an enemy sends none");
     }
 
     #[test]

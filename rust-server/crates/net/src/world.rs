@@ -412,6 +412,8 @@ mod tests {
             conditions: 0,
             size: 100,
             name: None,
+            texture: 0,
+            stats: [0; 8],
         }
     }
 

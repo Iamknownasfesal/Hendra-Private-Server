@@ -6,7 +6,7 @@ deliberately excluded and left until last.
 Phases 0–5 are done: workspace, content, protocol, transport, simulation, behaviour language,
 persistence, authentication. What follows is phases 6–11.
 
-**Where we are:** ~57% of the old server by subsystem. 455 tests.
+**Where we are:** ~58% of the old server by subsystem. 481 tests.
 
 **Sizing** is relative, not calendar: **S** is an afternoon, **M** is a day or two, **L** is
 several days, **XL** is a week or more.
@@ -69,12 +69,12 @@ here.
 - [x] `equipment_boosts` sums what is worn, ignoring boosts that name no real stat
 - [x] Derived values read from `StatsManager` rather than invented
 - [x] `Stats` on `Entity`, replacing the bare `speed` field
-- [ ] Recompute the equipment layer whenever a worn slot changes
+- [x] Recompute the equipment layer whenever a worn slot changes
 - [x] Movement uses `movement_speed()` rather than a constant
 - [x] Weapon cooldown uses `shot_cooldown_ms()`, compounding the weapon's rate with dexterity
 - [x] Damage uses `damage_multiplier()`, applied when the shot is made
 - [x] Health and magic regenerate between fights
-- [ ] Stats reach the client in the snapshot
+- [x] Stats reach the client in the snapshot, alongside a texture field for phase changes
 
 ### 6.3 Experience, levels and fame — **M**
 

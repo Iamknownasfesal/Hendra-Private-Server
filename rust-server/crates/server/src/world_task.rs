@@ -39,6 +39,12 @@ pub enum ToWorld {
         reply: tokio::sync::oneshot::Sender<Handle>,
     },
 
+    /// What a player wears has changed, so its stat layer is replaced.
+    Equipment {
+        handle: Handle,
+        boosts: [i32; 8],
+    },
+
     /// A player reports where it believes it is, and what it has received.
     Input {
         handle: Handle,
@@ -199,6 +205,12 @@ pub struct Arrival {
     pub hp: i32,
     pub max_hp: i32,
     pub weapon: Option<ObjectType>,
+
+    /// The eight stats the character brings, before equipment.
+    pub stats: hendra_sim::stats::Stats,
+
+    /// What the character is wearing, as a stat layer.
+    pub boosts: [i32; 8],
 }
 
 fn handle(
@@ -227,6 +239,8 @@ fn handle(
             let max_hp = arrival.max_hp.max(1);
 
             let mut entity = Entity::player(avatar, x, y, max_hp);
+            entity.stats = arrival.stats;
+            entity.stats.set_equipment(arrival.boosts);
             entity.hp = arrival.hp.clamp(1, max_hp);
             entity.name = Some(name.as_str().into());
             entity.weapon = arrival.weapon.or(loadout.weapon);
@@ -369,6 +383,12 @@ fn handle(
             reply,
         } => {
             let _ = reply.send(put_in_bag(world, catalog, player, bag, item));
+        }
+
+        ToWorld::Equipment { handle, boosts } => {
+            if let Some(entity) = world.get_mut(handle) {
+                entity.stats.set_equipment(boosts);
+            }
         }
 
         ToWorld::Leave { handle } => {
