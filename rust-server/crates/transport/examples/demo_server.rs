@@ -193,6 +193,7 @@ async fn handle(
         }
 
         ClientMessage::Shoot { angle, .. } => println!("  shoot: {angle:.2} rad"),
+        ClientMessage::MoveItem { from, to } => println!("  move item: {from:?} -> {to:?}"),
         ClientMessage::UsePortal { entity } => println!("  portal: {entity:?}"),
         ClientMessage::Pong { .. } => {}
     }

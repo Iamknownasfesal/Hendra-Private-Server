@@ -13,6 +13,8 @@ hendra-content = { path = "../content" }
 hendra-net = { path = "../net" }
 hendra-sim = { path = "../sim" }
 hendra-transport = { path = "../transport" }
+hendra-store = { path = "../store" }
+hendra-behavior = { path = "../behavior" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal"] }
 tracing.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

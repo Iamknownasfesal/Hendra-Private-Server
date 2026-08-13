@@ -5,6 +5,16 @@
 //! travel the other way without passing through here at all — the world writes to the player's
 //! connection itself.
 //!
+//! # Where items live
+//!
+//! Equipment and the backpack are one table. Slots 0 to 3 are worn and 4 upwards are carried, which
+//! is how the game has always numbered them, and it means every move between them is a move within
+//! one container — so it goes through the same transactional path a vault move does rather than
+//! needing a second mechanism.
+//!
+//! Bags are not durable and are handled separately; a move touching one is refused for now rather
+//! than done unsafely.
+//!
 //! # Changing world
 //!
 //! A session outlives the world it is in. Stepping through a portal leaves one world and joins
@@ -15,8 +25,11 @@
 
 use std::sync::Arc;
 
-use hendra_net::message::{ClientMessage, PROTOCOL_VERSION, RejectReason, ServerMessage};
+use hendra_net::message::{
+    ClientMessage, ContainerId, PROTOCOL_VERSION, RejectReason, ServerMessage, SlotLocation,
+};
 use hendra_net::{Delivery, EntityId, Reader, Writer};
+use hendra_store::{Location, Store};
 use hendra_sim::Handle;
 use hendra_transport::{Link, Received};
 
@@ -29,16 +42,64 @@ struct Placement {
     handle: Handle,
 }
 
+/// How many slots are worn rather than carried.
+const EQUIPPED_SLOTS: u8 = 4;
+
+/// Everything a session needs to answer for one player.
+pub struct Context {
+    pub worlds: Arc<Worlds>,
+    pub store: Store,
+    pub catalog: Arc<hendra_content::Catalog>,
+    pub kit: crate::accounts::StartingKitOwned,
+}
+
+/// Turns a wire slot into a durable one.
+///
+/// Returns `None` for a container that is not durable, which today means a bag.
+fn locate(where_: SlotLocation, character_id: i64, account_id: i64) -> Option<Location> {
+    Some(match where_ {
+        SlotLocation::Equipment { slot } if slot < EQUIPPED_SLOTS => Location::Inventory {
+            character_id,
+            slot: slot as i16,
+        },
+        // An equipment slot beyond what exists is not a slot at all.
+        SlotLocation::Equipment { .. } => return None,
+
+        SlotLocation::Inventory { slot } => Location::Inventory {
+            character_id,
+            // Carried slots sit above the worn ones in the same table.
+            slot: (slot as i16).saturating_add(EQUIPPED_SLOTS as i16),
+        },
+
+        SlotLocation::Vault { slot } => Location::Vault {
+            account_id,
+            slot: slot as i16,
+        },
+
+        SlotLocation::Bag { .. } => return None,
+    })
+}
+
 /// Handles one connection for its lifetime.
-pub async fn serve(mut link: Link, worlds: Arc<Worlds>, entry: WorldHandle) {
+pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
     let peer = link.remote_address();
 
-    let Some((name, mut placement)) = handshake(&mut link, &entry).await else {
+    let Some((player, mut placement)) = handshake(&mut link, &context, &entry).await else {
         link.close("handshake refused");
         return;
     };
 
-    tracing::info!(%peer, %name, world = %placement.world.name, "session started");
+    let name = player.character.name.clone();
+    tracing::info!(
+        %peer, %name,
+        account = player.account.id,
+        character = player.character.id,
+        world = %placement.world.name,
+        "session started"
+    );
+
+    // The client needs to see what it is carrying before it can move any of it.
+    send_containers(&mut link, &context.store, &player).await;
 
     loop {
         let Some(received) = link.recv().await else {
@@ -49,8 +110,12 @@ pub async fn serve(mut link: Link, worlds: Arc<Worlds>, entry: WorldHandle) {
             Outcome::Continue => {}
             Outcome::Stop => break,
 
+            Outcome::Move { from, to } => {
+                move_item(&mut link, &context, &player, from, to).await;
+            }
+
             Outcome::Travel(portal_type) => {
-                match travel(&mut link, &placement, &name, portal_type, &worlds).await {
+                match travel(&mut link, &placement, &name, portal_type, &context.worlds).await {
                     Some(next) => {
                         tracing::info!(
                             %name,
@@ -75,6 +140,20 @@ pub async fn serve(mut link: Link, worlds: Arc<Worlds>, entry: WorldHandle) {
             handle: placement.handle,
         })
         .await;
+
+    // Write back what the character became. Items are not saved here — they are written as they
+    // move, so a checkpoint that rewrote slots wholesale could undo a move that had committed.
+    if let Err(err) = crate::accounts::save(
+        &context.store,
+        &player.character,
+        player.character.hp,
+        player.character.mp,
+    )
+    .await
+    {
+        tracing::warn!(%err, %name, "could not save the character");
+    }
+
     tracing::info!(%peer, %name, "session ended");
 }
 
@@ -84,10 +163,20 @@ enum Outcome {
 
     /// The player stepped into a portal of this object type.
     Travel(u16),
+
+    /// The player wants to move an item.
+    Move {
+        from: SlotLocation,
+        to: SlotLocation,
+    },
 }
 
 /// Reads the opening message and either admits the player or explains why not.
-async fn handshake(link: &mut Link, entry: &WorldHandle) -> Option<(String, Placement)> {
+async fn handshake(
+    link: &mut Link,
+    context: &Context,
+    entry: &WorldHandle,
+) -> Option<(crate::accounts::Session, Placement)> {
     let received = link.recv().await?;
     let payload = received.into_payload();
     let mut reader = Reader::new(&payload);
@@ -116,23 +205,159 @@ async fn handshake(link: &mut Link, entry: &WorldHandle) -> Option<(String, Plac
         return None;
     }
 
-    // Tokens are minted by the app server over HTTPS. Until that exists, any non-empty token is
-    // accepted and used as the display name — this is the one place that has to change when real
-    // authentication lands, and it is deliberately obvious.
-    if token.is_empty() {
-        refuse(link, RejectReason::BadToken).await;
-        return None;
-    }
-    let name = format!("{token}#{character}");
+    let (avatar, items, max_hp) = context.kit.borrowed();
+    let kit = crate::accounts::StartingKit {
+        avatar,
+        items: &items,
+        max_hp,
+    };
 
-    let handle = join(link, entry, &name).await?;
+    let player = match crate::accounts::log_in(
+        &context.store,
+        &context.catalog,
+        &kit,
+        token,
+        character as i64,
+    )
+    .await
+    {
+        Ok(player) => player,
+        Err(crate::accounts::LoginError::Banned) => {
+            refuse(link, RejectReason::Banned).await;
+            return None;
+        }
+        Err(crate::accounts::LoginError::NoToken) => {
+            refuse(link, RejectReason::BadToken).await;
+            return None;
+        }
+        Err(err) => {
+            tracing::warn!(%err, "login failed");
+            refuse(link, RejectReason::BadToken).await;
+            return None;
+        }
+    };
+
+    let handle = join(link, entry, &player.character.name).await?;
     Some((
-        name,
+        player,
         Placement {
             world: entry.clone(),
             handle,
         },
     ))
+}
+
+/// Sends the player everything they are carrying and storing.
+async fn send_containers(link: &mut Link, store: &Store, player: &crate::accounts::Session) {
+    let inventory = store
+        .character(player.character.id)
+        .await
+        .map(|character| character.inventory)
+        .unwrap_or_default();
+
+    // Worn and carried live in one table, so they are split back apart on the way out.
+    let worn: Vec<(u16, u16)> = inventory
+        .iter()
+        .filter(|(slot, _)| *slot < EQUIPPED_SLOTS as i16)
+        .map(|(slot, item)| (*slot as u16, *item as u16))
+        .collect();
+    let carried: Vec<(u16, u16)> = inventory
+        .iter()
+        .filter(|(slot, _)| *slot >= EQUIPPED_SLOTS as i16)
+        .map(|(slot, item)| ((*slot - EQUIPPED_SLOTS as i16) as u16, *item as u16))
+        .collect();
+
+    let vault: Vec<(u16, u16)> = store
+        .vault(player.account.id)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(slot, item)| (slot as u16, item as u16))
+        .collect();
+
+    for (container, slots) in [
+        (ContainerId::Equipment, worn),
+        (ContainerId::Inventory, carried),
+        (ContainerId::Vault, vault),
+    ] {
+        let mut buf = Vec::new();
+        ServerMessage::Container { container, slots }.encode(&mut Writer::new(&mut buf));
+        let _ = link.send(Delivery::Stream, &buf).await;
+    }
+}
+
+/// Carries out a move, or explains why not.
+async fn move_item(
+    link: &mut Link,
+    context: &Context,
+    player: &crate::accounts::Session,
+    from: SlotLocation,
+    to: SlotLocation,
+) {
+    let character_id = player.character.id;
+    let account_id = player.account.id;
+
+    let (Some(source), Some(destination)) = (
+        locate(from, character_id, account_id),
+        locate(to, character_id, account_id),
+    ) else {
+        say(link, "that cannot be moved yet").await;
+        return;
+    };
+
+    // What the client believed was there. The store refuses the move if it is no longer, which is
+    // what stops the same item being moved twice by two requests that both read it first.
+    let expected = match read_slot(&context.store, source).await {
+        Some(item) => item,
+        None => {
+            say(link, "there is nothing there").await;
+            return;
+        }
+    };
+
+    match context
+        .store
+        .move_item(source, destination, expected)
+        .await
+    {
+        Ok(_) => send_containers(link, &context.store, player).await,
+        Err(hendra_store::StoreError::Refused(reason)) => {
+            say(link, reason).await;
+            // Re-read rather than assume: the client's picture is now known to be wrong.
+            send_containers(link, &context.store, player).await;
+        }
+        Err(err) => {
+            tracing::warn!(%err, "a move failed");
+            say(link, "that could not be done").await;
+        }
+    }
+}
+
+/// What is currently in a durable slot.
+async fn read_slot(store: &Store, at: Location) -> Option<i32> {
+    match at {
+        Location::Inventory { character_id, slot } => store
+            .character(character_id)
+            .await
+            .ok()?
+            .inventory
+            .iter()
+            .find(|(index, _)| *index == slot)
+            .map(|(_, item)| *item),
+        Location::Vault { account_id, slot } => store
+            .vault(account_id)
+            .await
+            .ok()?
+            .iter()
+            .find(|(index, _)| *index == slot)
+            .map(|(_, item)| *item),
+    }
+}
+
+async fn say(link: &mut Link, message: &str) {
+    let mut buf = Vec::new();
+    ServerMessage::Refused { message }.encode(&mut Writer::new(&mut buf));
+    let _ = link.send(Delivery::Stream, &buf).await;
 }
 
 /// Puts the player into a world and tells the client about it.
@@ -241,6 +466,9 @@ async fn dispatch(received: &Received, placement: &Placement) -> Outcome {
         }
 
         ClientMessage::Shoot { angle, .. } => world.send(ToWorld::Shoot { handle, angle }).await,
+
+        // Handled by the caller, which owns the connection and the store.
+        ClientMessage::MoveItem { from, to } => return Outcome::Move { from, to },
 
         ClientMessage::UsePortal { entity } => {
             return match ask_portal(world, handle, entity).await {

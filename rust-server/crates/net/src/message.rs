@@ -30,6 +30,7 @@ pub mod client_id {
     pub const USE_PORTAL: u16 = 0x0004;
     pub const PONG: u16 = 0x0005;
     pub const SHOOT: u16 = 0x0006;
+    pub const MOVE_ITEM: u16 = 0x0007;
 }
 
 /// Messages travelling from server to client.
@@ -40,6 +41,8 @@ pub mod server_id {
     pub const CHAT: u16 = 0x8004;
     pub const PING: u16 = 0x8005;
     pub const SHOT: u16 = 0x8006;
+    pub const CONTAINER: u16 = 0x8007;
+    pub const REFUSED: u16 = 0x8008;
 }
 
 /// Why a connection was refused.
@@ -78,6 +81,90 @@ impl RejectReason {
             3 => Full,
             4 => Banned,
             5 => NoSuchCharacter,
+            _ => return None,
+        })
+    }
+}
+
+/// Which container a slot belongs to.
+///
+/// Sent as a small tag rather than an entity id for the player's own containers, because a client
+/// naming its own inventory by entity id could name someone else's. Only a bag has to be addressed
+/// by entity, since bags belong to the world rather than to a player.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SlotLocation {
+    /// The player's own backpack.
+    Inventory { slot: u8 },
+
+    /// What the player is wearing.
+    Equipment { slot: u8 },
+
+    /// The account's vault.
+    Vault { slot: u16 },
+
+    /// A bag or chest in the world.
+    Bag { entity: EntityId, slot: u8 },
+}
+
+impl SlotLocation {
+    fn tag(&self) -> u8 {
+        match self {
+            SlotLocation::Inventory { .. } => 0,
+            SlotLocation::Equipment { .. } => 1,
+            SlotLocation::Vault { .. } => 2,
+            SlotLocation::Bag { .. } => 3,
+        }
+    }
+
+    fn encode(&self, w: &mut Writer<'_>) {
+        w.u8(self.tag());
+        match self {
+            SlotLocation::Inventory { slot } | SlotLocation::Equipment { slot } => w.u8(*slot),
+            SlotLocation::Vault { slot } => w.varint(*slot as u64),
+            SlotLocation::Bag { entity, slot } => {
+                w.varint(entity.0 as u64);
+                w.u8(*slot);
+            }
+        }
+    }
+
+    fn decode(r: &mut Reader<'_>) -> Result<SlotLocation, CodecError> {
+        let tag = r.u8()?;
+        Ok(match tag {
+            0 => SlotLocation::Inventory { slot: r.u8()? },
+            1 => SlotLocation::Equipment { slot: r.u8()? },
+            2 => SlotLocation::Vault {
+                slot: r.varint_u32()? as u16,
+            },
+            3 => SlotLocation::Bag {
+                entity: EntityId(r.varint_u32()?),
+                slot: r.u8()?,
+            },
+            other => {
+                return Err(CodecError::InvalidValue {
+                    what: "slot location",
+                    value: other as u64,
+                });
+            }
+        })
+    }
+}
+
+/// Which of a player's containers a listing describes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum ContainerId {
+    Inventory = 0,
+    Equipment = 1,
+    Vault = 2,
+}
+
+impl ContainerId {
+    pub fn from_code(code: u8) -> Option<ContainerId> {
+        Some(match code {
+            0 => ContainerId::Inventory,
+            1 => ContainerId::Equipment,
+            2 => ContainerId::Vault,
             _ => return None,
         })
     }
@@ -148,6 +235,17 @@ pub enum ClientMessage<'a> {
     /// server's: whether the weapon is off cooldown, where the shot travels, what it strikes, and
     /// what that costs. Notably there is no hit report anywhere in this protocol.
     Shoot { angle: f32, client_time_ms: u32 },
+
+    /// A request to move an item.
+    ///
+    /// Advisory in the same way movement is: the server decides whether the item is where the
+    /// client thinks, whether the destination will take it, and whether the two are close enough to
+    /// reach. A refusal comes back as [`ServerMessage::Refused`] and the client re-reads the
+    /// container rather than assuming.
+    MoveItem {
+        from: SlotLocation,
+        to: SlotLocation,
+    },
 }
 
 impl ClientMessage<'_> {
@@ -159,6 +257,7 @@ impl ClientMessage<'_> {
             ClientMessage::UsePortal { .. } => client_id::USE_PORTAL,
             ClientMessage::Pong { .. } => client_id::PONG,
             ClientMessage::Shoot { .. } => client_id::SHOOT,
+            ClientMessage::MoveItem { .. } => client_id::MOVE_ITEM,
         }
     }
 
@@ -185,6 +284,10 @@ impl ClientMessage<'_> {
                 w.f32(*angle);
                 w.varint(*client_time_ms as u64);
             }
+            ClientMessage::MoveItem { from, to } => {
+                from.encode(w);
+                to.encode(w);
+            }
         }
     }
 
@@ -207,6 +310,10 @@ impl ClientMessage<'_> {
             client_id::SHOOT => ClientMessage::Shoot {
                 angle: r.f32()?,
                 client_time_ms: r.varint_u32()?,
+            },
+            client_id::MOVE_ITEM => ClientMessage::MoveItem {
+                from: SlotLocation::decode(r)?,
+                to: SlotLocation::decode(r)?,
             },
             unknown => {
                 return Err(CodecError::InvalidValue {
@@ -266,6 +373,26 @@ pub enum ServerMessage<'a> {
         speed: f32,
         lifetime_ms: u32,
     },
+
+    /// The whole contents of one of the player's containers.
+    ///
+    /// Sent in full rather than as a delta. A container changes when a player moves something,
+    /// which is rare next to movement, and sending the whole thing means a client that misses one
+    /// update is corrected by the next rather than drifting.
+    Container {
+        container: ContainerId,
+
+        /// Slot index and item type, for occupied slots only.
+        ///
+        /// Owned rather than borrowed like the rest of this enum, because decoding varints cannot
+        /// hand back a slice of the input. That costs one allocation, which is fine here and would
+        /// not be on the snapshot path — a container changes when a player moves something, not
+        /// twenty times a second.
+        slots: Vec<(u16, u16)>,
+    },
+
+    /// A request was refused, with something to show the player.
+    Refused { message: &'a str },
 }
 
 impl ServerMessage<'_> {
@@ -277,6 +404,8 @@ impl ServerMessage<'_> {
             ServerMessage::Chat { .. } => server_id::CHAT,
             ServerMessage::Ping { .. } => server_id::PING,
             ServerMessage::Shot { .. } => server_id::SHOT,
+            ServerMessage::Container { .. } => server_id::CONTAINER,
+            ServerMessage::Refused { .. } => server_id::REFUSED,
         }
     }
 
@@ -320,6 +449,15 @@ impl ServerMessage<'_> {
                 w.f32(*speed);
                 w.varint(*lifetime_ms as u64);
             }
+            ServerMessage::Container { container, slots } => {
+                w.u8(*container as u8);
+                w.varint(slots.len() as u64);
+                for (slot, item) in slots.iter() {
+                    w.varint(*slot as u64);
+                    w.varint(*item as u64);
+                }
+            }
+            ServerMessage::Refused { message } => w.string(message),
         }
     }
 
@@ -357,6 +495,26 @@ impl ServerMessage<'_> {
                 angle: r.f32()?,
                 speed: r.f32()?,
                 lifetime_ms: r.varint_u32()?,
+            },
+            server_id::CONTAINER => {
+                let code = r.u8()?;
+                let container =
+                    ContainerId::from_code(code).ok_or(CodecError::InvalidValue {
+                        what: "container",
+                        value: code as u64,
+                    })?;
+
+                // Decoded into the reader's own buffer would need an allocation, and this borrows
+                // like everything else, so the caller reads the pairs itself.
+                let count = r.count(crate::codec::MAX_SEQUENCE)?;
+                let mut slots = Vec::with_capacity(count.min(256));
+                for _ in 0..count {
+                    slots.push((r.varint_u32()? as u16, r.varint_u32()? as u16));
+                }
+                ServerMessage::Container { container, slots }
+            }
+            server_id::REFUSED => ServerMessage::Refused {
+                message: r.string()?,
             },
             unknown => {
                 return Err(CodecError::InvalidValue {
@@ -418,6 +576,17 @@ mod tests {
             angle: 1.25,
             client_time_ms: 900_000,
         });
+        round_trip_client(ClientMessage::MoveItem {
+            from: SlotLocation::Inventory { slot: 3 },
+            to: SlotLocation::Vault { slot: 200 },
+        });
+        round_trip_client(ClientMessage::MoveItem {
+            from: SlotLocation::Bag {
+                entity: EntityId(65_555),
+                slot: 1,
+            },
+            to: SlotLocation::Equipment { slot: 0 },
+        });
     }
 
     #[test]
@@ -435,6 +604,17 @@ mod tests {
             text: "the chest is open",
         });
         round_trip_server(ServerMessage::Ping { serial: 3 });
+        round_trip_server(ServerMessage::Container {
+            container: ContainerId::Vault,
+            slots: vec![(0, 0x900), (7, 0x901), (199, 0x902)],
+        });
+        round_trip_server(ServerMessage::Container {
+            container: ContainerId::Inventory,
+            slots: Vec::new(),
+        });
+        round_trip_server(ServerMessage::Refused {
+            message: "that item is no longer where you left it",
+        });
         round_trip_server(ServerMessage::Shot {
             projectile: EntityId(65_555),
             owner: EntityId(19),
@@ -464,6 +644,33 @@ mod tests {
         // Two bytes of id, then the acknowledgement, clock and two coordinates. This travels
         // twenty times a second per player, so its size is the one that compounds.
         assert!(bytes.len() <= 16, "{} bytes for one input", bytes.len());
+    }
+
+    #[test]
+    fn an_unknown_slot_location_is_refused() {
+        let mut buf = Vec::new();
+        {
+            let mut w = Writer::new(&mut buf);
+            w.u16(client_id::MOVE_ITEM);
+            w.u8(9); // no such container
+            w.u8(0);
+        }
+        assert!(ClientMessage::decode(&mut Reader::new(&buf)).is_err());
+    }
+
+    #[test]
+    fn a_player_addresses_its_own_containers_by_tag_not_by_entity() {
+        // A client naming its own inventory by entity id could name someone else's; only bags,
+        // which belong to the world rather than to a player, are addressed that way.
+        let mut buf = Vec::new();
+        ClientMessage::MoveItem {
+            from: SlotLocation::Inventory { slot: 0 },
+            to: SlotLocation::Vault { slot: 0 },
+        }
+        .encode(&mut Writer::new(&mut buf));
+
+        // Two bytes of id, then a tag and a slot for each end.
+        assert_eq!(buf.len(), 6);
     }
 
     #[test]

@@ -695,9 +695,11 @@ dependencies = [
 name = "hendra-server"
 version = "0.1.0"
 dependencies = [
+ "hendra-behavior",
  "hendra-content",
  "hendra-net",
  "hendra-sim",
+ "hendra-store",
  "hendra-transport",
  "thiserror",
  "tokio",

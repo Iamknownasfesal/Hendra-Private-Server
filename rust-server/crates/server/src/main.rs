@@ -11,6 +11,7 @@
 //! willing to accept any certificate, which is fine on a development machine and is not what a
 //! public server should run.
 
+mod accounts;
 mod session;
 mod world_task;
 mod worlds;
@@ -26,8 +27,16 @@ use hendra_transport::{Listener, ServerIdentity};
 /// real; this is the wizard.
 const DEFAULT_PLAYER_OBJECT: &str = "Wizard";
 
-/// What a player arrives holding, until inventories exist.
-const DEFAULT_WEAPON: &str = "Wand of Dark Magic";
+/// What a player arrives holding, until character classes decide it.
+const STARTING_KIT: &[&str] = &[
+    "Wand of Dark Magic",
+    "Robe of the Neophyte",
+    "Health Potion",
+    "Magic Potion",
+];
+
+/// Where the durable half lives.
+const DEFAULT_DATABASE: &str = "postgres://localhost/hendra";
 
 struct Options {
     port: u16,
@@ -35,6 +44,7 @@ struct Options {
     content: PathBuf,
     worlds: PathBuf,
     certificate: Option<(PathBuf, PathBuf)>,
+    database: String,
 }
 
 impl Default for Options {
@@ -45,6 +55,8 @@ impl Default for Options {
             content: PathBuf::from("../Server-Side/XmlDatas/xmls/client"),
             worlds: PathBuf::from("../Server-Side/XmlDatas/worlds"),
             certificate: None,
+            database: std::env::var("HENDRA_DATABASE")
+                .unwrap_or_else(|_| DEFAULT_DATABASE.to_string()),
         }
     }
 }
@@ -62,6 +74,7 @@ fn parse_options() -> Options {
             "--worlds" => options.worlds = args.next().map(PathBuf::from).unwrap_or(options.worlds),
             "--cert" => cert = args.next().map(PathBuf::from),
             "--key" => key = args.next().map(PathBuf::from),
+            "--database" => options.database = args.next().unwrap_or(options.database),
             other => eprintln!("ignoring unknown argument {other}"),
         }
     }
@@ -98,18 +111,35 @@ async fn main() {
     );
 
     let catalog = Arc::new(catalog);
+    let avatar = catalog
+        .type_of(DEFAULT_PLAYER_OBJECT)
+        .unwrap_or(ObjectType(0x0300));
     let loadout = world_task::Loadout {
-        avatar: catalog
-            .type_of(DEFAULT_PLAYER_OBJECT)
-            .unwrap_or(ObjectType(0x0300)),
-        weapon: catalog.type_of(DEFAULT_WEAPON),
+        avatar,
+        weapon: catalog.type_of(STARTING_KIT[0]),
     };
     if loadout.weapon.is_none() {
         tracing::warn!(
-            weapon = DEFAULT_WEAPON,
+            weapon = STARTING_KIT[0],
             "starter weapon not in the catalog; players cannot shoot"
         );
     }
+
+    let store = match hendra_store::Store::connect(&options.database).await {
+        Ok(store) => {
+            tracing::info!("connected to the database");
+            store
+        }
+        Err(err) => {
+            tracing::error!(%err, database = %options.database, "cannot reach the database");
+            std::process::exit(1);
+        }
+    };
+
+    tracing::warn!(
+        "authentication is not implemented: a session token is taken as an account name and the \
+         account is created if new. This is a development server."
+    );
 
     let registry = Arc::new(worlds::Worlds::load(
         &options.worlds,
@@ -200,6 +230,17 @@ async fn main() {
         }
     };
 
+    let context = Arc::new(session::Context {
+        worlds: Arc::clone(&registry),
+        store,
+        catalog: Arc::clone(&catalog),
+        kit: accounts::StartingKitOwned {
+            avatar,
+            items: STARTING_KIT.iter().map(|name| name.to_string()).collect(),
+            max_hp: 800,
+        },
+    });
+
     tracing::info!(
         address = %listener.local_address().expect("a bound address"),
         world = %name,
@@ -211,11 +252,7 @@ async fn main() {
         while let Some(incoming) = listener.accept().await {
             match incoming {
                 Ok(link) => {
-                    tokio::spawn(session::serve(
-                        link,
-                        Arc::clone(&registry),
-                        entry.clone(),
-                    ));
+                    tokio::spawn(session::serve(link, Arc::clone(&context), entry.clone()));
                 }
                 Err(err) => tracing::warn!(%err, "handshake failed"),
             }

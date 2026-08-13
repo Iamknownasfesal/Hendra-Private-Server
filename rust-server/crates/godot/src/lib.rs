@@ -76,6 +76,15 @@ enum Event {
     },
     Disconnected(String),
 
+    /// The whole contents of one of the player's containers.
+    Container {
+        container: u8,
+        slots: Vec<(u16, u16)>,
+    },
+
+    /// Something the player asked for was refused, with a line to show them.
+    Refused(String),
+
     /// A projectile was fired. Its whole flight follows from these fields, so this arrives once and
     /// the client animates the rest itself.
     Shot {
@@ -155,6 +164,10 @@ impl Shared {
 enum Command {
     Input { x: f32, y: f32, time_ms: u32 },
     Shoot { angle: f32 },
+    MoveItem {
+        from: (u8, u16),
+        to: (u8, u16),
+    },
     Chat(String),
     UsePortal(u32),
     Disconnect,
@@ -315,6 +328,21 @@ impl HendraConnection {
                     entry.set("kind", "disconnected");
                     entry.set("reason", why);
                 }
+                Event::Container { container, slots } => {
+                    entry.set("kind", "container");
+                    entry.set("container", container as i64);
+
+                    // Parallel arrays for the same reason the world view uses them: one marshalled
+                    // block per field beats a dictionary per slot.
+                    let indices: Vec<i32> = slots.iter().map(|(slot, _)| *slot as i32).collect();
+                    let items: Vec<i32> = slots.iter().map(|(_, item)| *item as i32).collect();
+                    entry.set("slots", &PackedInt32Array::from(indices.as_slice()));
+                    entry.set("items", &PackedInt32Array::from(items.as_slice()));
+                }
+                Event::Refused(message) => {
+                    entry.set("kind", "refused");
+                    entry.set("message", message);
+                }
                 Event::Shot {
                     projectile,
                     owner,
@@ -394,6 +422,18 @@ impl HendraConnection {
             x,
             y,
             time_ms: time_ms.max(0) as u32,
+        });
+    }
+
+    /// Asks to move an item between two slots.
+    ///
+    /// Containers are named by tag rather than by entity, so a client cannot address someone
+    /// else's inventory: 0 is what you are carrying, 1 what you are wearing, 2 the vault.
+    #[func]
+    fn move_item(&self, from_container: i64, from_slot: i64, to_container: i64, to_slot: i64) {
+        self.send(Command::MoveItem {
+            from: (from_container as u8, from_slot.max(0) as u16),
+            to: (to_container as u8, to_slot.max(0) as u16),
         });
     }
 
@@ -545,6 +585,22 @@ async fn handle(
             return link.send(Delivery::Stream, &buf).await.is_ok();
         }
 
+        Command::MoveItem { from, to } => {
+            let place = |(container, slot): (u8, u16)| match container {
+                1 => hendra_net::message::SlotLocation::Equipment { slot: slot as u8 },
+                2 => hendra_net::message::SlotLocation::Vault { slot },
+                _ => hendra_net::message::SlotLocation::Inventory { slot: slot as u8 },
+            };
+
+            let mut buf = Vec::new();
+            ClientMessage::MoveItem {
+                from: place(from),
+                to: place(to),
+            }
+            .encode(&mut Writer::new(&mut buf));
+            return link.send(Delivery::Stream, &buf).await.is_ok();
+        }
+
         Command::Chat(text) => {
             let mut buf = Vec::new();
             ClientMessage::Chat { text: &text }.encode(&mut Writer::new(&mut buf));
@@ -599,6 +655,13 @@ fn apply(
         }),
 
         ServerMessage::Ping { .. } => {}
+
+        ServerMessage::Container { container, slots } => shared.push(Event::Container {
+            container: container as u8,
+            slots,
+        }),
+
+        ServerMessage::Refused { message } => shared.push(Event::Refused(message.to_owned())),
 
         ServerMessage::Shot {
             projectile,
