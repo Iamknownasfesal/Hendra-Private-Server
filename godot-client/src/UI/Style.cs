@@ -59,9 +59,11 @@ public static class Style
     /// </summary>
     /// <remarks>
     /// The original's restricted-use indicator, in its colour: a dark red behind the item rather
-    /// than a mark beside it, so a bag full of loot for somebody else reads at a glance.
+    /// than a mark beside it, so a bag full of loot for somebody else reads at a glance. It is the
+    /// red of <see cref="SlotHighlight.Red"/> and resolves through the same map -- one mechanism
+    /// with one meaning, rather than two that happen to look alike.
     /// </remarks>
-    public static readonly Color SlotRestricted = new("5c1d1d");
+    public static readonly Color SlotRestricted = SlotHighlights.RedFill;
 
     // Bars. All four read the same way: an edge, a track, a flat fill, and a highlight along the
     // top of the fill that moves with it.
@@ -88,6 +90,21 @@ public static class Style
 
     /// <summary>Untiered and unique grades, which are the ones worth stopping on.</summary>
     public static readonly Color TierSpecial = new("ff8c1a");
+
+    /// <summary>
+    /// The tag in a slot's bottom right corner, coloured by grade.
+    /// </summary>
+    /// <remarks>
+    /// A lookup and not a conditional, so that a grade the data introduces later needs a line here
+    /// and no change at all to anything that draws. A numeric tier -- T0, T13 -- is white and is the
+    /// unremarkable case; the untiered grades are the ones worth stopping on and get the accent.
+    /// </remarks>
+    public static Color TierColour(string tag) => tag switch
+    {
+        "UT" => new Color("a855f7"),
+        "ST" => new Color("ff8c1a"),
+        _ => TierNormal,
+    };
 
     public static readonly Color PotionCount = new("4ce04c");
     public static readonly Color Guild = new("5cd05c");

@@ -619,8 +619,12 @@ namespace wServer.realm
                     return new Portal(manager, id, null);
                 case "GuildHallPortal":
                     return new GuildHallPortal(manager, id, null);
+                // The vault's own object, and the empty chest that used to be bought by walking into
+                // it. Both are scenery now: capacity is an integer on the account, bought through
+                // the vault panel, so there is nothing here to sell or to open.
+                case "VaultAccess":
                 case "ClosedVaultChest":
-                    return new ClosedVaultChest(manager, id);
+                    return new StaticObject(manager, id, null, false, false, false);
                 case "ClosedVaultChestGold":
                 case "ClosedGiftChest":
                 case "VaultChest":

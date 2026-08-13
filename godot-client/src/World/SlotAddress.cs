@@ -8,6 +8,16 @@ public enum SlotOwner
 
     /// <summary>Whatever container is open at the player's feet.</summary>
     Container,
+
+    /// <summary>
+    /// The vault, by flat index across every chest the account owns.
+    /// </summary>
+    /// <remarks>
+    /// The index is a display convenience and never leaves the client in this form: chest and slot
+    /// are worked out from it on the way to the wire, because what is stored is still one array of
+    /// eight per chest.
+    /// </remarks>
+    Vault,
 }
 
 /// <summary>

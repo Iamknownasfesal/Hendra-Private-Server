@@ -83,6 +83,17 @@ public sealed partial class SlotView : Control
     }
 
     /// <summary>
+    /// How many of this item the slot holds, drawn in the top left.
+    /// </summary>
+    /// <remarks>
+    /// Zero draws nothing, which is every slot on this server: the wire carries an item type per
+    /// slot and no quantity anywhere, so nothing can currently set this above zero. It is here
+    /// because the corner is reserved for it -- the key number moved out of that corner to make
+    /// room -- and because a stacking build should need to fill this in and nothing else.
+    /// </remarks>
+    public int StackCount { get; set; }
+
+    /// <summary>
     /// Whether this slot takes part in dragging.
     /// </summary>
     /// <remarks>
@@ -291,25 +302,45 @@ public sealed partial class SlotView : Control
         return new ItemTooltipPanel(_desc, _sprite, _data, App.ServiceLocator.Strings);
     }
 
+    /// <summary>
+    /// What this slot is saying about its item, beyond the artwork.
+    /// </summary>
+    /// <remarks>
+    /// Resolved rather than stored, because the only meaning wired to it is one this slot already
+    /// knows: an item the character cannot equip. A slot given a highlight for some other reason
+    /// would set this instead.
+    /// </remarks>
+    private SlotHighlight Highlight =>
+        _sprite.IsValid && !_usable ? SlotHighlight.Red : SlotHighlight.None;
+
     public override void _Draw()
     {
         var full = new Rect2(Vector2.Zero, Size);
+        var (fill, edge) = SlotHighlights.Pair(Highlight);
 
-        var plate = !_sprite.IsValid ? Style.Slot
-            : _usable ? Style.Slot
-            : Style.SlotRestricted;
-
-        DrawRect(full, plate.Lightened(_glow * 0.12f));
+        DrawRect(full, fill.Lightened(_glow * 0.12f));
 
         if (_sprite.IsValid)
             DrawTextureRectRegion(_sprite.Sheet, Artwork(Size), _sprite.Region);
 
         DrawCooldown();
+        DrawStack();
         DrawNumber();
         DrawMouseBind();
         if (App.ServiceLocator.Settings is not { ShowTierLevel: false })
             DrawTierTag();
-        DrawBorder(full);
+        DrawBorder(full, edge);
+    }
+
+    /// <summary>How many of it there are, in the corner reserved for the question.</summary>
+    private void DrawStack()
+    {
+        if (StackCount <= 1 || !_sprite.IsValid)
+            return;
+
+        this.DrawOutlined(
+            new Vector2(4f, Style.FontTag + 4f),
+            StackCount.ToString(CultureInfo.InvariantCulture), Style.FontTag, Style.Text);
     }
 
     /// <summary>
@@ -336,20 +367,25 @@ public sealed partial class SlotView : Control
     /// happens to -- an ability on cooldown, a potion at full health -- is indistinguishable from a
     /// key that did not register.
     /// </remarks>
-    private void DrawBorder(in Rect2 full)
+    private void DrawBorder(in Rect2 full, in Color edge)
     {
         bool lit = _flashUntil > 0.0 || _glow > 0.5f;
 
-        DrawRect(full, lit ? Style.SlotBorderHi : Style.SlotBorder, filled: false, width: 1f);
+        DrawRect(full, lit ? Style.SlotBorderHi : edge, filled: false, width: 1f);
     }
 
     /// <summary>
     /// The slot's number, which moves depending on whether anything is in the slot.
     /// </summary>
     /// <remarks>
-    /// Large and centred while the slot is empty, small in the top left corner once something is in
-    /// it. An empty slot has nothing else to say, so the number can be the whole of it and be
-    /// readable at a glance; a full one has artwork to show, and the number becomes a caption on it.
+    /// Large and centred while the slot is empty, small in a corner once something is in it. An
+    /// empty slot has nothing else to say, so the number can be the whole of it and be readable at
+    /// a glance; a full one has artwork to show, and the number becomes a caption on it.
+    ///
+    /// That caption sits top right rather than top left, which is where revision two had it. Top
+    /// left is the stack count's corner everywhere, and a number that means "press 3" reading in
+    /// the same place as a number that means "there are three" is the kind of ambiguity you only
+    /// notice once and then cannot stop noticing.
     /// </remarks>
     private void DrawNumber()
     {
@@ -358,7 +394,9 @@ public sealed partial class SlotView : Control
 
         if (_sprite.IsValid)
         {
-            this.DrawOutlined(new Vector2(4f, Style.FontTag + 4f), Hotkey, Style.FontTag, Style.TextDim);
+            float tag = Style.Measure(Hotkey, Style.FontTag);
+            this.DrawOutlined(
+                new Vector2(Size.X - tag - 4f, Style.FontTag + 4f), Hotkey, Style.FontTag, Style.TextDim);
             return;
         }
 
@@ -441,7 +479,6 @@ public sealed partial class SlotView : Control
         float width = Style.Measure(tag, Style.FontTag);
 
         this.DrawOutlined(
-            new Vector2(Size.X - width - 3f, Size.Y - 4f), tag, Style.FontTag,
-            tag == "UT" ? Style.TierSpecial : Style.TierNormal);
+            new Vector2(Size.X - width - 3f, Size.Y - 4f), tag, Style.FontTag, Style.TierColour(tag));
     }
 }

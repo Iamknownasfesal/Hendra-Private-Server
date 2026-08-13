@@ -40,6 +40,7 @@ public partial class WorldController : Node
     private GameClock _clock;
     private Combat _combat;
     private Interaction _interaction;
+    private VaultStore _vault;
     private Inventory _inventory;
     private Trading _trading;
     private Party _party;
@@ -190,6 +191,7 @@ public partial class WorldController : Node
         _combat.Damaged += OnDamageDealt;
         _combat.Fired += (shot, x, y, angle) => Muzzle(shot, x, y, angle);
         _interaction = new Interaction(_map);
+        _vault = new VaultStore(_session, _data);
         _inventory = new Inventory(_map, data, session, clock);
         _inventory.UseCombat(_combat);
         _trading = new Trading(session);
@@ -207,6 +209,8 @@ public partial class WorldController : Node
         {
             _hud.SlotActivated += OnSlotActivated;
             _hud.ContainerSlotActivated += OnContainerSlotActivated;
+            _hud.VaultSlotActivated += OnVaultSlotActivated;
+            _hud.VaultPurchaseRequested += () => _vault.Buy();
             _hud.SlotDropped += OnSlotDropped;
             _hud.SlotDroppedOutside += OnSlotDroppedOutside;
             _hud.PotionRequested += health => _inventory.UsePotion(health);
@@ -629,6 +633,10 @@ public partial class WorldController : Node
                 OnDamage(damage);
                 break;
 
+            case VaultUpdatePacket vault:
+                _vault.Apply(vault);
+                break;
+
             case ShowEffectPacket effect:
                 _particles.Show(effect, now);
                 break;
@@ -1029,6 +1037,7 @@ public partial class WorldController : Node
         _party.Update(now);
         _hud?.ShowPrompt(_interaction.Current.Exists ? _interaction.Current.Label : null);
         _hud?.ShowContainer(OpenContainer);
+        UpdateVault();
         _hud?.ShowMerchant(NearbyMerchant, _map.Player);
         _hud?.ShowParty(_party.Members);
         _hud?.ShowWorld(_worldName, PlayersHere(), 0);
@@ -1380,8 +1389,47 @@ public partial class WorldController : Node
     /// </remarks>
     private void OnSlotDropped(SlotAddress from, SlotAddress to)
     {
+        // Anything touching the vault goes on the vault's own wire: its slots belong to no entity,
+        // so InvSwap has no way to name them.
+        if (from.Owner == SlotOwner.Vault || to.Owner == SlotOwner.Vault)
+        {
+            _vault.Move(from, to);
+            return;
+        }
+
         _inventory.OpenContainer = OpenContainer;
         _inventory.Move(from, to);
+    }
+
+    /// <summary>
+    /// A vault slot was clicked, which moves the item to the first free carried slot.
+    /// </summary>
+    /// <remarks>
+    /// The same gesture a chest has always answered to, and the reason it stays enabled under every
+    /// sort and filter: taking an item out names no destination in the vault, so nothing about the
+    /// view can make it ambiguous.
+    /// </remarks>
+    private void OnVaultSlotActivated(int index)
+    {
+        var player = _map.Player;
+        if (player?.Equipment == null || _vault.ItemAt(index) == VaultStore.NoItem)
+            return;
+
+        int free = -1;
+        for (int i = Inventory.CarriedFirstSlot; i < player.Equipment.Length; i++)
+            if (player.Equipment[i] == Inventory.NoItem)
+            {
+                free = i;
+                break;
+            }
+
+        if (free < 0)
+        {
+            _chat?.AddSystem("No room to take that.");
+            return;
+        }
+
+        _vault.Move(new SlotAddress(SlotOwner.Vault, index), new SlotAddress(SlotOwner.Player, free));
     }
 
     private void OnContainerSlotActivated(int slotIndex)
@@ -1423,6 +1471,14 @@ public partial class WorldController : Node
             return;
 
         if (_dead)
+        {
+            player.SetInput(0f, 0f, 0f);
+            return;
+        }
+
+        // The vault's search field takes the keyboard on the same terms the chat box does: while it
+        // has focus the letters are text, not movement.
+        if (_hud is { VaultTyping: true })
         {
             player.SetInput(0f, 0f, 0f);
             return;
@@ -1604,7 +1660,50 @@ public partial class WorldController : Node
             case InteractionKind.Merchant:
                 // The panel is already showing whenever a vendor is in reach.
                 break;
+
+            case InteractionKind.Vault:
+                // The one panel the key toggles: it covers most of the screen, so opening it by
+                // walking past would be worse than opening it on purpose. Walking away still
+                // closes it -- see UpdateVault.
+                _hud?.ShowVault(!_hud.VaultOpen);
+                break;
         }
+    }
+
+    /// <summary>The vault access object the player is standing on, if any.</summary>
+    private Entity NearbyVault =>
+        _interaction.Current is { Kind: InteractionKind.Vault, Entity: { } entity } ? entity : null;
+
+    /// <summary>
+    /// Closes the vault when the player walks away from the thing that opened it.
+    /// </summary>
+    /// <remarks>
+    /// Losing the panel by leaving is intended: storage stays somewhere you go, rather than
+    /// something you carry. A drag in flight is cancelled rather than landed, since the slot it
+    /// started from is about to stop being addressable.
+    /// </remarks>
+    private void UpdateVault()
+    {
+        if (_hud == null)
+            return;
+
+        if (NearbyVault != null)
+        {
+            _hud.UseVault(_vault);
+            return;
+        }
+
+        if (!_hud.VaultOpen)
+            return;
+
+        if (GetViewport().GuiIsDragging())
+            Input.ParseInputEvent(new InputEventMouseButton
+            {
+                ButtonIndex = MouseButton.Left,
+                Pressed = false,
+            });
+
+        _hud.ShowVault(false);
     }
 
     /// <summary>

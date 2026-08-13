@@ -204,6 +204,12 @@ namespace wServer.realm
             PlayerInfo plrInfo;
             Clients.TryRemove(client, out plrInfo);
 
+            // After the removal, so that the last session on an account sees itself gone and lets
+            // the vault go with it. Before it, every account would look like it still had somebody
+            // in it and no vault would ever be released.
+            if (client.Account != null)
+                VaultState.Release(this, client.Account.AccountId);
+
             // recalculate usage statistics
             Config.serverInfo.players = ConMan.GetPlayerCount();
             Config.serverInfo.maxPlayers = Config.serverSettings.maxPlayers;

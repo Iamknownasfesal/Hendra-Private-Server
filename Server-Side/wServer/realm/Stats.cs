@@ -137,6 +137,13 @@ namespace wServer.realm
                 return;
             _tValue = tVal;
 
+            // A stat with nothing to tell. The vault's chests are containers with no body -- they
+            // hold items and persist them and are never in a world -- so their slots have no entity
+            // whose stats could change and nobody to broadcast the change to. The value is still
+            // kept, which is all such a container ever wanted from this.
+            if (_owner == null)
+                return;
+
             // hacky fix to xp
             if (_owner is Player && _type == StatsType.Experience)
             {

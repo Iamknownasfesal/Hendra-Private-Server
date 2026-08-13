@@ -102,4 +102,18 @@ public enum PacketId : byte
     PrestigeRequest = 168,
     PrestigeBuyRequest = 169,
     WeeklyQuestRedeem = 170,
+
+    /// <summary>
+    /// The vault, addressed by chest and slot rather than by entity.
+    /// </summary>
+    /// <remarks>
+    /// InvSwap names a slot by the object that owns it, which worked while every eight slots were a
+    /// chest standing in a room. The chests are rows in one panel now and no longer exist in the
+    /// world, so there is no object to name and these say where a slot is directly.
+    /// </remarks>
+    VaultMove = 171,
+
+    VaultBuy = 172,
+
+    VaultUpdate = 173,
 }

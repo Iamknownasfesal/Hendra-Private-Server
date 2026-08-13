@@ -14,11 +14,12 @@ namespace wServer.realm.worlds.logic
 {
     public class Vault : World
     {
+        /// <summary>The object the vault panel opens from. See the class remarks.</summary>
+        public const ushort VaultAccessType = 0x0504;
+
         public int AccountId { get; private set; }
 
         private readonly Client _client;
-
-        private LinkedList<Container> vaults;
 
         public Vault(ProtoWorld proto, Client client = null) : base(proto)
         {
@@ -26,21 +27,21 @@ namespace wServer.realm.worlds.logic
             {
                 _client = client;
                 AccountId = _client.Account.AccountId;
+
+                // One object, where there used to be one per eight slots. It keeps the type number
+                // the chests had so that nothing else in the data files has to be renumbered, but it
+                // is not a container: it holds nothing, and its class is what tells the client to
+                // open the vault panel rather than an eight-slot grid.
                 ExtraXML = ExtraXML.Concat(new[]
                 {
                     @"	<Objects>
-		                    <Object type=""0x0504"" id=""Vault Chest"">
-			                    <Class>Container</Class>
-			                    <Container/>
-			                    <CanPutNormalObjects/>
-			                    <CanPutSoulboundObjects/>
+		                    <Object type=""0x0504"" id=""Vault"">
+			                    <Class>VaultAccess</Class>
 			                    <ShowName/>
 			                    <Texture><File>lofiObj2</File><Index>0x0e</Index></Texture>
-			                    <SlotTypes>0, 0, 0, 0, 0, 0, 0, 0</SlotTypes>
 		                    </Object>
 	                    </Objects>"
                 }).ToArray();
-                vaults = new LinkedList<Container>();
             }
         }
 
@@ -93,23 +94,15 @@ namespace wServer.realm.worlds.logic
                 (x.X - spawn.X) * (x.X - spawn.X) + (x.Y - spawn.Y) * (x.Y - spawn.Y),
                 (y.X - spawn.X) * (y.X - spawn.X) + (y.Y - spawn.Y) * (y.Y - spawn.Y)));
 
-            for (var i = 0; i < _client.Account.VaultCount && vaultChestPosition.Count > 0; i++)
+            // One access object, on the vault tile nearest the spawn, and nothing on the rest of
+            // them. The chests are not in the world any more -- see VaultState -- so the remaining
+            // floor is floor. Capacity is an integer on the account and no longer a count of how
+            // much room the map happens to have.
+            if (vaultChestPosition.Count > 0)
             {
-                var vaultChest = new DbVaultSingle(_client.Account, i);
-                var con = new Container(_client.Manager, 0x0504, null, false, vaultChest);
-                con.BagOwners = new int[] { _client.Account.AccountId };
-                con.Inventory.SetItems(vaultChest.Items);
-                con.Inventory.InventoryChanged += (sender, e) => SaveChest(((Inventory) sender).Parent);
-                con.Move(vaultChestPosition[0].X + 0.5f, vaultChestPosition[0].Y + 0.5f);
-                EnterWorld(con);
-                vaultChestPosition.RemoveAt(0);
-                vaults.AddFirst(con);
-            }
-            foreach (var i in vaultChestPosition)
-            {
-                var x = new ClosedVaultChest(_client.Manager, 0x0505);
-                x.Move(i.X + 0.5f, i.Y + 0.5f);
-                EnterWorld(x);
+                var access = new StaticObject(_client.Manager, VaultAccessType, null, true, false, false);
+                access.Move(vaultChestPosition[0].X + 0.5f, vaultChestPosition[0].Y + 0.5f);
+                EnterWorld(access);
             }
 
             var gifts = _client.Account.Gifts.ToList();
@@ -144,50 +137,22 @@ namespace wServer.realm.worlds.logic
             }
         }
 
-        public override void Tick(RealmTime time)
+        /// <summary>
+        /// Hands a player arriving in the vault the whole of it.
+        /// </summary>
+        /// <remarks>
+        /// The panel has nothing to draw until this lands: the contents no longer arrive as the
+        /// equipment of eight objects the player can see, because there are no longer eight objects.
+        /// </remarks>
+        public override int EnterWorld(Entity entity)
         {
-            if (vaults != null && vaults.Count > 0)
-            {
-                foreach (var vault in vaults)
-                {
-                    if (vault?.Inventory == null) continue;
+            var id = base.EnterWorld(entity);
 
-                    string items = vault.Inventory.Where(i => i != null).Count() + "/8";
-                    
-                    if (!items.Equals(vault.Name))
-                    {
-                        vault.Name = items;
-                    }
-                }
-            }
+            var player = entity as Player;
+            if (player?.Client?.Account != null)
+                player.Client.SendPacket(VaultState.Of(Manager, player.Client.Account).Snapshot());
 
-
-
-            base.Tick(time);
-        }
-
-        public void AddChest(Entity original)
-        {
-            var vaultChest = new DbVaultSingle(_client.Account, _client.Account.VaultCount - 1);
-            var con = new Container(_client.Manager, 0x0504, null, false, vaultChest);
-            con.BagOwners = new int[] { _client.Account.AccountId };
-            con.Inventory.SetItems(vaultChest.Items);
-            con.Inventory.InventoryChanged += (sender, e) => SaveChest(((Inventory) sender).Parent);
-            con.Move(original.X, original.Y);
-            LeaveWorld(original);
-            EnterWorld(con);
-            con.InvokeStatChange(StatsType.NameChosen, true);
-            vaults.AddFirst(con);
-        }
-
-        private void SaveChest(IContainer chest)
-        {
-            var dbLink = chest?.DbLink;
-            if (dbLink == null)
-                return;
-
-            dbLink.Items = chest.Inventory.GetItemTypes();
-            dbLink.FlushAsync();
+            return id;
         }
 
         public override void LeaveWorld(Entity entity)

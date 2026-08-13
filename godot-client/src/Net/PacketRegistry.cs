@@ -60,6 +60,7 @@ public static class PacketRegistry
         PacketId.Text => new TextPacket(),
         PacketId.AccountList => new AccountListPacket(),
         PacketId.InvResult => new InvResultPacket(),
+        PacketId.VaultUpdate => new VaultUpdatePacket(),
         PacketId.BuyResult => new BuyResultPacket(),
         PacketId.NameResult => new NameResultPacket(),
         PacketId.GuildResult => new GuildResultPacket(),

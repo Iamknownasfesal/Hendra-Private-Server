@@ -16,6 +16,17 @@ namespace common.resources
         public int CharacterSlotCost { get; private set; }
         public int CharacterSlotCurrency { get; private set; }
         public int VaultChestCost { get; private set; }
+
+        /// <summary>
+        /// The most chests one account may own.
+        /// </summary>
+        /// <remarks>
+        /// This used to be decided by the map: the vault placed one chest per Vault-region tile and
+        /// stopped when it ran out of floor. The chests are not in a world any more, so the limit
+        /// has to be written down somewhere, and the panel needs to know it to stop offering more.
+        /// </remarks>
+        public int MaxVaultChests { get; private set; }
+
         public int InventorySize { get; private set; }
         public int MaxStackablePotions { get; private set; }
         public int PotionPurchaseCooldown { get; private set; }
@@ -46,6 +57,9 @@ namespace common.resources
 
             InventorySize = GetIntValue("InventorySize");
             if (InventorySize == 0) InventorySize = 24;
+
+            MaxVaultChests = GetIntValue("MaxVaultChests");
+            if (MaxVaultChests <= 0) MaxVaultChests = 40;
 
             if (Exists("PotionPurchaseCosts"))
             {

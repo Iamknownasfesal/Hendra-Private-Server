@@ -26,6 +26,11 @@ public partial class ModalPanel : Control
 
     public const float HeaderHeight = 44f;
 
+    /// <summary>How far the corner ornaments are inset, and how long their arms are.</summary>
+    private const float OrnamentInset = 6f;
+
+    private const float OrnamentArm = 12f;
+
     private readonly string _title;
 
     private Label _heading;
@@ -46,6 +51,29 @@ public partial class ModalPanel : Control
     /// <summary>What the occupant may draw in: inside the frame and under the header.</summary>
     public Control Body { get; private set; }
 
+    /// <summary>
+    /// How tall this panel's header band is. Overridden by panels whose title needs more room.
+    /// </summary>
+    protected virtual float Header => HeaderHeight;
+
+    /// <summary>
+    /// Whether the header carries a close cross.
+    /// </summary>
+    /// <remarks>
+    /// The vault does without one: it is dismissed by Escape and by walking away from the thing
+    /// that opened it, and a cross in the corner of a panel you cannot keep open anyway is a
+    /// control that only ever repeats what the player already has.
+    /// </remarks>
+    protected virtual bool ShowClose => true;
+
+    /// <summary>
+    /// Whether the corners carry bracket marks.
+    /// </summary>
+    /// <remarks>
+    /// Decoration, and off by default so that existing panels look as they did.
+    /// </remarks>
+    protected virtual bool ShowOrnaments => false;
+
     public override void _Ready()
     {
         _heading = new Label
@@ -56,10 +84,13 @@ public partial class ModalPanel : Control
         }.Typeset(20, Style.Text);
         AddChild(_heading);
 
-        _close = new HudIconButton(Cross, "Close [Esc]", inset: 6f);
-        _close.Tint = Style.ModalFrame;
-        _close.Pressed += Close;
-        AddChild(_close);
+        if (ShowClose)
+        {
+            _close = new HudIconButton(Cross, "Close [Esc]", inset: 6f);
+            _close.Tint = Style.ModalFrame;
+            _close.Pressed += Close;
+            AddChild(_close);
+        }
 
         Body = new Control { MouseFilter = MouseFilterEnum.Ignore };
         AddChild(Body);
@@ -83,13 +114,16 @@ public partial class ModalPanel : Control
         float inset = FrameWidth + 1f;
 
         _heading.Position = new Vector2(inset, inset);
-        _heading.Size = new Vector2(Size.X - inset * 2f, HeaderHeight);
+        _heading.Size = new Vector2(Size.X - inset * 2f, Header);
 
-        _close.Position = new Vector2(Size.X - inset - 12f - 20f, inset + 12f);
-        _close.Size = new Vector2(20f, 20f);
+        if (_close != null)
+        {
+            _close.Position = new Vector2(Size.X - inset - 12f - 20f, inset + 12f);
+            _close.Size = new Vector2(20f, 20f);
+        }
 
-        Body.Position = new Vector2(inset, inset + HeaderHeight);
-        Body.Size = new Vector2(Size.X - inset * 2f, Mathf.Max(0f, Size.Y - inset * 2f - HeaderHeight));
+        Body.Position = new Vector2(inset, inset + Header);
+        Body.Size = new Vector2(Size.X - inset * 2f, Mathf.Max(0f, Size.Y - inset * 2f - Header));
 
         QueueRedraw();
     }
@@ -146,8 +180,39 @@ public partial class ModalPanel : Control
         DrawRect(inside, Style.ModalBody);
 
         // The header sits on its own darker band with a rule under it.
-        DrawRect(new Rect2(inside.Position, new Vector2(inside.Size.X, HeaderHeight)), Style.ModalHeader);
-        DrawRect(new Rect2(inside.Position.X, inside.Position.Y + HeaderHeight, inside.Size.X, 1f),
+        DrawRect(new Rect2(inside.Position, new Vector2(inside.Size.X, Header)), Style.ModalHeader);
+        DrawRect(new Rect2(inside.Position.X, inside.Position.Y + Header, inside.Size.X, 1f),
             Style.ModalFrameDark);
+
+        if (ShowOrnaments)
+            DrawOrnaments(full);
+    }
+
+    /// <summary>
+    /// The bracket marks in the corners: two short arms each, and nothing they do.
+    /// </summary>
+    /// <remarks>
+    /// Drawn on the frame rather than inside the body, so they read as part of the border and do not
+    /// have to be avoided by whatever the panel puts in its corners.
+    /// </remarks>
+    private void DrawOrnaments(in Rect2 full)
+    {
+        float inset = OrnamentInset;
+        var colour = Style.ModalFrame;
+
+        for (int corner = 0; corner < 4; corner++)
+        {
+            bool right = corner is 1 or 2;
+            bool bottom = corner is 2 or 3;
+
+            float x = right ? full.End.X - inset : full.Position.X + inset;
+            float y = bottom ? full.End.Y - inset : full.Position.Y + inset;
+
+            float dx = right ? -OrnamentArm : OrnamentArm;
+            float dy = bottom ? -OrnamentArm : OrnamentArm;
+
+            DrawLine(new Vector2(x, y), new Vector2(x + dx, y), colour, 2f);
+            DrawLine(new Vector2(x, y), new Vector2(x, y + dy), colour, 2f);
+        }
     }
 }

@@ -100,6 +100,7 @@ public partial class HudView : Control
     private NexusButton _nexus;
 
     private ContainerPanel _containerPanel;
+    private VaultView _vaultView;
     private MerchantPanel _merchantPanel;
     private Control _hotbarPanel;
     private Control _hotbarTabs;
@@ -118,6 +119,12 @@ public partial class HudView : Control
 
     /// <summary>Raised with the slot's index in the open container.</summary>
     public event Action<int> ContainerSlotActivated;
+
+    /// <summary>A vault slot was clicked: the quick move between the vault and the inventory.</summary>
+    public event Action<int> VaultSlotActivated;
+
+    /// <summary>A locked vault row was clicked and the purchase should begin.</summary>
+    public event Action VaultPurchaseRequested;
 
     /// <summary>Raised when an item is dragged from one slot onto another.</summary>
     public event Action<SlotAddress, SlotAddress> SlotDropped;
@@ -1259,6 +1266,51 @@ public partial class HudView : Control
         _merchantPanel = new MerchantPanel();
         _merchantPanel.Pressed += () => BuyPressed?.Invoke();
         AddChild(_merchantPanel);
+    }
+
+    /// <summary>
+    /// Builds the vault panel, which needs the store and so cannot be made with the rest.
+    /// </summary>
+    /// <remarks>
+    /// Once, on the first world that has a vault in it. It is a large panel and most sessions never
+    /// open it, so it is not built for the sake of the Nexus.
+    /// </remarks>
+    public void UseVault(World.VaultStore store)
+    {
+        if (_vaultView != null)
+            return;
+
+        _vaultView = new VaultView(store, _data, _textures);
+        _vaultView.Dropped += (from, to) => SlotDropped?.Invoke(from, to);
+        _vaultView.Activated += index => VaultSlotActivated?.Invoke(index);
+        _vaultView.PurchaseRequested += () => VaultPurchaseRequested?.Invoke();
+        AddChild(_vaultView);
+
+        _vaultView.SetSlotTypes(_slotTypes);
+    }
+
+    /// <summary>Whether the vault panel is on screen.</summary>
+    public bool VaultOpen => _vaultView is { Visible: true };
+
+    /// <summary>Whether the vault's search field has the keyboard.</summary>
+    public bool VaultTyping => _vaultView is { Visible: true } && _vaultView.IsTyping;
+
+    /// <summary>Opens or closes the vault panel.</summary>
+    public void ShowVault(bool show)
+    {
+        if (_vaultView == null || _vaultView.Visible == show)
+            return;
+
+        if (show)
+        {
+            _vaultView.SetSlotTypes(_slotTypes);
+            _vaultView.PlaceIn(Size);
+            _vaultView.Open();
+        }
+        else
+        {
+            _vaultView.Close();
+        }
     }
 
     private void BuildPrompt()

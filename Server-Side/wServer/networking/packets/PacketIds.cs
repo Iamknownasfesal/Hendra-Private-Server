@@ -89,6 +89,13 @@ namespace wServer.networking.packets
         QOLACTION = 165,
         PRESTIGEREQUEST = 168,
         PRESTIGEBUYREQUEST = 169,
-        WEEKLYQUESTREDEEM = 170
+        WEEKLYQUESTREDEEM = 170,
+
+        // The vault, which is addressed by chest and slot rather than by entity: the chests stopped
+        // being things in a world when they became rows in one panel, and InvSwap has nowhere to
+        // put a slot that belongs to nothing you can see.
+        VAULTMOVE = 171,
+        VAULTBUY = 172,
+        VAULTUPDATE = 173
     }
 }

@@ -16,6 +16,15 @@ public enum InteractionKind
 
     /// <summary>A vendor. Buying is a separate packet.</summary>
     Merchant,
+
+    /// <summary>
+    /// The vault, which is one object opening one panel over every chest the account owns.
+    /// </summary>
+    /// <remarks>
+    /// Not a Container: it holds nothing and its contents never arrive as equipment on an entity.
+    /// The panel is fed by VaultUpdate and the object is only the place you have to be standing.
+    /// </remarks>
+    Vault,
 }
 
 /// <summary>Whatever the player can currently act on, and how.</summary>
@@ -126,6 +135,8 @@ public sealed class Interaction
             // grid on screen for something that has no contents to show.
             "Container" or "OneWayContainer" => InteractionKind.Container,
 
+            "VaultAccess" => InteractionKind.Vault,
+
             // Bought rather than opened, and the server sends both of them the same merchandise
             // stats a merchant has, so the same panel serves.
             "Merchant" or "GuildMerchant" or "ClosedVaultChest" => InteractionKind.Merchant,
@@ -178,6 +189,7 @@ public sealed class Interaction
         {
             InteractionKind.Portal => $"Enter {name}",
             InteractionKind.Container => $"Open {name}",
+            InteractionKind.Vault => $"Open {name}",
             InteractionKind.Merchant => $"Buy from {name}",
             _ => name,
         };
