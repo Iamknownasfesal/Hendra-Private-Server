@@ -5,9 +5,12 @@
 //! sees neither — it takes a token and checks the signature.
 //!
 //! ```text
-//!   POST /register   {name, password}  ->  {token, account_id}
-//!   POST /login      {name, password}  ->  {token, account_id, characters}
-//!   GET  /characters (Bearer token)    ->  {characters}
+//!   POST   /register       {name, password}       ->  {token, account_id}
+//!   POST   /login          {name, password}       ->  {token, account_id, characters}
+//!   GET    /characters     (Bearer)               ->  [{character}]
+//!   POST   /select         (Bearer) {character_id}->  {token, ...}
+//!   DELETE /characters/:id (Bearer)               ->  {}
+//!   POST   /password       (Bearer) {old, new}    ->  {}
 //! ```
 //!
 //! # On running this behind something
@@ -18,6 +21,7 @@
 //! without being told that something is in front of it.
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
@@ -27,9 +31,29 @@ use hendra_auth::{Claims, TokenKey, hash_password, mint, now, verify, verify_pas
 use hendra_store::{Store, StoreError};
 use serde::{Deserialize, Serialize};
 
+pub mod throttle;
+pub use throttle::Throttle;
+
 pub struct App {
     pub store: Store,
     pub key: TokenKey,
+
+    /// How many passwords have recently failed against each name.
+    pub throttle: Throttle,
+
+    /// How many passwords may be hashed at once.
+    pub hashing: tokio::sync::Semaphore,
+}
+
+impl App {
+    pub fn new(store: Store, key: TokenKey) -> App {
+        App {
+            store,
+            key,
+            throttle: Throttle::new(),
+            hashing: tokio::sync::Semaphore::new(throttle::CONCURRENT_HASHES),
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -82,6 +106,20 @@ fn bad_credentials() -> (StatusCode, Json<Refusal>) {
     )
 }
 
+/// Refuses a name that has failed too often, and says when it may try again.
+///
+/// Answered before the password is looked at, so a locked-out name costs no hashing — the limit is
+/// meant to stop guessing being cheap for the server as well as bounded for the attacker.
+fn too_many_attempts(after: std::time::Duration) -> (StatusCode, Json<Refusal>) {
+    let seconds = after.as_secs().max(1);
+    (
+        StatusCode::TOO_MANY_REQUESTS,
+        Json(Refusal {
+            error: format!("too many failed attempts; try again in {seconds} seconds"),
+        }),
+    )
+}
+
 pub async fn register(
     State(app): State<Arc<App>>,
     Json(body): Json<Credentials>,
@@ -94,8 +132,11 @@ pub async fn register(
         ));
     }
 
-    let hash = hash_password(&body.password)
-        .map_err(|err| refuse(StatusCode::BAD_REQUEST, &err.to_string()))?;
+    let hash = {
+        let _permit = app.hashing.acquire().await;
+        hash_password(&body.password)
+            .map_err(|err| refuse(StatusCode::BAD_REQUEST, &err.to_string()))?
+    };
 
     let account = match app.store.create_account(name).await {
         Ok(account) => account,
@@ -123,9 +164,22 @@ pub async fn register(
 }
 
 pub async fn login(State(app): State<Arc<App>>, Json(body): Json<Credentials>) -> Answer<LoggedIn> {
-    let account = match app.store.account_by_name(body.name.trim()).await {
+    let name = body.name.trim();
+    let now = Instant::now();
+
+    if let Some(after) = app.throttle.locked_out(name, now) {
+        return Err(too_many_attempts(after));
+    }
+
+    let account = match app.store.account_by_name(name).await {
         Ok(account) => account,
-        Err(StoreError::NoSuchAccount(_)) => return Err(bad_credentials()),
+        Err(StoreError::NoSuchAccount(_)) => {
+            // Counted even though there is nothing to guess here, because not counting it would
+            // make the limiter answer the question the refusal above refuses to: a name that never
+            // locks out is a name that does not exist.
+            app.throttle.failed(name, now);
+            return Err(bad_credentials());
+        }
         Err(err) => {
             tracing::error!(%err, "could not read an account");
             return Err(refuse(
@@ -144,9 +198,17 @@ pub async fn login(State(app): State<Arc<App>>, Json(body): Json<Credentials>) -
         ));
     };
 
-    match verify_password(&body.password, stored) {
-        Ok(true) => {}
-        Ok(false) => return Err(bad_credentials()),
+    let checked = {
+        let _permit = app.hashing.acquire().await;
+        verify_password(&body.password, stored)
+    };
+
+    match checked {
+        Ok(true) => app.throttle.succeeded(name),
+        Ok(false) => {
+            app.throttle.failed(name, now);
+            return Err(bad_credentials());
+        }
         Err(err) => {
             tracing::error!(%err, account = account.id, "a stored password hash is unreadable");
             return Err(refuse(
@@ -239,6 +301,158 @@ fn issue(app: &App, account_id: i64, characters: Vec<Character>) -> LoggedIn {
     }
 }
 
+#[derive(Deserialize)]
+pub struct Selection {
+    pub character_id: i64,
+}
+
+/// Mints a token naming one character.
+///
+/// The game server takes a character from the token in preference to the one the client asks for
+/// separately, so this is what makes character choice something the player cannot lie about. The
+/// ownership check is here rather than only in the game server because a token that names a
+/// character the account does not own should never exist in the first place.
+pub async fn select(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Json(body): Json<Selection>,
+) -> Answer<LoggedIn> {
+    let claims = authenticate(&app, &headers)?;
+
+    let owns = app
+        .store
+        .owns_character(claims.account_id, body.character_id)
+        .await
+        .map_err(|err| {
+            tracing::error!(%err, "could not check character ownership");
+            refuse(StatusCode::INTERNAL_SERVER_ERROR, "try again shortly")
+        })?;
+
+    if !owns {
+        // The same answer whether it belongs to someone else or does not exist, so this is not a
+        // way to enumerate which characters other people have.
+        return Err(refuse(StatusCode::NOT_FOUND, "no such character"));
+    }
+
+    let expires_at = now() + hendra_auth::LIFETIME_SECONDS;
+    let token = mint(
+        &app.key,
+        Claims {
+            account_id: claims.account_id,
+            character_id: body.character_id,
+            expires_at,
+        },
+    );
+
+    Ok(Json(LoggedIn {
+        token: token.0,
+        account_id: claims.account_id,
+        expires_at,
+        characters: Vec::new(),
+    }))
+}
+
+/// Deletes a character and everything it was carrying.
+pub async fn delete_character(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<i64>,
+) -> Answer<serde_json::Value> {
+    let claims = authenticate(&app, &headers)?;
+
+    let deleted = app
+        .store
+        .delete_character(claims.account_id, id)
+        .await
+        .map_err(|err| {
+            tracing::error!(%err, "could not delete a character");
+            refuse(StatusCode::INTERNAL_SERVER_ERROR, "try again shortly")
+        })?;
+
+    if !deleted {
+        return Err(refuse(StatusCode::NOT_FOUND, "no such character"));
+    }
+
+    Ok(Json(serde_json::json!({})))
+}
+
+#[derive(Deserialize)]
+pub struct PasswordChange {
+    pub old_password: String,
+    pub new_password: String,
+}
+
+/// Changes a password, given the current one.
+///
+/// A valid token is not enough on its own. Requiring the old password is what stops a token taken
+/// from a log or a shared machine being turned into permanent ownership of the account — the token
+/// expires in fifteen minutes, and a changed password does not.
+pub async fn change_password(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Json(body): Json<PasswordChange>,
+) -> Answer<serde_json::Value> {
+    let claims = authenticate(&app, &headers)?;
+
+    let account = app.store.account(claims.account_id).await.map_err(|err| {
+        tracing::error!(%err, "could not read an account");
+        refuse(StatusCode::INTERNAL_SERVER_ERROR, "try again shortly")
+    })?;
+
+    let Some(stored) = account.password_hash.as_deref() else {
+        return Err(refuse(
+            StatusCode::FORBIDDEN,
+            "this account has no password set; contact an administrator",
+        ));
+    };
+
+    let now_at = Instant::now();
+    if let Some(after) = app.throttle.locked_out(&account.name, now_at) {
+        return Err(too_many_attempts(after));
+    }
+
+    let (checked, hashed) = {
+        let _permit = app.hashing.acquire().await;
+        let checked = verify_password(&body.old_password, stored);
+        // Hashed under the same permit, so one request cannot hold two of them and the limit means
+        // what it says.
+        let hashed = match &checked {
+            Ok(true) => Some(hash_password(&body.new_password)),
+            _ => None,
+        };
+        (checked, hashed)
+    };
+
+    match checked {
+        Ok(true) => app.throttle.succeeded(&account.name),
+        Ok(false) => {
+            app.throttle.failed(&account.name, now_at);
+            return Err(bad_credentials());
+        }
+        Err(err) => {
+            tracing::error!(%err, account = account.id, "a stored password hash is unreadable");
+            return Err(refuse(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "try again shortly",
+            ));
+        }
+    }
+
+    let hash = hashed
+        .expect("a correct old password produces a new hash")
+        .map_err(|err| refuse(StatusCode::BAD_REQUEST, &err.to_string()))?;
+
+    app.store
+        .set_password(account.id, &hash)
+        .await
+        .map_err(|err| {
+            tracing::error!(%err, "could not store a password");
+            refuse(StatusCode::INTERNAL_SERVER_ERROR, "try again shortly")
+        })?;
+
+    Ok(Json(serde_json::json!({})))
+}
+
 async fn health() -> &'static str {
     "ok"
 }
@@ -253,6 +467,9 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/register", post(register))
         .route("/login", post(login))
         .route("/characters", get(characters))
+        .route("/characters/{id}", axum::routing::delete(delete_character))
+        .route("/select", post(select))
+        .route("/password", post(change_password))
         // A body limit, because both credential endpoints hash what they are given and Argon2 is
         // meant to be slow.
         .layer(tower_http::limit::RequestBodyLimitLayer::new(8 * 1024))

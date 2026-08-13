@@ -264,6 +264,37 @@ impl Store {
         Ok(())
     }
 
+    /// Deletes a character, if it belongs to the account asking.
+    ///
+    /// The ownership check is in the statement rather than in a lookup before it, so there is no
+    /// window between deciding a character may be deleted and deleting it. Returns whether a row
+    /// went; a character that was not there and one belonging to someone else are the same answer,
+    /// which is what stops this being a way to find out which ids exist.
+    ///
+    /// Inventory rows go with it through the foreign key. The items are gone rather than dropped
+    /// somewhere, which is the point of deleting a character.
+    pub async fn delete_character(&self, account_id: i64, id: i64) -> Result<bool> {
+        let deleted = sqlx::query("DELETE FROM character WHERE id = $1 AND account_id = $2")
+            .bind(id)
+            .bind(account_id)
+            .execute(self.pool())
+            .await?;
+
+        Ok(deleted.rows_affected() > 0)
+    }
+
+    /// Whether a character belongs to an account, without loading it.
+    pub async fn owns_character(&self, account_id: i64, id: i64) -> Result<bool> {
+        let found: Option<(i64,)> =
+            sqlx::query_as("SELECT id FROM character WHERE id = $1 AND account_id = $2 AND alive")
+                .bind(id)
+                .bind(account_id)
+                .fetch_optional(self.pool())
+                .await?;
+
+        Ok(found.is_some())
+    }
+
     /// Replaces a character's whole inventory.
     ///
     /// For giving a new character its starting kit, not for saving one mid-play — see

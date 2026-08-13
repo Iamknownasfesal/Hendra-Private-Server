@@ -67,7 +67,7 @@ async fn main() {
         std::process::exit(1);
     }
 
-    let app = Arc::new(hendra_app::App { store, key });
+    let app = Arc::new(hendra_app::App::new(store, key));
 
     let router = hendra_app::router(app);
 

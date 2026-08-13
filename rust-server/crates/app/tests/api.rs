@@ -50,7 +50,7 @@ async fn app(schema: &str) -> Option<Arc<App>> {
     let scoped = format!("{url}{separator}options=-csearch_path%3D{schema}");
 
     let store = Store::connect(&scoped).await.ok()?;
-    Some(Arc::new(App { store, key: key() }))
+    Some(Arc::new(App::new(store, key())))
 }
 
 /// Sends one request and returns the status and the body as JSON.
@@ -394,4 +394,346 @@ async fn health_needs_nothing() {
 
     let response = router(app).oneshot(get("/health", None)).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn guessing_stops_after_enough_failures() {
+    let app = app_or_skip!("a_throttle");
+
+    send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
+
+    for attempt in 0..hendra_app::throttle::FAILURES_ALLOWED {
+        let (status, _) = send(&app, post("/login", credentials("Fesal", "wrong"))).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "attempt {attempt}");
+    }
+
+    let (status, body) = send(&app, post("/login", credentials("Fesal", "wrong"))).await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+    assert!(body["error"].as_str().unwrap().contains("try again"));
+
+    // And the right password is refused too, which is the cost of the limit rather than a bug: the
+    // alternative is a check that tells the guesser when they have found it.
+    let (status, _) = send(&app, post("/login", credentials("Fesal", PASSWORD))).await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_correct_password_clears_the_failures_before_the_limit_is_reached() {
+    let app = app_or_skip!("a_throttle_clear");
+
+    send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
+
+    for _ in 0..hendra_app::throttle::FAILURES_ALLOWED - 1 {
+        send(&app, post("/login", credentials("Fesal", "wrong"))).await;
+    }
+    assert_eq!(
+        send(&app, post("/login", credentials("Fesal", PASSWORD)))
+            .await
+            .0,
+        StatusCode::OK
+    );
+
+    // The count is back to nothing, so a full run of failures is available again.
+    for attempt in 0..hendra_app::throttle::FAILURES_ALLOWED {
+        assert_eq!(
+            send(&app, post("/login", credentials("Fesal", "wrong")))
+                .await
+                .0,
+            StatusCode::UNAUTHORIZED,
+            "attempt {attempt} should not have been throttled yet"
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn throttling_one_name_does_not_throttle_another() {
+    let app = app_or_skip!("a_throttle_apart");
+
+    send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
+    send(&app, post("/register", credentials("Someone", PASSWORD))).await;
+
+    for _ in 0..hendra_app::throttle::FAILURES_ALLOWED + 2 {
+        send(&app, post("/login", credentials("Fesal", "wrong"))).await;
+    }
+
+    assert_eq!(
+        send(&app, post("/login", credentials("Fesal", PASSWORD)))
+            .await
+            .0,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    assert_eq!(
+        send(&app, post("/login", credentials("Someone", PASSWORD)))
+            .await
+            .0,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_name_that_does_not_exist_throttles_like_one_that_does() {
+    // Otherwise the limiter is the oracle that login refuses to be: the name that never locks out
+    // is the name with no account behind it.
+    let app = app_or_skip!("a_throttle_unknown");
+
+    for _ in 0..hendra_app::throttle::FAILURES_ALLOWED {
+        send(&app, post("/login", credentials("NobodyHere", PASSWORD))).await;
+    }
+
+    let (status, _) = send(&app, post("/login", credentials("NobodyHere", PASSWORD))).await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn selecting_a_character_puts_it_in_the_token() {
+    let app = app_or_skip!("a_select");
+
+    let (_, body) = send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
+    let token = body["token"].as_str().unwrap().to_string();
+    let account = body["account_id"].as_i64().unwrap();
+
+    let character = app
+        .store
+        .create_character(account, 0x0300, "Wizard", 800)
+        .await
+        .unwrap();
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/select")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::from(
+            serde_json::json!({ "character_id": character.id }).to_string(),
+        ))
+        .unwrap();
+
+    let (status, body) = send(&app, request).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let claims =
+        hendra_auth::verify(&key(), body["token"].as_str().unwrap(), hendra_auth::now()).unwrap();
+    assert_eq!(claims.account_id, account);
+    assert_eq!(claims.character_id, character.id);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_character_belonging_to_someone_else_cannot_be_selected() {
+    // The game server checks ownership too, so this is the second of two independent checks. It
+    // matters because a signed token naming someone else's character should not exist at all.
+    let app = app_or_skip!("a_select_theirs");
+
+    let (_, mine) = send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
+    let (_, theirs) = send(&app, post("/register", credentials("Someone", PASSWORD))).await;
+
+    let other = app
+        .store
+        .create_character(
+            theirs["account_id"].as_i64().unwrap(),
+            0x0300,
+            "Theirs",
+            800,
+        )
+        .await
+        .unwrap();
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/select")
+        .header("content-type", "application/json")
+        .header(
+            "authorization",
+            format!("Bearer {}", mine["token"].as_str().unwrap()),
+        )
+        .body(Body::from(
+            serde_json::json!({ "character_id": other.id }).to_string(),
+        ))
+        .unwrap();
+
+    let (status, _) = send(&app, request).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // The same answer as a character that never existed, so this is not a way to enumerate ids.
+    let request = Request::builder()
+        .method("POST")
+        .uri("/select")
+        .header("content-type", "application/json")
+        .header(
+            "authorization",
+            format!("Bearer {}", mine["token"].as_str().unwrap()),
+        )
+        .body(Body::from(
+            serde_json::json!({ "character_id": 999_999 }).to_string(),
+        ))
+        .unwrap();
+    assert_eq!(send(&app, request).await.0, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn deleting_a_character_takes_its_items_with_it() {
+    let app = app_or_skip!("a_delete");
+
+    let (_, body) = send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
+    let token = body["token"].as_str().unwrap().to_string();
+    let account = body["account_id"].as_i64().unwrap();
+
+    let character = app
+        .store
+        .create_character(account, 0x0300, "Wizard", 800)
+        .await
+        .unwrap();
+    app.store
+        .set_inventory(character.id, &[(0, 0x900), (1, 0x901)])
+        .await
+        .unwrap();
+
+    let request = Request::builder()
+        .method("DELETE")
+        .uri(format!("/characters/{}", character.id))
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(send(&app, request).await.0, StatusCode::OK);
+
+    assert!(app.store.characters(account).await.unwrap().is_empty());
+
+    let (orphans,): (i64,) =
+        sqlx::query_as("SELECT count(*) FROM inventory_slot WHERE character_id = $1")
+            .bind(character.id)
+            .fetch_one(app.store.pool())
+            .await
+            .unwrap();
+    assert_eq!(orphans, 0, "the items should have gone with the character");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_character_belonging_to_someone_else_cannot_be_deleted() {
+    let app = app_or_skip!("a_delete_theirs");
+
+    let (_, mine) = send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
+    let (_, theirs) = send(&app, post("/register", credentials("Someone", PASSWORD))).await;
+    let other_account = theirs["account_id"].as_i64().unwrap();
+
+    let other = app
+        .store
+        .create_character(other_account, 0x0300, "Theirs", 800)
+        .await
+        .unwrap();
+
+    let request = Request::builder()
+        .method("DELETE")
+        .uri(format!("/characters/{}", other.id))
+        .header(
+            "authorization",
+            format!("Bearer {}", mine["token"].as_str().unwrap()),
+        )
+        .body(Body::empty())
+        .unwrap();
+
+    assert_eq!(send(&app, request).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(
+        app.store.characters(other_account).await.unwrap().len(),
+        1,
+        "it should still be there"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn changing_a_password_needs_the_old_one() {
+    // A token alone is not enough. A token expires in fifteen minutes; a password someone else set
+    // does not, so a stolen token must not become permanent ownership of the account.
+    let app = app_or_skip!("a_password");
+
+    let (_, body) = send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
+    let token = body["token"].as_str().unwrap().to_string();
+
+    let change = |old: &str, new: &str| {
+        Request::builder()
+            .method("POST")
+            .uri("/password")
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(
+                serde_json::json!({ "old_password": old, "new_password": new }).to_string(),
+            ))
+            .unwrap()
+    };
+
+    assert_eq!(
+        send(&app, change("not the password", "a new password"))
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    // And it did not change anyway.
+    assert_eq!(
+        send(&app, post("/login", credentials("Fesal", PASSWORD)))
+            .await
+            .0,
+        StatusCode::OK
+    );
+
+    assert_eq!(
+        send(&app, change(PASSWORD, "a new password")).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        send(&app, post("/login", credentials("Fesal", "a new password")))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        send(&app, post("/login", credentials("Fesal", PASSWORD)))
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED,
+        "the old password should have stopped working"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_new_password_that_is_too_short_is_refused_and_changes_nothing() {
+    let app = app_or_skip!("a_password_short");
+
+    let (_, body) = send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
+    let token = body["token"].as_str().unwrap();
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/password")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::from(
+            serde_json::json!({ "old_password": PASSWORD, "new_password": "short" }).to_string(),
+        ))
+        .unwrap();
+
+    assert_eq!(send(&app, request).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        send(&app, post("/login", credentials("Fesal", PASSWORD)))
+            .await
+            .0,
+        StatusCode::OK,
+        "the old password should still work"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn changing_a_password_needs_a_token() {
+    let app = app_or_skip!("a_password_token");
+
+    send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/password")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::json!({ "old_password": PASSWORD, "new_password": "a new password" })
+                .to_string(),
+        ))
+        .unwrap();
+
+    assert_eq!(send(&app, request).await.0, StatusCode::UNAUTHORIZED);
 }
