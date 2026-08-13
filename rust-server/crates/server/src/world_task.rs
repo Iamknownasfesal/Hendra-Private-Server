@@ -37,6 +37,10 @@ pub enum ToWorld {
         name: String,
         arrival: Arrival,
         sender: LinkSender,
+
+        /// How the world tells this session to do something only a session can do.
+        orders: mpsc::Sender<Order>,
+
         reply: tokio::sync::oneshot::Sender<Handle>,
     },
 
@@ -155,6 +159,20 @@ pub enum ToWorld {
     },
 }
 
+/// Where a closed realm sends everybody still in it.
+pub const CASTLE: &str = "Castle";
+
+/// Something a world asks of one session.
+///
+/// A world can move bodies but not connections: which world a player is in belongs to the session
+/// that owns their link, so the world asks rather than does. There is one of these today, and it is
+/// the end of a realm.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Order {
+    /// Go to this world.
+    GoTo(String),
+}
+
 /// One row of the map: which row, and its squares run-length encoded as `(count, tile)`.
 pub type TerrainStrip = (u16, Vec<(u16, u16)>);
 
@@ -185,6 +203,9 @@ struct Player {
     handle: Handle,
     name: String,
     sender: LinkSender,
+
+    /// How the world asks this session to do something only a session can do.
+    orders: mpsc::Sender<Order>,
 
     /// What this player has been sent, so a snapshot can be a delta against what they confirm.
     history: BaselineRing<WorldSnapshot>,
@@ -270,7 +291,13 @@ pub async fn run(
                 world.advance(&catalog, elapsed_ms);
 
                 if is_realm {
-                    tend_realm(&mut world, &catalog, &loadout.spawnable, elapsed_ms as u64);
+                    tend_realm(
+                        &mut world,
+                        &catalog,
+                        &loadout.spawnable,
+                        elapsed_ms as u64,
+                        &players,
+                    );
                 }
 
                 for name in world.take_unknown_setpieces() {
@@ -423,6 +450,24 @@ fn build_setpieces(world: &mut World, catalog: &Catalog, maps: &Path) {
     tracing::info!(world = %world.name, setpieces = drawn, "setpieces drawn");
 }
 
+/// Sends everybody still in a closed realm to the castle.
+///
+/// The world can move a body but not a connection: which world somebody is in belongs to the
+/// session that owns their link, so the world asks and the session does it. Asked of everybody,
+/// including anybody whose session is too busy to hear right now, because leaving one player behind
+/// in a realm that has stopped spawning is leaving them in an empty map.
+fn send_to_castle(players: &[Player]) {
+    for player in players {
+        if player
+            .orders
+            .try_send(Order::GoTo(CASTLE.to_string()))
+            .is_err()
+        {
+            tracing::warn!(name = %player.name, "could not send a player to the castle");
+        }
+    }
+}
+
 /// Keeps a realm's population up and runs its closing sequence.
 ///
 /// Population is checked once a minute rather than every tick: placing an enemy is a search for a
@@ -433,6 +478,7 @@ fn tend_realm(
     catalog: &Catalog,
     spawnable: &[hendra_sim::realm::Spawn],
     elapsed_ms: u64,
+    players: &[Player],
 ) {
     use hendra_sim::realm::Event;
 
@@ -465,6 +511,8 @@ fn tend_realm(
             world.announce("MY MINIONS HAVE FAILED ME!");
             world.announce("BUT NOW YOU SHALL FEEL MY WRATH!");
             world.announce("COME MEET YOUR DOOM AT THE WALLS OF MY CASTLE!");
+
+            send_to_castle(players);
         }
     }
 }
@@ -481,6 +529,7 @@ fn handle(
             name,
             arrival,
             sender,
+            orders,
             reply,
         } => {
             // A closed realm is about to be emptied. Letting somebody in now would be putting them
@@ -524,6 +573,7 @@ fn handle(
                 handle,
                 name: name.clone(),
                 sender,
+                orders,
                 history: BaselineRing::new(),
                 encoder: SnapshotEncoder::with_budget(budget),
                 acknowledged: Acknowledgement::NONE,

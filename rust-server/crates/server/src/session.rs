@@ -36,6 +36,8 @@
 
 use std::sync::Arc;
 
+use tokio::sync::mpsc;
+
 use hendra_content::ObjectType;
 use hendra_net::message::{
     ClientMessage, ContainerId, PROTOCOL_VERSION, RejectReason, ServerMessage, SlotLocation,
@@ -103,7 +105,12 @@ fn locate(where_: SlotLocation, character_id: i64, account_id: i64) -> Option<Lo
 pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
     let peer = link.remote_address();
 
-    let Some((player, mut placement)) = handshake(&mut link, &context, &entry).await else {
+    // A world can ask this session for something only a session can do, such as leaving for the
+    // castle when a realm closes. One slot is enough: there is one such order, and it happens once.
+    let (to_session, mut orders) = mpsc::channel(4);
+
+    let Some((player, mut placement)) = handshake(&mut link, &context, &entry, &to_session).await
+    else {
         link.close("handshake refused");
         return;
     };
@@ -134,7 +141,38 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
     let mut limit = crate::chat::Limit::new();
 
     loop {
-        let Some(received) = link.recv().await else {
+        let received = tokio::select! {
+            received = link.recv() => received,
+
+            // A world asking for something only a session can do. Waited on beside the client
+            // rather than checked between messages, because a player standing still sends nothing
+            // and a closing realm should still empty.
+            order = orders.recv() => {
+                let Some(order) = order else { break };
+                match order {
+                    crate::world_task::Order::GoTo(destination) => {
+                        if let Some(next) = go_to(
+                            &mut link,
+                            &placement,
+                            &name,
+                            player.account.id,
+                            &destination,
+                            &context.worlds,
+                            arrival_of(&player, &context),
+                            &to_session,
+                        )
+                        .await
+                        {
+                            placement = next;
+                            send_terrain(&mut link, &placement).await;
+                        }
+                    }
+                }
+                continue;
+            }
+        };
+
+        let Some(received) = received else {
             break;
         };
 
@@ -167,6 +205,7 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
                     portal_type,
                     &context.worlds,
                     arrival_of(&player, &context),
+                    &to_session,
                 )
                 .await
                 {
@@ -263,6 +302,7 @@ async fn handshake(
     link: &mut Link,
     context: &Context,
     entry: &WorldHandle,
+    orders: &mpsc::Sender<crate::world_task::Order>,
 ) -> Option<(crate::accounts::Session, Placement)> {
     let received = link.recv().await?;
     let payload = received.into_payload();
@@ -328,6 +368,7 @@ async fn handshake(
         entry,
         &player.character.name,
         arrival_of(&player, context),
+        orders,
     )
     .await?;
     Some((
@@ -709,6 +750,7 @@ async fn join(
     world: &WorldHandle,
     name: &str,
     arrival: crate::world_task::Arrival,
+    orders: &mpsc::Sender<crate::world_task::Order>,
 ) -> Option<Handle> {
     let (reply, answer) = tokio::sync::oneshot::channel();
     if !world
@@ -716,6 +758,7 @@ async fn join(
             name: name.to_string(),
             arrival,
             sender: link.sender(),
+            orders: orders.clone(),
             reply,
         })
         .await
@@ -1561,6 +1604,7 @@ fn arrival_of(player: &crate::accounts::Session, context: &Context) -> crate::wo
 ///
 /// The order matters. The destination is opened and joined *before* the old world is left, so a
 /// world that fails to start leaves the player where they were rather than nowhere at all.
+#[allow(clippy::too_many_arguments)]
 async fn travel(
     link: &mut Link,
     from: &Placement,
@@ -1569,19 +1613,47 @@ async fn travel(
     portal_type: u16,
     worlds: &Worlds,
     arrival: crate::world_task::Arrival,
+    orders: &mpsc::Sender<crate::world_task::Order>,
 ) -> Option<Placement> {
     let destination = worlds.destination_of(portal_type)?.to_string();
+    go_to(
+        link,
+        from,
+        name,
+        account_id,
+        &destination,
+        worlds,
+        arrival,
+        orders,
+    )
+    .await
+}
 
-    // A portal leading back into the world you are already in is a no-op, not a rejoin. Rejoining
-    // would move the player to the spawn point for no reason.
+/// Moves a player to a named world.
+///
+/// The same move a portal makes, by name rather than by what was stepped into, because a world can
+/// also send somebody somewhere: a realm that has closed sends everybody still in it to the castle.
+#[allow(clippy::too_many_arguments)]
+async fn go_to(
+    link: &mut Link,
+    from: &Placement,
+    name: &str,
+    account_id: i64,
+    destination: &str,
+    worlds: &Worlds,
+    arrival: crate::world_task::Arrival,
+    orders: &mpsc::Sender<crate::world_task::Order>,
+) -> Option<Placement> {
+    // Going back into the world you are already in is a no-op, not a rejoin. Rejoining would move
+    // the player to the spawn point for no reason.
     if destination == from.world.name.as_ref() {
         return None;
     }
 
     // A personal world gets one instance per account, so two players in the vault are in two
     // rooms rather than looking at each other's chests.
-    let world = worlds.get_or_start_for(&destination, account_id)?;
-    let handle = join(link, &world, name, arrival).await?;
+    let world = worlds.get_or_start_for(destination, account_id)?;
+    let handle = join(link, &world, name, arrival, orders).await?;
 
     from.world
         .send(ToWorld::Leave {

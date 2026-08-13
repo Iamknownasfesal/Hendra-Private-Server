@@ -170,11 +170,12 @@ written, tested and never called.
 2,716 enemies against a target of 2,712, every terrain at its number.
 `cargo run -p hendra-sim --example map_entities` shows what every shipped map puts in a world.
 
-Still to do, and separate because it needs the protocol rather than the simulation:
+- [x] The castle handoff. When a realm closes, the original quakes everybody to the castle
 
-- [ ] The castle handoff. When a realm closes, the original quakes everybody to the castle. There
-      is no server-to-client "you are now somewhere else" message, so the world says the lines and
-      the players stay where they are until they walk out
+  Left open when 12.2 landed because it needed a world-to-session channel that did not exist. It
+  does now: a world can move a body but not a connection, so `Order::GoTo` asks and the session
+  makes the same move a portal makes. The session waits on it beside the client, because a player
+  standing still sends nothing and a closing realm should still empty.
 
 ### 12.3 Setpieces — **S**
 
