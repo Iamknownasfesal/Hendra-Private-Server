@@ -207,6 +207,32 @@ impl Map {
         self.dictionary.get(index as usize)
     }
 
+    /// Replaces one square.
+    ///
+    /// The dictionary gains an entry where the composition is new and reuses one where it is not, so
+    /// a setpiece that paints a thousand squares of the same floor costs one entry rather than a
+    /// thousand. A map already holding the most entries an index can name refuses rather than
+    /// wrapping around and repainting somebody else's square.
+    pub fn set(&mut self, x: u32, y: u32, square: Composition) -> bool {
+        if !self.contains(x, y) {
+            return false;
+        }
+
+        let index = match self.dictionary.iter().position(|held| *held == square) {
+            Some(index) => index as u16,
+            None => {
+                if self.dictionary.len() >= u16::MAX as usize {
+                    return false;
+                }
+                self.dictionary.push(square);
+                (self.dictionary.len() - 1) as u16
+            }
+        };
+
+        self.grid[(y as usize) * (self.width as usize) + (x as usize)] = index;
+        true
+    }
+
     /// Every square that holds an object, with its position.
     ///
     /// This is what a world uses to populate itself, and it is a filtered scan rather than a stored

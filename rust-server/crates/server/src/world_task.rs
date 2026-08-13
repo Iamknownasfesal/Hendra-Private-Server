@@ -15,6 +15,7 @@
 //! behind should drop the ticks it missed, not run them all back to back and fall further behind
 //! while doing it.
 
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -223,6 +224,10 @@ pub async fn run(
     let is_realm = loadout.is_realm && !loadout.spawnable.is_empty();
 
     if is_realm {
+        // Setpieces first, then enemies, as `Realm.Init` does. The other way round would bury
+        // whatever had already spawned under a castle.
+        build_setpieces(&mut world, &catalog, &loadout.maps);
+
         let census = world.terrain().terrain_census();
         world.realm_mut().measure(&census);
 
@@ -268,6 +273,14 @@ pub async fn run(
                     tend_realm(&mut world, &catalog, &loadout.spawnable, elapsed_ms as u64);
                 }
 
+                for name in world.take_unknown_setpieces() {
+                    tracing::warn!(
+                        world = %world.name,
+                        setpiece = %name,
+                        "a behaviour asked for a setpiece that does not exist"
+                    );
+                }
+
                 announce(&mut world, &catalog, &mut players).await;
                 broadcast(&mut world, &mut players).await;
 
@@ -307,6 +320,9 @@ pub struct Loadout {
     /// Whether this world is the realm, and so fills itself and closes on a clock.
     pub is_realm: bool,
 
+    /// Where the map files are, for the setpieces that are saved maps rather than drawings.
+    pub maps: std::path::PathBuf,
+
     /// Whether this world keeps ticking with nobody in it.
     ///
     /// True for the world players arrive in, which has to exist before anyone is there. False for
@@ -333,6 +349,78 @@ pub struct Arrival {
 
     /// What the character is wearing, as a stat layer.
     pub boosts: [i32; 8],
+}
+
+/// Draws a realm's temples, castles, groves and graveyards into it.
+///
+/// Positions come from the terrain, so a castle stands on high ground and an oasis in the sand, and
+/// no two are drawn through each other.
+fn build_setpieces(world: &mut World, catalog: &Catalog, maps: &Path) {
+    use hendra_sim::setpiece;
+
+    // Seeded from the clock, so two realms opened in one run are not the same realm. The drawing
+    // itself is deterministic given the seed, which is what makes it testable.
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| since.subsec_nanos() ^ since.as_secs() as u32)
+        .unwrap_or(0x5eed);
+    let mut dice = setpiece::Dice::new(seed);
+
+    let (width, height) = (world.terrain().width(), world.terrain().height());
+    let ground = |x: u32, y: u32| world.terrain().terrain_at(x, y);
+    let places = setpiece::scatter(width, height, &ground, &mut dice);
+
+    let mut missing: Vec<&'static str> = Vec::new();
+    let mut drawn = 0;
+
+    for place in &places {
+        let drawing = place.kind.draw(&mut dice);
+
+        // A setpiece that is a saved map is stamped rather than painted. `stamp` centres what it
+        // places, and a setpiece is placed by its corner, so the point is moved to its middle.
+        if let Some(name) = drawing.prefab {
+            // The extension depends on how far the content has been converted, so all three are
+            // tried rather than one being assumed.
+            let found = ["hmap", "jm", "wmap"].iter().find_map(|extension| {
+                let file = format!("{name}.{extension}");
+                let raw = std::fs::read(maps.join(&file)).ok()?;
+                crate::worlds::load_map_bytes(&raw, &file, catalog)
+            });
+
+            let Some(map) = found else {
+                tracing::warn!(setpiece = %name, path = %maps.display(), "cannot read a setpiece map");
+                continue;
+            };
+
+            let half = place.kind.size() as f32 / 2.0;
+            world.stamp(
+                catalog,
+                &map,
+                (place.x as f32 + half, place.y as f32 + half),
+            );
+            drawn += 1;
+            continue;
+        }
+
+        missing.extend(world.draw(catalog, &drawing, (place.x, place.y)));
+        drawn += 1;
+    }
+
+    missing.sort_unstable();
+    missing.dedup();
+    for name in &missing {
+        tracing::warn!(name = %name, "a setpiece wants something the content does not have");
+    }
+
+    if world.refused_squares() > 0 {
+        tracing::warn!(
+            world = %world.name,
+            squares = world.refused_squares(),
+            "the map cannot describe any more kinds of square; setpieces have holes in them"
+        );
+    }
+
+    tracing::info!(world = %world.name, setpieces = drawn, "setpieces drawn");
 }
 
 /// Keeps a realm's population up and runs its closing sequence.
@@ -859,6 +947,7 @@ fn resolve_portal(world: &World, handle: Handle, portal: hendra_net::EntityId) -
 async fn announce(world: &mut World, catalog: &Catalog, players: &mut [Player]) {
     let said = world.take_announcements();
     let ground = world.take_ground_changes();
+    let scenery = world.take_scenery_changes();
 
     if players.is_empty() {
         return;
@@ -912,6 +1001,31 @@ async fn announce(world: &mut World, catalog: &Catalog, players: &mut [Player]) 
 
         for player in players.iter() {
             let _ = player.sender.try_send(Delivery::Stream, &buffer);
+        }
+    }
+
+    // Scenery that has appeared goes out by row, in the same shape a joining client is told the
+    // map in, so a client has one way of hearing about scenery rather than two.
+    if !scenery.is_empty() {
+        let mut rows: std::collections::BTreeMap<u16, Vec<(u16, u16, u16)>> =
+            std::collections::BTreeMap::new();
+        for (x, y, object, size) in scenery {
+            rows.entry(y).or_default().push((x, object, size));
+        }
+
+        for (y, objects) in rows {
+            for piece in objects.chunks(hendra_net::MAX_SCENERY) {
+                let mut buffer = Vec::new();
+                ServerMessage::Scenery {
+                    y,
+                    objects: piece.to_vec(),
+                }
+                .encode(&mut Writer::new(&mut buffer));
+
+                for player in players.iter() {
+                    let _ = player.sender.try_send(Delivery::Stream, &buffer);
+                }
+            }
         }
     }
 }

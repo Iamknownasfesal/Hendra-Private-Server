@@ -76,6 +76,51 @@ fn main() {
     let targets = realm::targets(&census);
 
     let mut world = World::new("Realm", terrain, &catalog);
+
+    // Setpieces first, then enemies, as `Realm.Init` does.
+    let mut dice = hendra_sim::setpiece::Dice::new(0x5eed_beef);
+    let places = {
+        let ground = |x: u32, y: u32| world.terrain().terrain_at(x, y);
+        hendra_sim::setpiece::scatter(
+            world.terrain().width(),
+            world.terrain().height(),
+            &ground,
+            &mut dice,
+        )
+    };
+
+    let mut by_kind: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    let mut missing: Vec<&str> = Vec::new();
+    for place in &places {
+        *by_kind.entry(format!("{:?}", place.kind)).or_default() += 1;
+
+        let drawing = place.kind.draw(&mut dice);
+        if drawing.prefab.is_some() {
+            continue;
+        }
+        missing.extend(world.draw(&catalog, &drawing, (place.x, place.y)));
+    }
+
+    missing.sort_unstable();
+    missing.dedup();
+    for name in &missing {
+        println!("MISSING from the content: {name}");
+    }
+
+    if world.refused_squares() > 0 {
+        println!(
+            "{} squares refused: the map cannot describe any more kinds",
+            world.refused_squares()
+        );
+    }
+
+    println!();
+    println!("setpieces drawn:");
+    for (kind, count) in &by_kind {
+        println!("  {kind}: {count}");
+    }
+    println!("  {} entities now in the world", world.len());
+    println!();
     println!(
         "{} entities came from the map itself, of a ceiling of {}",
         world.len(),

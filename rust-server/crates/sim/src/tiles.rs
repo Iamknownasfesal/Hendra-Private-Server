@@ -9,7 +9,7 @@
 //! mask. Speed and damage stay behind the descriptor, because those are read only when an entity is
 //! actually standing somewhere and are not worth the memory.
 
-use hendra_content::{Catalog, Map, TileType};
+use hendra_content::{Catalog, Map, ObjectType, TileType};
 
 /// A bit per square.
 struct BitGrid {
@@ -209,6 +209,76 @@ impl Terrain {
     }
 
     /// What one square is.
+    /// Paints one square: its ground, what stands on it, and how big that is.
+    ///
+    /// The map is changed as well as the collision bitmap, because the map is what a player joining
+    /// later is told the world looks like. Changing only the bitmap gives a wall that blocks but
+    /// cannot be seen.
+    pub fn paint(
+        &mut self,
+        catalog: &Catalog,
+        x: u32,
+        y: u32,
+        tile: Option<TileType>,
+        object: Option<(ObjectType, u16)>,
+        clear: bool,
+    ) -> bool {
+        if !self.contains(x, y) {
+            return false;
+        }
+
+        let mut square = match self.map.at(x, y) {
+            Some(square) => square.clone(),
+            None => return false,
+        };
+
+        if let Some(tile) = tile {
+            square.tile = tile;
+        }
+        if clear {
+            square.object = ObjectType::NONE;
+            square.config = String::new();
+        }
+        if let Some((object, size)) = object {
+            square.object = object;
+            square.config = if size > 0 {
+                format!("size:{size}")
+            } else {
+                String::new()
+            };
+        }
+
+        let ground_ok = catalog
+            .tile(square.tile)
+            .is_some_and(|ground| !ground.no_walk);
+        let standing = catalog.object(square.object);
+        let blocked = standing.is_some_and(|desc| desc.full_occupy || desc.occupy_square);
+        let blocks_sight = standing.is_some_and(|desc| desc.blocks_sight);
+
+        let tile_type = square.tile;
+
+        // A map already naming as many distinct squares as an index can hold cannot take another.
+        // Refusing and saying so beats repainting somebody else's square.
+        if !self.map.set(x, y, square) {
+            return false;
+        }
+
+        if let Some(held) = self.tiles.get_mut((y * self.width + x) as usize) {
+            *held = tile_type;
+        }
+
+        self.walkable.put(x, y, ground_ok && !blocked);
+        self.blocks_sight.put(x, y, blocks_sight);
+
+        if blocks_sight {
+            self.blocker_regions.set(x / REGION, y / REGION);
+        } else {
+            self.rebuild_region(x / REGION, y / REGION);
+        }
+
+        true
+    }
+
     /// What terrain a square is, which is what decides who may be spawned on it.
     pub fn terrain_at(&self, x: u32, y: u32) -> hendra_content::Terrain {
         self.map

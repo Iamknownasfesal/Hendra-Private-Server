@@ -151,6 +151,7 @@ async fn main() {
         bag_types,
         spawnable,
         is_realm: false,
+        maps: options.worlds.clone(),
         persistent: false,
         avatar: default_class.object_type,
         weapon: default_class

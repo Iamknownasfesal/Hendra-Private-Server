@@ -178,8 +178,37 @@ Still to do, and separate because it needs the protocol rather than the simulati
 
 ### 12.3 Setpieces — **S**
 
-- [ ] `World::stamp` is only called by tests, so `apply_setpiece` still reports unsupported. Those
+- [x] `World::stamp` is only called by tests, so `apply_setpiece` still reports unsupported. Those
       are the last 4 of 8,631 behaviour uses
+
+  Bigger than it looked. `apply_setpiece` is one of two ways setpieces are used, and the smaller
+  one: `Realm.Init` calls `SetPieces.ApplySetPieces`, which scatters fifteen kinds of structure
+  across a realm before any enemy spawns. Nothing did that, so a realm had no temples, no castles,
+  no graveyards, no lich, no cyclops god and none of the chests they hold.
+
+- [x] All fifteen setpieces, ported from `wServer/realm/setpieces/`
+
+  They are drawing programs rather than saved maps, which is the point: a grove picks its own radius
+  and scatters cherry trees around its edge, a building draws four walls and then knocks holes in
+  half of it. `crates/sim/src/setpiece.rs` keeps them as pure drawings, so each can be checked
+  square by square without a world to check it in.
+
+- [x] What a setpiece paints is scenery, not entities
+
+  A castle drawn as entities cost 800 places in the world and 800 snapshot entries for 800 stones
+  that never move; a whole realm cost 32,249. The original writes them onto the tile and calls
+  `EnterWorld` only for bosses, chests and destructible walls. Now so do we: 639 entities for a
+  whole realm. Painting changes the map as well as the collision bitmap, so a player joining later
+  is told the world as it is rather than as it was drawn.
+
+- [x] `apply_setpiece` draws where the entity stands
+
+  The four names the shipped behaviours use name nothing, in the original too: `Type.GetType` finds
+  no class and the behaviour throws where it stands. The runtime says which name was wanted instead.
+
+`cargo run -p hendra-sim --example realm_population` builds a whole realm from the real map and
+content: 84 buildings, 24 groves, 19 and 8 temples, 7 graveyards, 5 towers, 4 castles, 4 lich
+temples, 3 lava fissures, the djinn, the ent and the crystal, then 2,720 enemies on top.
 
 ### 12.4 Trade — **M**
 

@@ -237,6 +237,11 @@ pub enum Action {
         radius: f32,
     },
 
+    /// Draw a setpiece where the entity is standing.
+    Setpiece {
+        name: String,
+    },
+
     /// Stop this entity awarding experience, for summons that would otherwise farm it.
     NoExperience,
 
@@ -491,6 +496,14 @@ pub enum Primitive {
         kind: Option<NameRef>,
     },
 
+    /// Draw a setpiece where the entity is standing.
+    ///
+    /// The name is one of the structures a realm is built with. Held as a name rather than resolved
+    /// here, because the drawing lives in the simulation and this crate does not know about it.
+    ApplySetpiece {
+        name: String,
+    },
+
     /// Replace the ground in a circle.
     GroundTransform {
         tile: NameRef,
@@ -693,7 +706,7 @@ impl NameRef {
 }
 
 /// One enemy's compiled behaviour.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Program {
     pub name: String,
     pub states: Vec<CompiledState>,

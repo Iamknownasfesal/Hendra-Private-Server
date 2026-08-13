@@ -368,6 +368,25 @@ pub struct World {
     /// How full this world is and whether it has been cleared. Only a realm uses it.
     realm: crate::realm::Realm,
 
+    /// How many squares a drawing could not paint, because the map already names as many kinds of
+    /// square as an index can hold.
+    refused_squares: usize,
+
+    /// Scenery that has appeared since the last tick, as `(x, y, object, size)`.
+    ///
+    /// Sent like a ground change rather than in the snapshot, because scenery is not an entity: a
+    /// setpiece drawn once should not cost a place in every snapshot for the rest of the world.
+    scenery_changes: Vec<(u16, u16, u16, u16)>,
+
+    /// Setpiece names a behaviour asked for that nothing answers to, so they can be reported once.
+    ///
+    /// Four of the shipped behaviours name a setpiece that does not exist, in the original too. A
+    /// silent miss would be a boss whose arena never appears and no way to tell.
+    unknown_setpieces: std::collections::HashSet<String>,
+
+    /// The randomness a behaviour-drawn setpiece uses.
+    setpiece_dice: crate::setpiece::Dice,
+
     /// Where each terrain's walkable squares are, worked out on first use.
     ///
     /// Only a realm ever asks, and it asks once per terrain, so this stays empty everywhere else.
@@ -454,6 +473,10 @@ impl World {
             spawn_seed: 0x2545_f491,
             realm: crate::realm::Realm::new(),
             spawn_squares: std::collections::HashMap::new(),
+            refused_squares: 0,
+            scenery_changes: Vec::new(),
+            unknown_setpieces: std::collections::HashSet::new(),
+            setpiece_dice: crate::setpiece::Dice::new(0x5e7_9153),
             visible: Vec::new(),
             hits: Vec::new(),
             actions: Vec::new(),
@@ -914,6 +937,12 @@ struct SenseScalars {
     damage_taken: i32,
 }
 
+/// The chest a setpiece leaves its reward in.
+const SETPIECE_CHEST: &str = "Treasure Chest";
+
+/// How much it holds. Eight, as every container in the game does.
+const SETPIECE_CHEST_SLOTS: usize = 8;
+
 /// Whether a class of object is there to be looked at rather than used.
 ///
 /// Everything else static stays an entity, because a player has to be able to name what they use
@@ -1363,6 +1392,28 @@ impl World {
                     return;
                 };
                 self.reshape_ground(catalog, x, y, *radius, kind);
+            }
+
+            Action::Setpiece { name } => {
+                let Some(kind) = crate::setpiece::Kind::named(name) else {
+                    // Four of these in the shipped content name nothing, in the original too:
+                    // `Type.GetType` finds no class and the behaviour throws where it stands. Saying
+                    // so is better than either.
+                    self.unknown_setpieces.insert(name.clone());
+                    return;
+                };
+
+                let Some((x, y)) = self.entities.get(handle).map(|e| (e.x, e.y)) else {
+                    return;
+                };
+
+                // Drawn from its corner, as the original places them, and centred on whoever asked
+                // for it so it appears around them rather than beside them.
+                let half = kind.size() as f32 / 2.0;
+                let at = ((x - half).max(0.0) as u32, (y - half).max(0.0) as u32);
+
+                let drawing = kind.draw(&mut self.setpiece_dice);
+                self.draw(catalog, &drawing, at);
             }
 
             Action::Flash {
@@ -2655,6 +2706,215 @@ impl World {
         None
     }
 
+    /// Draws a setpiece into the world at a point.
+    ///
+    /// The drawing is in its own coordinates, from its top left corner, which is where the original
+    /// puts them: a setpiece is placed by its corner and not by its middle.
+    ///
+    /// Returns the names it could not find in the content. A setpiece with a missing name is a hole
+    /// in the realm, and it should be said rather than left to be walked into.
+    pub fn draw(
+        &mut self,
+        catalog: &Catalog,
+        drawing: &crate::setpiece::Drawing,
+        at: (u32, u32),
+    ) -> Vec<&'static str> {
+        use crate::setpiece::Placed;
+
+        let mut missing = Vec::new();
+        let mut refused = 0usize;
+        let behaviours = std::mem::take(&mut self.behaviours);
+
+        for square in &drawing.squares {
+            let x = at.0 as i32 + square.x;
+            let y = at.1 as i32 + square.y;
+            if x < 0 || y < 0 || !self.terrain.contains(x as u32, y as u32) {
+                continue;
+            }
+            let (x, y) = (x as u32, y as u32);
+
+            let tile = match square.tile {
+                Some(name) => match catalog.tile_type_of(name) {
+                    Some(kind) => Some(kind),
+                    None => {
+                        missing.push(name);
+                        None
+                    }
+                },
+                None => None,
+            };
+
+            let object = match square.object {
+                Some(name) => match catalog.type_of(name) {
+                    Some(kind) => Some((kind, square.size)),
+                    None => {
+                        missing.push(name);
+                        None
+                    }
+                },
+                None => None,
+            };
+
+            // Whatever was standing here goes, whether the drawing asked for the square to be
+            // cleared or is about to put its own wall there.
+            if square.clear || object.is_some() {
+                self.clear_area(x as f32 + 0.5, y as f32 + 0.5, 1.0, 1.0);
+            }
+
+            // Painted rather than spawned. A setpiece's walls are scenery like any other wall: the
+            // original writes them onto the tile, and a castle whose every stone was an entity
+            // would cost eight hundred places in the world and eight hundred snapshot entries.
+            if !self.terrain.paint(
+                catalog,
+                x,
+                y,
+                tile,
+                object,
+                square.clear && object.is_none(),
+            ) {
+                refused += 1;
+                continue;
+            }
+
+            if let Some(tile) = tile
+                && self.ground_changes.len() < MAX_PENDING_GROUND_CHANGES
+            {
+                self.ground_changes.push((x as u16, y as u16, tile.0));
+            }
+
+            if let Some((object, size)) = object
+                && self.scenery_changes.len() < MAX_PENDING_GROUND_CHANGES
+            {
+                self.scenery_changes
+                    .push((x as u16, y as u16, object.0, size));
+            }
+        }
+
+        for placed in &drawing.placed {
+            match placed {
+                Placed::Living { x, y, name, size } => {
+                    let Some(kind) = catalog.type_of(name) else {
+                        missing.push(name);
+                        continue;
+                    };
+
+                    if let Some(handle) = self.spawn_child(
+                        catalog,
+                        &behaviours,
+                        kind,
+                        at.0 as f32 + x,
+                        at.1 as f32 + y,
+                        None,
+                        None,
+                    ) && *size > 0
+                        && let Some(entity) = self.entities.get_mut(handle)
+                    {
+                        entity.size = *size;
+                    }
+                }
+
+                // Chests come after, because filling one rolls loot and that needs the world
+                // back in one piece.
+                Placed::Chest { .. } => {}
+            }
+        }
+
+        self.behaviours = behaviours;
+
+        for placed in &drawing.placed {
+            let Placed::Chest {
+                x,
+                y,
+                loot,
+                least,
+                most,
+            } = placed
+            else {
+                continue;
+            };
+
+            self.place_chest(
+                catalog,
+                (at.0 as f32 + x, at.1 as f32 + y),
+                loot,
+                *least,
+                *most,
+            );
+        }
+
+        if refused > 0 {
+            // A setpiece that came out with holes in it, because the map cannot describe any more
+            // kinds of square. Better said than walked into.
+            self.refused_squares += refused;
+        }
+
+        missing
+    }
+
+    /// How many squares a setpiece could not paint because the map was full.
+    pub fn refused_squares(&self) -> usize {
+        self.refused_squares
+    }
+
+    /// Puts down a chest holding a few items drawn from a setpiece's loot table.
+    fn place_chest(
+        &mut self,
+        catalog: &Catalog,
+        at: (f32, f32),
+        loot: &[crate::setpiece::Tier],
+        least: usize,
+        most: usize,
+    ) {
+        use hendra_behavior::program::LootEntry;
+
+        let wanted = least + (self.roll() * (most.saturating_sub(least) + 1) as f32) as usize;
+
+        let mut held = Vec::new();
+        for tier in loot {
+            if held.len() >= wanted.min(SETPIECE_CHEST_SLOTS) {
+                break;
+            }
+
+            let entry = LootEntry::Tier {
+                tier: tier.tier,
+                kind: tier.kind.to_string(),
+                chance: tier.chance,
+            };
+            if let Some(item) = self.roll_loot(&entry, catalog) {
+                held.push(item);
+            }
+        }
+
+        if held.is_empty() {
+            return;
+        }
+
+        let Some(kind) = catalog.type_of(SETPIECE_CHEST) else {
+            return;
+        };
+
+        let mut container = Container::new(ContainerKind::Bag, SETPIECE_CHEST_SLOTS);
+        for item in held {
+            container.insert(item, catalog);
+        }
+
+        let mut chest = Entity::fixture(kind, at.0, at.1);
+        chest.kind = Kind::Container;
+        chest.container = Some(Box::new(container));
+        // No expiry: a setpiece chest is part of the realm and stands until somebody empties it.
+        self.spawn(chest);
+    }
+
+    /// Setpiece names a behaviour asked for that nothing answers to.
+    ///
+    /// Taken rather than read, so each one is reported once. Four of the shipped behaviours name a
+    /// setpiece that does not exist, and they do in the original too.
+    pub fn take_unknown_setpieces(&mut self) -> Vec<String> {
+        let mut names: Vec<String> = self.unknown_setpieces.drain().collect();
+        names.sort();
+        names
+    }
+
     /// How the realm is doing.
     pub fn realm(&self) -> &crate::realm::Realm {
         &self.realm
@@ -3121,6 +3381,11 @@ impl World {
     /// Takes every ground change since the last call, as `(x, y, tile)`.
     pub fn take_ground_changes(&mut self) -> Vec<(u16, u16, u16)> {
         std::mem::take(&mut self.ground_changes)
+    }
+
+    /// Takes every piece of scenery that has appeared, as `(x, y, object, size)`.
+    pub fn take_scenery_changes(&mut self) -> Vec<(u16, u16, u16, u16)> {
+        std::mem::take(&mut self.scenery_changes)
     }
 
     /// Removes everything marked dead.
@@ -5241,6 +5506,178 @@ mod tests {
 
         assert_eq!(world.get(child).unwrap().terrain, terrain);
         assert_eq!(world.alive_by_terrain()[terrain as usize], 2);
+    }
+
+    #[test]
+    fn a_drawn_setpiece_paints_the_ground_and_puts_its_boss_in() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let drawing = crate::setpiece::Drawing {
+            squares: vec![crate::setpiece::Painted {
+                x: 1,
+                y: 1,
+                tile: Some("Water"),
+                object: None,
+                size: 0,
+                clear: true,
+            }],
+            placed: vec![crate::setpiece::Placed::Living {
+                x: 2.5,
+                y: 2.5,
+                name: "Slime",
+                size: 150,
+            }],
+            prefab: None,
+        };
+
+        let missing = world.draw(&catalog, &drawing, (5, 5));
+        world.reindex();
+
+        assert!(missing.is_empty(), "{missing:?}");
+        assert_eq!(world.terrain().tile_at(6, 6), TileType(0x11), "the ground");
+        assert!(!world.terrain().walkable(6, 6), "and water is not walkable");
+
+        let boss = world
+            .iter()
+            .find(|(_, entity)| entity.object_type == ObjectType(0x502))
+            .map(|(_, entity)| (entity.x, entity.y, entity.size))
+            .expect("the boss");
+        assert_eq!(boss, (7.5, 7.5, 150));
+    }
+
+    #[test]
+    fn what_a_setpiece_paints_is_scenery_rather_than_an_entity() {
+        // A castle whose every stone was an entity would cost eight hundred places in the world and
+        // eight hundred snapshot entries, for eight hundred things that never move.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+        let before = world.len();
+
+        let squares = (0..10)
+            .map(|step| crate::setpiece::Painted {
+                x: step,
+                y: 0,
+                tile: Some("Grass"),
+                object: Some("Wall"),
+                size: 0,
+                clear: false,
+            })
+            .collect();
+
+        world.draw(
+            &catalog,
+            &crate::setpiece::Drawing {
+                squares,
+                placed: Vec::new(),
+                prefab: None,
+            },
+            (4, 4),
+        );
+        world.reindex();
+
+        assert_eq!(world.len(), before, "the walls became entities");
+        assert!(!world.terrain().walkable(4, 4), "but they still block");
+        assert_eq!(
+            world.terrain().map().at(4, 4).map(|square| square.object),
+            Some(ObjectType(0x500)),
+            "and the map knows they are there, so somebody joining later sees them"
+        );
+    }
+
+    #[test]
+    fn a_setpiece_naming_something_the_content_lacks_says_so_rather_than_drawing_a_hole() {
+        // A missing name is a stretch of realm nobody can fight in, and the only symptom without
+        // this is a room that came out wrong.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let drawing = crate::setpiece::Drawing {
+            squares: vec![crate::setpiece::Painted {
+                x: 0,
+                y: 0,
+                tile: Some("Ground That Does Not Exist"),
+                object: Some("Object That Does Not Exist"),
+                size: 0,
+                clear: false,
+            }],
+            placed: vec![crate::setpiece::Placed::Living {
+                x: 0.0,
+                y: 0.0,
+                name: "Nobody",
+                size: 0,
+            }],
+            prefab: None,
+        };
+
+        let missing = world.draw(&catalog, &drawing, (2, 2));
+
+        assert_eq!(missing.len(), 3, "{missing:?}");
+    }
+
+    #[test]
+    fn a_setpiece_drawn_off_the_edge_of_the_map_paints_what_fits() {
+        // The scatterer picks a corner at random, so some of them hang off the map.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let squares = (0..8)
+            .map(|step| crate::setpiece::Painted {
+                x: step,
+                y: 0,
+                tile: Some("Water"),
+                object: None,
+                size: 0,
+                clear: true,
+            })
+            .collect();
+
+        let drawing = crate::setpiece::Drawing {
+            squares,
+            placed: Vec::new(),
+            prefab: None,
+        };
+
+        // Four of the eight squares are on the map and four are past its right edge.
+        world.draw(&catalog, &drawing, (28, 4));
+
+        assert_eq!(
+            world.terrain().tile_at(31, 4),
+            TileType(0x11),
+            "the last one on"
+        );
+    }
+
+    #[test]
+    fn a_behaviour_naming_a_setpiece_that_does_not_exist_is_reported_once() {
+        // Four of the shipped behaviours do exactly this, and so does the original: the class it
+        // looks for is not there. Saying so beats a boss whose arena never appears.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let handle = world
+            .spawn(Entity::fixture(ObjectType(0x502), 8.0, 8.0))
+            .unwrap();
+        let program = hendra_behavior::Program::default();
+
+        for _ in 0..3 {
+            world.apply(
+                handle,
+                &catalog,
+                &Programs::default(),
+                &program,
+                &Action::Setpiece {
+                    name: "BottledEvil".to_string(),
+                },
+                50,
+            );
+        }
+
+        assert_eq!(
+            world.take_unknown_setpieces(),
+            vec!["BottledEvil".to_string()]
+        );
+        assert!(world.take_unknown_setpieces().is_empty(), "and only once");
     }
 
     #[test]

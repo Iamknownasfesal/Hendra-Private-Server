@@ -1061,6 +1061,19 @@ impl Mind {
                 1
             }
 
+            Primitive::ApplySetpiece { name } => {
+                // Once, on entering the state, as the original does. A setpiece redrawn every tick
+                // would rebuild the room around whoever walked into it.
+                if self.cooldowns.get(slot).copied().unwrap_or(0) > 0 {
+                    return 1;
+                }
+                out.push(Action::Setpiece { name: name.clone() });
+                if let Some(cooldown) = self.cooldowns.get_mut(slot) {
+                    *cooldown = u32::MAX;
+                }
+                1
+            }
+
             Primitive::GroundTransform {
                 tile,
                 radius,
