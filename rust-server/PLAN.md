@@ -6,7 +6,7 @@ deliberately excluded and left until last.
 Phases 0–5 are done: workspace, content, protocol, transport, simulation, behaviour language,
 persistence, authentication. What follows is phases 6–11.
 
-**Where we are:** ~75% of the old server by subsystem. 585 tests.
+**Where we are:** ~76% of the old server by subsystem. 586 tests.
 
 **Sizing** is relative, not calendar: **S** is an afternoon, **M** is a day or two, **L** is
 several days, **XL** is a week or more.
@@ -56,8 +56,8 @@ Things that are recorded but not acted on.
 - [x] Petrify and Curse scale damage taken; Hexed does nothing in the original and so does nothing here
 - [x] Weak, Damaging and Berserk read by the stat formulas, as the original applies them
 - [x] Dazed applied to rate of fire
-- [ ] Invisible drops the entity from other players' snapshots
-- [ ] Quiet refuses ability use (needs 7.1)
+- [x] Invisible drops the entity from other players' snapshots, filtered by the server so a client cannot be made to reveal it
+- [x] Quiet refuses ability use, checked in `use_item` alongside the magic cost
 
 Confused, Drunk, Hallucinating, Blind and Darkness are client-side only and correctly do nothing
 here.

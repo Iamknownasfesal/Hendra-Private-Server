@@ -2541,6 +2541,13 @@ impl World {
                 continue;
             }
 
+            // Invisible is hidden from everyone but the one carrying it. Filtered here rather than
+            // by the client, because a client told about something it should not see is a client
+            // that can be made to reveal it.
+            if *handle != viewer && crate::effects::Rules::of(entity.conditions).invisible {
+                continue;
+            }
+
             self.visible.push((handle.to_entity_id(), entity.state()));
         }
 
@@ -4111,6 +4118,41 @@ mod tests {
             .filter(|(_, entity)| entity.container.is_some())
             .count();
         assert_eq!(bags, 1, "the loot is still there");
+    }
+
+    #[test]
+    fn an_invisible_player_is_hidden_from_everyone_but_itself() {
+        // Filtered by the server rather than the client: a client told about something it should
+        // not see is a client that can be made to reveal it.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let watcher = world
+            .spawn(Entity::player(ObjectType(0x600), 10.0, 10.0, 500))
+            .unwrap();
+        let hidden = world
+            .spawn(Entity::player(ObjectType(0x600), 12.0, 10.0, 500))
+            .unwrap();
+        world.reindex();
+
+        assert_eq!(world.snapshot_for(watcher, 20.0).len(), 2);
+
+        give(
+            &mut world,
+            hidden,
+            hendra_content::ConditionEffect::Invisible,
+        );
+
+        assert_eq!(
+            world.snapshot_for(watcher, 20.0).len(),
+            1,
+            "the watcher sees only itself"
+        );
+        assert_eq!(
+            world.snapshot_for(hidden, 20.0).len(),
+            2,
+            "and the hidden one still sees both"
+        );
     }
 
     #[test]
