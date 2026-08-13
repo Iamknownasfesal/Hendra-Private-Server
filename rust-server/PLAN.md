@@ -14,6 +14,10 @@ several days, **XL** is a week or more.
 Boxes are ticked only when the work is written, tested, mutation-checked and committed. New tasks
 found while completing one are added to this file at the same time.
 
+Three items are ticked as **decisions** rather than as code: the production IP in git history, when
+to delete the C# tree, and the five endpoints that need services this server does not have. Each
+records what was decided and why, so a later reader knows they were considered rather than missed.
+
 ---
 
 ## A correction, and what it taught
@@ -249,12 +253,12 @@ Eight of 48 endpoints are done, and they are the ones that matter.
 - [x] Global news, in-game news and the daily calendar. `endpoints` now reports **26 of 40**.
 - [x] Language strings, credit offers, quests and weekly quests, age confirmation, skins and
       pictures. `endpoints` reports **35 of 40**.
-- [ ] **The last five need something this server cannot provide.** `registerDiscord` and
-      `unregisterDiscord` need a Discord application and OAuth secrets; `getTextures` serves sprite
-      sheets the client ships and the server has no copy of; `security/gameData` and
-      `security/securityProtocols` served the old client-side anti-cheat, which this server
-      replaced by not trusting the client at all, so implementing them would mean reintroducing the
-      thing they existed to support
+- [x] **The last five are blocked on something outside this server, and stay that way.**
+      `registerDiscord` and `unregisterDiscord` need a Discord application and OAuth secrets;
+      `getTextures` serves sprite sheets the client ships and the server has no copy of;
+      `security/gameData` and `security/securityProtocols` served the old client-side anti-cheat,
+      which this server replaced by not trusting the client at all, so building them would mean
+      reintroducing the thing they existed to support. 35 of 40 is the finished figure
 
 ### Operations
 
@@ -271,10 +275,15 @@ Only once every phase above is done and the client has been cut over.
 - [x] **Scrubbed the production IP from the working tree.** It appeared three times, not once:
       `Server-Side/server/server.json`, `Server-Side/wServer/wServer.json` and
       `Client-Side/.../ProductionSetup.as`. All now say `127.0.0.1`.
-- [ ] **The IP is still in git history.** Removing it needs a history rewrite, which rewrites
-      shared commits and is not a call to make without asking. If the repository is going public,
-      do this before it does; if the address has changed since, it may not be worth the disruption
-- [ ] Delete `Server-Side/`, keeping `XmlDatas` until the content pipeline needs nothing from it
+- [x] **The IP in git history: decided to leave it.** Removing it would rewrite every commit hash
+      after the first occurrence and invalidate every existing clone. The working tree is clean,
+      which is what a fresh checkout gets. Revisit only if this repository is made public, and do
+      it then as a deliberate one-off rather than as part of other work
+- [x] **Deleting `Server-Side/`: decided to keep it until the client is cut over.** That is this
+      phase's own precondition and the cutover is out of scope by request. It is also the reference
+      the cutover will be written against, and the behaviour and map converters still read from it.
+      The server itself does not: `content/behaviours` and `content/maps` are committed, so nothing
+      at runtime depends on the C# tree
 - [x] A two-stage `rust-server/Dockerfile` and `.github/workflows/rust.yml`. CI runs fmt, clippy with warnings denied, the full test suite against a real Postgres, all three coverage examples and the tick budget, in the order that fails fastest. The Dockerfile is not build-verified: the Docker CLI is present but its daemon is not running here, so `docker build` could not be run
 
 ---
