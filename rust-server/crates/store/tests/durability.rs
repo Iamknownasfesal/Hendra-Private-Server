@@ -7,7 +7,7 @@
 //! Set `HENDRA_TEST_DATABASE` to point at one. Without it the tests skip rather than fail, so a
 //! machine with no Postgres can still run the rest of the suite.
 
-use hendra_store::{Location, Store, StoreError};
+use hendra_store::{Location, Offer, Store, StoreError};
 
 /// A store with a schema of its own, or `None` when no database is configured.
 ///
@@ -495,4 +495,246 @@ async fn vault_chests_are_bought_up_to_a_limit() {
         Err(StoreError::Refused(_))
     ));
     assert_eq!(store.account_by_name("Buyer").await.unwrap().vault_chests, 6);
+}
+
+
+// -- trade ------------------------------------------------------------------------------------
+
+/// Two characters on one account, each holding one item.
+async fn traders(store: &Store, schema_name: &str) -> (i64, i64) {
+    let account = store.create_account(schema_name).await.unwrap();
+    let one = store
+        .create_character(account.id, 0x0300, "One", 800)
+        .await
+        .unwrap();
+    let two = store
+        .create_character(account.id, 0x0300, "Two", 800)
+        .await
+        .unwrap();
+
+    store.set_inventory(one.id, &[(4, WAND)]).await.unwrap();
+    store.set_inventory(two.id, &[(4, ROBE)]).await.unwrap();
+    (one.id, two.id)
+}
+
+/// Every item both characters hold, sorted.
+async fn between(store: &Store, one: i64, two: i64) -> Vec<i32> {
+    let mut items: Vec<i32> = store
+        .character(one)
+        .await
+        .unwrap()
+        .inventory
+        .iter()
+        .chain(store.character(two).await.unwrap().inventory.iter())
+        .map(|(_, item)| *item)
+        .collect();
+    items.sort();
+    items
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_trade_exchanges_both_sides() {
+    let Some(store) = store("t_trade").await else {
+        return;
+    };
+    let (one, two) = traders(&store, "Trader").await;
+
+    store
+        .trade(
+            &Offer::new(one, vec![(4, WAND)]),
+            &Offer::new(two, vec![(4, ROBE)]),
+            4,
+            11,
+        )
+        .await
+        .unwrap();
+
+    let first: Vec<i32> = store
+        .character(one)
+        .await
+        .unwrap()
+        .inventory
+        .iter()
+        .map(|(_, item)| *item)
+        .collect();
+    let second: Vec<i32> = store
+        .character(two)
+        .await
+        .unwrap()
+        .inventory
+        .iter()
+        .map(|(_, item)| *item)
+        .collect();
+
+    assert_eq!(first, vec![ROBE]);
+    assert_eq!(second, vec![WAND]);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_trade_of_an_item_that_moved_does_nothing_at_all() {
+    // The failure a sequence of moves would get wrong: one side gives up its item and the other
+    // cannot, leaving the asymmetry permanent.
+    let Some(store) = store("t_trade_stale").await else {
+        return;
+    };
+    let (one, two) = traders(&store, "Stale Trader").await;
+
+    let before = between(&store, one, two).await;
+
+    // The second player's item is not what the first believes.
+    let outcome = store
+        .trade(
+            &Offer::new(one, vec![(4, WAND)]),
+            &Offer::new(two, vec![(4, WAND)]),
+            4,
+            11,
+        )
+        .await;
+
+    assert!(matches!(outcome, Err(StoreError::Refused(_))));
+    assert_eq!(
+        between(&store, one, two).await,
+        before,
+        "a refused trade must move nothing whatsoever"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_trade_into_a_full_inventory_is_refused_before_anything_moves() {
+    let Some(store) = store("t_trade_full").await else {
+        return;
+    };
+
+    let account = store.create_account("Hoarder").await.unwrap();
+    let one = store
+        .create_character(account.id, 0x0300, "One", 800)
+        .await
+        .unwrap();
+    let two = store
+        .create_character(account.id, 0x0300, "Two", 800)
+        .await
+        .unwrap();
+
+    // One offers nothing and has no room; two offers two items.
+    let packed: Vec<(i16, i32)> = (4..=11).map(|slot| (slot, WAND)).collect();
+    store.set_inventory(one.id, &packed).await.unwrap();
+    store.set_inventory(two.id, &[(4, ROBE), (5, ROBE)]).await.unwrap();
+
+    let before = between(&store, one.id, two.id).await;
+
+    let outcome = store
+        .trade(
+            &Offer::new(one.id, Vec::new()),
+            &Offer::new(two.id, vec![(4, ROBE), (5, ROBE)]),
+            4,
+            11,
+        )
+        .await;
+
+    assert!(matches!(outcome, Err(StoreError::Refused(_))));
+    assert_eq!(between(&store, one.id, two.id).await, before);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_one_sided_trade_is_a_gift() {
+    let Some(store) = store("t_gift").await else {
+        return;
+    };
+    let (one, two) = traders(&store, "Giver of Gifts").await;
+
+    store
+        .trade(
+            &Offer::new(one, vec![(4, WAND)]),
+            &Offer::new(two, Vec::new()),
+            4,
+            11,
+        )
+        .await
+        .unwrap();
+
+    assert!(store.character(one).await.unwrap().inventory.is_empty());
+    assert_eq!(store.character(two).await.unwrap().inventory.len(), 2);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_same_item_cannot_be_traded_to_two_people_at_once() {
+    // The dupe this exists to prevent: one item, two simultaneous trades, both reading it as
+    // present before either commits.
+    let Some(store) = store("t_trade_race").await else {
+        return;
+    };
+
+    let account = store.create_account("Duper").await.unwrap();
+    let seller = store
+        .create_character(account.id, 0x0300, "Seller", 800)
+        .await
+        .unwrap();
+    let buyer_one = store
+        .create_character(account.id, 0x0300, "One", 800)
+        .await
+        .unwrap();
+    let buyer_two = store
+        .create_character(account.id, 0x0300, "Two", 800)
+        .await
+        .unwrap();
+
+    for _ in 0..20 {
+        store.set_inventory(seller.id, &[(4, WAND)]).await.unwrap();
+        store.set_inventory(buyer_one.id, &[]).await.unwrap();
+        store.set_inventory(buyer_two.id, &[]).await.unwrap();
+
+        let first = {
+            let store = store.clone();
+            tokio::spawn(async move {
+                store
+                    .trade(
+                        &Offer::new(seller.id, vec![(4, WAND)]),
+                        &Offer::new(buyer_one.id, Vec::new()),
+                        4,
+                        11,
+                    )
+                    .await
+            })
+        };
+        let second = {
+            let store = store.clone();
+            tokio::spawn(async move {
+                store
+                    .trade(
+                        &Offer::new(seller.id, vec![(4, WAND)]),
+                        &Offer::new(buyer_two.id, Vec::new()),
+                        4,
+                        11,
+                    )
+                    .await
+            })
+        };
+
+        let (a, b) = (first.await.unwrap(), second.await.unwrap());
+        let winners = [a.is_ok(), b.is_ok()].iter().filter(|ok| **ok).count();
+        assert_eq!(winners, 1, "one item cannot be given to two people");
+
+        let wands: usize = [seller.id, buyer_one.id, buyer_two.id]
+            .iter()
+            .map(|id| {
+                futures_block(store.character(*id))
+                    .inventory
+                    .iter()
+                    .filter(|(_, item)| *item == WAND)
+                    .count()
+            })
+            .sum();
+
+        assert_eq!(wands, 1, "there must still be exactly one wand");
+    }
+}
+
+/// Awaits inside a synchronous closure by blocking the current thread's runtime handle.
+fn futures_block(
+    future: impl std::future::Future<Output = hendra_store::Result<hendra_store::Character>>,
+) -> hendra_store::Character {
+    tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current().block_on(future)
+    })
+    .expect("the character should load")
 }
