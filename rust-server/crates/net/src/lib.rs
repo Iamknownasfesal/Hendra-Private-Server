@@ -22,9 +22,13 @@
 //! nothing else.
 
 pub mod codec;
+pub mod entity;
 pub mod snapshot;
+pub mod world;
 
 pub use codec::{
     CodecError, POSITION_SCALE, Reader, Writer, dequantize, quantize, unzigzag, zigzag,
 };
-pub use snapshot::{Acknowledgement, BaselineRing, SNAPSHOT_HISTORY, Tick};
+pub use entity::{EntityId, EntityState, FieldMask};
+pub use snapshot::{Acknowledgement, Baseline, BaselineRing, SNAPSHOT_HISTORY, Tick};
+pub use world::{DATAGRAM_BUDGET, Delivery, SnapshotEncoder, WorldSnapshot, decode_snapshot};
