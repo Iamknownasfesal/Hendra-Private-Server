@@ -295,6 +295,82 @@ impl Store {
         Ok(found.is_some())
     }
 
+    /// The best level and fame this account has reached with each class.
+    ///
+    /// Returned as a map because the caller asks about several classes at once — deciding which of
+    /// fourteen are playable is one question, not fourteen.
+    pub async fn class_progress(
+        &self,
+        account_id: i64,
+    ) -> Result<std::collections::HashMap<i32, (i16, i32)>> {
+        let rows = sqlx::query_as::<_, (i32, i16, i32)>(
+            "SELECT object_type, best_level, best_fame FROM class_progress WHERE account_id = $1",
+        )
+        .bind(account_id)
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(object_type, level, fame)| (object_type, (level, fame)))
+            .collect())
+    }
+
+    /// Raises the high-water mark for a class, and never lowers it.
+    ///
+    /// `GREATEST` rather than a read-then-write, so two characters of the same class finishing at
+    /// once cannot have the higher one overwritten by the lower.
+    pub async fn record_class_progress(
+        &self,
+        account_id: i64,
+        object_type: i32,
+        level: i16,
+        fame: i32,
+    ) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO class_progress (account_id, object_type, best_level, best_fame)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (account_id, object_type) DO UPDATE
+             SET best_level = GREATEST(class_progress.best_level, EXCLUDED.best_level),
+                 best_fame  = GREATEST(class_progress.best_fame,  EXCLUDED.best_fame),
+                 updated_at = now()",
+        )
+        .bind(account_id)
+        .bind(object_type)
+        .bind(level)
+        .bind(fame)
+        .execute(self.pool())
+        .await?;
+
+        Ok(())
+    }
+
+    /// Classes this account has bought.
+    pub async fn purchased_classes(&self, account_id: i64) -> Result<Vec<i32>> {
+        let rows = sqlx::query_as::<_, (i32,)>(
+            "SELECT object_type FROM class_unlock WHERE account_id = $1",
+        )
+        .bind(account_id)
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(rows.into_iter().map(|(object_type,)| object_type).collect())
+    }
+
+    /// Records a class as bought. Buying one twice is not an error and costs nothing extra.
+    pub async fn purchase_class(&self, account_id: i64, object_type: i32) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO class_unlock (account_id, object_type) VALUES ($1, $2)
+             ON CONFLICT (account_id, object_type) DO NOTHING",
+        )
+        .bind(account_id)
+        .bind(object_type)
+        .execute(self.pool())
+        .await?;
+
+        Ok(())
+    }
+
     /// Replaces a character's whole inventory.
     ///
     /// For giving a new character its starting kit, not for saving one mid-play — see

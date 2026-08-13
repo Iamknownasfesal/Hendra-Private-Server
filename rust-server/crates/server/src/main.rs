@@ -19,21 +19,13 @@ mod worlds;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use hendra_content::{Catalog, ObjectType};
+use hendra_content::Catalog;
 use hendra_sim::{Terrain, World};
 use hendra_transport::{Listener, ServerIdentity};
 
-/// Where a player's own avatar comes from. Any player-classed object will do until characters are
-/// real; this is the wizard.
-const DEFAULT_PLAYER_OBJECT: &str = "Wizard";
-
 /// What a player arrives holding, until character classes decide it.
-const STARTING_KIT: &[&str] = &[
-    "Wand of Dark Magic",
-    "Robe of the Neophyte",
-    "Health Potion",
-    "Magic Potion",
-];
+/// What every class carries on top of the gear its own slots decide.
+const COMMON_ITEMS: &[&str] = &["Health Potion", "Magic Potion"];
 
 /// Where the durable half lives.
 const DEFAULT_DATABASE: &str = "postgres://localhost/hendra";
@@ -113,19 +105,37 @@ async fn main() {
     );
 
     let catalog = Arc::new(catalog);
-    let avatar = catalog
-        .type_of(DEFAULT_PLAYER_OBJECT)
-        .unwrap_or(ObjectType(0x0300));
-    let loadout = world_task::Loadout {
-        avatar,
-        weapon: catalog.type_of(STARTING_KIT[0]),
+
+    // The class a new character is made as, and the one a broken one falls back to. The first free
+    // class in the files rather than a name written here, so content decides it — in the shipped
+    // files that is the wizard, which is what the game has always started people on.
+    let default_class = catalog
+        .classes()
+        .iter()
+        .find(|class| class.unlock.free())
+        .or_else(|| catalog.classes().first())
+        .cloned();
+
+    let Some(default_class) = default_class else {
+        tracing::error!("the content has no playable classes; nobody could make a character");
+        std::process::exit(1);
     };
-    if loadout.weapon.is_none() {
-        tracing::warn!(
-            weapon = STARTING_KIT[0],
-            "starter weapon not in the catalog; players cannot shoot"
-        );
-    }
+
+    tracing::info!(
+        classes = catalog.classes().len(),
+        default = catalog
+            .object(default_class.object_type)
+            .map(|desc| desc.id.as_str())
+            .unwrap_or("?"),
+        "classes loaded"
+    );
+
+    let loadout = world_task::Loadout {
+        avatar: default_class.object_type,
+        weapon: default_class
+            .slot_type(0)
+            .and_then(|slot| catalog.lowest_tier_for_slot(slot)),
+    };
 
     let store = match hendra_store::Store::connect(&options.database).await {
         Ok(store) => {
@@ -251,10 +261,9 @@ async fn main() {
         worlds: Arc::clone(&registry),
         store,
         catalog: Arc::clone(&catalog),
-        kit: accounts::StartingKitOwned {
-            avatar,
-            items: STARTING_KIT.iter().map(|name| name.to_string()).collect(),
-            max_hp: 800,
+        kit: accounts::StartingKit {
+            default_class: default_class.object_type,
+            common: hendra_characters::CommonItems::new(COMMON_ITEMS.iter().copied()),
         },
         key,
     });

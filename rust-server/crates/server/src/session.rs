@@ -36,6 +36,7 @@
 
 use std::sync::Arc;
 
+use hendra_content::ObjectType;
 use hendra_net::message::{
     ClientMessage, ContainerId, PROTOCOL_VERSION, RejectReason, ServerMessage, SlotLocation,
 };
@@ -61,7 +62,7 @@ pub struct Context {
     pub worlds: Arc<Worlds>,
     pub store: Store,
     pub catalog: Arc<hendra_content::Catalog>,
-    pub kit: crate::accounts::StartingKitOwned,
+    pub kit: crate::accounts::StartingKit,
 
     /// Verifies session tokens. This process cannot mint one.
     pub key: hendra_auth::TokenKey,
@@ -137,6 +138,7 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
                     player.account.id,
                     portal_type,
                     &context.worlds,
+                    arrival_of(&player, &context),
                 )
                 .await
                 {
@@ -238,17 +240,10 @@ async fn handshake(
         return None;
     }
 
-    let (avatar, items, max_hp) = context.kit.borrowed();
-    let kit = crate::accounts::StartingKit {
-        avatar,
-        items: &items,
-        max_hp,
-    };
-
     let player = match crate::accounts::log_in(
         &context.store,
         &context.catalog,
-        &kit,
+        &context.kit,
         &context.key,
         token,
         character as i64,
@@ -272,7 +267,13 @@ async fn handshake(
         }
     };
 
-    let handle = join(link, entry, &player.character.name).await?;
+    let handle = join(
+        link,
+        entry,
+        &player.character.name,
+        arrival_of(&player, context),
+    )
+    .await?;
     Some((
         player,
         Placement {
@@ -371,6 +372,13 @@ async fn move_item(
         say(link, "that cannot be moved").await;
         return;
     };
+
+    // A worn slot only takes what the class wears in it. Without this a wizard equips a sword and
+    // shoots with it, and fourteen classes quietly become one.
+    if !worn_slots_would_accept(context, player, from, to).await {
+        say(link, "that does not go there").await;
+        return;
+    }
 
     // What the client believed was there. The store refuses the move if it is no longer, which is
     // what stops the same item being moved twice by two requests that both read it first.
@@ -590,11 +598,17 @@ async fn say(link: &mut Link, message: &str) {
 }
 
 /// Puts the player into a world and tells the client about it.
-async fn join(link: &mut Link, world: &WorldHandle, name: &str) -> Option<Handle> {
+async fn join(
+    link: &mut Link,
+    world: &WorldHandle,
+    name: &str,
+    arrival: crate::world_task::Arrival,
+) -> Option<Handle> {
     let (reply, answer) = tokio::sync::oneshot::channel();
     if !world
         .send(ToWorld::Join {
             name: name.to_string(),
+            arrival,
             sender: link.sender(),
             reply,
         })
@@ -618,6 +632,86 @@ async fn join(link: &mut Link, world: &WorldHandle, name: &str) -> Option<Handle
     Some(handle)
 }
 
+/// Whether both ends of a move would leave every worn slot holding something it accepts.
+///
+/// Both ends, because a move is a swap: dragging a sword onto a wand puts the wand where the sword
+/// was, and checking only the destination would let the second half through.
+async fn worn_slots_would_accept(
+    context: &Context,
+    player: &crate::accounts::Session,
+    from: SlotLocation,
+    to: SlotLocation,
+) -> bool {
+    let Some(class) = context
+        .catalog
+        .class(ObjectType(player.character.object_type as u16))
+    else {
+        // A character whose class is not in the catalog cannot have its slots judged, and refusing
+        // every move it makes would be a worse answer than allowing them.
+        return true;
+    };
+
+    let worn = |location: SlotLocation| match location {
+        SlotLocation::Inventory { slot } | SlotLocation::Equipment { slot } => {
+            (slot as i16) < hendra_characters::EQUIPPED_SLOTS
+        }
+        _ => false,
+    };
+
+    if !worn(from) && !worn(to) {
+        return true;
+    }
+
+    let character_id = player.character.id;
+    let account_id = player.account.id;
+    let (Some(source), Some(destination)) = (
+        locate(from, character_id, account_id),
+        locate(to, character_id, account_id),
+    ) else {
+        return true;
+    };
+
+    let moving = read_slot(&context.store, source).await.unwrap_or(0);
+    let displaced = read_slot(&context.store, destination).await.unwrap_or(0);
+
+    let fits = |location: SlotLocation, item: i32| match location {
+        SlotLocation::Inventory { slot } | SlotLocation::Equipment { slot } => {
+            hendra_characters::slot_accepts(
+                &context.catalog,
+                class,
+                slot as i16,
+                ObjectType(item as u16),
+            )
+        }
+        _ => true,
+    };
+
+    fits(to, moving) && fits(from, displaced)
+}
+
+/// The body a character arrives in.
+///
+/// Health travels with the player rather than resetting at every door, which is the difference
+/// between a dungeon and a series of unrelated rooms. The weapon is whatever is in slot zero, so
+/// unequipping one and walking through a portal does not hand it back.
+fn arrival_of(player: &crate::accounts::Session, context: &Context) -> crate::world_task::Arrival {
+    let avatar = ObjectType(player.character.object_type as u16);
+    let max_hp = player.character.max_hp.max(1);
+
+    crate::world_task::Arrival {
+        avatar,
+        hp: player.character.hp.clamp(1, max_hp),
+        max_hp,
+        weapon: player
+            .character
+            .inventory
+            .iter()
+            .find(|(slot, _)| *slot == 0)
+            .map(|(_, item)| ObjectType(*item as u16))
+            .filter(|item| context.catalog.object(*item).is_some()),
+    }
+}
+
 /// Moves a player from one world to another.
 ///
 /// The order matters. The destination is opened and joined *before* the old world is left, so a
@@ -629,6 +723,7 @@ async fn travel(
     account_id: i64,
     portal_type: u16,
     worlds: &Worlds,
+    arrival: crate::world_task::Arrival,
 ) -> Option<Placement> {
     let destination = worlds.destination_of(portal_type)?.to_string();
 
@@ -641,7 +736,7 @@ async fn travel(
     // A personal world gets one instance per account, so two players in the vault are in two
     // rooms rather than looking at each other's chests.
     let world = worlds.get_or_start_for(&destination, account_id)?;
-    let handle = join(link, &world, name).await?;
+    let handle = join(link, &world, name, arrival).await?;
 
     from.world
         .send(ToWorld::Leave {

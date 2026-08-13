@@ -1,0 +1,15 @@
+[package]
+name = "hendra-characters"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+hendra-content = { path = "../content" }
+hendra-store = { path = "../store" }
+tracing.workspace = true
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres"] }

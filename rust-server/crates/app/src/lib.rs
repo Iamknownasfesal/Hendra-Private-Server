@@ -11,6 +11,8 @@
 //!   POST   /select         (Bearer) {character_id}->  {token, ...}
 //!   DELETE /characters/:id (Bearer)               ->  {}
 //!   POST   /password       (Bearer) {old, new}    ->  {}
+//!   GET    /classes        (Bearer)               ->  [{class, locked}]
+//!   POST   /characters     (Bearer) {class, name} ->  {character}
 //! ```
 //!
 //! # On running this behind something
@@ -38,6 +40,12 @@ pub struct App {
     pub store: Store,
     pub key: TokenKey,
 
+    /// The content, for the character-select screen. Read-only and shared with nothing.
+    pub catalog: Arc<hendra_content::Catalog>,
+
+    /// What every class carries beyond the gear its own slots decide.
+    pub common_items: hendra_characters::CommonItems,
+
     /// How many passwords have recently failed against each name.
     pub throttle: Throttle,
 
@@ -47,9 +55,25 @@ pub struct App {
 
 impl App {
     pub fn new(store: Store, key: TokenKey) -> App {
+        App::with_content(
+            store,
+            key,
+            Arc::new(hendra_content::Catalog::default()),
+            hendra_characters::CommonItems::new(Vec::<String>::new()),
+        )
+    }
+
+    pub fn with_content(
+        store: Store,
+        key: TokenKey,
+        catalog: Arc<hendra_content::Catalog>,
+        common_items: hendra_characters::CommonItems,
+    ) -> App {
         App {
             store,
             key,
+            catalog,
+            common_items,
             throttle: Throttle::new(),
             hashing: tokio::sync::Semaphore::new(throttle::CONCURRENT_HASHES),
         }
@@ -453,6 +477,121 @@ pub async fn change_password(
     Ok(Json(serde_json::json!({})))
 }
 
+#[derive(Serialize)]
+pub struct ClassOffer {
+    pub object_type: u16,
+    pub id: String,
+    pub starting_hp: i32,
+    pub starting_mp: i32,
+
+    /// `null` when the class can be played now.
+    pub locked: Option<String>,
+
+    pub cost: Option<u32>,
+}
+
+/// Every class, and whether this account may play it.
+pub async fn classes(State(app): State<Arc<App>>, headers: HeaderMap) -> Answer<Vec<ClassOffer>> {
+    let claims = authenticate(&app, &headers)?;
+
+    let offers = hendra_characters::offers(&app.store, &app.catalog, claims.account_id)
+        .await
+        .map_err(|err| {
+            tracing::error!(%err, "could not read class progress");
+            refuse(StatusCode::INTERNAL_SERVER_ERROR, "try again shortly")
+        })?;
+
+    Ok(Json(
+        offers
+            .into_iter()
+            .map(|offer| ClassOffer {
+                object_type: offer.object_type.0,
+                id: offer.id,
+                starting_hp: offer.starting_hp,
+                starting_mp: offer.starting_mp,
+                // Said in words rather than as a code, because the only thing a client does with
+                // it is show it to someone.
+                locked: offer.locked.map(|locked| match locked {
+                    hendra_content::player::Locked::NeedsLevel { class, level } => {
+                        let name = app
+                            .catalog
+                            .object(class)
+                            .map(|desc| desc.id.clone())
+                            .unwrap_or_else(|| format!("class {}", class.0));
+                        format!("reach level {level} with a {name}")
+                    }
+                }),
+                cost: offer.cost,
+            })
+            .collect(),
+    ))
+}
+
+#[derive(Deserialize)]
+pub struct NewCharacter {
+    pub class: u16,
+    pub name: Option<String>,
+}
+
+/// Makes a character of a class, if the account has unlocked it.
+pub async fn create_character(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Json(body): Json<NewCharacter>,
+) -> Answer<Character> {
+    let claims = authenticate(&app, &headers)?;
+
+    let name = body.name.as_deref().map(str::trim).unwrap_or("Adventurer");
+    if name.is_empty() || name.chars().count() > 32 {
+        return Err(refuse(
+            StatusCode::BAD_REQUEST,
+            "a name must be between one and thirty-two characters",
+        ));
+    }
+
+    let made = hendra_characters::create(
+        &app.store,
+        &app.catalog,
+        &app.common_items,
+        claims.account_id,
+        hendra_content::ObjectType(body.class),
+        name,
+    )
+    .await;
+
+    match made {
+        Ok(character) => Ok(Json(Character {
+            id: character.id,
+            name: character.name,
+            object_type: character.object_type,
+            level: character.level,
+            fame: character.fame,
+        })),
+        Err(hendra_characters::CreateError::NoSuchClass) => {
+            Err(refuse(StatusCode::BAD_REQUEST, "no such class"))
+        }
+        Err(hendra_characters::CreateError::Locked(locked)) => {
+            let hendra_content::player::Locked::NeedsLevel { class, level } = locked;
+            let name = app
+                .catalog
+                .object(class)
+                .map(|desc| desc.id.clone())
+                .unwrap_or_else(|| format!("class {}", class.0));
+            Err(refuse(
+                StatusCode::FORBIDDEN,
+                &format!("that class is locked; reach level {level} with a {name}"),
+            ))
+        }
+        Err(err) => {
+            tracing::error!(%err, "could not create a character");
+            Err(refuse(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "try again shortly",
+            ))
+        }
+    }
+}
+
 async fn health() -> &'static str {
     "ok"
 }
@@ -468,6 +607,8 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/login", post(login))
         .route("/characters", get(characters))
         .route("/characters/{id}", axum::routing::delete(delete_character))
+        .route("/characters", post(create_character))
+        .route("/classes", get(classes))
         .route("/select", post(select))
         .route("/password", post(change_password))
         // A body limit, because both credential endpoints hash what they are given and Argon2 is

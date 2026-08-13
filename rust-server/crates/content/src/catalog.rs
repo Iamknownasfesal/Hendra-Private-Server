@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::desc::{ObjectDesc, ObjectType, TileDesc, TileType};
+use crate::player::PlayerDesc;
 use crate::xml::{Node, XmlError};
 
 /// Everything loaded from the content files.
@@ -26,6 +27,10 @@ pub struct Catalog {
     /// Object types that can be held in a slot, for the loot and vault paths.
     items: Vec<ObjectType>,
 
+    /// The playable classes, in the order the files list them, which is the order a character
+    /// select screen shows them in.
+    classes: Vec<PlayerDesc>,
+
     /// Files that were read, in load order. Kept for diagnostics and for the bake step's staleness
     /// check.
     sources: Vec<PathBuf>,
@@ -41,6 +46,7 @@ pub struct LoadReport {
     pub objects: usize,
     pub tiles: usize,
     pub items: usize,
+    pub classes: usize,
     pub problems: Vec<LoadProblem>,
 }
 
@@ -143,6 +149,7 @@ impl Catalog {
             objects: catalog.object_count(),
             tiles: catalog.tile_count(),
             items: catalog.items.len(),
+            classes: catalog.classes.len(),
             problems,
         };
 
@@ -173,6 +180,7 @@ impl Catalog {
             objects: catalog.object_count(),
             tiles: catalog.tile_count(),
             items: catalog.items.len(),
+            classes: catalog.classes.len(),
             problems,
         };
 
@@ -187,7 +195,18 @@ impl Catalog {
         match node.name.as_str() {
             "Object" => {
                 if let Some(desc) = ObjectDesc::parse(node) {
+                    // Parsed from the same element, because a class needs fields no other object
+                    // has and re-finding the element later would mean keeping it around.
+                    let class = PlayerDesc::parse(node, desc.object_type);
                     self.insert_object(desc, problems);
+                    if let Some(class) = class
+                        && !self
+                            .classes
+                            .iter()
+                            .any(|c| c.object_type == class.object_type)
+                    {
+                        self.classes.push(class);
+                    }
                 }
                 return;
             }
@@ -225,6 +244,42 @@ impl Catalog {
             self.items.push(desc.object_type);
         }
         self.objects[index] = Some(desc);
+    }
+
+    /// Every playable class, in the order the files list them.
+    pub fn classes(&self) -> &[PlayerDesc] {
+        &self.classes
+    }
+
+    /// One class by its object type, or `None` if that type is not playable.
+    pub fn class(&self, object_type: ObjectType) -> Option<&PlayerDesc> {
+        self.classes
+            .iter()
+            .find(|class| class.object_type == object_type)
+    }
+
+    /// The lowest-tier item that fits a slot, which is what a class starts holding.
+    ///
+    /// Starting equipment is not written down anywhere: every class in the files lists its
+    /// `Equipment` as empty, so a character built from the files alone would arrive with nothing to
+    /// shoot. Tier zero of the slot the class's weapon goes in is what the game has always given
+    /// out, and deriving it means a new class needs no new configuration.
+    ///
+    /// Untiered items — everything unique or special — are skipped, since "no tier" sorts as
+    /// nothing rather than as the bottom.
+    pub fn lowest_tier_for_slot(&self, slot_type: i32) -> Option<ObjectType> {
+        self.items
+            .iter()
+            .filter_map(|object_type| {
+                let desc = self.object(*object_type)?;
+                let item = desc.item.as_ref()?;
+                if item.slot_type != slot_type || item.soulbound {
+                    return None;
+                }
+                Some((item.tier?, *object_type))
+            })
+            .min_by_key(|(tier, object_type)| (*tier, object_type.0))
+            .map(|(_, object_type)| object_type)
     }
 
     fn insert_tile(&mut self, tile: TileDesc, problems: &mut Vec<LoadProblem>) {
@@ -344,6 +399,7 @@ mod tests {
             objects: catalog.object_count(),
             tiles: catalog.tile_count(),
             items: catalog.items.len(),
+            classes: catalog.classes.len(),
             problems,
         };
         (catalog, report)

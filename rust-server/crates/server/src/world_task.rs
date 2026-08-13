@@ -34,6 +34,7 @@ pub enum ToWorld {
     /// A player is arriving. The world replies with the handle it was given.
     Join {
         name: String,
+        arrival: Arrival,
         sender: LinkSender,
         reply: tokio::sync::oneshot::Sender<Handle>,
     },
@@ -177,10 +178,26 @@ pub async fn run(
     tracing::info!(world = %world.name, "world stopped");
 }
 
-/// What a player arrives with. A placeholder for the inventory that phase four brings.
+/// What the server falls back to when a character says nothing useful.
+///
+/// A character carries its own class, health and weapon, so this is only reached when the catalog
+/// has no class at all — a content directory too broken to name an avatar should still let someone
+/// connect and see the problem.
 #[derive(Debug, Clone, Copy)]
 pub struct Loadout {
     pub avatar: ObjectType,
+    pub weapon: Option<ObjectType>,
+}
+
+/// The character that is arriving, as the world needs it.
+///
+/// Separate from the database row because the world has no business with experience, fame or the
+/// account behind it — it needs a body, and this is the body.
+#[derive(Debug, Clone, Copy)]
+pub struct Arrival {
+    pub avatar: ObjectType,
+    pub hp: i32,
+    pub max_hp: i32,
     pub weapon: Option<ObjectType>,
 }
 
@@ -194,13 +211,25 @@ fn handle(
     match command {
         ToWorld::Join {
             name,
+            arrival,
             sender,
             reply,
         } => {
             let (x, y) = spawn_point(world);
-            let mut entity = Entity::player(loadout.avatar, x, y, 800);
+
+            // The character decides all of this. The loadout is only what to do when it named a
+            // class the catalog does not have.
+            let avatar = if arrival.avatar == ObjectType::NONE {
+                loadout.avatar
+            } else {
+                arrival.avatar
+            };
+            let max_hp = arrival.max_hp.max(1);
+
+            let mut entity = Entity::player(avatar, x, y, max_hp);
+            entity.hp = arrival.hp.clamp(1, max_hp);
             entity.name = Some(name.as_str().into());
-            entity.weapon = loadout.weapon;
+            entity.weapon = arrival.weapon.or(loadout.weapon);
 
             let Some(handle) = world.spawn(entity) else {
                 tracing::warn!(world = %world.name, "world is full; refusing a join");

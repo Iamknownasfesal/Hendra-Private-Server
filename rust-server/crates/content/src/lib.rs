@@ -16,6 +16,7 @@ pub mod desc;
 pub mod effect;
 pub mod legacy;
 pub mod map;
+pub mod player;
 pub mod region;
 pub mod world;
 pub mod xml;
@@ -27,6 +28,7 @@ pub use desc::{
 };
 pub use effect::{AppliedEffect, ConditionEffect, ConditionSet};
 pub use map::{Composition, Map, MapError};
+pub use player::{PlayerDesc, Stat, StatGrowth, Unlock};
 pub use region::{Region, Terrain};
 pub use world::{WorldDef, WorldError};
 pub use xml::{Node, XmlError};

@@ -50,7 +50,22 @@ async fn app(schema: &str) -> Option<Arc<App>> {
     let scoped = format!("{url}{separator}options=-csearch_path%3D{schema}");
 
     let store = Store::connect(&scoped).await.ok()?;
-    Some(Arc::new(App::new(store, key())))
+    Some(Arc::new(App::with_content(
+        store,
+        key(),
+        Arc::new(content()),
+        hendra_characters::CommonItems::new(["Health Potion"]),
+    )))
+}
+
+/// The real class files, so the class tests are about the game's fourteen classes rather than a
+/// fixture that agrees with whatever the code does.
+fn content() -> hendra_content::Catalog {
+    let dir = std::path::Path::new("../../../godot-client/assets/xml");
+    match hendra_content::Catalog::load_dir(dir) {
+        Ok((catalog, _)) => catalog,
+        Err(_) => hendra_content::Catalog::default(),
+    }
 }
 
 /// Sends one request and returns the status and the body as JSON.
@@ -736,4 +751,255 @@ async fn changing_a_password_needs_a_token() {
         .unwrap();
 
     assert_eq!(send(&app, request).await.0, StatusCode::UNAUTHORIZED);
+}
+
+/// The wizard, which is the only class the shipped files open with.
+const WIZARD: u16 = 0x030e;
+
+/// The knight, which needs a warrior at level twenty.
+const KNIGHT: u16 = 0x031e;
+
+fn authed(method: &str, path: &str, token: &str, body: serde_json::Value) -> Request<Body> {
+    Request::builder()
+        .method(method)
+        .uri(path)
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::from(body.to_string()))
+        .unwrap()
+}
+
+macro_rules! content_or_skip {
+    ($app:expr) => {
+        if $app.catalog.classes().is_empty() {
+            eprintln!("skipping: the class files are not where the test looks for them");
+            return;
+        }
+    };
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_class_list_says_which_are_locked_and_why() {
+    let app = app_or_skip!("a_classes");
+    content_or_skip!(app);
+
+    let (_, body) = send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
+    let token = body["token"].as_str().unwrap();
+
+    let (status, body) = send(&app, get("/classes", Some(token))).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let classes = body.as_array().unwrap();
+    assert_eq!(classes.len(), 14, "the shipped files have fourteen");
+
+    let open: Vec<&str> = classes
+        .iter()
+        .filter(|class| class["locked"].is_null())
+        .map(|class| class["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(open, ["Wizard"], "a new account starts on one class");
+
+    let knight = classes
+        .iter()
+        .find(|class| class["id"] == "Knight")
+        .unwrap();
+    assert_eq!(
+        knight["locked"].as_str().unwrap(),
+        "reach level 20 with a Warrior"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_created_character_gets_its_own_class_s_gear_and_health() {
+    // The whole point of reading classes: a warrior is not a wizard with a different sprite.
+    let app = app_or_skip!("a_create_class");
+    content_or_skip!(app);
+
+    let (_, body) = send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
+    let token = body["token"].as_str().unwrap().to_string();
+
+    let (status, made) = send(
+        &app,
+        authed(
+            "POST",
+            "/characters",
+            &token,
+            serde_json::json!({ "class": WIZARD, "name": "Merlin" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(made["name"], "Merlin");
+
+    let character = app
+        .store
+        .character(made["id"].as_i64().unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(character.max_hp, 100, "the wizard's own starting health");
+    assert_eq!(character.hp, 100);
+
+    let named = |slot: i16| {
+        character
+            .inventory
+            .iter()
+            .find(|(at, _)| *at == slot)
+            .and_then(|(_, item)| {
+                app.catalog
+                    .object(hendra_content::ObjectType(*item as u16))
+                    .map(|desc| desc.id.clone())
+            })
+    };
+
+    assert_eq!(named(0).as_deref(), Some("Energy Staff"));
+    assert_eq!(named(1).as_deref(), Some("Fire Spray Spell"));
+    assert_eq!(named(2).as_deref(), Some("Robe of the Neophyte"));
+    assert_eq!(named(4).as_deref(), Some("Health Potion"), "the common kit");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_locked_class_is_refused_and_nothing_is_created() {
+    let app = app_or_skip!("a_create_locked");
+    content_or_skip!(app);
+
+    let (_, body) = send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
+    let token = body["token"].as_str().unwrap().to_string();
+    let account = body["account_id"].as_i64().unwrap();
+
+    let (status, refusal) = send(
+        &app,
+        authed(
+            "POST",
+            "/characters",
+            &token,
+            serde_json::json!({ "class": KNIGHT }),
+        ),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert!(refusal["error"].as_str().unwrap().contains("Warrior"));
+    assert!(app.store.characters(account).await.unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn levelling_a_class_unlocks_the_next() {
+    // The reason class progress is its own table: the warrior that unlocked the knight may be long
+    // dead and deleted, and the unlock has to survive that.
+    let app = app_or_skip!("a_unlock");
+    content_or_skip!(app);
+
+    let (_, body) = send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
+    let token = body["token"].as_str().unwrap().to_string();
+    let account = body["account_id"].as_i64().unwrap();
+
+    let knight = || {
+        authed(
+            "POST",
+            "/characters",
+            &token,
+            serde_json::json!({ "class": KNIGHT }),
+        )
+    };
+    assert_eq!(send(&app, knight()).await.0, StatusCode::FORBIDDEN);
+
+    // Nineteen is not twenty.
+    app.store
+        .record_class_progress(account, 0x031d, 19, 0)
+        .await
+        .unwrap();
+    assert_eq!(send(&app, knight()).await.0, StatusCode::FORBIDDEN);
+
+    app.store
+        .record_class_progress(account, 0x031d, 20, 0)
+        .await
+        .unwrap();
+    assert_eq!(send(&app, knight()).await.0, StatusCode::OK);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn progress_only_ever_rises() {
+    // Two characters of one class finishing at once must not let the lower overwrite the higher.
+    let app = app_or_skip!("a_progress");
+
+    let (_, body) = send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
+    let account = body["account_id"].as_i64().unwrap();
+
+    app.store
+        .record_class_progress(account, 0x031d, 20, 500)
+        .await
+        .unwrap();
+    app.store
+        .record_class_progress(account, 0x031d, 3, 10)
+        .await
+        .unwrap();
+
+    let progress = app.store.class_progress(account).await.unwrap();
+    assert_eq!(progress.get(&0x031d), Some(&(20, 500)));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_bought_class_needs_no_levelling() {
+    let app = app_or_skip!("a_bought");
+    content_or_skip!(app);
+
+    let (_, body) = send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
+    let token = body["token"].as_str().unwrap().to_string();
+    let account = body["account_id"].as_i64().unwrap();
+
+    app.store
+        .purchase_class(account, KNIGHT as i32)
+        .await
+        .unwrap();
+
+    let (status, _) = send(
+        &app,
+        authed(
+            "POST",
+            "/characters",
+            &token,
+            serde_json::json!({ "class": KNIGHT }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn creating_a_character_needs_a_token() {
+    let app = app_or_skip!("a_create_token");
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/characters")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::json!({ "class": WIZARD }).to_string(),
+        ))
+        .unwrap();
+
+    assert_eq!(send(&app, request).await.0, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_class_that_does_not_exist_is_refused() {
+    let app = app_or_skip!("a_create_nonsense");
+    content_or_skip!(app);
+
+    let (_, body) = send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
+    let token = body["token"].as_str().unwrap().to_string();
+
+    let (status, _) = send(
+        &app,
+        authed(
+            "POST",
+            "/characters",
+            &token,
+            // A real object, but a sheep rather than a class.
+            serde_json::json!({ "class": 0x0500 }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
 }

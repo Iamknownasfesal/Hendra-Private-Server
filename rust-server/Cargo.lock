@@ -737,6 +737,8 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "hendra-auth",
+ "hendra-characters",
+ "hendra-content",
  "hendra-store",
  "http-body-util",
  "serde",
@@ -767,6 +769,18 @@ name = "hendra-behavior"
 version = "0.1.0"
 dependencies = [
  "thiserror",
+ "tracing",
+]
+
+[[package]]
+name = "hendra-characters"
+version = "0.1.0"
+dependencies = [
+ "hendra-content",
+ "hendra-store",
+ "sqlx",
+ "thiserror",
+ "tokio",
  "tracing",
 ]
 
@@ -807,6 +821,7 @@ version = "0.1.0"
 dependencies = [
  "hendra-auth",
  "hendra-behavior",
+ "hendra-characters",
  "hendra-content",
  "hendra-net",
  "hendra-sim",

@@ -12,29 +12,17 @@
 use hendra_content::{Catalog, ObjectType};
 use hendra_store::{Account, Character, Store, StoreError};
 
-/// What a player arrives with when their account is new.
-pub struct StartingKit<'a> {
-    pub avatar: ObjectType,
-    pub items: &'a [&'a str],
-    pub max_hp: i32,
-}
-
-/// The same, owned, for holding across a session.
+/// What every class is given on top of the gear its own slots decide.
+///
+/// Only the things that are the same whatever you are playing. A wand and a robe are not on this
+/// list any more: they come from the class, so a warrior no longer starts holding a wand it cannot
+/// use.
 #[derive(Debug, Clone)]
-pub struct StartingKitOwned {
-    pub avatar: ObjectType,
-    pub items: Vec<String>,
-    pub max_hp: i32,
-}
+pub struct StartingKit {
+    /// The class a new character is made as when nothing names one.
+    pub default_class: ObjectType,
 
-impl StartingKitOwned {
-    pub fn borrowed(&self) -> (ObjectType, Vec<&str>, i32) {
-        (
-            self.avatar,
-            self.items.iter().map(String::as_str).collect(),
-            self.max_hp,
-        )
-    }
+    pub common: hendra_characters::CommonItems,
 }
 
 /// Who is playing, and as what.
@@ -54,6 +42,9 @@ pub enum LoginError {
     #[error("this account is banned")]
     Banned,
 
+    #[error("could not make a character: {0}")]
+    NoCharacter(String),
+
     #[error(transparent)]
     Store(#[from] StoreError),
 }
@@ -65,7 +56,7 @@ pub enum LoginError {
 pub async fn log_in(
     store: &Store,
     catalog: &Catalog,
-    kit: &StartingKit<'_>,
+    kit: &StartingKit,
     key: &hendra_auth::TokenKey,
     token: &str,
     character_id: i64,
@@ -107,83 +98,22 @@ pub async fn log_in(
         return Ok(Session { account, character });
     }
 
-    let character = create_character(store, catalog, kit, account.id).await?;
+    // Nobody with a living character reaches here, so this is a first arrival: they are given one
+    // of the class the content opens with.
+    let character = hendra_characters::create(
+        store,
+        catalog,
+        &kit.common,
+        account.id,
+        kit.default_class,
+        "Adventurer",
+    )
+    .await
+    .map_err(|err| match err {
+        hendra_characters::CreateError::Store(err) => LoginError::Store(err),
+        other => LoginError::NoCharacter(other.to_string()),
+    })?;
     Ok(Session { account, character })
-}
-
-/// Makes a new character with its starting kit.
-async fn create_character(
-    store: &Store,
-    catalog: &Catalog,
-    kit: &StartingKit<'_>,
-    account_id: i64,
-) -> Result<Character, StoreError> {
-    let character = store
-        .create_character(account_id, kit.avatar.0 as i32, "Adventurer", kit.max_hp)
-        .await?;
-
-    // Placed by what each item is, not by the order they are listed. Filling slots 0 upwards puts
-    // whatever comes third into the ring slot — the first attempt equipped two potions.
-    let mut slots: Vec<(i16, i32)> = Vec::new();
-    let mut next_carried = EQUIPPED_SLOTS;
-
-    for name in kit.items {
-        // Anything the catalog does not have is skipped rather than fatal: a half-converted content
-        // directory should still let someone play.
-        let Some(object_type) = catalog.type_of(name) else {
-            tracing::warn!(
-                item = name,
-                "starting kit names an item the catalog does not have"
-            );
-            continue;
-        };
-
-        let worn = catalog
-            .object(object_type)
-            .and_then(|desc| desc.item.as_ref())
-            .and_then(|item| equipment_slot_for(item.slot_type))
-            .filter(|slot| !slots.iter().any(|(taken, _)| taken == slot));
-
-        let slot = match worn {
-            Some(slot) => slot,
-            None => {
-                let slot = next_carried;
-                next_carried += 1;
-                slot
-            }
-        };
-
-        slots.push((slot, object_type.0 as i32));
-    }
-
-    if !slots.is_empty() {
-        store.set_inventory(character.id, &slots).await?;
-    }
-
-    store.character(character.id).await
-}
-
-/// How many slots are worn rather than carried.
-const EQUIPPED_SLOTS: i16 = 4;
-
-/// Which worn slot an item's type belongs in, if any.
-///
-/// The game's four worn slots are weapon, ability, armour and ring, and each accepts a set of item
-/// types — a wand and a bow are both weapons, a tome and a shield are both abilities. Anything not
-/// listed is carried rather than worn.
-fn equipment_slot_for(slot_type: i32) -> Option<i16> {
-    Some(match slot_type {
-        // Sword, dagger, bow, wand, staff, katana.
-        1 | 2 | 3 | 8 | 17 | 24 => 0,
-        // Tome, spell, cloak, quiver, helm, shield, seal, poison, skull, trap, orb, prism,
-        // scepter, star.
-        4 | 5 | 11 | 12 | 13 | 15 | 16 | 18 | 19 | 20 | 21 | 22 | 23 | 25 => 1,
-        // Leather, plate, robe.
-        6 | 7 | 14 => 2,
-        // Ring.
-        9 => 3,
-        _ => return None,
-    })
 }
 
 /// Writes back what a character became.

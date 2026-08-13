@@ -9,6 +9,12 @@ use std::sync::Arc;
 use hendra_auth::TokenKey;
 use hendra_store::Store;
 
+/// What every class carries on top of the gear its own slots decide.
+///
+/// Deliberately the same list the game server uses: a character made through the front door and
+/// one made on first connection should arrive with the same things.
+const COMMON_ITEMS: &[&str] = &["Health Potion", "Magic Potion"];
+
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
     tracing_subscriber::fmt()
@@ -67,7 +73,35 @@ async fn main() {
         std::process::exit(1);
     }
 
-    let app = Arc::new(hendra_app::App::new(store, key));
+    // The content, for the character-select screen. Loaded here rather than reached for lazily so
+    // a directory that is missing or broken is a startup failure rather than a request that fails
+    // once someone tries to make a character.
+    let content = std::env::var("HENDRA_CONTENT").unwrap_or_else(|_| "content".to_string());
+    let catalog = match hendra_content::Catalog::load_dir(std::path::Path::new(&content)) {
+        Ok((catalog, report)) => {
+            tracing::info!(
+                classes = report.classes,
+                objects = report.objects,
+                problems = report.problems.len(),
+                "content loaded"
+            );
+            if report.classes == 0 {
+                tracing::warn!("the content has no playable classes; nobody can make a character");
+            }
+            catalog
+        }
+        Err(err) => {
+            tracing::error!(%err, %content, "cannot read the content directory");
+            std::process::exit(1);
+        }
+    };
+
+    let app = Arc::new(hendra_app::App::with_content(
+        store,
+        key,
+        Arc::new(catalog),
+        hendra_characters::CommonItems::new(COMMON_ITEMS.iter().copied()),
+    ));
 
     let router = hendra_app::router(app);
 

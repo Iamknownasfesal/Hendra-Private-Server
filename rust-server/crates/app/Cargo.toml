@@ -15,6 +15,8 @@ path = "src/main.rs"
 [dependencies]
 hendra-auth = { path = "../auth" }
 hendra-store = { path = "../store" }
+hendra-characters = { path = "../characters" }
+hendra-content = { path = "../content" }
 axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
 serde = { workspace = true }
@@ -24,6 +26,8 @@ tracing.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
+hendra-characters = { path = "../characters" }
+hendra-content = { path = "../content" }
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres"] }
