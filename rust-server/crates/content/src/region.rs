@@ -194,6 +194,26 @@ pub enum Terrain {
 pub const TERRAIN_COUNT: usize = 14;
 
 impl Terrain {
+    /// Reads the name the content writes, which is the enum's own spelling.
+    pub fn from_name(name: &str) -> Option<Terrain> {
+        let tidy: String = name
+            .chars()
+            .filter(char::is_ascii_alphanumeric)
+            .map(|c| c.to_ascii_lowercase())
+            .collect();
+
+        (0..TERRAIN_COUNT as u8)
+            .filter_map(Terrain::from_index)
+            .find(|terrain| {
+                let written: String = format!("{terrain:?}")
+                    .chars()
+                    .filter(char::is_ascii_alphanumeric)
+                    .map(|c| c.to_ascii_lowercase())
+                    .collect();
+                written == tidy
+            })
+    }
+
     pub fn from_index(index: u8) -> Option<Terrain> {
         if (index as usize) >= TERRAIN_COUNT {
             return None;
