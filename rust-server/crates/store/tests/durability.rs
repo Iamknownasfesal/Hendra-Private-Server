@@ -1038,3 +1038,155 @@ async fn two_purchases_racing_for_the_last_coin_cannot_both_win() {
         "and exactly one item arrived"
     );
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_friendship_needs_both_sides_to_ask() {
+    let Some(store) = store("t_friends").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let one = store.create_account("Fesal").await.unwrap();
+    let two = store.create_account("Someone").await.unwrap();
+
+    assert!(
+        !store.befriend(one.id, two.id).await.unwrap(),
+        "asking alone is not a friendship"
+    );
+
+    let theirs = store.friend_requests(two.id).await.unwrap();
+    assert_eq!(theirs.len(), 1);
+    assert_eq!(theirs[0].name, "Fesal");
+
+    assert!(
+        store.befriend(two.id, one.id).await.unwrap(),
+        "and answering makes one"
+    );
+
+    for account in [one.id, two.id] {
+        let friends = store.friends(account).await.unwrap();
+        assert_eq!(friends.len(), 1);
+        assert!(friends[0].accepted, "both sides see it accepted");
+    }
+    assert!(store.friend_requests(two.id).await.unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn removing_a_friend_removes_it_from_both_lists() {
+    // A one-sided removal leaves the other believing in a friendship that is not there.
+    let Some(store) = store("t_unfriend").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let one = store.create_account("Fesal").await.unwrap();
+    let two = store.create_account("Someone").await.unwrap();
+
+    store.befriend(one.id, two.id).await.unwrap();
+    store.befriend(two.id, one.id).await.unwrap();
+    store.unfriend(two.id, one.id).await.unwrap();
+
+    assert!(store.friends(one.id).await.unwrap().is_empty());
+    assert!(store.friends(two.id).await.unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn asking_twice_is_not_two_friendships() {
+    let Some(store) = store("t_friend_twice").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let one = store.create_account("Fesal").await.unwrap();
+    let two = store.create_account("Someone").await.unwrap();
+
+    for _ in 0..5 {
+        store.befriend(one.id, two.id).await.unwrap();
+    }
+    store.befriend(two.id, one.id).await.unwrap();
+
+    assert_eq!(store.friends(one.id).await.unwrap().len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn nobody_can_befriend_themselves() {
+    let Some(store) = store("t_friend_self").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let one = store.create_account("Fesal").await.unwrap();
+    assert!(store.befriend(one.id, one.id).await.is_err());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_message_waits_and_is_read_once() {
+    let Some(store) = store("t_messages").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let one = store.create_account("Fesal").await.unwrap();
+    let two = store.create_account("Someone").await.unwrap();
+
+    let id = store
+        .send_message(one.id, two.id, "are you there")
+        .await
+        .unwrap();
+
+    let inbox = store.messages(two.id, 10).await.unwrap();
+    assert_eq!(inbox.len(), 1);
+    assert_eq!(inbox[0].from, "Fesal");
+    assert!(!inbox[0].read);
+
+    assert!(store.mark_read(two.id, id).await.unwrap());
+    assert!(
+        !store.mark_read(two.id, id).await.unwrap(),
+        "reading it twice is reading it once"
+    );
+    assert!(store.messages(two.id, 10).await.unwrap()[0].read);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_message_can_only_be_read_or_deleted_by_who_it_was_sent_to() {
+    let Some(store) = store("t_messages_theirs").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let one = store.create_account("Fesal").await.unwrap();
+    let two = store.create_account("Someone").await.unwrap();
+    let three = store.create_account("Nosey").await.unwrap();
+
+    let id = store.send_message(one.id, two.id, "private").await.unwrap();
+
+    assert!(!store.mark_read(three.id, id).await.unwrap());
+    assert!(!store.delete_message(three.id, id).await.unwrap());
+    assert_eq!(store.messages(two.id, 10).await.unwrap().len(), 1);
+
+    assert!(store.delete_message(two.id, id).await.unwrap());
+    assert!(store.messages(two.id, 10).await.unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_empty_message_is_refused_and_a_long_one_is_cut() {
+    let Some(store) = store("t_messages_bounds").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let one = store.create_account("Fesal").await.unwrap();
+    let two = store.create_account("Someone").await.unwrap();
+
+    assert!(store.send_message(one.id, two.id, "   ").await.is_err());
+    assert!(store.send_message(one.id, one.id, "hello").await.is_err());
+
+    let long = "a".repeat(hendra_store::social::MAX_MESSAGE_LENGTH * 2);
+    store.send_message(one.id, two.id, &long).await.unwrap();
+
+    let inbox = store.messages(two.id, 10).await.unwrap();
+    assert_eq!(
+        inbox[0].body.chars().count(),
+        hendra_store::social::MAX_MESSAGE_LENGTH
+    );
+}

@@ -6,7 +6,7 @@ deliberately excluded and left until last.
 Phases 0–5 are done: workspace, content, protocol, transport, simulation, behaviour language,
 persistence, authentication. What follows is phases 6–11.
 
-**Where we are:** ~68% of the old server by subsystem. 566 tests.
+**Where we are:** ~70% of the old server by subsystem. 573 tests.
 
 **Sizing** is relative, not calendar: **S** is an afternoon, **M** is a day or two, **L** is
 several days, **XL** is a week or more.
@@ -210,8 +210,8 @@ Independent of everything above and blocks nothing.
 
 ### 9.3 Friends and private messages — **M**
 
-- [ ] Friend list and requests
-- [ ] Private messages
+- [x] Friend list and requests, two rows per friendship so each side can remove the other without deciding for them
+- [x] Private messages that wait for someone not online, readable and deletable only by who they were sent to
 
 ### 9.4 Market — **L**
 

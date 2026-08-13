@@ -14,10 +14,12 @@
 
 mod model;
 mod moves;
+pub mod social;
 mod trade;
 
 pub use model::{Account, Character, CharacterSummary, Currency};
 pub use moves::{Location, MoveOutcome, Placed, Purchase};
+pub use social::{Friend, Message};
 pub use trade::{Offer, TradeOutcome};
 
 use sqlx::PgPool;
