@@ -100,8 +100,32 @@ namespace wServer.realm
             _accountId = account.AccountId;
             _account = account;
 
+            Grant(account);
+
             for (var i = 0; i < account.VaultCount; i++)
                 _chests.Add(new Chest(account, i));
+        }
+
+        /// <summary>
+        /// Gives an account the chests everybody gets, if it does not have them yet.
+        /// </summary>
+        /// <remarks>
+        /// Written to the database rather than faked in the count, so a granted chest is the same
+        /// object as a bought one -- it persists, it is addressed the same way, and nothing later
+        /// has to know which kind it was. Raising the setting hands the difference to every account
+        /// the next time it opens its vault; lowering it takes nothing away, because a chest that
+        /// has been given may have something in it.
+        /// </remarks>
+        private void Grant(DbAccount account)
+        {
+            var free = _manager.Resources.Settings.FreeVaultChests;
+            if (account.VaultCount >= free)
+                return;
+
+            for (var i = account.VaultCount; i < free; i++)
+                _manager.Database.CreateChest(account);
+
+            account.Reload("vaultCount");
         }
 
         /// <summary>What the vault was at when it was last read out. Moves quote it back.</summary>

@@ -88,8 +88,17 @@ public readonly struct HudLayout
     public const float ChatBottomMargin = 22f;
 
     // --- Vitals ------------------------------------------------------------------------------
-    public const float VitalIconSize = 28f;
-    public const float VitalBarWidth = 320f;
+    /// <summary>
+    /// How wide a vitals bar is.
+    /// </summary>
+    /// <remarks>
+    /// Thirty-four wider than it was, which is exactly the heart and the gap after it. The icons
+    /// beside these three bars are gone -- each said the same thing as the word already written on
+    /// the bar, in less space and with less certainty -- and the bars took the room back rather
+    /// than the cluster shrinking, so everything measured against <see cref="VitalsWidth"/> is
+    /// where it was.
+    /// </remarks>
+    public const float VitalBarWidth = 354f;
     public const float VitalBarHeight = 27f;
 
     /// <summary>The gap between the health row and the magic row.</summary>
@@ -112,9 +121,9 @@ public readonly struct HudLayout
 
     public const float VitalsHeight = VitalRows * VitalBarHeight + (VitalRows - 1) * VitalRowGap;
 
-    /// <summary>Heart, bar, potion counter and the ability button, with the gaps between them.</summary>
+    /// <summary>Bar, potion counter and the ability button, with the gaps between them.</summary>
     public const float VitalsWidth =
-        VitalIconSize + 6f + VitalBarWidth + 6f + PotionBoxWidth + 8f + AbilityWidth;
+        VitalBarWidth + 6f + PotionBoxWidth + 8f + AbilityWidth;
 
     // --- Hotbar and equipment ----------------------------------------------------------------
     public const float HotbarSlotWidth = 55f;

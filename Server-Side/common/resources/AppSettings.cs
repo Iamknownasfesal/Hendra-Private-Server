@@ -27,6 +27,17 @@ namespace common.resources
         /// </remarks>
         public int MaxVaultChests { get; private set; }
 
+        /// <summary>
+        /// How many chests every account has without paying for one.
+        /// </summary>
+        /// <remarks>
+        /// Four, which is thirty-two slots. One was the old default and it was a hangover from the
+        /// chests being objects on a map: a new account arrived in a room full of chests it did not
+        /// own and could store eight things. The vault is a grid now and a grid with one row in it
+        /// looks broken rather than empty.
+        /// </remarks>
+        public int FreeVaultChests { get; private set; }
+
         public int InventorySize { get; private set; }
         public int MaxStackablePotions { get; private set; }
         public int PotionPurchaseCooldown { get; private set; }
@@ -60,6 +71,10 @@ namespace common.resources
 
             MaxVaultChests = GetIntValue("MaxVaultChests");
             if (MaxVaultChests <= 0) MaxVaultChests = 40;
+
+            FreeVaultChests = GetIntValue("FreeVaultChests");
+            if (FreeVaultChests <= 0) FreeVaultChests = 4;
+            if (FreeVaultChests > MaxVaultChests) FreeVaultChests = MaxVaultChests;
 
             if (Exists("PotionPurchaseCosts"))
             {

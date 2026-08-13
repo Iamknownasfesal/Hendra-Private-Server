@@ -89,12 +89,9 @@ public partial class HudView : Control
     private QuestMarker _quest;
 
     private Control _vitals;
-    private HudGlyph _fameIcon;
     private HudBar _fame;
-    private HudGlyph _heart;
     private HudBar _health;
     private PotionCounter _healthPotions;
-    private HudGlyph _flask;
     private HudBar _mana;
     private PotionCounter _manaPotions;
     private NexusButton _nexus;
@@ -820,7 +817,9 @@ public partial class HudView : Control
         _vitals = new Control { MouseFilter = MouseFilterEnum.Ignore };
         AddChild(_vitals);
 
-        float barLeft = HudLayout.VitalIconSize + 6f;
+        // No icons down the left any more: a heart beside a bar that says "HP" is the same fact
+        // twice, and the second telling costs twenty-eight pixels of bar.
+        const float barLeft = 0f;
         float potionLeft = barLeft + HudLayout.VitalBarWidth + 6f;
         float abilityLeft = potionLeft + HudLayout.PotionBoxWidth + 8f;
 
@@ -829,14 +828,11 @@ public partial class HudView : Control
         // Fame on top, then health, then magic. Fame is the one you read between fights and the
         // other two are the ones you read during them, so the pair that matter sit closest to the
         // character.
-        _fameIcon = Glyph(HudIcons.Fame, Style.FameFill, 0f, 0f);
         _fame = Bar(Style.FameFill, barLeft, 0f);
 
-        _heart = Glyph(HudIcons.Heart, Style.HpFill, 0f, Row);
         _health = Bar(Style.HpFill, barLeft, Row);
         _healthPotions = Potions(true, potionLeft, Row);
 
-        _flask = Glyph(HudIcons.Flask, Style.MpFill, 0f, Row * 2f);
         _mana = Bar(Style.MpFill, barLeft, Row * 2f);
         _manaPotions = Potions(false, potionLeft, Row * 2f);
 
@@ -849,18 +845,6 @@ public partial class HudView : Control
         };
         _nexus.Pressed += () => NexusPressed?.Invoke();
         _vitals.AddChild(_nexus);
-    }
-
-    private HudGlyph Glyph(Action<CanvasItem, Rect2, Color> icon, Color colour, float x, float y)
-    {
-        var glyph = new HudGlyph(icon, colour)
-        {
-            Position = new Vector2(x, y - 1f),
-            Size = new Vector2(HudLayout.VitalIconSize, HudLayout.VitalIconSize),
-        };
-
-        _vitals.AddChild(glyph);
-        return glyph;
     }
 
     private HudBar Bar(Color fill, float x, float y)
@@ -1413,14 +1397,6 @@ public partial class HudView : Control
         _healthPotions.Set(player.HealthPotions);
         _manaPotions.Set(player.MagicPotions);
 
-        // Under a quarter health the heart beats, twice a second. No red vignette over the world:
-        // it hides the thing that is killing you at the moment you most need to see it.
-        float fraction = player.MaxHp > 0 ? player.Hp / (float)player.MaxHp : 1f;
-        bool low = fraction > 0f && fraction <= LowHealth;
-
-        _heart.Pulse = low
-            ? 1.07f + 0.07f * Mathf.Sin(Time.GetTicksMsec() / 1000f * Mathf.Tau * 2f)
-            : 1f;
     }
 
     /// <summary>
@@ -1438,14 +1414,12 @@ public partial class HudView : Control
         if (player.Level >= 0 && player.Level < MaxLevel)
         {
             _fame.Fill = Style.XpFill;
-            _fameIcon.Tint = Style.XpFill;
             _fame.Set(player.Experience, player.NextLevelExperience,
                 $"Lvl {player.Level}", $"{player.Experience}/{player.NextLevelExperience}");
             return;
         }
 
         _fame.Fill = Style.FameFill;
-        _fameIcon.Tint = Style.FameFill;
 
         // Past the last star there is nothing left to be a fraction of, so the bar shows the total
         // and stays full rather than inventing a ceiling.

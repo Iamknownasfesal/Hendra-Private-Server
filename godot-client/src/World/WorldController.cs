@@ -1671,10 +1671,7 @@ public partial class WorldController : Node
                 break;
 
             case InteractionKind.Vault:
-                // The one panel the key toggles: it covers most of the screen, so opening it by
-                // walking past would be worse than opening it on purpose. Walking away still
-                // closes it -- see UpdateVault.
-                _hud?.ShowVault(!_hud.VaultOpen);
+                // Already showing whenever the player is standing on the chest, like the other two.
                 break;
         }
     }
@@ -1690,6 +1687,10 @@ public partial class WorldController : Node
     /// Closes the vault when the player walks away from the thing that opened it.
     /// </summary>
     /// <remarks>
+    /// Opened by standing on the chest and closed by stepping off it, which is how the loot bag
+    /// and the vendor already work -- the vault was the one that also wanted a key press, and a key
+    /// that opens what you are already standing on is a key that does nothing you did not ask for.
+    ///
     /// Losing the panel by leaving is intended: storage stays somewhere you go, rather than
     /// something you carry. A drag in flight is cancelled rather than landed, since the slot it
     /// started from is about to stop being addressable.
@@ -1703,7 +1704,7 @@ public partial class WorldController : Node
         {
             _hud.UseVault(_vault);
 
-            if (HoldVaultOpen && !_hud.VaultOpen)
+            if (!_hud.VaultOpen)
                 _hud.ShowVault(true);
 
             return;

@@ -65,8 +65,16 @@ public sealed partial class VaultView : ModalPanel
     /// <summary>What the panel falls back to before it knows how much screen it has.</summary>
     public const float PanelHeight = 700f;
 
-    /// <summary>How far above the bottom of the screen the panel stops.</summary>
-    private const float BottomMargin = 40f;
+    /// <summary>
+    /// How far above the bottom of the screen the panel stops.
+    /// </summary>
+    /// <remarks>
+    /// Enough to clear the vitals. Four free chests made the panel tall enough to sit on top of
+    /// them, and a panel that hides how much health you have is worse than one that scrolls -- the
+    /// vault is somewhere you stand still in a world that does not stop.
+    /// </remarks>
+    private const float BottomMargin =
+        HudLayout.VitalsBottomMargin + HudLayout.VitalsHeight + 16f;
 
     /// <summary>Rows kept mounted beyond the visible ones, above and below.</summary>
     private const int Overscan = 2;
@@ -76,6 +84,19 @@ public sealed partial class VaultView : ModalPanel
 
     /// <summary>The full-width label that introduces a section. Gifts above, locked below.</summary>
     private const float BandHeight = 32f;
+
+    /// <summary>
+    /// The gap between a band and the first row under it.
+    /// </summary>
+    /// <remarks>
+    /// A band with rows tight against it reads as the top edge of the first row rather than as a
+    /// heading over all of them. This is the one gap in the grid that is not the four-pixel gutter,
+    /// which is the point: it says the thing below is a different kind of row.
+    /// </remarks>
+    private const float BandGap = 10f;
+
+    /// <summary>A band and the air under it, which is what a section costs before its first row.</summary>
+    private const float BandBlock = BandHeight + BandGap;
 
     /// <summary>How long the search waits after a keystroke before it filters.</summary>
     private const double SearchDebounceSeconds = 0.150;
@@ -92,9 +113,6 @@ public sealed partial class VaultView : ModalPanel
     private Control _trough;
     private LineEdit _search;
     private HudIconButton _magnifier;
-    private Label _note;
-    private HudIconButton _info;
-    private Label _explainer;
 
     private int[] _slotTypes = Array.Empty<int>();
 
@@ -140,7 +158,6 @@ public sealed partial class VaultView : ModalPanel
     {
         base._Ready();
 
-        BuildHeader();
         BuildSortBar();
         BuildRail();
         BuildGrid();
@@ -186,12 +203,34 @@ public sealed partial class VaultView : ModalPanel
         Refresh();
     }
 
-    /// <summary>Puts the panel where the brief says: centred across, sixty down.</summary>
+    /// <summary>
+    /// Centres the panel on the screen.
+    /// </summary>
+    /// <remarks>
+    /// Both axes now. It used to hang from a fixed sixty pixels down, which was right when the
+    /// panel was a fixed nine hundred and sixty tall and wrong the moment it started sizing itself
+    /// to its contents -- a short vault sat high with a lake of screen under it.
+    /// </remarks>
     public void PlaceIn(Vector2 screen)
     {
         _screen = screen;
-        Position = new Vector2(Mathf.Round((screen.X - PanelWidth) / 2f), TopEdge);
         Layout();
+    }
+
+    /// <summary>
+    /// Puts the panel back in the middle, at whatever size it has just become.
+    /// </summary>
+    /// <remarks>
+    /// Called from the end of the layout rather than once when the panel opens. The height is a
+    /// function of the contents and the contents arrive from the server after the panel is on
+    /// screen, so a panel centred at the moment it opened is centred for the wrong height a frame
+    /// later -- which is how its bottom row ended up over the health bar.
+    /// </remarks>
+    private void Recentre()
+    {
+        Position = new Vector2(
+            Mathf.Round((_screen.X - PanelWidth) / 2f),
+            Mathf.Max(TopEdge, Mathf.Round((_screen.Y - Size.Y) / 2f)));
     }
 
     /// <summary>The space the panel has to fit in, so it can stop short of filling it.</summary>
@@ -210,37 +249,11 @@ public sealed partial class VaultView : ModalPanel
         Refresh();
     }
 
-    /// <summary>
-    /// The one control in the header: what this panel is and how to get more of it.
-    /// </summary>
-    /// <remarks>
-    /// There is no close cross beside it. Escape and walking away are the exits, and the corner it
-    /// would have occupied is better spent on the only question the panel raises that it does not
-    /// otherwise answer -- what a chest costs and how many you may have.
-    /// </remarks>
-    private void BuildHeader()
-    {
-        _info = new HudIconButton(Info, "About storage", inset: 8f) { Tint = Style.ModalFrame };
-        _info.Pressed += () => _explainer.Visible = !_explainer.Visible;
-        AddChild(_info);
-
-        _explainer = new Label
-        {
-            Visible = false,
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            MouseFilter = MouseFilterEnum.Ignore,
-        }.Typeset(Style.FontSmall, Style.Text);
-        AddChild(_explainer);
-    }
-
-    private static void Info(CanvasItem into, Rect2 box, Color colour)
-    {
-        into.DrawRect(box, colour, filled: false, width: 2f);
-
-        float x = box.Position.X + box.Size.X / 2f - 1f;
-        into.DrawRect(new Rect2(x, box.Position.Y + box.Size.Y * 0.22f, 2f, 2f), colour);
-        into.DrawRect(new Rect2(x, box.Position.Y + box.Size.Y * 0.40f, 2f, box.Size.Y * 0.36f), colour);
-    }
+    // The header carries the panel's name and nothing else. There was an "i" in the corner and a
+    // paragraph under it explaining what a row was and what a chest cost; a panel that has to
+    // explain itself in prose has not been designed yet, and both facts belong where they apply --
+    // one row of eight is self-evident once you see it, and the price belongs on the thing you
+    // click to pay it. See the locked band.
 
     // ─── the sort bar ─────────────────────────────────────────────────────────────────────────
 
@@ -281,8 +294,6 @@ public sealed partial class VaultView : ModalPanel
         _search.TextChanged += OnSearchTyped;
         Body.AddChild(_search);
 
-        _note = new Label { Visible = false }.Typeset(Style.FontSmall, Style.TextDim);
-        Body.AddChild(_note);
     }
 
     private void Choose(VaultSort mode)
@@ -481,7 +492,7 @@ public sealed partial class VaultView : ModalPanel
     private int GiftRows => _store.CanReorder ? _store.GiftRows : 0;
 
     /// <summary>Where the owned rows start, below the gifts if there are any.</summary>
-    private float ChestTop => GiftRows > 0 ? BandHeight + GiftRows * RowPitch : 0f;
+    private float ChestTop => GiftRows > 0 ? BandBlock + GiftRows * RowPitch : 0f;
 
     /// <summary>Locked rows offered: three, or none at all once the account is at its cap.</summary>
     private int LockedShown =>
@@ -496,7 +507,7 @@ public sealed partial class VaultView : ModalPanel
         {
             float height = ChestTop + ViewRows * RowPitch;
             if (LockedShown > 0 || _store.AtCapacity)
-                height += BandHeight + LockedShown * RowPitch;
+                height += BandBlock + LockedShown * RowPitch;
 
             return height;
         }
@@ -588,7 +599,7 @@ public sealed partial class VaultView : ModalPanel
             return;
 
         float y = at.Y + _offset;
-        float lockedTop = ChestTop + ViewRows * RowPitch + BandHeight;
+        float lockedTop = ChestTop + ViewRows * RowPitch + BandBlock;
 
         if (y >= lockedTop && y < lockedTop + LockedShown * RowPitch)
             PurchaseRequested?.Invoke();
@@ -604,18 +615,6 @@ public sealed partial class VaultView : ModalPanel
         SizeToContent();
 
         // The header's one control, inset from the frame by the brief's sixteen.
-        _info.Size = new Vector2(40f, 40f);
-        _info.Position = new Vector2(Size.X - Padding - 40f, (HeaderTall - 40f) / 2f + ModalPanel.FrameWidth);
-
-        _explainer.Text = _store.Known
-            ? $"One row is one chest. You own {_store.ChestCount} of a possible {_store.MaxChests}; " +
-              $"the next costs {_store.NextChestPrice} fame, and locked rows can be bought by " +
-              "clicking them. Sorting only changes what you see -- your own arrangement is kept."
-            : "One row is one chest.";
-
-        _explainer.Position = new Vector2(Padding, HeaderTall + ModalPanel.FrameWidth);
-        _explainer.Size = new Vector2(Size.X - Padding * 2f, 72f);
-
         float inner = PanelWidth - (ModalPanel.FrameWidth + 1f) * 2f - Padding * 2f;
         float y = Padding;
 
@@ -655,12 +654,10 @@ public sealed partial class VaultView : ModalPanel
 
         float gridLeft = Padding + RailButtonSize + RailGap * 2f;
 
-        _note.Position = new Vector2(gridLeft, y + GridHeight + 4f);
-        _note.Size = new Vector2(GridWidth, 16f);
-
         _grid.Position = new Vector2(gridLeft, y);
         _grid.Size = new Vector2(GridWidth + GutterWidth, GridHeight);
 
+        Recentre();
         Reflow();
     }
 
@@ -683,7 +680,10 @@ public sealed partial class VaultView : ModalPanel
         get
         {
             float rail = _rail.Count * RailButtonSize + Mathf.Max(0, _rail.Count - 1) * RailGap;
-            float room = _screen.Y - TopEdge - BottomMargin - Chrome;
+            // Twice the larger margin, because the panel is centred: measuring the room from the
+            // top edge and then centring what came out puts half the slack back under it, which is
+            // how the bottom row ended up over the health bar.
+            float room = _screen.Y - Mathf.Max(TopEdge, BottomMargin) * 2f - Chrome;
 
             return Mathf.Max(Mathf.Min(ContentHeight, room), Mathf.Min(rail, room));
         }
@@ -692,7 +692,7 @@ public sealed partial class VaultView : ModalPanel
     /// <summary>Everything the panel spends on itself, above and below the grid.</summary>
     private float Chrome =>
         (ModalPanel.FrameWidth + 1f) * 2f + HeaderTall + Padding + SortBarHeight + Padding + Padding
-        + (_note is { Visible: true } ? 20f : 0f);
+;
 
     /// <summary>Grows or shrinks the panel to hold what is in it, and no more.</summary>
     private void SizeToContent()
@@ -754,7 +754,7 @@ public sealed partial class VaultView : ModalPanel
             slot.Size = new Vector2(SlotSize, SlotSize);
             slot.Position = new Vector2(
                 column * (SlotSize + SlotGap),
-                (gift ? BandHeight + row * RowPitch : ChestTop + (row - gifts) * RowPitch) - _offset);
+                (gift ? BandBlock + row * RowPitch : ChestTop + (row - gifts) * RowPitch) - _offset);
 
             // The address is the storage index, never the position on screen: a drag under a filter
             // would otherwise name whichever slot happens to be drawn fourth. Gifts are addressed
@@ -767,7 +767,6 @@ public sealed partial class VaultView : ModalPanel
         }
 
         _grid.QueueRedraw();
-        UpdateNote();
     }
 
     /// <summary>Grows the pool to what is on screen, and no further.</summary>
@@ -800,28 +799,6 @@ public sealed partial class VaultView : ModalPanel
         slot.SetItem(resolved.Still, desc, _data);
     }
 
-    /// <summary>
-    /// The line under the grid saying why the player cannot rearrange it.
-    /// </summary>
-    /// <remarks>
-    /// Quiet, and only present when it has something to say. A grid that has silently stopped
-    /// accepting drags is indistinguishable from one that is broken.
-    /// </remarks>
-    private void UpdateNote()
-    {
-        bool needed = _store.Known && !_store.CanReorder;
-
-        if (_note.Visible != needed)
-        {
-            _note.Visible = needed;
-            Layout();
-            return;
-        }
-
-        if (needed)
-            _note.Text = "Sorted view — return to Custom to rearrange. Items can still be taken out.";
-    }
-
     private void Refresh()
     {
         foreach (var tab in _tabs)
@@ -840,10 +817,11 @@ public sealed partial class VaultView : ModalPanel
             Band(-_offset, "Gifts");
 
         float bandTop = ChestTop + ViewRows * RowPitch - _offset;
-        float lockedTop = bandTop + BandHeight;
+        float lockedTop = bandTop + BandBlock;
 
         if (LockedShown > 0 || _store.AtCapacity)
-            Band(bandTop, _store.AtCapacity ? "Maximum capacity" : "Locked");
+            Band(bandTop, _store.AtCapacity ? "Maximum capacity"
+                : $"Locked  —  click a row to buy it for {_store.NextChestPrice} fame");
 
         for (int row = 0; row < LockedShown; row++)
             for (int column = 0; column < Columns; column++)
@@ -860,7 +838,39 @@ public sealed partial class VaultView : ModalPanel
                 Padlock(box);
             }
 
+        if (Nothing != null)
+        {
+            float width = Style.Measure(Nothing, Style.FontBody);
+            _grid.DrawText(
+                new Vector2(Mathf.Round((GridWidth - width) / 2f),
+                    Mathf.Round(ChestTop + RowPitch / 2f) + Style.BaselineIn(0f, Style.FontBody)),
+                Nothing, Style.FontBody, Style.TextDim);
+        }
+
         HudScrollbar.Draw(_grid, _grid.Size, _offset, ContentHeight, _draggingThumb);
+    }
+
+    /// <summary>
+    /// What the grid says when it has nothing to show, or null when it has.
+    /// </summary>
+    /// <remarks>
+    /// Two different nothings, and telling them apart is the whole value of saying anything: an
+    /// empty vault is a state you fix by putting something in it, and a filter that matches nothing
+    /// is a state you fix by changing the filter. A grid that just sits there blank leaves the
+    /// player to work out which one they are looking at.
+    ///
+    /// This replaces the line that used to sit under the grid explaining that a sorted view cannot
+    /// be rearranged. That was a caption on a rule nobody had broken yet.
+    /// </remarks>
+    private string Nothing
+    {
+        get
+        {
+            if (!_store.Known || _store.View.Count > 0 || GiftRows > 0)
+                return null;
+
+            return _store.CanReorder ? "Nothing stored yet" : "No items match";
+        }
     }
 
     /// <summary>A padlock, small and centred, on a row that has not been bought.</summary>

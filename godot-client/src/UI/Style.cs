@@ -252,60 +252,62 @@ public static class Style
 
     private static Font _sans;
     private static Font _bold;
+    private static FontFile _file;
 
     /// <summary>
     /// The face the interface is set in.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Inter, at regular and semibold. Revisions two and five both asked for a bitmap face and both
-    /// were wrong about the reference: only a few short display strings in it are pixel lettering,
-    /// and everything with a sentence in it -- stat rows, item names, chat -- is a clean humanist
-    /// sans. The pixel character of that interface comes from the sprites and the chrome. A
-    /// pixel-art game does not need a pixel-art font, and at fourteen pixels it cannot afford one:
-    /// a face with no curves and a five-pixel x-height has nothing left to tell an <c>a</c> from an
-    /// <c>o</c> with.
+    /// Source Sans 3, at four hundred and seven hundred. The original is set in Myriad, which is
+    /// Adobe's and cannot be shipped; Source Sans is Adobe's own open humanist sans and the nearest
+    /// free relative of it -- the same open apertures, the same narrow rounds, the same look at a
+    /// bar's worth of text. Three passes got here: a bitmap face, then Inter, then this. The
+    /// reference is not a pixel font at all, and what read as pixelated in it is the hard outline
+    /// around everything drawn over the world.
     /// </para>
     /// <para>
-    /// Antialiasing and hinting are on, which is the opposite of what revision two set. Turning
-    /// them off is right for a bitmap face and ruinous for a vector one -- it is the other half of
-    /// why the type looked crunchy. Subpixel positioning stays on so a string laid out at a
-    /// fractional x does not jitter its glyphs onto whole pixels.
+    /// One file, because it is a variable font: the two weights come from moving the <c>wght</c>
+    /// axis rather than from two cuts that have to be kept in step.
     /// </para>
     /// <para>
-    /// Figures are tabular. Every number in here changes while you are looking at it -- health,
-    /// fame, a stat that just went up -- and proportional digits make the column twitch sideways
-    /// when <c>950/950</c> becomes <c>949/950</c>.
+    /// Antialiasing and hinting are on. Figures are tabular -- every number here changes while you
+    /// are looking at it, and proportional digits make the column twitch when 950 becomes 949.
     /// </para>
     /// </remarks>
-    public static Font Sans => _sans ??= Face("res://assets/fonts/Inter-Regular.ttf");
+    public static Font Sans => _sans ??= Cut(Regular);
 
-    /// <summary>The same face at semibold: headers, values, and anything over the world.</summary>
-    public static Font Bold => _bold ??= Face("res://assets/fonts/Inter-SemiBold.ttf");
+    /// <summary>The same face at bold: headers, values, and everything over the world.</summary>
+    public static Font Bold => _bold ??= Cut(Heavy);
 
     /// <summary>Whichever of the two a caller asked for.</summary>
     public static Font Face(bool bold) => bold ? Bold : Sans;
 
-    private static Font Face(string path)
+    private const int Regular = 400;
+    private const int Heavy = 700;
+
+    private static Font Cut(int weight)
     {
-        if (ResourceLoader.Load(path) is not FontFile file)
+        _file ??= ResourceLoader.Load("res://assets/fonts/SourceSans3.ttf") as FontFile;
+
+        if (_file == null)
             return ThemeDB.FallbackFont;
 
-        file.Antialiasing = TextServer.FontAntialiasing.Gray;
-        file.SubpixelPositioning = TextServer.SubpixelPositioning.Auto;
-        file.Hinting = TextServer.Hinting.Normal;
+        _file.Antialiasing = TextServer.FontAntialiasing.Gray;
+        _file.SubpixelPositioning = TextServer.SubpixelPositioning.Auto;
+        _file.Hinting = TextServer.Hinting.Normal;
 
-        // Tabular figures. The tag is the four characters packed big-endian, which is what
-        // TextServer.NameToTag would compute and is stable enough to write out.
         return new FontVariation
         {
-            BaseFont = file,
-            OpentypeFeatures = new Godot.Collections.Dictionary
-            {
-                { ('t' << 24) | ('n' << 16) | ('u' << 8) | 'm', 1 },
-            },
+            BaseFont = _file,
+            VariationOpentype = new Godot.Collections.Dictionary { { Tag("wght"), weight } },
+            OpentypeFeatures = new Godot.Collections.Dictionary { { Tag("tnum"), 1 } },
         };
     }
+
+    /// <summary>An OpenType tag, which is its four characters packed big-endian.</summary>
+    private static int Tag(string name) =>
+        (name[0] << 24) | (name[1] << 16) | (name[2] << 8) | name[3];
 
     /// <summary>
     /// Tier 1: reading text, on an opaque plate. No outline, no shadow.
@@ -336,9 +338,8 @@ public static class Style
         where T : Label
     {
         label.Typeset(size, colour, bold: true);
-        label.AddThemeColorOverride("font_shadow_color", HudShadow);
-        label.AddThemeConstantOverride("shadow_offset_x", 1);
-        label.AddThemeConstantOverride("shadow_offset_y", 1);
+        label.AddThemeColorOverride("font_outline_color", TextOutline);
+        label.AddThemeConstantOverride("outline_size", 2);
         return label;
     }
 
@@ -360,15 +361,17 @@ public static class Style
     /// Tier 2, drawn: over the world, where the background is whatever the player walked onto.
     /// </summary>
     /// <remarks>
-    /// One shadow offset down and right rather than a stroke on four sides. A stroke doubles the
-    /// apparent weight of a semibold face and closes its apertures; a single offset copy separates
-    /// the glyph from what is behind it and leaves its shape alone.
+    /// A one-pixel outline on all four sides, and bold. Revision six asked for a single shadow
+    /// down and right and was wrong about it: the original outlines everything it draws over the
+    /// world, and at these sizes the outline is most of what gives that text its weight -- it is
+    /// the difference between a bar label that belongs to the game and one that belongs to a web
+    /// page. Reading text on a panel still takes neither; see <see cref="DrawText"/>.
     /// </remarks>
     public static void DrawOverWorld(
         this CanvasItem into, Vector2 at, string text, int size, Color colour,
         HorizontalAlignment alignment = HorizontalAlignment.Left, float width = -1f)
     {
-        into.DrawString(Bold, at + Vector2.One, text, alignment, width, size, HudShadow);
+        into.DrawStringOutline(Bold, at, text, alignment, width, size, 1, TextOutline);
         into.DrawString(Bold, at, text, alignment, width, size, colour);
     }
 

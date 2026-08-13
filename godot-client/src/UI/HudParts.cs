@@ -76,6 +76,9 @@ public partial class HudBar : Control
     /// <summary>The chip's rate, slow enough that a hit leaves a mark you can see after it lands.</summary>
     private const float ChipRate = 6f;
 
+    /// <summary>What a bar's label and value are set at, which is a step up from body text.</summary>
+    private const int BarFontSize = Style.FontName;
+
     private readonly int _fontSize;
 
     private string _name = string.Empty;
@@ -169,24 +172,29 @@ public partial class HudBar : Control
         // Both texts on the same baseline, which is the vertical middle of the bar. Kept whole
         // white at every fill: a value that dims as the bar empties is unreadable exactly when it
         // matters.
-        float baseline = Style.BaselineIn(Size.Y, _fontSize);
+        //
+        // A step larger than the rest of the interface and outlined, because these are the strings
+        // it must be possible to read without looking away from what is hitting you -- and because
+        // they are all that identifies each bar now that the icon beside it is gone.
+        float baseline = Style.BaselineIn(Size.Y, BarFontSize);
 
         if (_name.Length > 0)
-            this.DrawOverWorld(new Vector2(Inset, baseline), _name, _fontSize, Style.Text);
+            this.DrawOverWorld(new Vector2(Inset, baseline), _name, BarFontSize, Style.Text);
 
         if (_value.Length == 0)
             return;
 
         // What equipment is adding, in green immediately after the value. Omitted at zero: six
         // bars all saying "(+0)" is noise, and the point of the suffix is that it stands out.
-        float bonusWidth = _bonus.Length == 0 ? 0f : Style.Measure(_bonus, _fontSize) + 4f;
+        float bonusWidth = _bonus.Length == 0 ? 0f : Style.Measure(_bonus, BarFontSize, bold: true) + 4f;
         float right = Size.X - Inset - bonusWidth;
 
         this.DrawOverWorld(
-            new Vector2(right - Style.Measure(_value, _fontSize), baseline), _value, _fontSize, Style.Text);
+            new Vector2(right - Style.Measure(_value, BarFontSize, bold: true), baseline),
+            _value, BarFontSize, Style.Text);
 
         if (_bonus.Length > 0)
-            this.DrawOverWorld(new Vector2(right + 4f, baseline), _bonus, _fontSize, Style.StatBonus);
+            this.DrawOverWorld(new Vector2(right + 4f, baseline), _bonus, BarFontSize, Style.StatBonus);
     }
 }
 
