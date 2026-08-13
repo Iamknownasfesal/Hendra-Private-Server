@@ -349,30 +349,21 @@ impl Cursor<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::xml::Node;
     use std::io::Write;
 
-    /// A catalog holding the handful of names the fixtures below use.
-    fn catalog() -> Catalog {
-        let (catalog, _) = Catalog::load_files(&[]);
-        let _ = catalog;
+    /// The handful of names the fixtures below use.
+    ///
+    /// Built from a string rather than a file. Several tests used to write the same fixture to the
+    /// same path and could read it mid-truncate, which passed alone and failed in the suite.
+    const FIXTURE: &str = r#"<Objects>
+        <Ground type="0x10" id="Grass"><Speed>1</Speed></Ground>
+        <Ground type="0x11" id="Water"><NoWalk/></Ground>
+        <Object type="0x500" id="Sign"><Class>GameObject</Class><Static/></Object>
+      </Objects>"#;
 
-        // Built through the public loader so the test exercises the same path the server does.
-        let dir = std::env::temp_dir().join(format!("hendra-legacy-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("fixture.xml");
-        std::fs::write(
-            &path,
-            r#"<Objects>
-                 <Ground type="0x10" id="Grass"><Speed>1</Speed></Ground>
-                 <Ground type="0x11" id="Water"><NoWalk/></Ground>
-                 <Object type="0x500" id="Sign"><Class>GameObject</Class><Static/></Object>
-               </Objects>"#,
-        )
-        .unwrap();
-        let (catalog, report) = Catalog::load_dir(&dir).unwrap();
+    fn catalog() -> Catalog {
+        let (catalog, report) = Catalog::load_str(&[FIXTURE]);
         assert!(report.problems.is_empty(), "{:?}", report.problems);
-        let _ = Node::parse("<x/>");
         catalog
     }
 

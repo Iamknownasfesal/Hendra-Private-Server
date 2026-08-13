@@ -25,6 +25,9 @@ use hendra_transport::{Listener, ServerIdentity};
 /// real; this is the wizard.
 const DEFAULT_PLAYER_OBJECT: &str = "Wizard";
 
+/// What a player arrives holding, until inventories exist.
+const DEFAULT_WEAPON: &str = "Wand of Dark Magic";
+
 struct Options {
     port: u16,
     map: String,
@@ -139,14 +142,20 @@ async fn main() {
     );
 
     let catalog = Arc::new(catalog);
-    let player_type = catalog
-        .type_of(DEFAULT_PLAYER_OBJECT)
-        .unwrap_or(ObjectType(0x0300));
+    let loadout = world_task::Loadout {
+        avatar: catalog
+            .type_of(DEFAULT_PLAYER_OBJECT)
+            .unwrap_or(ObjectType(0x0300)),
+        weapon: catalog.type_of(DEFAULT_WEAPON),
+    };
+    if loadout.weapon.is_none() {
+        tracing::warn!(weapon = DEFAULT_WEAPON, "starter weapon not in the catalog; players cannot shoot");
+    }
 
     let world = World::new(name.clone(), terrain, &catalog);
     tracing::info!(world = %name, entities = world.len(), "world populated");
 
-    let handle = world_task::spawn(world, Arc::clone(&catalog), player_type);
+    let handle = world_task::spawn(world, Arc::clone(&catalog), loadout);
 
     let identity = match &options.certificate {
         Some((cert, key)) => match ServerIdentity::from_pem_files(cert, key) {

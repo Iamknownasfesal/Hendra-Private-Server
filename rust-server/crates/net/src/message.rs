@@ -29,6 +29,7 @@ pub mod client_id {
     pub const CHAT: u16 = 0x0003;
     pub const USE_PORTAL: u16 = 0x0004;
     pub const PONG: u16 = 0x0005;
+    pub const SHOOT: u16 = 0x0006;
 }
 
 /// Messages travelling from server to client.
@@ -38,6 +39,7 @@ pub mod server_id {
     pub const SNAPSHOT: u16 = 0x8003;
     pub const CHAT: u16 = 0x8004;
     pub const PING: u16 = 0x8005;
+    pub const SHOT: u16 = 0x8006;
 }
 
 /// Why a connection was refused.
@@ -138,6 +140,14 @@ pub enum ClientMessage<'a> {
     UsePortal { entity: EntityId },
 
     Pong { serial: u32 },
+
+    /// A request to fire, carrying only where the player is aiming.
+    ///
+    /// Aim is the one thing taken from the client as given — where someone points is genuinely
+    /// theirs to decide, and there is nothing to check it against. Everything downstream is the
+    /// server's: whether the weapon is off cooldown, where the shot travels, what it strikes, and
+    /// what that costs. Notably there is no hit report anywhere in this protocol.
+    Shoot { angle: f32, client_time_ms: u32 },
 }
 
 impl ClientMessage<'_> {
@@ -148,6 +158,7 @@ impl ClientMessage<'_> {
             ClientMessage::Chat { .. } => client_id::CHAT,
             ClientMessage::UsePortal { .. } => client_id::USE_PORTAL,
             ClientMessage::Pong { .. } => client_id::PONG,
+            ClientMessage::Shoot { .. } => client_id::SHOOT,
         }
     }
 
@@ -167,6 +178,13 @@ impl ClientMessage<'_> {
             ClientMessage::Chat { text } => w.string(text),
             ClientMessage::UsePortal { entity } => w.varint(entity.0 as u64),
             ClientMessage::Pong { serial } => w.varint(*serial as u64),
+            ClientMessage::Shoot {
+                angle,
+                client_time_ms,
+            } => {
+                w.f32(*angle);
+                w.varint(*client_time_ms as u64);
+            }
         }
     }
 
@@ -185,6 +203,10 @@ impl ClientMessage<'_> {
             },
             client_id::PONG => ClientMessage::Pong {
                 serial: r.varint_u32()?,
+            },
+            client_id::SHOOT => ClientMessage::Shoot {
+                angle: r.f32()?,
+                client_time_ms: r.varint_u32()?,
             },
             unknown => {
                 return Err(CodecError::InvalidValue {
@@ -227,6 +249,23 @@ pub enum ServerMessage<'a> {
     Ping {
         serial: u32,
     },
+
+    /// A projectile came into being.
+    ///
+    /// Sent so clients can draw the shot. Its flight is entirely predictable from these fields, so
+    /// nothing further is sent per tick — a projectile costs one message for its whole life rather
+    /// than a snapshot entry every tick.
+    Shot {
+        projectile: EntityId,
+        owner: EntityId,
+        object_type: u16,
+        x: f32,
+        y: f32,
+        angle: f32,
+        /// Tiles per second.
+        speed: f32,
+        lifetime_ms: u32,
+    },
 }
 
 impl ServerMessage<'_> {
@@ -237,6 +276,7 @@ impl ServerMessage<'_> {
             ServerMessage::Snapshot { .. } => server_id::SNAPSHOT,
             ServerMessage::Chat { .. } => server_id::CHAT,
             ServerMessage::Ping { .. } => server_id::PING,
+            ServerMessage::Shot { .. } => server_id::SHOT,
         }
     }
 
@@ -261,6 +301,25 @@ impl ServerMessage<'_> {
                 w.string(text);
             }
             ServerMessage::Ping { serial } => w.varint(*serial as u64),
+            ServerMessage::Shot {
+                projectile,
+                owner,
+                object_type,
+                x,
+                y,
+                angle,
+                speed,
+                lifetime_ms,
+            } => {
+                w.varint(projectile.0 as u64);
+                w.varint(owner.0 as u64);
+                w.varint(*object_type as u64);
+                w.position(*x);
+                w.position(*y);
+                w.f32(*angle);
+                w.f32(*speed);
+                w.varint(*lifetime_ms as u64);
+            }
         }
     }
 
@@ -288,6 +347,16 @@ impl ServerMessage<'_> {
             },
             server_id::PING => ServerMessage::Ping {
                 serial: r.varint_u32()?,
+            },
+            server_id::SHOT => ServerMessage::Shot {
+                projectile: EntityId(r.varint_u32()?),
+                owner: EntityId(r.varint_u32()?),
+                object_type: r.varint_u32()? as u16,
+                x: r.position_value()?,
+                y: r.position_value()?,
+                angle: r.f32()?,
+                speed: r.f32()?,
+                lifetime_ms: r.varint_u32()?,
             },
             unknown => {
                 return Err(CodecError::InvalidValue {
@@ -345,6 +414,10 @@ mod tests {
             entity: EntityId(90_210),
         });
         round_trip_client(ClientMessage::Pong { serial: 77 });
+        round_trip_client(ClientMessage::Shoot {
+            angle: 1.25,
+            client_time_ms: 900_000,
+        });
     }
 
     #[test]
@@ -362,6 +435,16 @@ mod tests {
             text: "the chest is open",
         });
         round_trip_server(ServerMessage::Ping { serial: 3 });
+        round_trip_server(ServerMessage::Shot {
+            projectile: EntityId(65_555),
+            owner: EntityId(19),
+            object_type: 0x0900,
+            x: 103.5,
+            y: 88.25,
+            angle: -0.75,
+            speed: 10.0,
+            lifetime_ms: 2000,
+        });
         round_trip_server(ServerMessage::Snapshot {
             body: &[1, 2, 3, 4, 5],
         });

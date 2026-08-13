@@ -20,6 +20,7 @@ use hendra_content::{Catalog, ConditionSet, ObjectType};
 use hendra_net::{EntityId, EntityState, Tick, WorldSnapshot};
 
 use crate::grid::Grid;
+use crate::projectile::{Hit, Projectile, Projectiles};
 use crate::slab::{Handle, Slab};
 use crate::tiles::Terrain;
 
@@ -69,6 +70,12 @@ pub struct Entity {
     /// Base movement, in tiles per second, before ground and conditions.
     pub speed: f32,
 
+    /// The object whose projectile this entity fires, if it can shoot.
+    pub weapon: Option<ObjectType>,
+
+    /// How long until it may shoot again, in milliseconds.
+    pub cooldown_ms: u32,
+
     /// Set when the entity should be removed at the end of the tick.
     pub dead: bool,
 }
@@ -89,6 +96,8 @@ impl Entity {
             size: 100,
             name: None,
             speed: 0.0,
+            weapon: None,
+            cooldown_ms: 0,
             dead: false,
         }
     }
@@ -107,6 +116,8 @@ impl Entity {
             size: 100,
             name: None,
             speed: 5.0,
+            weapon: None,
+            cooldown_ms: 0,
             dead: false,
         }
     }
@@ -160,13 +171,19 @@ pub struct World {
     pub name: String,
     terrain: Terrain,
     entities: Slab<Entity>,
+    projectiles: Projectiles,
     grid: Grid,
     tick: Tick,
+
+    /// Rolls damage without pulling in a random-number crate. Deterministic, which also makes a
+    /// failing combat test reproducible.
+    seed: u32,
 
     /// Reused between ticks so a warm world allocates nothing.
     handles: Vec<Handle>,
     nearby: Vec<Handle>,
     visible: Vec<(EntityId, EntityState)>,
+    hits: Vec<Hit>,
 }
 
 impl World {
@@ -213,11 +230,14 @@ impl World {
             name,
             terrain,
             entities,
+            projectiles: Projectiles::new(),
             grid,
             tick: Tick::ZERO,
+            seed: 0x9e37_79b9,
             handles: Vec::new(),
             nearby: Vec::new(),
             visible: Vec::new(),
+            hits: Vec::new(),
         };
         world.reindex();
         world
@@ -348,13 +368,123 @@ impl World {
         }
     }
 
+    /// How many projectiles are in flight.
+    pub fn projectile_count(&self) -> usize {
+        self.projectiles.len()
+    }
+
+    pub fn projectiles(&self) -> impl Iterator<Item = (Handle, &Projectile)> {
+        self.projectiles.iter()
+    }
+
+    /// Fires an entity's weapon, if it has one and is off cooldown.
+    ///
+    /// The angle is the one thing taken from the client without argument: where a player is aiming
+    /// is genuinely theirs to decide, and there is nothing to validate it against. Everything that
+    /// follows — where the shot goes, what it strikes, what that costs — is the server's.
+    pub fn shoot(&mut self, handle: Handle, catalog: &Catalog, angle: f32) -> Vec<Handle> {
+        let mut fired = Vec::new();
+
+        let Some(entity) = self.entities.get(handle) else {
+            return fired;
+        };
+        if entity.cooldown_ms > 0 || entity.dead {
+            return fired;
+        }
+
+        let Some(weapon) = entity.weapon else {
+            return fired;
+        };
+        let Some(desc) = catalog.object(weapon) else {
+            return fired;
+        };
+        if desc.projectiles.is_empty() {
+            return fired;
+        }
+
+        let (x, y) = (entity.x, entity.y);
+        let from_player = entity.kind == Kind::Player;
+
+        // Rate of fire is quoted as a multiplier on a base of one shot every 500 ms.
+        let rate = desc
+            .item
+            .as_ref()
+            .map(|item| item.rate_of_fire.max(0.1))
+            .unwrap_or(1.0);
+        let cooldown = (500.0 / rate) as u32;
+
+        for shot in &desc.projectiles {
+            let roll = self.roll();
+            let projectile =
+                Projectile::from_desc(handle, from_player, shot, x, y, angle, roll);
+            if let Some(handle) = self.projectiles.fire(projectile) {
+                fired.push(handle);
+            }
+        }
+
+        if let Some(entity) = self.entities.get_mut(handle) {
+            entity.cooldown_ms = cooldown;
+        }
+
+        fired
+    }
+
+    /// A deterministic roll in `0.0..1.0`.
+    fn roll(&mut self) -> f32 {
+        self.seed ^= self.seed << 13;
+        self.seed ^= self.seed >> 17;
+        self.seed ^= self.seed << 5;
+        (self.seed % 10_000) as f32 / 10_000.0
+    }
+
     /// Advances the world by one tick.
     pub fn advance(&mut self, catalog: &Catalog, elapsed_ms: u32) {
         self.tick = self.tick.next();
 
+        self.cool_weapons(elapsed_ms);
         self.apply_hazards(catalog, elapsed_ms);
+        self.advance_projectiles(catalog, elapsed_ms);
         self.reap();
         self.reindex();
+    }
+
+    fn cool_weapons(&mut self, elapsed_ms: u32) {
+        for (_, entity) in self.entities.iter_mut() {
+            entity.cooldown_ms = entity.cooldown_ms.saturating_sub(elapsed_ms);
+        }
+    }
+
+    /// Moves every projectile and applies whatever it struck.
+    fn advance_projectiles(&mut self, catalog: &Catalog, elapsed_ms: u32) {
+        // Taken out so the damage pass can borrow the entities mutably; the buffer goes back
+        // afterwards, so this still allocates nothing once warm.
+        let mut hits = std::mem::take(&mut self.hits);
+
+        self.projectiles.advance(
+            &self.entities,
+            &self.grid,
+            &self.terrain,
+            catalog,
+            elapsed_ms,
+            &mut hits,
+        );
+
+        for hit in hits.iter() {
+            if let Some(target) = self.entities.get_mut(hit.target) {
+                target.hp -= hit.damage;
+                if target.hp <= 0 {
+                    target.dead = true;
+                }
+            }
+        }
+
+        self.hits = hits;
+        self.projectiles.drop_orphans(&self.entities);
+    }
+
+    /// What was struck on the last tick.
+    pub fn recent_hits(&self) -> &[Hit] {
+        &self.hits
     }
 
     /// Damages anything standing on ground that hurts.
@@ -437,6 +567,13 @@ mod tests {
         <Object type="0x501" id="Sign"><Class>GameObject</Class><Static/></Object>
         <Object type="0x502" id="Slime"><Class>Character</Class><Enemy/><MaxHitPoints>200</MaxHitPoints></Object>
         <Object type="0x600" id="Hero"><Class>Player</Class><Player/></Object>
+        <Object type="0x900" id="Bolt"><Class>Projectile</Class></Object>
+        <Object type="0x901" id="Wand">
+          <Class>Equipment</Class><Item/><SlotType>8</SlotType><RateOfFire>1</RateOfFire>
+          <Projectile><ObjectId>Bolt</ObjectId><Speed>100</Speed>
+            <MinDamage>100</MinDamage><MaxDamage>100</MaxDamage>
+            <LifetimeMS>2000</LifetimeMS></Projectile>
+        </Object>
       </Objects>"#;
 
     fn catalog() -> Catalog {
@@ -649,6 +786,112 @@ mod tests {
         assert!(
             world.snapshot_for(viewer, SIGHT_RADIUS).get(other.to_entity_id()).is_none(),
             "a despawned entity must leave the spatial index as well as the slab"
+        );
+    }
+
+    /// An armed player and a slime three tiles east of them.
+    fn duel(catalog: &Catalog) -> (World, Handle, Handle) {
+        let squares = (0..32 * 32).map(|_| square(0x10, ObjectType::NONE.0));
+        let map = Map::from_squares(32, 32, squares).unwrap();
+        let mut world = World::new("Duel", Terrain::build(map, catalog), catalog);
+
+        let mut player = Entity::player(ObjectType(0x600), 5.0, 5.0, 800);
+        player.weapon = Some(ObjectType(0x901));
+        let shooter = world.spawn(player).unwrap();
+
+        let mut slime = Entity::fixture(ObjectType(0x502), 8.0, 5.0);
+        slime.kind = Kind::Enemy;
+        slime.hp = 200;
+        slime.max_hp = 200;
+        let target = world.spawn(slime).unwrap();
+
+        world.advance(catalog, 50);
+        (world, shooter, target)
+    }
+
+    #[test]
+    fn shooting_spawns_a_projectile_that_travels_and_hits() {
+        let catalog = catalog();
+        let (mut world, shooter, target) = duel(&catalog);
+
+        let fired = world.shoot(shooter, &catalog, 0.0);
+        assert_eq!(fired.len(), 1, "the wand has one projectile");
+        assert_eq!(world.projectile_count(), 1);
+
+        let before = world.get(target).unwrap().hp;
+        for _ in 0..10 {
+            world.advance(&catalog, 50);
+        }
+
+        let after = world.get(target).map(|entity| entity.hp).unwrap_or(0);
+        assert!(after < before, "the slime should have taken damage");
+    }
+
+    #[test]
+    fn an_unarmed_entity_cannot_shoot() {
+        let catalog = catalog();
+        let (mut world, _, target) = duel(&catalog);
+
+        assert!(
+            world.shoot(target, &catalog, 0.0).is_empty(),
+            "the slime has no weapon"
+        );
+        assert_eq!(world.projectile_count(), 0);
+    }
+
+    #[test]
+    fn the_cooldown_stops_a_client_firing_as_fast_as_it_likes() {
+        let catalog = catalog();
+        let (mut world, shooter, _) = duel(&catalog);
+
+        assert_eq!(world.shoot(shooter, &catalog, 0.0).len(), 1);
+
+        // Twenty more attempts in the same instant yield nothing. Rate of fire is the server's to
+        // enforce; a client that asks faster is simply refused rather than believed.
+        for _ in 0..20 {
+            assert!(world.shoot(shooter, &catalog, 0.0).is_empty());
+        }
+        assert_eq!(world.projectile_count(), 1);
+
+        // After the cooldown has elapsed it may fire again.
+        for _ in 0..12 {
+            world.advance(&catalog, 50);
+        }
+        assert_eq!(world.shoot(shooter, &catalog, 0.0).len(), 1);
+    }
+
+    #[test]
+    fn enough_shots_kill_and_the_body_is_removed() {
+        let catalog = catalog();
+        let (mut world, shooter, target) = duel(&catalog);
+
+        // 100 damage a shot against 10 defence and 200 hit points: three shots is plenty.
+        for _ in 0..40 {
+            world.shoot(shooter, &catalog, 0.0);
+            world.advance(&catalog, 50);
+            if world.get(target).is_none() {
+                break;
+            }
+        }
+
+        assert!(world.get(target).is_none(), "the slime should be dead");
+    }
+
+    #[test]
+    fn a_projectile_outlives_nothing_when_its_owner_leaves() {
+        let catalog = catalog();
+        let (mut world, shooter, _) = duel(&catalog);
+
+        world.shoot(shooter, &catalog, 0.0);
+        assert_eq!(world.projectile_count(), 1);
+
+        world.despawn(shooter);
+        world.advance(&catalog, 50);
+
+        assert_eq!(
+            world.projectile_count(),
+            0,
+            "a world should not keep firing for someone who has gone"
         );
     }
 

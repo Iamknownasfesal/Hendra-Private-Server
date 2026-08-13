@@ -47,6 +47,9 @@ pub enum ToWorld {
         ack: Acknowledgement,
     },
 
+    /// A player is firing. Only the aim comes from them.
+    Shoot { handle: Handle, angle: f32 },
+
     Chat {
         handle: Handle,
         text: String,
@@ -76,7 +79,7 @@ struct Player {
 pub async fn run(
     mut world: World,
     catalog: Arc<Catalog>,
-    player_type: ObjectType,
+    loadout: Loadout,
     mut inbox: mpsc::Receiver<ToWorld>,
 ) {
     let mut players: Vec<Player> = Vec::new();
@@ -94,7 +97,7 @@ pub async fn run(
         tokio::select! {
             command = inbox.recv() => {
                 let Some(command) = command else { break };
-                handle(&mut world, &catalog, player_type, &mut players, command);
+                handle(&mut world, &catalog, loadout, &mut players, command);
             }
 
             _ = ticker.tick() => {
@@ -123,10 +126,17 @@ pub async fn run(
     tracing::info!(world = %world.name, "world stopped");
 }
 
+/// What a player arrives with. A placeholder for the inventory that phase four brings.
+#[derive(Debug, Clone, Copy)]
+pub struct Loadout {
+    pub avatar: ObjectType,
+    pub weapon: Option<ObjectType>,
+}
+
 fn handle(
     world: &mut World,
     catalog: &Catalog,
-    player_type: ObjectType,
+    loadout: Loadout,
     players: &mut Vec<Player>,
     command: ToWorld,
 ) {
@@ -137,8 +147,9 @@ fn handle(
             reply,
         } => {
             let (x, y) = spawn_point(world);
-            let mut entity = Entity::player(player_type, x, y, 800);
+            let mut entity = Entity::player(loadout.avatar, x, y, 800);
             entity.name = Some(name.as_str().into());
+            entity.weapon = loadout.weapon;
 
             let Some(handle) = world.spawn(entity) else {
                 tracing::warn!(world = %world.name, "world is full; refusing a join");
@@ -180,6 +191,43 @@ fn handle(
             if let Some(outcome) = world.resolve_move(handle, catalog, x, y, tick_ms(client_time_ms))
             {
                 world.place(handle, outcome);
+            }
+        }
+
+        ToWorld::Shoot { handle, angle } => {
+            // The world decides whether the weapon is ready, where the shot goes and what it hits.
+            // A client that asks faster than its rate of fire is refused, not believed.
+            let fired = world.shoot(handle, catalog, angle);
+            if fired.is_empty() {
+                return;
+            }
+
+            let mut buf = Vec::new();
+            for projectile in fired {
+                let Some(shot) = world.projectiles().find(|(handle, _)| *handle == projectile)
+                else {
+                    continue;
+                };
+                let (_, shot) = shot;
+
+                buf.clear();
+                ServerMessage::Shot {
+                    projectile: projectile.to_entity_id(),
+                    owner: handle.to_entity_id(),
+                    object_type: shot.object_type.0,
+                    x: shot.x,
+                    y: shot.y,
+                    angle: shot.angle,
+                    speed: shot.speed,
+                    lifetime_ms: shot.lifetime_ms,
+                }
+                .encode(&mut Writer::new(&mut buf));
+
+                // Reliable: a shot nobody was told about is a bullet that appears to do damage from
+                // nowhere. It is one message for the projectile's whole life, so the cost is small.
+                for player in players.iter() {
+                    let _ = player.sender.try_send(Delivery::Stream, &buf);
+                }
             }
         }
 
@@ -309,15 +357,11 @@ impl WorldHandle {
 }
 
 /// Starts a world on its own task.
-pub fn spawn(
-    world: World,
-    catalog: Arc<Catalog>,
-    player_type: ObjectType,
-) -> WorldHandle {
+pub fn spawn(world: World, catalog: Arc<Catalog>, loadout: Loadout) -> WorldHandle {
     let name: Arc<str> = Arc::from(world.name.as_str());
     let (inbox, receiver) = mpsc::channel(1024);
 
-    tokio::spawn(run(world, catalog, player_type, receiver));
+    tokio::spawn(run(world, catalog, loadout, receiver));
 
     WorldHandle { name, inbox }
 }

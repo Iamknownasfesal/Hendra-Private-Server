@@ -192,6 +192,7 @@ async fn handle(
                 .map_err(|err| err.to_string())?;
         }
 
+        ClientMessage::Shoot { angle, .. } => println!("  shoot: {angle:.2} rad"),
         ClientMessage::UsePortal { entity } => println!("  portal: {entity:?}"),
         ClientMessage::Pong { .. } => {}
     }

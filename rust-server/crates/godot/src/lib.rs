@@ -75,6 +75,19 @@ enum Event {
         text: String,
     },
     Disconnected(String),
+
+    /// A projectile was fired. Its whole flight follows from these fields, so this arrives once and
+    /// the client animates the rest itself.
+    Shot {
+        projectile: u32,
+        owner: u32,
+        object_type: u16,
+        x: f32,
+        y: f32,
+        angle: f32,
+        speed: f32,
+        lifetime_ms: u32,
+    },
 }
 
 /// The decoded world, laid out for the client to read cheaply.
@@ -141,6 +154,7 @@ impl Shared {
 /// What Godot asks the worker to do.
 enum Command {
     Input { x: f32, y: f32, time_ms: u32 },
+    Shoot { angle: f32 },
     Chat(String),
     UsePortal(u32),
     Disconnect,
@@ -301,6 +315,26 @@ impl HendraConnection {
                     entry.set("kind", "disconnected");
                     entry.set("reason", why);
                 }
+                Event::Shot {
+                    projectile,
+                    owner,
+                    object_type,
+                    x,
+                    y,
+                    angle,
+                    speed,
+                    lifetime_ms,
+                } => {
+                    entry.set("kind", "shot");
+                    entry.set("projectile", projectile as i64);
+                    entry.set("owner", owner as i64);
+                    entry.set("object_type", object_type as i64);
+                    entry.set("x", x);
+                    entry.set("y", y);
+                    entry.set("angle", angle);
+                    entry.set("speed", speed);
+                    entry.set("lifetime_ms", lifetime_ms as i64);
+                }
             }
             out.push(&entry);
         }
@@ -361,6 +395,15 @@ impl HendraConnection {
             y,
             time_ms: time_ms.max(0) as u32,
         });
+    }
+
+    /// Fires in the given direction, in radians.
+    ///
+    /// Only the aim is sent. Whether the weapon is ready, where the shot travels and what it hits
+    /// are all the server's, and there is no way for a client to report a hit at all.
+    #[func]
+    fn shoot(&self, angle: f32) {
+        self.send(Command::Shoot { angle });
     }
 
     #[func]
@@ -492,6 +535,16 @@ async fn handle(
                 y,
             }),
         ),
+        Command::Shoot { angle } => {
+            let mut buf = Vec::new();
+            ClientMessage::Shoot {
+                angle,
+                client_time_ms: 0,
+            }
+            .encode(&mut Writer::new(&mut buf));
+            return link.send(Delivery::Stream, &buf).await.is_ok();
+        }
+
         Command::Chat(text) => {
             let mut buf = Vec::new();
             ClientMessage::Chat { text: &text }.encode(&mut Writer::new(&mut buf));
@@ -546,6 +599,26 @@ fn apply(
         }),
 
         ServerMessage::Ping { .. } => {}
+
+        ServerMessage::Shot {
+            projectile,
+            owner,
+            object_type,
+            x,
+            y,
+            angle,
+            speed,
+            lifetime_ms,
+        } => shared.push(Event::Shot {
+            projectile: projectile.0,
+            owner: owner.0,
+            object_type,
+            x,
+            y,
+            angle,
+            speed,
+            lifetime_ms,
+        }),
 
         ServerMessage::Snapshot { body } => {
             let mut body = Reader::new(body);

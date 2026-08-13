@@ -154,6 +154,10 @@ async fn dispatch(received: &Received, handle: Handle, world: &WorldHandle) -> b
                 .await
         }
 
+        ClientMessage::Shoot { angle, .. } => {
+            world.send(ToWorld::Shoot { handle, angle }).await
+        }
+
         ClientMessage::UsePortal { entity } => {
             tracing::debug!(?entity, "portal use is not implemented yet");
             true

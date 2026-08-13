@@ -48,6 +48,9 @@ fn main() {
     }
 }
 
+/// The weapon players carry in the measurement, so projectile load is real rather than assumed.
+const WEAPON: &str = "Wand of Dark Magic";
+
 fn measure(label: &str, map: Map, players: u32, catalog: &Catalog) {
     let (width, height) = (map.width(), map.height());
     let terrain = Terrain::build(map, catalog);
@@ -75,12 +78,9 @@ fn measure(label: &str, map: Map, players: u32, catalog: &Catalog) {
         if !world.terrain().walkable_at(x, y) {
             continue;
         }
-        if let Some(handle) = world.spawn(Entity::player(
-            hendra_content::ObjectType(0x0300),
-            x,
-            y,
-            800,
-        )) {
+        let mut player = Entity::player(hendra_content::ObjectType(0x0300), x, y, 800);
+        player.weapon = catalog.type_of(WEAPON);
+        if let Some(handle) = world.spawn(player) {
             placed.push(handle);
         }
     }
@@ -88,6 +88,7 @@ fn measure(label: &str, map: Map, players: u32, catalog: &Catalog) {
     let mut metrics = TickMetrics::for_rate(TICKS_PER_SECOND);
     let elapsed_ms = 1000 / TICKS_PER_SECOND;
     let mut snapshot_entities = 0usize;
+    let mut peak_projectiles = 0usize;
 
     for tick in 0..TICKS {
         let started = Instant::now();
@@ -107,7 +108,15 @@ fn measure(label: &str, map: Map, players: u32, catalog: &Catalog) {
             }
         }
 
+        // Everyone fires as fast as the server lets them, which is the worst case for projectile
+        // load: the cooldown refuses most of these, and the ones it allows all stay in flight.
+        for (index, handle) in placed.iter().enumerate() {
+            let angle = (tick + index as u32) as f32 * 0.21;
+            world.shoot(*handle, catalog, angle);
+        }
+
         world.advance(catalog, elapsed_ms);
+        peak_projectiles = peak_projectiles.max(world.projectile_count());
 
         for handle in &placed {
             snapshot_entities += world.snapshot_for(*handle, SIGHT_RADIUS).len();
@@ -123,7 +132,9 @@ fn measure(label: &str, map: Map, players: u32, catalog: &Catalog) {
     };
 
     println!("{label} — {width}×{height}, {walkable} walkable, {fixtures} fixtures");
-    println!("  {players} players, {per_tick} entities encoded per tick");
+    println!(
+        "  {players} players, {per_tick} entities encoded per tick, {peak_projectiles} projectiles at peak"
+    );
     println!("  {metrics}");
     println!(
         "  headroom: {:.0}× budget at p99{}\n",
