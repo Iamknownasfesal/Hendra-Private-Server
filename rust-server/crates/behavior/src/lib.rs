@@ -29,6 +29,7 @@ pub use compile::{Diagnostic, compile};
 pub use lex::{LexError, Span, Token, tokenize};
 pub use parse::{ParseError, parse};
 pub use program::{
-    Action, CompiledState, Condition, LootEntry, Nearby, Primitive, Program, Programs, Senses,
+    Action, CompiledState, Condition, DeathEffect, EffectTarget, LootEntry, NameRef, Nearby,
+    Neighbour, Primitive, Program, Programs, Senses,
 };
 pub use run::Mind;

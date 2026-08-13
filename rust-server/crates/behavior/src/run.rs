@@ -17,6 +17,29 @@
 
 use crate::program::*;
 
+/// How long a `conditional_effect` with no duration is renewed for each tick.
+///
+/// Long enough to outlast a tick at any plausible rate, short enough that leaving the state clears
+/// it almost at once. An effect that lasted a whole second past its state would let a boss stay
+/// invulnerable well into the phase where it is meant to be hit.
+const RENEWAL_MS: u32 = 250;
+
+/// How often an `order` is repeated.
+///
+/// Orders are not one-shot — an entity that wanders into range afterwards should get the order too
+/// — but repeating one every tick would hold its targets at the start of the state they were sent
+/// to, and they would never progress out of it.
+const ORDER_INTERVAL_MS: u32 = 1000;
+
+/// The least time between two ground changes from the same behaviour.
+const GROUND_INTERVAL_MS: u32 = 500;
+
+/// How long a charge is committed to before it can be re-aimed.
+const CHARGE_MS: u32 = 600;
+
+/// How close counts as having arrived somewhere.
+const ARRIVED: f32 = 0.3;
+
 /// One enemy's running behaviour.
 #[derive(Debug, Clone)]
 pub struct Mind {
@@ -34,6 +57,26 @@ pub struct Mind {
 
     /// The direction a wander is currently heading, so it drifts rather than jitters.
     wander_angle: f32,
+
+    /// The deadline a `timed_random` transition drew on entering this state.
+    ///
+    /// Drawn once rather than rolled every tick, because rolling would make the transition fire at
+    /// a random moment near the minimum rather than at a random moment in the range.
+    deadline_ms: u32,
+
+    /// Damage taken since this state was entered, for transitions that react to being hurt.
+    damage_in_state: i32,
+
+    /// How far around a circle a swirl or a pacing movement has travelled.
+    phase: f32,
+
+    /// The locked heading of a charge, and how long is left of it. A charge that re-aimed every
+    /// tick would be a follow.
+    charge: Option<(f32, u32)>,
+
+    /// Which taunt line comes next, so a boss works through what it has to say rather than
+    /// repeating one line.
+    said: u32,
 
     /// Scratch for the ancestry walk, reused so a tick allocates nothing.
     chain: Vec<usize>,
@@ -53,8 +96,22 @@ impl Mind {
             // Zero is a fixed point of the generator below, so it is never a valid seed.
             seed: if seed == 0 { 0x9e37_79b9 } else { seed },
             wander_angle: 0.0,
+            deadline_ms: 0,
+            damage_in_state: 0,
+            phase: 0.0,
+            charge: None,
+            said: 0,
             chain: Vec::new(),
         }
+    }
+
+    /// Puts the mind into a state from outside, as an order does.
+    ///
+    /// The same as a transition firing, so the state is entered properly: its innermost child is
+    /// landed on and its cooldowns are cleared. An order that only set the index would leave a
+    /// boss's minions in a state whose behaviours were all mid-cooldown from the last one.
+    pub fn force_into(&mut self, program: &Program, target: usize) {
+        self.enter(program, target);
     }
 
     /// Which state the enemy is in.
@@ -91,6 +148,11 @@ impl Mind {
 
         self.current = landing;
         self.in_state_ms = 0;
+        self.damage_in_state = 0;
+        self.charge = None;
+
+        // Drawn on entry, so a group that entered together does not leave together.
+        self.deadline_ms = 0;
 
         // A behaviour that was mid-cooldown when its state was left should not still be waiting
         // when the state is entered again — otherwise a boss re-entering an attack phase stands
@@ -117,6 +179,14 @@ impl Mind {
     ) {
         out.clear();
         self.in_state_ms = self.in_state_ms.saturating_add(elapsed_ms);
+        self.damage_in_state = self.damage_in_state.saturating_add(senses.damage_taken);
+
+        if let Some((_, left)) = &mut self.charge {
+            *left = left.saturating_sub(elapsed_ms);
+            if *left == 0 {
+                self.charge = None;
+            }
+        }
 
         for slot in self.cooldowns.iter_mut() {
             *slot = slot.saturating_sub(elapsed_ms);
@@ -132,7 +202,7 @@ impl Mind {
                 continue;
             };
             for transition in &state.transitions {
-                if self.fires(&transition.condition, senses) {
+                if self.fires(program, &transition.condition, senses) {
                     moved_to = Some(transition.target);
                     break 'outer;
                 }
@@ -155,15 +225,40 @@ impl Mind {
             };
             let mut slot = state.slot_base;
             for primitive in &state.behaviours {
-                slot += self.run(primitive, slot, senses, &mut has_moved, out);
+                slot += self.run(program, primitive, slot, senses, &mut has_moved, out);
             }
         }
         self.chain = chain;
     }
 
-    fn fires(&self, condition: &Condition, senses: &Senses) -> bool {
+    fn fires(&mut self, program: &Program, condition: &Condition, senses: &Senses) -> bool {
         match condition {
             Condition::Timed { after_ms } => self.in_state_ms >= *after_ms,
+
+            Condition::TimedRandom { min_ms, max_ms } => {
+                if self.deadline_ms == 0 {
+                    let span = max_ms.saturating_sub(*min_ms);
+                    self.deadline_ms = min_ms + (self.random() * span as f32) as u32;
+                    // A range of zero would otherwise redraw every tick and never be held.
+                    self.deadline_ms = self.deadline_ms.max(1);
+                }
+                self.in_state_ms >= self.deadline_ms
+            }
+
+            Condition::DamageTaken { amount } => self.damage_in_state >= *amount,
+
+            Condition::EntityWithin { kind, radius } => program
+                .kind_of(*kind)
+                .is_some_and(|kind| senses.any_within(kind, *radius)),
+
+            // Every one of them must be absent. A name the host does not know counts as absent
+            // rather than as present: a boss whose guardian was removed from the content should
+            // wake up rather than wait forever.
+            Condition::NoneWithin { kinds, radius } => kinds.iter().all(|name| {
+                program
+                    .kind_of(*name)
+                    .is_none_or(|kind| !senses.any_within(kind, *radius))
+            }),
 
             Condition::PlayerWithin { radius } => senses
                 .nearest_player
@@ -183,6 +278,7 @@ impl Mind {
     /// Runs one primitive. Returns how many cooldown slots it consumed.
     fn run(
         &mut self,
+        program: &Program,
         primitive: &Primitive,
         slot: usize,
         senses: &Senses,
@@ -360,8 +456,11 @@ impl Mind {
                 }
 
                 out.push(Action::Spawn {
-                    child: child.clone(),
+                    child: *child,
                     count: 1,
+                    offset_x: 0.0,
+                    offset_y: 0.0,
+                    state: None,
                 });
                 self.children += 1;
 
@@ -389,7 +488,531 @@ impl Mind {
                         used += child.slots();
                         continue;
                     }
-                    used += self.run(child, slot + used, senses, has_moved, out);
+                    used += self.run(program, child, slot + used, senses, has_moved, out);
+                }
+                used
+            }
+
+            Primitive::Reproduce {
+                child,
+                density_radius,
+                density_max,
+                cooldown_ms,
+            } => {
+                if self.cooldowns.get(slot).copied().unwrap_or(0) > 0 {
+                    return 1;
+                }
+
+                // Counted from what is actually standing there rather than from what this entity
+                // remembers making. Killing the children lets it make more, and its own death does
+                // not leak a count that nothing will ever decrement.
+                if let Some(kind) = program.kind_of(*child) {
+                    let crowd = senses
+                        .nearby
+                        .iter()
+                        .filter(|other| other.kind == kind && other.distance <= *density_radius)
+                        .count();
+                    if crowd >= *density_max as usize {
+                        return 1;
+                    }
+                }
+
+                out.push(Action::Spawn {
+                    child: *child,
+                    count: 1,
+                    offset_x: 0.0,
+                    offset_y: 0.0,
+                    state: None,
+                });
+                if let Some(cooldown) = self.cooldowns.get_mut(slot) {
+                    *cooldown = *cooldown_ms;
+                }
+                1
+            }
+
+            Primitive::TossObject {
+                child,
+                radius,
+                fixed_angle,
+                cooldown_ms,
+                warning_ms,
+            } => {
+                if self.cooldowns.get(slot).copied().unwrap_or(0) > 0 {
+                    return 1;
+                }
+
+                // Thrown toward whoever is nearest unless the content fixed the angle. With nobody
+                // in sight there is nothing to aim at, and dropping it underfoot is not what the
+                // behaviour is for.
+                let angle = match fixed_angle {
+                    Some(degrees) => degrees.to_radians(),
+                    None => match senses.nearest_player {
+                        Some(player) => (player.y - senses.y).atan2(player.x - senses.x),
+                        None => return 1,
+                    },
+                };
+
+                // A ring rather than a point: a radius the content gives is how far out it lands.
+                let reach = *radius * (0.4 + 0.6 * self.random());
+                out.push(Action::Spawn {
+                    child: *child,
+                    count: 1,
+                    offset_x: angle.cos() * reach,
+                    offset_y: angle.sin() * reach,
+                    state: None,
+                });
+                let _ = warning_ms;
+
+                if let Some(cooldown) = self.cooldowns.get_mut(slot) {
+                    *cooldown = *cooldown_ms;
+                }
+                1
+            }
+
+            Primitive::Grenade {
+                radius,
+                damage,
+                range,
+                cooldown_ms,
+                effect,
+                effect_ms,
+            } => {
+                if self.cooldowns.get(slot).copied().unwrap_or(0) > 0 {
+                    return 1;
+                }
+                let Some(player) = senses.nearest_player else {
+                    return 1;
+                };
+                if player.distance > *range {
+                    return 1;
+                }
+
+                // Thrown where the player is now. Leading them would make it unavoidable, which is
+                // the difference between a hard attack and one nobody can play around.
+                out.push(Action::Grenade {
+                    offset_x: player.x - senses.x,
+                    offset_y: player.y - senses.y,
+                    radius: *radius,
+                    damage: *damage,
+                    effect: *effect,
+                    effect_ms: *effect_ms,
+                });
+
+                if let Some(cooldown) = self.cooldowns.get_mut(slot) {
+                    *cooldown = *cooldown_ms;
+                }
+                1
+            }
+
+            Primitive::Decay { after_ms } => {
+                if self.in_state_ms >= *after_ms {
+                    out.push(Action::Vanish);
+                }
+                1
+            }
+
+            Primitive::ConditionalEffect {
+                effect,
+                duration_ms,
+                target,
+                radius,
+            } => {
+                // Re-applied every tick rather than once on entry. A duration of zero means "while
+                // this state lasts", and the only way to express that to a world that expires
+                // effects on a timer is to keep renewing it.
+                out.push(Action::Effect {
+                    effect: *effect,
+                    duration_ms: if *duration_ms == 0 {
+                        RENEWAL_MS
+                    } else {
+                        *duration_ms
+                    },
+                    radius: *radius,
+                    target: *target,
+                });
+                1
+            }
+
+            Primitive::SetAltTexture { index } => {
+                out.push(Action::Texture { index: *index });
+                1
+            }
+
+            Primitive::ChangeSize { rate, target } => {
+                out.push(Action::Resize {
+                    rate: *rate,
+                    target: *target,
+                });
+                1
+            }
+
+            Primitive::Taunt {
+                lines,
+                probability,
+                cooldown_ms,
+                broadcast,
+            } => {
+                if lines.is_empty() || self.cooldowns.get(slot).copied().unwrap_or(0) > 0 {
+                    return 1;
+                }
+                if self.random() > *probability {
+                    // Still put it on cooldown, so a low probability means "rarely" rather than
+                    // "on most ticks, eventually".
+                    if let Some(cooldown) = self.cooldowns.get_mut(slot) {
+                        *cooldown = *cooldown_ms;
+                    }
+                    return 1;
+                }
+
+                let line = lines[self.said as usize % lines.len()].clone();
+                self.said = self.said.wrapping_add(1);
+
+                out.push(Action::Say {
+                    text: line,
+                    broadcast: *broadcast,
+                });
+                if let Some(cooldown) = self.cooldowns.get_mut(slot) {
+                    *cooldown = *cooldown_ms;
+                }
+                1
+            }
+
+            Primitive::Order {
+                radius,
+                kind,
+                state,
+            } => {
+                // Once per entry rather than every tick: an order repeated every tick would hold
+                // its targets at the start of the state they were sent to and they would never
+                // progress out of it.
+                if self.cooldowns.get(slot).copied().unwrap_or(0) > 0 {
+                    return 1;
+                }
+
+                out.push(Action::Order {
+                    radius: *radius,
+                    kind: *kind,
+                    state: state.clone(),
+                });
+                if let Some(cooldown) = self.cooldowns.get_mut(slot) {
+                    *cooldown = ORDER_INTERVAL_MS;
+                }
+                1
+            }
+
+            Primitive::Transform { into } => {
+                out.push(Action::Transform { into: *into });
+                1
+            }
+
+            Primitive::Protect {
+                speed,
+                protectee,
+                acquire_range,
+                protect_range,
+                reprotect_range,
+            } => {
+                if *has_moved {
+                    return 1;
+                }
+                let Some(kind) = program.kind_of(*protectee) else {
+                    return 1;
+                };
+                let Some(ward) = senses.nearest_of(kind, *acquire_range) else {
+                    return 1;
+                };
+
+                // Close enough is close enough. Without the second, smaller radius it would jitter
+                // in and out at exactly the protection distance.
+                if ward.distance <= *reprotect_range {
+                    return 1;
+                }
+                if ward.distance <= *protect_range && self.charge.is_none() {
+                    return 1;
+                }
+
+                out.push(Action::Move {
+                    angle: (ward.y - senses.y).atan2(ward.x - senses.x),
+                    speed: *speed,
+                });
+                *has_moved = true;
+                1
+            }
+
+            Primitive::HealOthers {
+                radius,
+                amount,
+                kind,
+                players,
+                cooldown_ms,
+            } => {
+                if self.cooldowns.get(slot).copied().unwrap_or(0) > 0 {
+                    return 1;
+                }
+
+                // Nothing to heal is not a reason to spend the cooldown.
+                let wanted = kind.and_then(|name| program.kind_of(name));
+                let anyone = senses.nearby.iter().any(|other| {
+                    other.distance <= *radius
+                        && other.player == *players
+                        && wanted.is_none_or(|kind| other.kind == kind)
+                        && other.hp < other.max_hp
+                });
+                if !anyone {
+                    return 1;
+                }
+
+                out.push(Action::HealOthers {
+                    radius: *radius,
+                    amount: *amount,
+                    kind: *kind,
+                    players: *players,
+                });
+                if let Some(cooldown) = self.cooldowns.get_mut(slot) {
+                    *cooldown = *cooldown_ms;
+                }
+                1
+            }
+
+            Primitive::MoveTo { x, y, speed } => {
+                if *has_moved {
+                    return 1;
+                }
+                let (dx, dy) = (x - senses.x, y - senses.y);
+                if (dx * dx + dy * dy).sqrt() <= ARRIVED {
+                    return 1;
+                }
+
+                out.push(Action::Move {
+                    angle: dy.atan2(dx),
+                    speed: *speed,
+                });
+                *has_moved = true;
+                1
+            }
+
+            Primitive::MoveLine { speed, angle } => {
+                if *has_moved {
+                    return 1;
+                }
+                out.push(Action::Move {
+                    angle: angle.to_radians(),
+                    speed: *speed,
+                });
+                *has_moved = true;
+                1
+            }
+
+            Primitive::BackAndForth { speed, distance } => {
+                if *has_moved {
+                    return 1;
+                }
+                // Measured from the spawn rather than from wherever it drifted to, so a long fight
+                // does not walk the pacing across the room.
+                let travelled = senses.x - senses.spawn_x;
+                if travelled.abs() >= *distance {
+                    self.phase = if travelled > 0.0 {
+                        std::f32::consts::PI
+                    } else {
+                        0.0
+                    };
+                }
+
+                out.push(Action::Move {
+                    angle: self.phase,
+                    speed: *speed,
+                });
+                *has_moved = true;
+                1
+            }
+
+            Primitive::Charge {
+                speed,
+                range,
+                cooldown_ms,
+            } => {
+                if *has_moved {
+                    return 1;
+                }
+
+                // Mid-charge it keeps the heading it committed to. Re-aiming every tick would make
+                // this a fast follow, and a charge is dangerous precisely because it can be dodged.
+                if let Some((angle, _)) = self.charge {
+                    out.push(Action::Move {
+                        angle,
+                        speed: *speed,
+                    });
+                    *has_moved = true;
+                    return 1;
+                }
+
+                if self.cooldowns.get(slot).copied().unwrap_or(0) > 0 {
+                    return 1;
+                }
+                let Some(player) = senses.nearest_player else {
+                    return 1;
+                };
+                if player.distance > *range {
+                    return 1;
+                }
+
+                let angle = (player.y - senses.y).atan2(player.x - senses.x);
+                self.charge = Some((angle, CHARGE_MS));
+                out.push(Action::Move {
+                    angle,
+                    speed: *speed,
+                });
+                *has_moved = true;
+
+                if let Some(cooldown) = self.cooldowns.get_mut(slot) {
+                    *cooldown = (*cooldown_ms).max(CHARGE_MS);
+                }
+                1
+            }
+
+            Primitive::Swirl {
+                speed,
+                radius,
+                targeted,
+            } => {
+                if *has_moved {
+                    return 1;
+                }
+
+                let (centre_x, centre_y) = if *targeted {
+                    match senses.nearest_player {
+                        Some(player) => (player.x, player.y),
+                        None => (senses.spawn_x, senses.spawn_y),
+                    }
+                } else {
+                    (senses.spawn_x, senses.spawn_y)
+                };
+
+                let (dx, dy) = (senses.x - centre_x, senses.y - centre_y);
+                let out_by = (dx * dx + dy * dy).sqrt() - *radius;
+
+                // Tangential, pulled toward the ring, so it spirals in rather than orbiting at
+                // whatever distance it happened to start from.
+                let around = dy.atan2(dx) + std::f32::consts::FRAC_PI_2;
+                let correction = out_by.clamp(-1.0, 1.0) * 0.8;
+
+                out.push(Action::Move {
+                    angle: around - correction * dy.atan2(dx).signum(),
+                    speed: *speed,
+                });
+                *has_moved = true;
+                1
+            }
+
+            Primitive::ReturnToSpawn { speed, tolerance } => {
+                if *has_moved {
+                    return 1;
+                }
+                let (dx, dy) = (senses.spawn_x - senses.x, senses.spawn_y - senses.y);
+                if (dx * dx + dy * dy).sqrt() <= *tolerance {
+                    return 1;
+                }
+
+                out.push(Action::Move {
+                    angle: dy.atan2(dx),
+                    speed: *speed,
+                });
+                *has_moved = true;
+                1
+            }
+
+            Primitive::StayAbove { speed, altitude } => {
+                if *has_moved {
+                    return 1;
+                }
+                let Some(player) = senses.nearest_player else {
+                    return 1;
+                };
+                if player.distance >= *altitude {
+                    return 1;
+                }
+
+                out.push(Action::Move {
+                    angle: (senses.y - player.y).atan2(senses.x - player.x),
+                    speed: *speed,
+                });
+                *has_moved = true;
+                1
+            }
+
+            Primitive::NoExperience => {
+                out.push(Action::NoExperience);
+                1
+            }
+
+            Primitive::RemoveNearby { radius, kind } => {
+                if self.cooldowns.get(slot).copied().unwrap_or(0) > 0 {
+                    return 1;
+                }
+                out.push(Action::RemoveNearby {
+                    radius: *radius,
+                    kind: *kind,
+                });
+                if let Some(cooldown) = self.cooldowns.get_mut(slot) {
+                    *cooldown = ORDER_INTERVAL_MS;
+                }
+                1
+            }
+
+            Primitive::GroundTransform {
+                tile,
+                radius,
+                cooldown_ms,
+            } => {
+                if self.cooldowns.get(slot).copied().unwrap_or(0) > 0 {
+                    return 1;
+                }
+                out.push(Action::Ground {
+                    tile: *tile,
+                    radius: *radius,
+                });
+                if let Some(cooldown) = self.cooldowns.get_mut(slot) {
+                    // Ground changes are expensive and repeating one changes nothing, so a
+                    // behaviour that gave no interval gets a generous one rather than none.
+                    *cooldown = (*cooldown_ms).max(GROUND_INTERVAL_MS);
+                }
+                1
+            }
+
+            // Nothing happens during a tick. The world reads these when the entity dies.
+            Primitive::OnDeath(_) => 1,
+
+            Primitive::Every {
+                period_ms,
+                children,
+            } => {
+                let mut used = 1;
+                if self.cooldowns.get(slot).copied().unwrap_or(0) > 0 {
+                    // The children are skipped, but their slots still have to be accounted for or
+                    // every later behaviour would read someone else's cooldown.
+                    return 1 + children.iter().map(Primitive::slots).sum::<usize>();
+                }
+
+                for child in children {
+                    used += self.run(program, child, slot + used, senses, has_moved, out);
+                }
+                if let Some(cooldown) = self.cooldowns.get_mut(slot) {
+                    *cooldown = *period_ms;
+                }
+                used
+            }
+
+            Primitive::When {
+                condition,
+                children,
+            } => {
+                if !self.fires(program, condition, senses) {
+                    return 1 + children.iter().map(Primitive::slots).sum::<usize>();
+                }
+
+                let mut used = 1;
+                for child in children {
+                    used += self.run(program, child, slot + used, senses, has_moved, out);
                 }
                 used
             }
@@ -412,7 +1035,7 @@ mod tests {
         programs.programs.into_iter().next().expect("one program")
     }
 
-    fn alone() -> Senses {
+    fn alone() -> Senses<'static> {
         Senses {
             x: 10.0,
             y: 10.0,
@@ -421,10 +1044,12 @@ mod tests {
             spawn_x: 10.0,
             spawn_y: 10.0,
             nearest_player: None,
+            nearby: &[],
+            damage_taken: 0,
         }
     }
 
-    fn with_player_at(x: f32, y: f32) -> Senses {
+    fn with_player_at(x: f32, y: f32) -> Senses<'static> {
         let mut senses = alone();
         let (dx, dy) = (x - senses.x, y - senses.y);
         senses.nearest_player = Some(Nearby {
@@ -802,7 +1427,7 @@ mod tests {
         let parsed = parse(
             r#"enemy "X" {
                  state a {
-                   taunt("you shall not pass")
+                   dance_the_tarantella(3)
                    shoot(count: 1, fixed_angle: 0, cooldown: 100ms)
                  }
                }"#,
@@ -817,6 +1442,547 @@ mod tests {
 
         mind.tick(program, &alone(), 50, &mut out);
         assert_eq!(out.len(), 1, "the shoot beside it still runs");
+    }
+
+    // -- the behaviours added to cover the game's content --------------------------------------
+
+    /// The first behaviour of a named state.
+    ///
+    /// State zero is the unnamed root that everything hangs under, so indexing it finds nothing.
+    fn first_behaviour<'a>(program: &'a Program, state: &str) -> &'a Primitive {
+        let index = program.state_named(state).expect("no such state");
+        &program.states[index].behaviours[0]
+    }
+
+    /// Senses with one neighbour of a given kind at a distance.
+    fn beside(kind: u16, distance: f32) -> Vec<Neighbour> {
+        vec![Neighbour {
+            kind,
+            id: 7,
+            x: 10.0 + distance,
+            y: 10.0,
+            distance,
+            hp: 50,
+            max_hp: 100,
+            player: false,
+        }]
+    }
+
+    fn seeing<'a>(nearby: &'a [Neighbour]) -> Senses<'a> {
+        Senses { nearby, ..alone() }
+    }
+
+    /// Resolves every name in a program to a number, so conditions that name entities can fire.
+    fn resolved(source: &str, known: &[(&str, u16)]) -> Program {
+        let mut program = program(source);
+        program.resolve(|name| {
+            known
+                .iter()
+                .find(|(held, _)| *held == name)
+                .map(|(_, kind)| *kind)
+        });
+        program
+    }
+
+    #[test]
+    fn a_conditional_effect_is_renewed_rather_than_applied_once() {
+        // The world expires effects on a timer, so an effect meant to last as long as a state has
+        // to be renewed. Applying it once would have every boss lose its invulnerability a quarter
+        // of a second into the phase that grants it.
+        let program = program(r#"enemy "X" { state a { conditional_effect(invulnerable) } }"#);
+        let mut mind = Mind::new(&program, 1);
+        let mut out = Vec::new();
+
+        for tick in 0..5 {
+            mind.tick(&program, &alone(), 50, &mut out);
+            assert!(
+                matches!(out.as_slice(), [Action::Effect { effect: 24, .. }]),
+                "tick {tick} did not renew the effect: {out:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_permanent_effect_and_a_timed_one_are_told_apart() {
+        let program = program(
+            r#"enemy "X" {
+                 state a { conditional_effect(armored, perm: true) }
+                 state b { conditional_effect(slowed, 5) }
+               }"#,
+        );
+        let mut out = Vec::new();
+
+        let mut mind = Mind::new(&program, 1);
+        mind.tick(&program, &alone(), 50, &mut out);
+        let Action::Effect {
+            effect,
+            duration_ms,
+            ..
+        } = out[0]
+        else {
+            panic!("expected an effect, got {out:?}")
+        };
+        assert_eq!(effect, 25, "armored");
+        assert!(
+            duration_ms > 0 && duration_ms < 1000,
+            "renewed, not forever"
+        );
+    }
+
+    #[test]
+    fn an_order_is_repeated_but_not_every_tick() {
+        // Repeating every tick would hold the ordered entities at the start of the state they were
+        // sent to, and they would never progress out of it.
+        let program = program(r#"enemy "X" { state a { order(10, "Minion", "attack") } }"#);
+        let mut mind = Mind::new(&program, 1);
+        let mut out = Vec::new();
+
+        mind.tick(&program, &alone(), 50, &mut out);
+        assert_eq!(out.len(), 1, "ordered on the first tick");
+
+        let mut given = 0;
+        for _ in 0..40 {
+            mind.tick(&program, &alone(), 50, &mut out);
+            given += out.len();
+        }
+        assert!(
+            (1..=3).contains(&given),
+            "should repeat occasionally, not constantly: {given} in two seconds"
+        );
+    }
+
+    #[test]
+    fn a_charge_holds_its_heading_instead_of_following() {
+        // A charge that re-aimed every tick would be a fast follow, and the whole point of one is
+        // that it can be dodged.
+        let program = program(r#"enemy "X" { state a { charge(2, 20, cooldown: 5000) } }"#);
+        let mut mind = Mind::new(&program, 1);
+        let mut out = Vec::new();
+
+        mind.tick(&program, &with_player_at(20.0, 10.0), 50, &mut out);
+        let Action::Move { angle: first, .. } = out[0] else {
+            panic!("expected a move, got {out:?}")
+        };
+
+        // The player runs to the other side. A follow would turn; a charge does not.
+        mind.tick(&program, &with_player_at(10.0, 20.0), 50, &mut out);
+        let Action::Move { angle: second, .. } = out[0] else {
+            panic!("expected a move, got {out:?}")
+        };
+        assert_eq!(first, second, "the charge should not have re-aimed");
+    }
+
+    #[test]
+    fn a_charge_stops_and_does_not_start_again_at_once() {
+        let program = program(r#"enemy "X" { state a { charge(2, 20, cooldown: 5000) } }"#);
+        let mut mind = Mind::new(&program, 1);
+        let mut out = Vec::new();
+
+        let mut moved = 0;
+        for _ in 0..20 {
+            mind.tick(&program, &with_player_at(20.0, 10.0), 100, &mut out);
+            moved += out.len();
+        }
+        assert!(
+            moved > 0 && moved < 20,
+            "should charge then stop, not run forever: {moved} of 20 ticks"
+        );
+    }
+
+    #[test]
+    fn a_decay_vanishes_when_its_time_is_up_and_not_before() {
+        let program = program(r#"enemy "X" { state a { decay(1000) } }"#);
+        let mut mind = Mind::new(&program, 1);
+        let mut out = Vec::new();
+
+        for _ in 0..19 {
+            mind.tick(&program, &alone(), 50, &mut out);
+            assert!(out.is_empty(), "still alive");
+        }
+        mind.tick(&program, &alone(), 50, &mut out);
+        assert_eq!(out, vec![Action::Vanish]);
+    }
+
+    #[test]
+    fn a_decay_written_without_a_time_does_not_vanish_immediately() {
+        // The transpiler writes `decay()` and `decay(0)` for the same thing, and reading the zero
+        // as "now" would make every summon that uses it die on the tick it was made.
+        for written in [r#"decay()"#, r#"decay(0)"#] {
+            let program = program(&format!(r#"enemy "X" {{ state a {{ {written} }} }}"#));
+            let mut mind = Mind::new(&program, 1);
+            let mut out = Vec::new();
+
+            mind.tick(&program, &alone(), 50, &mut out);
+            assert!(out.is_empty(), "{written} vanished at once");
+        }
+    }
+
+    #[test]
+    fn a_taunt_works_through_its_lines_rather_than_repeating_one() {
+        let program = program(
+            r#"enemy "X" { state a { taunt("first", "second", "third", cooldown: 100ms) } }"#,
+        );
+        let mut mind = Mind::new(&program, 1);
+        let mut out = Vec::new();
+
+        let mut said = Vec::new();
+        for _ in 0..30 {
+            mind.tick(&program, &alone(), 60, &mut out);
+            for action in &out {
+                if let Action::Say { text, .. } = action {
+                    said.push(text.to_string());
+                }
+            }
+        }
+
+        assert!(said.len() >= 3, "should have said several things: {said:?}");
+        assert_eq!(&said[..3], &["first", "second", "third"]);
+    }
+
+    #[test]
+    fn a_reproduce_stops_when_its_own_kind_is_already_crowded() {
+        let program = resolved(
+            r#"enemy "X" { state a { reproduce("Spawn", 5, 2, cooldown: 0) } }"#,
+            &[("Spawn", 900)],
+        );
+        let mut mind = Mind::new(&program, 1);
+        let mut out = Vec::new();
+
+        mind.tick(&program, &alone(), 50, &mut out);
+        assert_eq!(out.len(), 1, "nothing about, so it reproduces");
+
+        // Two of its own kind already standing there is the limit.
+        let crowd = vec![beside(900, 1.0)[0], beside(900, 2.0)[0]];
+        mind.tick(&program, &seeing(&crowd), 50, &mut out);
+        assert!(out.is_empty(), "should have held off: {out:?}");
+
+        // A different kind does not count toward the limit.
+        let strangers = vec![beside(901, 1.0)[0], beside(901, 2.0)[0]];
+        mind.tick(&program, &seeing(&strangers), 50, &mut out);
+        assert_eq!(out.len(), 1, "another kind should not crowd it out");
+    }
+
+    #[test]
+    fn an_entity_condition_fires_only_for_the_kind_it_names() {
+        let program = resolved(
+            r#"enemy "X" {
+                 state a { on entity_exists("Guard", 10) -> b }
+                 state b { }
+               }"#,
+            &[("Guard", 900)],
+        );
+        let mut mind = Mind::new(&program, 1);
+        let mut out = Vec::new();
+
+        mind.tick(&program, &seeing(&beside(901, 5.0)), 50, &mut out);
+        assert_eq!(mind.state_name(&program), "a", "a different kind");
+
+        mind.tick(&program, &seeing(&beside(900, 5.0)), 50, &mut out);
+        assert_eq!(mind.state_name(&program), "b");
+    }
+
+    #[test]
+    fn an_entity_condition_respects_its_radius() {
+        let program = resolved(
+            r#"enemy "X" {
+                 state a { on entity_exists("Guard", 10) -> b }
+                 state b { }
+               }"#,
+            &[("Guard", 900)],
+        );
+        let mut mind = Mind::new(&program, 1);
+        let mut out = Vec::new();
+
+        mind.tick(&program, &seeing(&beside(900, 50.0)), 50, &mut out);
+        assert_eq!(mind.state_name(&program), "a", "too far away");
+
+        mind.tick(&program, &seeing(&beside(900, 9.0)), 50, &mut out);
+        assert_eq!(mind.state_name(&program), "b");
+    }
+
+    #[test]
+    fn a_boss_waits_for_every_guardian_not_just_the_first() {
+        // This is what the condition is for: a boss sealed until all of its guardians are dead.
+        // Firing on the first absence would open every such fight after one kill.
+        let program = resolved(
+            r#"enemy "Boss" {
+                 state sealed { on entities_not_exists(100, "Left", "Right") -> awake }
+                 state awake { }
+               }"#,
+            &[("Left", 900), ("Right", 901)],
+        );
+        let mut mind = Mind::new(&program, 1);
+        let mut out = Vec::new();
+
+        let both = vec![beside(900, 5.0)[0], beside(901, 5.0)[0]];
+        mind.tick(&program, &seeing(&both), 50, &mut out);
+        assert_eq!(mind.state_name(&program), "sealed");
+
+        mind.tick(&program, &seeing(&beside(901, 5.0)), 50, &mut out);
+        assert_eq!(mind.state_name(&program), "sealed", "one still standing");
+
+        mind.tick(&program, &seeing(&[]), 50, &mut out);
+        assert_eq!(mind.state_name(&program), "awake");
+    }
+
+    #[test]
+    fn an_unresolved_guardian_counts_as_absent() {
+        // A boss whose guardian was renamed out of the content should wake up rather than wait
+        // forever in a room nobody can finish.
+        let mut program = program(
+            r#"enemy "Boss" {
+                 state sealed { on entities_not_exists(100, "Ghost") -> awake }
+                 state awake { }
+               }"#,
+        );
+        program.resolve(|_| None);
+
+        let mut mind = Mind::new(&program, 1);
+        let mut out = Vec::new();
+        mind.tick(&program, &seeing(&beside(900, 1.0)), 50, &mut out);
+
+        assert_eq!(mind.state_name(&program), "awake");
+    }
+
+    #[test]
+    fn a_damage_condition_counts_only_what_was_taken_in_the_state() {
+        let program = program(
+            r#"enemy "X" {
+                 state a { on damage_taken(100) -> b }
+                 state b { on damage_taken(100) -> c }
+                 state c { }
+               }"#,
+        );
+        let mut mind = Mind::new(&program, 1);
+        let mut out = Vec::new();
+
+        let hit = |amount| Senses {
+            damage_taken: amount,
+            ..alone()
+        };
+
+        mind.tick(&program, &hit(60), 50, &mut out);
+        assert_eq!(mind.state_name(&program), "a");
+        mind.tick(&program, &hit(60), 50, &mut out);
+        assert_eq!(mind.state_name(&program), "b", "a hundred and twenty taken");
+
+        // The count restarts on entering the new state, so the overflow does not carry.
+        mind.tick(&program, &hit(0), 50, &mut out);
+        assert_eq!(
+            mind.state_name(&program),
+            "b",
+            "the tally should have reset"
+        );
+    }
+
+    #[test]
+    fn a_random_wait_lands_inside_its_range() {
+        let program = program(
+            r#"enemy "X" {
+                 state a { on timed_random(2000, 1) -> b }
+                 state b { }
+               }"#,
+        );
+
+        let mut waits = Vec::new();
+        for seed in 1..12 {
+            let mut mind = Mind::new(&program, seed);
+            let mut out = Vec::new();
+            let mut waited = 0;
+
+            while mind.state_name(&program) == "a" && waited < 5_000 {
+                mind.tick(&program, &alone(), 50, &mut out);
+                waited += 50;
+            }
+            waits.push(waited);
+        }
+
+        assert!(
+            waits.iter().all(|held| *held <= 2_050),
+            "never longer than the range: {waits:?}"
+        );
+        assert!(
+            waits.iter().collect::<std::collections::HashSet<_>>().len() > 1,
+            "different seeds should wait different times: {waits:?}"
+        );
+    }
+
+    #[test]
+    fn an_unrandomised_wait_is_exactly_its_time() {
+        let program = program(
+            r#"enemy "X" {
+                 state a { on timed_random(1000, 0) -> b }
+                 state b { }
+               }"#,
+        );
+        let mut mind = Mind::new(&program, 5);
+        let mut out = Vec::new();
+
+        for _ in 0..19 {
+            mind.tick(&program, &alone(), 50, &mut out);
+            assert_eq!(mind.state_name(&program), "a");
+        }
+        mind.tick(&program, &alone(), 50, &mut out);
+        assert_eq!(mind.state_name(&program), "b");
+    }
+
+    #[test]
+    fn a_timed_group_runs_its_children_on_a_period() {
+        let program = program(
+            r#"enemy "X" {
+                 state a {
+                   timed(500) {
+                     shoot(count: 1, fixed_angle: 0, cooldown: 0)
+                   }
+                 }
+               }"#,
+        );
+        let mut mind = Mind::new(&program, 1);
+        let mut out = Vec::new();
+
+        let mut fired = 0;
+        for _ in 0..20 {
+            mind.tick(&program, &alone(), 100, &mut out);
+            fired += out.len();
+        }
+
+        // Two seconds at half a second each.
+        assert!(
+            (4..=5).contains(&fired),
+            "fired {fired} times in two seconds"
+        );
+    }
+
+    #[test]
+    fn healing_others_does_not_spend_its_cooldown_on_nobody() {
+        let program = resolved(
+            r#"enemy "X" { state a { heal_group(10, "Ally", 100, cooldown: 1000) } }"#,
+            &[("Ally", 900)],
+        );
+        let mut mind = Mind::new(&program, 1);
+        let mut out = Vec::new();
+
+        mind.tick(&program, &alone(), 50, &mut out);
+        assert!(out.is_empty(), "nobody to heal");
+
+        // An ally arrives hurt, and is healed at once rather than after a cooldown it never spent.
+        mind.tick(&program, &seeing(&beside(900, 5.0)), 50, &mut out);
+        assert_eq!(out.len(), 1, "{out:?}");
+    }
+
+    #[test]
+    fn healing_skips_anyone_already_at_full_health() {
+        let program = resolved(
+            r#"enemy "X" { state a { heal_group(10, "Ally", 100, cooldown: 1000) } }"#,
+            &[("Ally", 900)],
+        );
+        let mut mind = Mind::new(&program, 1);
+        let mut out = Vec::new();
+
+        let mut whole = beside(900, 5.0);
+        whole[0].hp = whole[0].max_hp;
+
+        mind.tick(&program, &seeing(&whole), 50, &mut out);
+        assert!(out.is_empty(), "nothing needed healing: {out:?}");
+    }
+
+    #[test]
+    fn protecting_something_moves_toward_it_only_when_it_is_far() {
+        let program = resolved(
+            r#"enemy "X" {
+                 state a { protect(1, "Ward", acquire_range: 20, protection_range: 5,
+                                   reprotect_range: 3) }
+               }"#,
+            &[("Ward", 900)],
+        );
+        let mut mind = Mind::new(&program, 1);
+        let mut out = Vec::new();
+
+        mind.tick(&program, &seeing(&beside(900, 2.0)), 50, &mut out);
+        assert!(out.is_empty(), "close enough already");
+
+        mind.tick(&program, &seeing(&beside(900, 12.0)), 50, &mut out);
+        assert!(
+            matches!(out.as_slice(), [Action::Move { .. }]),
+            "should close the distance: {out:?}"
+        );
+
+        mind.tick(&program, &seeing(&beside(900, 40.0)), 50, &mut out);
+        assert!(out.is_empty(), "too far to even see it");
+    }
+
+    #[test]
+    fn a_move_to_stops_when_it_arrives() {
+        let program = program(r#"enemy "X" { state a { move_to(speed: 1, x: 20, y: 10) } }"#);
+        let mut mind = Mind::new(&program, 1);
+        let mut out = Vec::new();
+
+        mind.tick(&program, &alone(), 50, &mut out);
+        assert!(matches!(out.as_slice(), [Action::Move { .. }]));
+
+        // Standing on the target: nothing more to do, and no jitter around it.
+        let arrived = Senses {
+            x: 20.0,
+            y: 10.0,
+            ..alone()
+        };
+        mind.tick(&program, &arrived, 50, &mut out);
+        assert!(out.is_empty(), "{out:?}");
+    }
+
+    #[test]
+    fn the_two_spellings_of_move_to_read_their_arguments_the_right_way_round() {
+        // `MoveTo(speed, x, y)` and `MoveTo2(x, y, speed)` are the same behaviour with the
+        // arguments reversed. Reading one with the other's order sends the enemy to the speed.
+        let first = program(r#"enemy "X" { state a { move_to(1, 20, 30) } }"#);
+        let second = program(r#"enemy "X" { state a { move_to2(20, 30, 1) } }"#);
+
+        let of = |program: &Program| match &first_behaviour(program, "a") {
+            Primitive::MoveTo { x, y, speed } => (*x, *y, *speed),
+            other => panic!("expected a move_to, got {other:?}"),
+        };
+
+        assert_eq!(of(&first), (20.0, 30.0, 1.0));
+        assert_eq!(of(&second), of(&first));
+    }
+
+    #[test]
+    fn removing_entities_is_not_suicide() {
+        // `RemoveEntity(dist, children)` removes other entities. Reading it as a suicide would
+        // have every boss that tidies up its summons kill itself instead.
+        let program = program(r#"enemy "X" { state a { remove_entity(9999, "manager") } }"#);
+
+        let found = first_behaviour(&program, "a");
+        assert!(
+            matches!(found, Primitive::RemoveNearby { .. }),
+            "got {found:?}"
+        );
+    }
+
+    #[test]
+    fn a_death_effect_does_nothing_while_the_entity_lives() {
+        let program = program(r#"enemy "X" { state a { drop_portal_on_death("Somewhere", 1) } }"#);
+        let mut mind = Mind::new(&program, 1);
+        let mut out = Vec::new();
+
+        for _ in 0..20 {
+            mind.tick(&program, &alone(), 50, &mut out);
+            assert!(out.is_empty(), "nothing happens until it dies: {out:?}");
+        }
+
+        assert!(
+            first_behaviour(&program, "a").death_effect().is_some(),
+            "but the effect is there to be read when it does"
+        );
+    }
+
+    #[test]
+    fn resolving_reports_the_names_the_host_does_not_have() {
+        let mut program =
+            program(r#"enemy "X" { state a { order(10, "Real", "go") spawn("Missing") } }"#);
+        let missing = program.resolve(|name| (name == "Real").then_some(900));
+
+        assert_eq!(missing, vec!["Missing"]);
     }
 
     #[test]

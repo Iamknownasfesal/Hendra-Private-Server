@@ -11,6 +11,8 @@
 //! unimplemented cosmetic behaviour costs a whole boss, which is the wrong trade while the runtime
 //! is being filled in.
 
+use std::sync::Arc;
+
 use crate::ast::{self, Behaviours, Call, Item, Value};
 use crate::lex::Span;
 use crate::program::*;
@@ -36,14 +38,57 @@ const KNOWN_BEHAVIOURS: &[&str] = &[
     "orbit",
     "stay_back",
     "stay_close_to_spawn",
+    "stay_above",
     "heal_self",
+    "heal_group",
+    "heal_entity",
+    "heal_player",
     "spawn",
+    "spawn_group",
+    "reproduce",
+    "toss_object",
+    "grenade",
     "suicide",
+    "decay",
+    "conditional_effect",
+    "set_alt_texture",
+    "change_size",
+    "taunt",
+    "order",
+    "transform",
+    "protect",
+    "move_to",
+    "move_line",
+    "back_and_forth",
+    "charge",
+    "swirl",
+    "return_to_spawn",
+    "set_no_x_p",
+    "remove_tile_object",
+    "ground_transform",
+    "transform_on_death",
+    "drop_portal_on_death",
+    "change_ground_on_death",
+    "remove_object_on_death",
+    "order_on_death",
+    "transfer_damage_on_death",
     "prioritize",
+    "timed",
+    "if",
 ];
 
 /// Every transition condition the runtime understands.
-const KNOWN_CONDITIONS: &[&str] = &["timed", "player_within", "no_player_within", "hp_below"];
+const KNOWN_CONDITIONS: &[&str] = &[
+    "timed",
+    "timed_random",
+    "player_within",
+    "no_player_within",
+    "hp_below",
+    "entity_exists",
+    "entity_not_exists",
+    "entities_not_exists",
+    "damage_taken",
+];
 
 /// Compiles a parsed file.
 ///
@@ -60,7 +105,28 @@ pub fn compile(parsed: &Behaviours) -> (Programs, Vec<Diagnostic>) {
     (Programs { programs }, diagnostics)
 }
 
+/// Collects the entity names a program mentions, giving each one an index.
+///
+/// One table per enemy rather than one per file: an enemy is what gets resolved against the
+/// catalog, and a shared table would make every enemy carry every other enemy's names.
+#[derive(Default)]
+pub struct Names {
+    entries: Vec<String>,
+}
+
+impl Names {
+    fn intern(&mut self, name: &str) -> NameRef {
+        let name = name.trim();
+        if let Some(at) = self.entries.iter().position(|held| held == name) {
+            return NameRef(at as u32);
+        }
+        self.entries.push(name.to_string());
+        NameRef((self.entries.len() - 1) as u32)
+    }
+}
+
 fn compile_enemy(enemy: &ast::Enemy, diagnostics: &mut Vec<Diagnostic>) -> Program {
+    let mut interner = Names::default();
     // Flatten the tree first, so transition targets can be resolved to indices.
     let mut states: Vec<CompiledState> = Vec::new();
     flatten(&enemy.root, None, &mut states);
@@ -79,32 +145,50 @@ fn compile_enemy(enemy: &ast::Enemy, diagnostics: &mut Vec<Diagnostic>) -> Progr
         for item in &source.items {
             match item {
                 Item::Behaviour(call) => {
-                    behaviours.push(behaviour(call, diagnostics));
+                    behaviours.push(behaviour(call, &mut interner, diagnostics));
                 }
 
                 Item::Group { call, children } => {
                     let inner: Vec<Primitive> = children
                         .iter()
                         .filter_map(|child| match child {
-                            Item::Behaviour(call) => Some(behaviour(call, diagnostics)),
+                            Item::Behaviour(call) => {
+                                Some(behaviour(call, &mut interner, diagnostics))
+                            }
                             _ => None,
                         })
                         .collect();
 
-                    if call.name == "prioritize" {
-                        behaviours.push(Primitive::Prioritize(inner));
-                    } else {
-                        diagnostics.push(Diagnostic {
-                            message: format!(
-                                "`{}` is not a group; its contents will not run{}",
-                                call.name,
-                                suggestion(&call.name, KNOWN_BEHAVIOURS)
-                            ),
-                            at: call.at,
-                        });
-                        behaviours.push(Primitive::Unsupported {
-                            name: call.name.clone(),
-                        });
+                    match call.name.as_str() {
+                        "prioritize" => behaviours.push(Primitive::Prioritize(inner)),
+
+                        // A timer around a group: everything inside runs together, on a period.
+                        // The C# writes it as `Timed(600, new Shoot(...))`.
+                        "timed" => behaviours.push(Primitive::Every {
+                            period_ms: number(call, "period", 0, 1000.0).max(0.0) as u32,
+                            children: inner,
+                        }),
+
+                        // A guard around a group, which the C# writes as `If(condition, ...)`.
+                        // The condition is the call's first argument.
+                        "if" => behaviours.push(Primitive::When {
+                            condition: Box::new(guard(call, &mut interner, diagnostics)),
+                            children: inner,
+                        }),
+
+                        _ => {
+                            diagnostics.push(Diagnostic {
+                                message: format!(
+                                    "`{}` is not a group; its contents will not run{}",
+                                    call.name,
+                                    suggestion(&call.name, KNOWN_BEHAVIOURS)
+                                ),
+                                at: call.at,
+                            });
+                            behaviours.push(Primitive::Unsupported {
+                                name: call.name.clone(),
+                            });
+                        }
                     }
                 }
 
@@ -116,7 +200,7 @@ fn compile_enemy(enemy: &ast::Enemy, diagnostics: &mut Vec<Diagnostic>) -> Progr
                         continue;
                     };
                     transitions.push(CompiledTransition {
-                        condition: condition(&transition.condition, diagnostics),
+                        condition: condition(&transition.condition, &mut interner, diagnostics),
                         target,
                     });
                 }
@@ -141,6 +225,9 @@ fn compile_enemy(enemy: &ast::Enemy, diagnostics: &mut Vec<Diagnostic>) -> Progr
         name: enemy.name.clone(),
         root: 0,
         slots: slot_base,
+        // Unresolved: the host fills these in at load, when it has a catalog.
+        kinds: vec![None; interner.entries.len()],
+        names: interner.entries,
         states,
         loot: enemy
             .loot
@@ -194,7 +281,153 @@ fn number(call: &Call, name: &str, index: usize, fallback: f64) -> f64 {
         .unwrap_or(fallback)
 }
 
-fn behaviour(call: &Call, diagnostics: &mut Vec<Diagnostic>) -> Primitive {
+/// How far around itself a `reproduce_children` counts its own kind.
+///
+/// The C# form of this behaviour has no radius at all — it counts children it has made. Counting
+/// what is standing nearby needs one, and this is wide enough to cover a room.
+const REPRODUCE_RADIUS: f32 = 15.0;
+
+/// The text of an argument, by name or position.
+fn text<'a>(call: &'a Call, name: &str, index: usize) -> Option<&'a str> {
+    call.argument(name, index).and_then(Value::as_text)
+}
+
+/// An entity name, interned. Missing names become an empty entry rather than a missing one, so a
+/// behaviour that names nothing still compiles and is reported at resolve time.
+fn entity(call: &Call, names: &mut Names, name: &str, index: usize) -> NameRef {
+    names.intern(text(call, name, index).unwrap_or_default())
+}
+
+/// An optional entity name: absent, or empty, means "anything".
+fn maybe_entity(call: &Call, names: &mut Names, name: &str, index: usize) -> Option<NameRef> {
+    let found = text(call, name, index)?.trim();
+    (!found.is_empty()).then(|| names.intern(found))
+}
+
+/// Every string argument from a position onward.
+///
+/// The variadic behaviours put their entity names last, so this is how `order` and the
+/// `entity_not_exists` family read theirs.
+fn text_list(call: &Call, from: usize) -> Vec<&str> {
+    call.arguments
+        .iter()
+        .skip(from)
+        .filter_map(|argument| argument.value.as_text())
+        .filter(|found| !found.trim().is_empty())
+        .collect()
+}
+
+/// A condition effect, by name or by number.
+///
+/// The content writes these both ways — `ConditionEffectIndex.Invulnerable` transpiles to a name,
+/// while a few files use the raw index. Unknown names become `Nothing` rather than refusing, and
+/// the compiler says so.
+fn effect_of(call: &Call, name: &str, index: usize, diagnostics: &mut Vec<Diagnostic>) -> u8 {
+    if let Some(number) = call.argument(name, index).and_then(Value::as_number) {
+        return number.clamp(0.0, 255.0) as u8;
+    }
+
+    let Some(written) = text(call, name, index) else {
+        return 0;
+    };
+
+    match effect_number(written) {
+        Some(found) => found,
+        None => {
+            diagnostics.push(Diagnostic {
+                message: format!("`{written}` is not a condition effect; nothing will be applied"),
+                at: call.at,
+            });
+            0
+        }
+    }
+}
+
+/// The game's effect numbers, which are fixed by the wire format rather than chosen here.
+///
+/// Matched case-insensitively and ignoring separators, because the content writes
+/// `ArmorBroken`, `armor_broken` and `ARMORBROKEN` in different files.
+fn effect_number(written: &str) -> Option<u8> {
+    let tidy: String = written
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .map(|c| c.to_ascii_lowercase())
+        .collect();
+
+    Some(match tidy.as_str() {
+        "dead" => 0,
+        "quiet" => 1,
+        "weak" => 2,
+        "slowed" => 3,
+        "sick" => 4,
+        "dazed" => 5,
+        "stunned" => 6,
+        "blind" => 7,
+        "hallucinating" => 8,
+        "drunk" => 9,
+        "confused" => 10,
+        "stunimmune" => 11,
+        "invisible" => 12,
+        "paralyzed" | "paralysed" => 13,
+        "speedy" => 14,
+        "bleeding" => 15,
+        "armorbreakimmune" => 16,
+        "healing" => 17,
+        "damaging" => 18,
+        "berserk" => 19,
+        "paused" => 20,
+        "stasis" => 21,
+        "stasisimmune" => 22,
+        "invincible" => 23,
+        "invulnerable" => 24,
+        "armored" => 25,
+        "armorbroken" => 26,
+        "hexed" => 27,
+        "ninjaspeedy" => 28,
+        "unstable" => 29,
+        "darkness" => 30,
+        "slowedimmune" => 31,
+        "dazedimmune" => 32,
+        "paralyzeimmune" | "paralyseimmune" => 33,
+        "petrify" | "petrified" => 34,
+        "petrifyimmune" => 35,
+        "petdisable" => 36,
+        "curse" | "cursed" => 37,
+        "curseimmune" => 38,
+        "hpboost" => 39,
+        "nothing" | "none" => 0,
+        _ => return None,
+    })
+}
+
+/// Who a `conditional_effect` lands on.
+fn effect_target(call: &Call) -> EffectTarget {
+    // The C# spells this as a target enum on the behaviour. Anything unrecognised means the entity
+    // itself, which is what the overwhelming majority of uses mean.
+    match text(call, "target", 3)
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("players") | Some("player") => EffectTarget::Players,
+        Some("enemies") | Some("others") | Some("allies") => EffectTarget::Others,
+        _ => EffectTarget::Myself,
+    }
+}
+
+/// A duration written either in seconds or milliseconds.
+///
+/// The C# durations for effects are seconds as floats, and everything else in these files is
+/// milliseconds. A value small enough to be meaningless as milliseconds is read as seconds.
+fn duration_ms(call: &Call, name: &str, index: usize, fallback: f64) -> u32 {
+    let raw = number(call, name, index, fallback);
+    if raw > 0.0 && raw < 60.0 {
+        (raw * 1000.0) as u32
+    } else {
+        raw.max(0.0) as u32
+    }
+}
+
+fn behaviour(call: &Call, names: &mut Names, diagnostics: &mut Vec<Diagnostic>) -> Primitive {
     match call.name.as_str() {
         "shoot" => Primitive::Shoot {
             // The first positional argument in the C# is a radius that nothing reads; count is what
@@ -241,19 +474,302 @@ fn behaviour(call: &Call, diagnostics: &mut Vec<Diagnostic>) -> Primitive {
         },
 
         "spawn" => Primitive::Spawn {
-            child: call
-                .argument("children", 0)
-                .and_then(Value::as_text)
-                .unwrap_or_default()
-                .to_string(),
+            child: entity(call, names, "children", 0),
             max_children: number(call, "max_children", 1, 5.0).max(0.0) as u32,
             cooldown_ms: number(call, "cooldown", 2, 1000.0).max(0.0) as u32,
         },
 
+        // `Reproduce(children, densityRadius, densityMax, coolDown)`.
+        "reproduce" => Primitive::Reproduce {
+            child: entity(call, names, "children", 0),
+            density_radius: number(call, "density_radius", 1, 10.0) as f32,
+            density_max: number(call, "density_max", 2, 5.0).max(0.0) as u32,
+            cooldown_ms: number(call, "cooldown", 3, 1000.0).max(0.0) as u32,
+        },
+
+        // `ReproduceChildren(maxChildren, initialSpawn, coolDown, params children)` — the numbers
+        // come first here and the name last, which is the reverse of `reproduce`.
+        "reproduce_children" => Primitive::Reproduce {
+            child: names.intern(text_list(call, 0).last().copied().unwrap_or_default()),
+            density_radius: REPRODUCE_RADIUS,
+            density_max: number(call, "max_children", 0, 5.0).max(0.0) as u32,
+            cooldown_ms: number(call, "cooldown", 2, 1000.0).max(0.0) as u32,
+        },
+
+        // The C# spells the group form `SpawnGroup(group, max, initial, cooldown)`. A group is a
+        // name like any other here; what it resolves to is the host's problem.
+        "spawn_group" => Primitive::Spawn {
+            child: entity(call, names, "group", 0),
+            max_children: number(call, "max_children", 1, 5.0).max(0.0) as u32,
+            cooldown_ms: number(call, "cooldown", 3, 1000.0).max(0.0) as u32,
+        },
+
+        "toss_object" => Primitive::TossObject {
+            child: entity(call, names, "child", 0),
+            // Written `range` rather than `radius` in every real use.
+            radius: number(call, "range", 1, 5.0) as f32,
+            fixed_angle: call
+                .named("angle")
+                .and_then(Value::as_number)
+                .map(|degrees| degrees as f32),
+            cooldown_ms: number(call, "cooldown", 3, 1000.0).max(0.0) as u32,
+            // The telegraph. Without it a thrown object is an unavoidable hit, which is the
+            // difference between a hard fight and an unfair one.
+            warning_ms: number(call, "throw_delay", 9, 800.0).max(0.0) as u32,
+        },
+
+        "grenade" => Primitive::Grenade {
+            radius: number(call, "radius", 0, 2.0) as f32,
+            damage: number(call, "damage", 1, 100.0) as i32,
+            range: number(call, "range", 2, 5.0) as f32,
+            cooldown_ms: number(call, "cooldown", 3, 1000.0).max(0.0) as u32,
+            effect: call
+                .named("effect")
+                .map(|_| effect_of(call, "effect", usize::MAX, diagnostics)),
+            effect_ms: duration_ms(call, "effect_duration", usize::MAX, 0.0),
+        },
+
         "suicide" => Primitive::Suicide,
 
-        // A `prioritize` written without a block has nothing to prioritise.
+        // `RemoveEntity(dist, children)` removes *other* entities rather than itself. Reading it
+        // as a suicide would have made every boss that tidies up its summons kill itself instead.
+        "remove_entity" => Primitive::RemoveNearby {
+            radius: number(call, "radius", 0, 10.0) as f32,
+            kind: maybe_entity(call, names, "children", 1),
+        },
+
+        "decay" => Primitive::Decay {
+            // A written zero means the argument was elided rather than that it should vanish at
+            // once, which is what the C# default of ten seconds says.
+            after_ms: match number(call, "duration", 0, 0.0).max(0.0) as u32 {
+                0 => 10_000,
+                given => given,
+            },
+        },
+
+        "conditional_effect" => Primitive::ConditionalEffect {
+            effect: effect_of(call, "effect", 0, diagnostics),
+            // Zero means "for as long as this state lasts". `perm` says the same thing in the
+            // content's own words, and is how nearly every use of this is written.
+            duration_ms: if call.named("perm").is_some() {
+                0
+            } else {
+                duration_ms(call, "duration", 1, 0.0)
+            },
+            target: effect_target(call),
+            radius: number(call, "range", 2, 0.0) as f32,
+        },
+
+        "set_alt_texture" => Primitive::SetAltTexture {
+            index: number(call, "index", 0, 0.0).clamp(0.0, 255.0) as u8,
+        },
+
+        "change_size" => Primitive::ChangeSize {
+            rate: number(call, "rate", 0, 0.0) as f32,
+            target: number(call, "target", 1, 100.0).clamp(0.0, 65_535.0) as u16,
+        },
+
+        "taunt" => {
+            // Every string argument is a line it might say; the numbers around them are the
+            // probability and the cooldown.
+            let lines: Vec<Arc<str>> = text_list(call, 0)
+                .into_iter()
+                .map(|line| Arc::from(line.trim()))
+                .collect();
+
+            Primitive::Taunt {
+                probability: {
+                    let raw = number(call, "probability", usize::MAX, 1.0) as f32;
+                    if raw > 1.0 { raw / 100.0 } else { raw }.clamp(0.0, 1.0)
+                },
+                cooldown_ms: number(call, "cooldown", usize::MAX, 5_000.0).max(0.0) as u32,
+                broadcast: call
+                    .named("broadcast")
+                    .and_then(Value::as_number)
+                    .is_some_and(|value| value != 0.0),
+                lines,
+            }
+        }
+
+        "order" => Primitive::Order {
+            radius: number(call, "range", 0, 10.0) as f32,
+            kind: maybe_entity(call, names, "children", 1),
+            state: Arc::from(text(call, "target_state", 2).unwrap_or_default().trim()),
+        },
+
+        "transform" => Primitive::Transform {
+            into: entity(call, names, "target", 0),
+        },
+
+        "protect" => Primitive::Protect {
+            speed: number(call, "speed", 0, 1.0) as f32,
+            protectee: entity(call, names, "protectee", 1),
+            acquire_range: number(call, "acquire_range", 2, 10.0) as f32,
+            protect_range: number(call, "protection_range", 3, 4.0) as f32,
+            reprotect_range: number(call, "reprotect_range", 4, 2.0) as f32,
+        },
+
+        "heal_group" => Primitive::HealOthers {
+            radius: number(call, "range", 0, 10.0) as f32,
+            amount: number(call, "amount", 2, 100.0) as i32,
+            kind: maybe_entity(call, names, "group", 1),
+            players: false,
+            cooldown_ms: number(call, "cooldown", 3, 1000.0).max(0.0) as u32,
+        },
+
+        "heal_entity" => Primitive::HealOthers {
+            radius: number(call, "range", 0, 10.0) as f32,
+            amount: number(call, "amount", 2, 100.0) as i32,
+            kind: maybe_entity(call, names, "name", 1),
+            players: false,
+            cooldown_ms: number(call, "cooldown", 3, 1000.0).max(0.0) as u32,
+        },
+
+        "heal_player" => Primitive::HealOthers {
+            radius: number(call, "range", 0, 10.0) as f32,
+            amount: number(call, "amount", 1, 100.0) as i32,
+            kind: None,
+            players: true,
+            cooldown_ms: number(call, "cooldown", 2, 1000.0).max(0.0) as u32,
+        },
+
+        // `MoveTo(speed, x, y)`.
+        "move_to" => Primitive::MoveTo {
+            x: number(call, "x", 1, 0.0) as f32,
+            y: number(call, "y", 2, 0.0) as f32,
+            speed: number(call, "speed", 0, 1.0) as f32,
+        },
+
+        // `MoveTo2(x, y, speed)` — the same behaviour with the arguments the other way round.
+        "move_to2" => Primitive::MoveTo {
+            x: number(call, "x", 0, 0.0) as f32,
+            y: number(call, "y", 1, 0.0) as f32,
+            speed: number(call, "speed", 2, 2.0) as f32,
+        },
+
+        "move_line" => Primitive::MoveLine {
+            speed: number(call, "speed", 0, 1.0) as f32,
+            angle: number(call, "direction", 1, 0.0) as f32,
+        },
+
+        "back_and_forth" => Primitive::BackAndForth {
+            speed: number(call, "speed", 0, 1.0) as f32,
+            distance: number(call, "distance", 1, 5.0) as f32,
+        },
+
+        "charge" => Primitive::Charge {
+            speed: number(call, "speed", 0, 1.0) as f32,
+            range: number(call, "range", 1, 10.0) as f32,
+            cooldown_ms: number(call, "cooldown", 2, 1000.0).max(0.0) as u32,
+        },
+
+        "swirl" => Primitive::Swirl {
+            speed: number(call, "speed", 0, 1.0) as f32,
+            radius: number(call, "radius", 1, 5.0) as f32,
+            targeted: call
+                .argument("targeted", 2)
+                .and_then(Value::as_number)
+                .is_some_and(|value| value != 0.0),
+        },
+
+        "return_to_spawn" => Primitive::ReturnToSpawn {
+            speed: number(call, "speed", 0, 1.0) as f32,
+            tolerance: number(call, "tolerance", 1, 0.5) as f32,
+        },
+
+        "stay_above" => Primitive::StayAbove {
+            speed: number(call, "speed", 0, 1.0) as f32,
+            altitude: number(call, "altitude", 1, 5.0) as f32,
+        },
+
+        "set_no_x_p" => Primitive::NoExperience,
+
+        "remove_tile_object" => Primitive::RemoveNearby {
+            radius: number(call, "radius", 1, 1.0) as f32,
+            kind: maybe_entity(call, names, "target", 0),
+        },
+
+        // `GroundTransform(tileId, radius, ...)`.
+        "ground_transform" | "apply_setpiece" => Primitive::GroundTransform {
+            tile: entity(call, names, "tile", 0),
+            radius: number(call, "radius", 1, 1.0) as f32,
+            cooldown_ms: number(call, "cooldown", 2, 0.0).max(0.0) as u32,
+        },
+
+        // `ReplaceTile(objName, replacedObjName, range)` — the *second* name is what the ground
+        // becomes. Taking the first would replace the ground with what was already there.
+        "replace_tile" => Primitive::GroundTransform {
+            tile: names.intern(text_list(call, 0).get(1).copied().unwrap_or_default()),
+            radius: number(call, "range", 0, 1.0) as f32,
+            cooldown_ms: 0,
+        },
+
+        // -- what happens at death ------------------------------------------------------------
+
+        // `TransformOnDeath(target, min, max, probability)`.
+        "transform_on_death" => Primitive::OnDeath(Box::new(DeathEffect::TransformInto {
+            child: entity(call, names, "target", 0),
+        })),
+
+        "drop_portal_on_death" | "realm_portal_drop" => {
+            Primitive::OnDeath(Box::new(DeathEffect::Portal {
+                name: entity(call, names, "target", 0),
+                probability: {
+                    let raw = number(call, "probability", 1, 1.0) as f32;
+                    if raw > 1.0 { raw / 100.0 } else { raw }.clamp(0.0, 1.0)
+                },
+                duration_ms: number(call, "timeout", 2, 30_000.0).max(0.0) as u32,
+            }))
+        }
+
+        // `ChangeGroundOnDeath(groundToChange, changeTo, dist)` — again the second name is what
+        // the ground becomes, falling back to the only name when just one was written.
+        "change_ground_on_death" => Primitive::OnDeath(Box::new(DeathEffect::ChangeGround {
+            tile: {
+                let written = text_list(call, 0);
+                names.intern(
+                    written
+                        .get(1)
+                        .or_else(|| written.first())
+                        .copied()
+                        .unwrap_or_default(),
+                )
+            },
+            radius: number(call, "radius", 0, 1.0) as f32,
+        })),
+
+        "remove_object_on_death" => Primitive::OnDeath(Box::new(DeathEffect::RemoveObjects {
+            radius: number(call, "radius", 1, 10.0) as f32,
+            kind: maybe_entity(call, names, "target", 0),
+        })),
+
+        "order_on_death" => Primitive::OnDeath(Box::new(DeathEffect::Order {
+            radius: number(call, "range", 0, 10.0) as f32,
+            kind: maybe_entity(call, names, "children", 1),
+            state: Arc::from(text(call, "target_state", 2).unwrap_or_default().trim()),
+        })),
+
+        // `TransferDamageOnDeath(target, radius)` — name first, radius second.
+        "transfer_damage_on_death" | "copy_damage_on_death" => {
+            Primitive::OnDeath(Box::new(DeathEffect::TransferDamage {
+                radius: number(call, "radius", 1, 50.0) as f32,
+                kind: maybe_entity(call, names, "target", 0),
+            }))
+        }
+
+        // A `prioritize` written without a block has nothing to prioritise, and the same is true
+        // of the other two group forms.
         "prioritize" => Primitive::Prioritize(Vec::new()),
+        "timed" => Primitive::Every {
+            period_ms: number(call, "period", 0, 1000.0).max(0.0) as u32,
+            children: Vec::new(),
+        },
+        "if" => Primitive::When {
+            condition: Box::new(Condition::Unsupported {
+                name: "if".to_string(),
+            }),
+            children: Vec::new(),
+        },
 
         other => {
             diagnostics.push(Diagnostic {
@@ -270,7 +786,29 @@ fn behaviour(call: &Call, diagnostics: &mut Vec<Diagnostic>) -> Primitive {
     }
 }
 
-fn condition(call: &Call, diagnostics: &mut Vec<Diagnostic>) -> Condition {
+/// The condition guarding an `if` group, which the C# writes as the call's first argument.
+fn guard(call: &Call, names: &mut Names, diagnostics: &mut Vec<Diagnostic>) -> Condition {
+    // The transpiler flattens the guard into this call's arguments, so an `if` whose guard did not
+    // survive is one that should not run its children rather than one that always does.
+    let Some(inner) = call
+        .arguments
+        .first()
+        .and_then(|argument| argument.value.as_text())
+    else {
+        return Condition::Unsupported {
+            name: "if".to_string(),
+        };
+    };
+
+    let rebuilt = Call {
+        name: inner.to_string(),
+        arguments: call.arguments.iter().skip(1).cloned().collect(),
+        at: call.at,
+    };
+    condition(&rebuilt, names, diagnostics)
+}
+
+fn condition(call: &Call, names: &mut Names, diagnostics: &mut Vec<Diagnostic>) -> Condition {
     match call.name.as_str() {
         "timed" => Condition::Timed {
             after_ms: number(call, "after", 0, 1000.0).max(0.0) as u32,
@@ -290,6 +828,52 @@ fn condition(call: &Call, diagnostics: &mut Vec<Diagnostic>) -> Condition {
                 let raw = number(call, "fraction", 0, 0.5) as f32;
                 if raw > 1.0 { raw / 100.0 } else { raw }
             },
+        },
+
+        // `EntityExistsTransition(target, dist, targetState)` — the name comes first and the
+        // radius second, which is the opposite way round from the plural form below.
+        "entity_exists" | "entity_count_greater_than" => Condition::EntityWithin {
+            kind: names.intern(text_list(call, 0).first().copied().unwrap_or_default()),
+            radius: number(call, "radius", 1, 10.0) as f32,
+        },
+
+        // `EntityNotExistsTransition(target, dist, targetState)`. Singular: name first.
+        "entity_not_exists" => Condition::NoneWithin {
+            kinds: text_list(call, 0)
+                .into_iter()
+                .map(|found| names.intern(found))
+                .collect(),
+            radius: number(call, "radius", 1, 10.0) as f32,
+        },
+
+        // `EntitiesNotExistsTransition(dist, targetState, params targets)`. Plural: radius first,
+        // then the names. The two forms really are ordered differently, and reading one with the
+        // other's order gives a radius of ten where the content asked for a hundred.
+        "entities_not_exists" => Condition::NoneWithin {
+            kinds: text_list(call, 0)
+                .into_iter()
+                .map(|found| names.intern(found))
+                .collect(),
+            radius: number(call, "radius", 0, 10.0) as f32,
+        },
+
+        // `TimedRandomTransition(time, randomized)`: the wait is drawn from zero to `time` when
+        // randomized, and is exactly `time` when not. Not a min and a max.
+        "timed_random" => {
+            let time = number(call, "time", 0, 1000.0).max(0.0) as u32;
+            let randomized = call
+                .argument("randomized", 1)
+                .and_then(Value::as_number)
+                .is_some_and(|value| value != 0.0);
+
+            Condition::TimedRandom {
+                min_ms: if randomized { 0 } else { time },
+                max_ms: time,
+            }
+        }
+
+        "damage_taken" => Condition::DamageTaken {
+            amount: number(call, "amount", 0, 1.0).max(0.0) as i32,
         },
 
         other => {

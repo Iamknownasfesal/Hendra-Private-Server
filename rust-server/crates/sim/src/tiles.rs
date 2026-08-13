@@ -36,6 +36,19 @@ impl BitGrid {
         self.words[bit / 64] |= 1u64 << (bit % 64);
     }
 
+    fn put(&mut self, x: u32, y: u32, on: bool) {
+        let bit = self.at(x, y);
+        if on {
+            self.words[bit / 64] |= 1u64 << (bit % 64);
+        } else {
+            self.words[bit / 64] &= !(1u64 << (bit % 64));
+        }
+    }
+
+    fn clear_bit(&mut self, x: u32, y: u32) {
+        self.put(x, y, false);
+    }
+
     #[inline]
     fn get(&self, x: u32, y: u32) -> bool {
         let bit = self.at(x, y);
@@ -183,6 +196,39 @@ impl Terrain {
     #[inline]
     pub fn walkable(&self, x: u32, y: u32) -> bool {
         self.contains(x, y) && self.walkable.get(x, y)
+    }
+
+    /// Changes what one square is, for behaviours that reshape the ground.
+    ///
+    /// The blocker regions are rebuilt for the square's own region rather than for the whole map,
+    /// because a boss paving a floor does it a square at a time and rebuilding everything each
+    /// time would cost more than the tick has.
+    pub fn set_square(&mut self, x: u32, y: u32, walkable: bool, blocks_sight: bool) {
+        if !self.contains(x, y) {
+            return;
+        }
+
+        self.walkable.put(x, y, walkable);
+        self.blocks_sight.put(x, y, blocks_sight);
+
+        if blocks_sight {
+            self.blocker_regions.set(x / REGION, y / REGION);
+        } else {
+            self.rebuild_region(x / REGION, y / REGION);
+        }
+    }
+
+    /// Recomputes whether one coarse region contains anything that blocks sight.
+    fn rebuild_region(&mut self, region_x: u32, region_y: u32) {
+        let (from_x, from_y) = (region_x * REGION, region_y * REGION);
+        for y in from_y..(from_y + REGION).min(self.height) {
+            for x in from_x..(from_x + REGION).min(self.width) {
+                if self.blocks_sight.get(x, y) {
+                    return;
+                }
+            }
+        }
+        self.blocker_regions.clear_bit(region_x, region_y);
     }
 
     /// Whether a square stops sight passing through it.

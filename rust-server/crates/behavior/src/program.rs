@@ -14,12 +14,14 @@
 //!    can see)     machine)            should do)
 //! ```
 
+use std::sync::Arc;
+
 /// What a behaviour can perceive.
 ///
 /// Deliberately small. Every field here is something the simulation must compute for every enemy
 /// every tick, so each one has to earn its place.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Senses {
+pub struct Senses<'a> {
     pub x: f32,
     pub y: f32,
 
@@ -32,6 +34,38 @@ pub struct Senses {
 
     /// The closest player, and how far away they are.
     pub nearest_player: Option<Nearby>,
+
+    /// Everything else in sight.
+    ///
+    /// Needed because a great many behaviours are about other entities rather than about players:
+    /// waiting for the guardians to die, ordering minions into a state, healing whatever is
+    /// standing nearby. Borrowed rather than owned so a tick allocates nothing.
+    pub nearby: &'a [Neighbour],
+
+    /// Damage taken since the last tick, for transitions that react to being hit.
+    pub damage_taken: i32,
+}
+
+/// Another entity, as a behaviour sees it.
+///
+/// `kind` is opaque here: this crate has no catalog and no opinion about what an object type
+/// means. The host resolves names to types once at load and compares numbers thereafter, so
+/// nothing in the tick loop is ever a string comparison.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Neighbour {
+    pub kind: u16,
+
+    /// Opaque to this crate, so an action can name this entity back to the host.
+    pub id: u32,
+
+    pub x: f32,
+    pub y: f32,
+    pub distance: f32,
+
+    pub hp: i32,
+    pub max_hp: i32,
+
+    pub player: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -41,12 +75,27 @@ pub struct Nearby {
     pub distance: f32,
 }
 
-impl Senses {
+impl Senses<'_> {
     pub fn health_fraction(&self) -> f32 {
         if self.max_hp <= 0 {
             return 1.0;
         }
         (self.hp as f32 / self.max_hp as f32).clamp(0.0, 1.0)
+    }
+
+    /// Whether anything of this kind is within a radius.
+    pub fn any_within(&self, kind: u16, radius: f32) -> bool {
+        self.nearby
+            .iter()
+            .any(|other| other.kind == kind && other.distance <= radius)
+    }
+
+    /// The closest entity of a kind within a radius.
+    pub fn nearest_of(&self, kind: u16, radius: f32) -> Option<&Neighbour> {
+        self.nearby
+            .iter()
+            .filter(|other| other.kind == kind && other.distance <= radius)
+            .min_by(|a, b| a.distance.total_cmp(&b.distance))
     }
 }
 
@@ -74,12 +123,119 @@ pub enum Action {
 
     /// Ask the world to create children.
     Spawn {
-        child: String,
+        child: NameRef,
         count: u32,
+
+        /// Where, relative to the entity. Zero for "on top of me".
+        offset_x: f32,
+        offset_y: f32,
+
+        /// The state the children start in, when they should not start at their own beginning.
+        state: Option<Arc<str>>,
     },
 
     /// Remove this entity without it counting as a kill.
     Vanish,
+
+    /// Apply a condition effect. `target` decides to whom.
+    Effect {
+        /// The host's effect number. Opaque here, as entity kinds are.
+        effect: u8,
+        duration_ms: u32,
+        radius: f32,
+        target: EffectTarget,
+    },
+
+    /// Change which sprite is drawn, for bosses that visibly change phase.
+    Texture {
+        index: u8,
+    },
+
+    /// Grow or shrink toward a size, in hundredths.
+    Resize {
+        /// Change per second. Negative shrinks.
+        rate: f32,
+        target: u16,
+    },
+
+    /// Say something. Bosses announce their phases, and it is how a fight is legible.
+    Say {
+        text: Arc<str>,
+
+        /// Heard across the world rather than only nearby.
+        broadcast: bool,
+    },
+
+    /// Become a different entity, keeping position but not health.
+    Transform {
+        into: NameRef,
+    },
+
+    /// Tell nearby entities of a kind to enter a state.
+    ///
+    /// This is how a boss drives its minions, and it is the second most used behaviour in the
+    /// game's content. `kind` of `None` means every entity in range.
+    Order {
+        radius: f32,
+        kind: Option<NameRef>,
+        state: Arc<str>,
+    },
+
+    /// Heal others rather than self.
+    HealOthers {
+        radius: f32,
+        amount: i32,
+
+        /// `None` heals anything, which is what the group forms of this do.
+        kind: Option<NameRef>,
+
+        /// Whether players are healed rather than other enemies.
+        players: bool,
+    },
+
+    /// Damage everything in a circle, some distance away.
+    Grenade {
+        offset_x: f32,
+        offset_y: f32,
+        radius: f32,
+        damage: i32,
+        effect: Option<u8>,
+        effect_ms: u32,
+    },
+
+    /// Put a portal down. Used on death, so a dungeon has a way in.
+    Portal {
+        name: NameRef,
+        duration_ms: u32,
+    },
+
+    /// Replace the ground in a circle.
+    Ground {
+        tile: NameRef,
+        radius: f32,
+    },
+
+    /// Stop this entity awarding experience, for summons that would otherwise farm it.
+    NoExperience,
+
+    /// Remove other entities of a kind nearby, for bosses that clean up their own summons.
+    RemoveNearby {
+        radius: f32,
+        kind: Option<NameRef>,
+    },
+}
+
+/// Who an effect lands on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EffectTarget {
+    /// The entity running the behaviour.
+    Myself,
+
+    /// Players within the radius.
+    Players,
+
+    /// Other entities within the radius.
+    Others,
 }
 
 /// One thing an enemy does.
@@ -127,13 +283,194 @@ pub enum Primitive {
     },
 
     Spawn {
-        child: String,
+        child: NameRef,
         max_children: u32,
         cooldown_ms: u32,
     },
 
+    /// Spawn children only while few enough of them are already nearby.
+    ///
+    /// Different from [`Primitive::Spawn`] in what bounds it: this counts what is actually in the
+    /// world rather than what this entity remembers making, so killing the children lets it make
+    /// more and its own death does not leak a count.
+    Reproduce {
+        child: NameRef,
+        density_radius: f32,
+        density_max: u32,
+        cooldown_ms: u32,
+    },
+
+    /// Throw something to a spot, rather than dropping it underfoot.
+    TossObject {
+        child: NameRef,
+        radius: f32,
+        /// `None` throws toward whoever is nearest.
+        fixed_angle: Option<f32>,
+        cooldown_ms: u32,
+        /// How long the ground is marked before the object lands.
+        warning_ms: u32,
+    },
+
+    /// An explosion at a distance, which is how most telegraphed attacks are written.
+    Grenade {
+        radius: f32,
+        damage: i32,
+        range: f32,
+        cooldown_ms: u32,
+        effect: Option<u8>,
+        effect_ms: u32,
+    },
+
     /// Remove the entity. Used by summons that expire.
     Suicide,
+
+    /// Remove the entity after a time, without it counting as a kill.
+    Decay {
+        after_ms: u32,
+    },
+
+    /// Hold a condition effect for as long as the state lasts.
+    ///
+    /// The most used behaviour in the game's content by a wide margin — it is how anything is made
+    /// invulnerable, paralysed, or invisible for a phase.
+    ConditionalEffect {
+        effect: u8,
+        duration_ms: u32,
+        target: EffectTarget,
+        radius: f32,
+    },
+
+    /// Change the sprite drawn, so a phase change is visible.
+    SetAltTexture {
+        index: u8,
+    },
+
+    ChangeSize {
+        rate: f32,
+        target: u16,
+    },
+
+    /// Say something, occasionally.
+    Taunt {
+        lines: Vec<Arc<str>>,
+        probability: f32,
+        cooldown_ms: u32,
+        broadcast: bool,
+    },
+
+    /// Drive other entities into a state. The second most used behaviour there is.
+    Order {
+        radius: f32,
+        /// `None` orders everything in range.
+        kind: Option<NameRef>,
+        state: Arc<str>,
+    },
+
+    /// Become something else.
+    Transform {
+        into: NameRef,
+    },
+
+    /// Stay near a named entity, and interpose.
+    Protect {
+        speed: f32,
+        protectee: NameRef,
+        acquire_range: f32,
+        protect_range: f32,
+        reprotect_range: f32,
+    },
+
+    /// Heal others rather than self.
+    HealOthers {
+        radius: f32,
+        amount: i32,
+        /// `None` heals anything nearby.
+        kind: Option<NameRef>,
+        players: bool,
+        cooldown_ms: u32,
+    },
+
+    /// Run to a fixed point, in world coordinates.
+    MoveTo {
+        x: f32,
+        y: f32,
+        speed: f32,
+    },
+
+    /// Head in a fixed direction, for a distance.
+    MoveLine {
+        speed: f32,
+        angle: f32,
+    },
+
+    /// Pace between two points either side of the spawn.
+    BackAndForth {
+        speed: f32,
+        distance: f32,
+    },
+
+    /// Rush the nearest player, then rest.
+    Charge {
+        speed: f32,
+        range: f32,
+        cooldown_ms: u32,
+    },
+
+    /// Circle outward and back, which is what the game's spiral attacks are made of.
+    Swirl {
+        speed: f32,
+        radius: f32,
+        /// Whether the circle is centred on a player rather than on the spawn.
+        targeted: bool,
+    },
+
+    /// Walk back to where it started.
+    ReturnToSpawn {
+        speed: f32,
+        /// How close is close enough to stop.
+        tolerance: f32,
+    },
+
+    /// Keep at least this far from the nearest player, without fleeing further.
+    StayAbove {
+        speed: f32,
+        altitude: f32,
+    },
+
+    /// Stop awarding experience.
+    NoExperience,
+
+    /// Remove nearby entities of a kind.
+    RemoveNearby {
+        radius: f32,
+        kind: Option<NameRef>,
+    },
+
+    /// Replace the ground in a circle.
+    GroundTransform {
+        tile: NameRef,
+        radius: f32,
+        cooldown_ms: u32,
+    },
+
+    /// Something that happens when the entity dies rather than while it lives.
+    ///
+    /// Held as one primitive with a payload rather than as a dozen, because they share everything
+    /// except what they do: none of them run during a tick, all of them run exactly once, and the
+    /// world reaches for them at the same moment.
+    OnDeath(Box<DeathEffect>),
+
+    /// Run children together on a period.
+    Every {
+        period_ms: u32,
+        children: Vec<Primitive>,
+    },
+
+    /// Run children only while a condition holds.
+    When {
+        condition: Box<Condition>,
+        children: Vec<Primitive>,
+    },
 
     /// Run the first child that wants to act, and no others.
     ///
@@ -154,12 +491,55 @@ impl Primitive {
     /// How many cooldown slots this primitive needs, counting its children.
     pub fn slots(&self) -> usize {
         match self {
-            Primitive::Prioritize(children) => {
+            Primitive::Prioritize(children)
+            | Primitive::Every { children, .. }
+            | Primitive::When { children, .. } => {
                 1 + children.iter().map(Primitive::slots).sum::<usize>()
             }
             _ => 1,
         }
     }
+
+    /// Whatever this does when the entity dies, if anything.
+    pub fn death_effect(&self) -> Option<&DeathEffect> {
+        match self {
+            Primitive::OnDeath(effect) => Some(effect),
+            _ => None,
+        }
+    }
+}
+
+/// What an entity does as it dies.
+#[derive(Debug, Clone, PartialEq)]
+pub enum DeathEffect {
+    /// Leave something behind in its place.
+    Spawn { child: NameRef, count: u32 },
+
+    /// Become something else rather than dying.
+    TransformInto { child: NameRef },
+
+    /// Drop a way into somewhere.
+    Portal {
+        name: NameRef,
+        probability: f32,
+        duration_ms: u32,
+    },
+
+    /// Change the ground where it stood.
+    ChangeGround { tile: NameRef, radius: f32 },
+
+    /// Remove other entities of a kind, so a boss takes its summons with it.
+    RemoveObjects { radius: f32, kind: Option<NameRef> },
+
+    /// Drive whatever survives into a state.
+    Order {
+        radius: f32,
+        kind: Option<NameRef>,
+        state: Arc<str>,
+    },
+
+    /// Pass this entity's remaining health onto others as damage.
+    TransferDamage { radius: f32, kind: Option<NameRef> },
 }
 
 /// When a state gives way to another.
@@ -180,6 +560,32 @@ pub enum Condition {
     /// Health at or below this fraction of the maximum.
     HpBelow {
         fraction: f32,
+    },
+
+    /// Something of this kind is within the radius.
+    EntityWithin {
+        kind: NameRef,
+        radius: f32,
+    },
+
+    /// Nothing of any of these kinds is within the radius.
+    ///
+    /// Plural because that is how the content uses it: "when every guardian is dead". Held as a
+    /// list rather than as several transitions because all of them must be absent at once.
+    NoneWithin {
+        kinds: Vec<NameRef>,
+        radius: f32,
+    },
+
+    /// After a time drawn once from a range, so a group entering together does not leave together.
+    TimedRandom {
+        min_ms: u32,
+        max_ms: u32,
+    },
+
+    /// This much damage has been taken since entering the state.
+    DamageTaken {
+        amount: i32,
     },
 
     /// A condition the runtime does not implement. Never fires, and is reported at load.
@@ -215,6 +621,19 @@ pub struct CompiledState {
     pub slot_base: usize,
 }
 
+/// A reference to an entity name, resolved once at load.
+///
+/// An index rather than a string, because these are compared every tick against every neighbour
+/// and a string comparison there would be the most expensive thing in the loop.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct NameRef(pub u32);
+
+impl NameRef {
+    pub fn index(self) -> usize {
+        self.0 as usize
+    }
+}
+
 /// One enemy's compiled behaviour.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {
@@ -223,6 +642,16 @@ pub struct Program {
     pub root: usize,
     pub slots: usize,
     pub loot: Vec<LootEntry>,
+
+    /// Every entity name the behaviours mention, interned.
+    ///
+    /// Kept as text because this crate cannot resolve them: it has no catalog and is deliberately
+    /// testable without one. The host calls [`Program::resolve`] once at load.
+    pub names: Vec<String>,
+
+    /// What the host resolved each name to. `None` for a name it does not have, which is a content
+    /// problem worth reporting rather than a reason to refuse the enemy.
+    pub kinds: Vec<Option<u16>>,
 }
 
 /// One entry in a loot table.
@@ -238,6 +667,37 @@ pub enum LootEntry {
 impl Program {
     pub fn state(&self, index: usize) -> Option<&CompiledState> {
         self.states.get(index)
+    }
+
+    /// Turns every name the behaviours mention into the host's own type.
+    ///
+    /// Called once at load. Returns the names the host did not recognise, so a content directory
+    /// missing an enemy is a line in a log rather than a boss that silently never wakes up.
+    ///
+    /// The unknown names are owned rather than borrowed, so the caller can still read the program
+    /// it just resolved — reporting which enemy has the problem needs its name.
+    pub fn resolve(&mut self, mut lookup: impl FnMut(&str) -> Option<u16>) -> Vec<String> {
+        self.kinds = self.names.iter().map(|name| lookup(name)).collect();
+
+        self.names
+            .iter()
+            .zip(&self.kinds)
+            .filter(|(_, kind)| kind.is_none())
+            .map(|(name, _)| name.clone())
+            .collect()
+    }
+
+    /// What a name resolved to, or `None` if it was never resolved or is not known.
+    pub fn kind_of(&self, name: NameRef) -> Option<u16> {
+        self.kinds.get(name.index()).copied().flatten()
+    }
+
+    /// The text behind a name reference, for diagnostics.
+    pub fn text_of(&self, name: NameRef) -> &str {
+        self.names
+            .get(name.index())
+            .map(String::as_str)
+            .unwrap_or("")
     }
 
     pub fn state_named(&self, name: &str) -> Option<usize> {

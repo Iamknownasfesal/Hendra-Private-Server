@@ -400,6 +400,11 @@ mod tests {
             container: None,
             expires_in_ms: None,
             dead: false,
+            damage_since_tick: 0,
+            texture: 0,
+            resizing: None,
+            no_experience: false,
+            effects: Vec::new(),
         }
     }
 

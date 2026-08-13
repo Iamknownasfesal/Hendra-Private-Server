@@ -16,7 +16,9 @@
 //!
 //! Snapshots are taken after all of that, per player, from the index.
 
-use hendra_behavior::program::{Action, Nearby, Programs, Senses};
+use hendra_behavior::program::{
+    Action, DeathEffect, EffectTarget, Nearby, Neighbour, Program, Programs, Senses,
+};
 use hendra_behavior::run::Mind;
 use hendra_content::{Catalog, ConditionSet, ObjectType};
 use hendra_net::{EntityId, EntityState, Tick, WorldSnapshot};
@@ -97,6 +99,27 @@ pub struct Entity {
 
     /// Set when the entity should be removed at the end of the tick.
     pub dead: bool,
+
+    /// Damage taken since the last time this entity thought, for transitions that react to being
+    /// hurt. Cleared once read, so a hit counts toward exactly one tick.
+    pub damage_since_tick: i32,
+
+    /// Which sprite to draw, for bosses that visibly change phase.
+    pub texture: u8,
+
+    /// The size this entity is growing or shrinking toward, and how fast, in hundredths per
+    /// second. `None` when it is not changing.
+    pub resizing: Option<(f32, u16)>,
+
+    /// Whether killing this awards experience. Summons set this so they cannot be farmed.
+    pub no_experience: bool,
+
+    /// Effects currently held, and how long each has left.
+    ///
+    /// A list rather than an array indexed by effect number: there are forty effects and almost
+    /// every entity has none, so forty timers each would be a hundred and sixty bytes per entity
+    /// to hold nothing. An empty `Vec` allocates nothing.
+    pub effects: Vec<(u8, u32)>,
 }
 
 impl Entity {
@@ -123,6 +146,11 @@ impl Entity {
             container: None,
             expires_in_ms: None,
             dead: false,
+            damage_since_tick: 0,
+            texture: 0,
+            resizing: None,
+            no_experience: false,
+            effects: Vec::new(),
         }
     }
 
@@ -148,6 +176,11 @@ impl Entity {
             container: None,
             expires_in_ms: None,
             dead: false,
+            damage_since_tick: 0,
+            texture: 0,
+            resizing: None,
+            no_experience: false,
+            effects: Vec::new(),
         }
     }
 
@@ -233,6 +266,22 @@ pub struct World {
     /// Reused between ticks so a warm world allocates nothing.
     handles: Vec<Handle>,
     nearby: Vec<Handle>,
+
+    /// What entities have said, waiting to be sent out.
+    ///
+    /// Bounded, because nothing in the simulation makes a taunt stop: a boss left alive in an
+    /// empty room talks to itself indefinitely, and a queue nobody drains is a slow leak.
+    announcements: Vec<Announcement>,
+
+    /// Squares whose ground changed, waiting to be sent out. Bounded for the same reason.
+    ground_changes: Vec<(u16, u16, u16)>,
+
+    /// Advanced for every child spawned, so two children of one parent do not move in lockstep.
+    spawn_seed: u32,
+
+    /// Neighbours as behaviours see them, rebuilt per entity per tick and reused so the think
+    /// loop allocates nothing.
+    neighbours: Vec<Neighbour>,
     visible: Vec<(EntityId, EntityState)>,
     hits: Vec<Hit>,
     actions: Vec<Action>,
@@ -290,6 +339,10 @@ impl World {
             bag_type: ObjectType(0x0500),
             handles: Vec::new(),
             nearby: Vec::new(),
+            neighbours: Vec::new(),
+            announcements: Vec::new(),
+            ground_changes: Vec::new(),
+            spawn_seed: 0x2545_f491,
             visible: Vec::new(),
             hits: Vec::new(),
             actions: Vec::new(),
@@ -302,7 +355,30 @@ impl World {
     ///
     /// An enemy with no matching program keeps `None` and simply stands there, which is what a
     /// half-converted content directory should look like — most of the dungeon working.
-    pub fn set_behaviours(&mut self, catalog: &Catalog, behaviours: Programs) {
+    pub fn set_behaviours(&mut self, catalog: &Catalog, mut behaviours: Programs) {
+        // Names become numbers here, once, because this is the first moment both the behaviours
+        // and the catalog are in the same place. Skipping it would leave every behaviour that
+        // names an entity inert: a boss would wait forever for guardians it cannot recognise, and
+        // an order would reach nobody.
+        for program in &mut behaviours.programs {
+            // Objects first, then tiles. A behaviour names both — an enemy to spawn and a ground
+            // to lay down — and looking in only one place left every ground change silently doing
+            // nothing.
+            let unknown = program.resolve(|name| {
+                catalog
+                    .type_of(name)
+                    .map(|found| found.0)
+                    .or_else(|| catalog.tile_type_of(name).map(|found| found.0))
+            });
+            if !unknown.is_empty() {
+                tracing::warn!(
+                    enemy = %program.name,
+                    names = ?unknown,
+                    "behaviour names entities the catalog does not have"
+                );
+            }
+        }
+
         self.behaviours = behaviours;
 
         self.handles.clear();
@@ -574,17 +650,28 @@ impl World {
         self.tick = self.tick.next();
 
         self.cool_weapons(elapsed_ms);
+        self.expire_effects(elapsed_ms);
+        self.resize(elapsed_ms);
         self.think(catalog, elapsed_ms);
         self.apply_hazards(catalog, elapsed_ms);
         self.advance_projectiles(catalog, elapsed_ms);
         self.expire(elapsed_ms);
         self.drop_loot(catalog);
+
+        // Before reaping, because what an entity leaves behind is decided by what it was.
+        self.run_death_effects(catalog);
         self.reap();
         self.reindex();
     }
 
     /// Runs every enemy's behaviour and applies what it asked for.
     fn think(&mut self, catalog: &Catalog, elapsed_ms: u32) {
+        // Lifted out for the loop. Nothing in a tick changes the compiled behaviours, and holding
+        // them here rather than borrowing from the world is what lets the world be written to
+        // while a program is being read — the alternative was cloning a program per entity per
+        // tick, which is the most expensive thing that could possibly happen in this loop.
+        let behaviours = std::mem::take(&mut self.behaviours);
+
         self.handles.clear();
         self.handles.extend(
             self.entities
@@ -596,68 +683,171 @@ impl World {
         for index in 0..self.handles.len() {
             let handle = self.handles[index];
 
-            let Some(senses) = self.senses_for(handle) else {
+            // The neighbour buffer is lifted out of the world for the duration of the tick, so
+            // that senses can borrow it while the world is being written to.
+            let mut neighbours = std::mem::take(&mut self.neighbours);
+            let scalars = self.gather_senses(handle, &mut neighbours);
+            let Some(scalars) = scalars else {
+                self.neighbours = neighbours;
                 continue;
             };
 
             // The mind comes out of the entity for the duration of the tick, because running it
             // needs the world that the entity is part of.
             let Some(mut mind) = self.entities.get_mut(handle).and_then(|e| e.mind.take()) else {
+                self.neighbours = neighbours;
                 continue;
             };
 
-            let Some(program) = self
+            let program = self
                 .entities
                 .get(handle)
                 .and_then(|entity| catalog.object(entity.object_type))
-                .and_then(|desc| self.behaviours.get(&desc.id))
-            else {
+                .and_then(|desc| behaviours.get(&desc.id));
+
+            let Some(program) = program else {
                 if let Some(entity) = self.entities.get_mut(handle) {
                     entity.mind = Some(mind);
                 }
+                self.neighbours = neighbours;
                 continue;
+            };
+
+            let senses = Senses {
+                x: scalars.x,
+                y: scalars.y,
+                hp: scalars.hp,
+                max_hp: scalars.max_hp,
+                spawn_x: scalars.spawn_x,
+                spawn_y: scalars.spawn_y,
+                nearest_player: scalars.nearest_player,
+                nearby: &neighbours,
+                damage_taken: scalars.damage_taken,
             };
 
             let mut actions = std::mem::take(&mut self.actions);
             mind.tick(program, &senses, elapsed_ms, &mut actions);
+            self.neighbours = neighbours;
 
             for action in &actions {
-                self.apply(handle, catalog, action, elapsed_ms);
+                self.apply(handle, catalog, &behaviours, program, action, elapsed_ms);
             }
 
             self.actions = actions;
             if let Some(entity) = self.entities.get_mut(handle) {
                 entity.mind = Some(mind);
+                // Reset once it has been read, so damage counts toward exactly one tick.
+                entity.damage_since_tick = 0;
             }
         }
-    }
 
-    /// What an entity can perceive.
-    fn senses_for(&mut self, handle: Handle) -> Option<Senses> {
+        self.behaviours = behaviours;
+    }
+}
+
+/// The parts of [`Senses`] that are not borrowed.
+struct SenseScalars {
+    x: f32,
+    y: f32,
+    hp: i32,
+    max_hp: i32,
+    spawn_x: f32,
+    spawn_y: f32,
+    nearest_player: Option<Nearby>,
+    damage_taken: i32,
+}
+
+/// The widest circle of ground one behaviour may change at once.
+///
+/// The content asks for radii of ninety-nine in places, which as a circle is thirty thousand
+/// squares and a tick that does not finish. What those uses mean is "the room".
+const MAX_GROUND_RADIUS: f32 = 24.0;
+
+/// How much unsent speech is held before the rest is dropped.
+const MAX_PENDING_ANNOUNCEMENTS: usize = 256;
+
+/// How many unsent ground changes are held before the rest is dropped.
+const MAX_PENDING_GROUND_CHANGES: usize = 4096;
+
+/// What an explosion does where it lands.
+#[derive(Debug, Clone, Copy)]
+struct Blast {
+    radius: f32,
+    damage: i32,
+    effect: Option<u8>,
+    effect_ms: u32,
+}
+
+/// The most children one behaviour may make in a single tick.
+///
+/// A bound rather than a rule: a content file asking for a thousand should get a handful and a
+/// world that still ticks, not a world that stops.
+const MAX_SPAWNED_AT_ONCE: u32 = 8;
+
+/// Something an entity said, and who should hear it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Announcement {
+    pub from: Handle,
+    pub text: std::sync::Arc<str>,
+
+    /// Heard everywhere rather than only nearby.
+    pub broadcast: bool,
+}
+
+/// A handle as an opaque number a behaviour can hand back.
+fn handle_bits(handle: Handle) -> u32 {
+    handle.0
+}
+
+impl World {
+    /// Everything a behaviour perceives except its neighbours, which go into `into`.
+    ///
+    /// Split in two because [`Senses`] borrows the neighbour list, and the world cannot be written
+    /// to while it lends out its own field. The caller holds the buffer for the tick and gives it
+    /// back afterwards.
+    fn gather_senses(&mut self, handle: Handle, into: &mut Vec<Neighbour>) -> Option<SenseScalars> {
         let entity = self.entities.get(handle)?;
         let (x, y, hp, max_hp) = (entity.x, entity.y, entity.hp, entity.max_hp);
         let (spawn_x, spawn_y) = (entity.spawn_x, entity.spawn_y);
+        let damage_taken = entity.damage_since_tick;
 
         self.grid.within(x, y, SIGHT_RADIUS, &mut self.nearby);
+        into.clear();
 
         let mut nearest: Option<Nearby> = None;
         for found in &self.nearby {
+            if *found == handle {
+                continue;
+            }
             let Some(other) = self.entities.get(*found) else {
                 continue;
             };
-            if other.kind != Kind::Player || other.dead {
+            if other.dead || !other.kind.is_alive_kind() {
                 continue;
             }
 
             let (dx, dy) = (other.x - x, other.y - y);
             let distance = (dx * dx + dy * dy).sqrt();
+            let player = other.kind == Kind::Player;
 
             // Behind a wall is not in sight, so an enemy does not chase or shoot through cover.
-            if !self.terrain.line_of_sight(x, y, other.x, other.y) {
-                continue;
-            }
+            let seen = self.terrain.line_of_sight(x, y, other.x, other.y);
 
-            if nearest.is_none_or(|closest| distance < closest.distance) {
+            // Other entities are listed whether or not there is a clear line to them: a boss
+            // waiting for its guardians to die is asking whether they exist, not whether it can
+            // see them, and a wall between the two does not make one dead.
+            into.push(Neighbour {
+                kind: other.object_type.0,
+                id: handle_bits(*found),
+                x: other.x,
+                y: other.y,
+                distance,
+                hp: other.hp,
+                max_hp: other.max_hp,
+                player,
+            });
+
+            if player && seen && nearest.is_none_or(|closest| distance < closest.distance) {
                 nearest = Some(Nearby {
                     x: other.x,
                     y: other.y,
@@ -666,7 +856,7 @@ impl World {
             }
         }
 
-        Some(Senses {
+        Some(SenseScalars {
             x,
             y,
             hp,
@@ -674,11 +864,20 @@ impl World {
             spawn_x,
             spawn_y,
             nearest_player: nearest,
+            damage_taken,
         })
     }
 
     /// Carries out one thing a behaviour asked for.
-    fn apply(&mut self, handle: Handle, catalog: &Catalog, action: &Action, elapsed_ms: u32) {
+    fn apply(
+        &mut self,
+        handle: Handle,
+        catalog: &Catalog,
+        behaviours: &Programs,
+        program: &Program,
+        action: &Action,
+        elapsed_ms: u32,
+    ) {
         match action {
             Action::Move { angle, speed } => {
                 let Some(entity) = self.entities.get(handle) else {
@@ -712,14 +911,464 @@ impl World {
                 }
             }
 
-            // Spawning children needs the catalog and a position; deliberately not implemented
-            // until the loot and spawn rules that go with it are.
-            Action::Spawn { .. } => {}
+            Action::Spawn {
+                child,
+                count,
+                offset_x,
+                offset_y,
+                state,
+            } => {
+                let Some(kind) = program.kind_of(*child).map(ObjectType) else {
+                    return;
+                };
+                let Some((x, y)) = self.entities.get(handle).map(|e| (e.x, e.y)) else {
+                    return;
+                };
+
+                for index in 0..(*count).min(MAX_SPAWNED_AT_ONCE) {
+                    // Fanned slightly, so a group spawned together does not sit in one square and
+                    // read as a single enemy.
+                    let spread = index as f32 * 0.35;
+                    self.spawn_child(
+                        catalog,
+                        behaviours,
+                        kind,
+                        x + offset_x + spread,
+                        y + offset_y,
+                        state.as_deref(),
+                    );
+                }
+            }
+
+            Action::Effect {
+                effect,
+                duration_ms,
+                radius,
+                target,
+            } => match target {
+                EffectTarget::Myself => self.give_effect(handle, *effect, *duration_ms),
+                EffectTarget::Players | EffectTarget::Others => {
+                    let players = matches!(target, EffectTarget::Players);
+                    self.each_nearby(handle, *radius, players, None, |world, other| {
+                        world.give_effect(other, *effect, *duration_ms);
+                    });
+                }
+            },
+
+            Action::Texture { index } => {
+                if let Some(entity) = self.entities.get_mut(handle) {
+                    entity.texture = *index;
+                }
+            }
+
+            Action::Resize { rate, target } => {
+                if let Some(entity) = self.entities.get_mut(handle) {
+                    entity.resizing = Some((*rate, *target));
+                }
+            }
+
+            // Said by the world rather than by the entity, because who hears it is the world's
+            // question. Held on the entity so the next snapshot carries it.
+            Action::Say { text, broadcast } => {
+                if self.announcements.len() < MAX_PENDING_ANNOUNCEMENTS {
+                    self.announcements.push(Announcement {
+                        from: handle,
+                        text: text.clone(),
+                        broadcast: *broadcast,
+                    });
+                }
+            }
+
+            Action::Transform { into } => {
+                let Some(kind) = program.kind_of(*into).map(ObjectType) else {
+                    return;
+                };
+                let Some((x, y)) = self.entities.get(handle).map(|e| (e.x, e.y)) else {
+                    return;
+                };
+
+                // The old body goes without counting as a kill, so transforming is not a way to
+                // farm whatever the first form dropped.
+                if let Some(entity) = self.entities.get_mut(handle) {
+                    entity.dead = true;
+                    entity.no_experience = true;
+                }
+                self.spawn_child(catalog, behaviours, kind, x, y, None);
+            }
+
+            Action::Order {
+                radius,
+                kind,
+                state,
+            } => {
+                let wanted = kind.and_then(|name| program.kind_of(name)).map(ObjectType);
+                let state = state.clone();
+                self.each_nearby(handle, *radius, false, wanted, |world, other| {
+                    world.order_into(catalog, behaviours, other, &state);
+                });
+            }
+
+            Action::HealOthers {
+                radius,
+                amount,
+                kind,
+                players,
+            } => {
+                let wanted = kind.and_then(|name| program.kind_of(name)).map(ObjectType);
+                let amount = *amount;
+                self.each_nearby(handle, *radius, *players, wanted, |world, other| {
+                    if let Some(entity) = world.entities.get_mut(other) {
+                        entity.hp = (entity.hp + amount).min(entity.max_hp);
+                    }
+                });
+            }
+
+            Action::Grenade {
+                offset_x,
+                offset_y,
+                radius,
+                damage,
+                effect,
+                effect_ms,
+            } => {
+                let Some((x, y)) = self.entities.get(handle).map(|e| (e.x, e.y)) else {
+                    return;
+                };
+                self.explode(
+                    catalog,
+                    (x + offset_x, y + offset_y),
+                    Blast {
+                        radius: *radius,
+                        damage: *damage,
+                        effect: *effect,
+                        effect_ms: *effect_ms,
+                    },
+                );
+            }
+
+            Action::Portal { name, duration_ms } => {
+                let Some(kind) = program.kind_of(*name).map(ObjectType) else {
+                    return;
+                };
+                let Some((x, y)) = self.entities.get(handle).map(|e| (e.x, e.y)) else {
+                    return;
+                };
+                if let Some(portal) = self.spawn_child(catalog, behaviours, kind, x, y, None)
+                    && let Some(entity) = self.entities.get_mut(portal)
+                {
+                    entity.expires_in_ms = Some(*duration_ms);
+                }
+            }
+
+            Action::Ground { tile, radius } => {
+                let Some(kind) = program.kind_of(*tile) else {
+                    return;
+                };
+                let Some((x, y)) = self.entities.get(handle).map(|e| (e.x, e.y)) else {
+                    return;
+                };
+                self.reshape_ground(catalog, x, y, *radius, kind);
+            }
+
+            Action::NoExperience => {
+                if let Some(entity) = self.entities.get_mut(handle) {
+                    entity.no_experience = true;
+                }
+            }
+
+            Action::RemoveNearby { radius, kind } => {
+                let wanted = kind.and_then(|name| program.kind_of(name)).map(ObjectType);
+                self.each_nearby(handle, *radius, false, wanted, |world, other| {
+                    if let Some(entity) = world.entities.get_mut(other) {
+                        entity.dead = true;
+                        entity.no_experience = true;
+                    }
+                });
+            }
 
             Action::Vanish => {
                 if let Some(entity) = self.entities.get_mut(handle) {
                     entity.dead = true;
                 }
+            }
+        }
+    }
+
+    /// Creates an entity of a kind, giving it a mind if the content has one for it.
+    ///
+    /// Everything a behaviour spawns comes through here, so a child gets its own behaviour, its
+    /// own health and its own spawn point rather than inheriting the parent's.
+    fn spawn_child(
+        &mut self,
+        catalog: &Catalog,
+        behaviours: &Programs,
+        kind: ObjectType,
+        x: f32,
+        y: f32,
+        state: Option<&str>,
+    ) -> Option<Handle> {
+        let desc = catalog.object(kind)?;
+
+        let mut entity = Entity::fixture(kind, x, y);
+        entity.kind = if desc.enemy {
+            Kind::Enemy
+        } else {
+            Kind::Fixture
+        };
+        entity.max_hp = desc.max_hp.max(1);
+        entity.hp = entity.max_hp;
+        entity.spawn_x = x;
+        entity.spawn_y = y;
+
+        // Taken from the caller rather than from `self`, because the tick lifts the programs out
+        // of the world while it runs — reading them from `self` here found an empty set, and every
+        // spawned child stood still forever.
+        let seed = self.next_seed();
+        if let Some(program) = behaviours.get(&desc.id) {
+            let mut mind = Mind::new(program, seed);
+
+            // A child ordered into a state starts there rather than at its program's beginning,
+            // which is what `spawn` with a state and what `order` on arrival both mean.
+            if let Some(state) = state
+                && let Some(index) = program.state_named(state)
+            {
+                mind.force_into(program, index);
+            }
+            entity.mind = Some(Box::new(mind));
+        }
+
+        self.spawn(entity)
+    }
+
+    /// A seed that differs per spawn, so two children of one parent do not move in lockstep.
+    fn next_seed(&mut self) -> u32 {
+        self.spawn_seed = self
+            .spawn_seed
+            .wrapping_mul(1_664_525)
+            .wrapping_add(1_013_904_223);
+        self.spawn_seed
+    }
+
+    /// Gives an entity a condition effect for a time.
+    ///
+    /// Renewing one it already holds extends it rather than stacking it, because a behaviour that
+    /// holds an effect renews it every tick and stacking would make the list grow without bound.
+    fn give_effect(&mut self, handle: Handle, effect: u8, duration_ms: u32) {
+        let Some(entity) = self.entities.get_mut(handle) else {
+            return;
+        };
+
+        if let Some(held) = entity.effects.iter_mut().find(|(held, _)| *held == effect) {
+            held.1 = held.1.max(duration_ms);
+            return;
+        }
+
+        if let Some(known) = hendra_content::ConditionEffect::from_index(effect as u16) {
+            entity.conditions.insert(known);
+        }
+        entity.effects.push((effect, duration_ms));
+    }
+
+    /// Runs something for every entity near another, of a kind and a side.
+    ///
+    /// The handles are collected before anything is run, because the closure writes to the world
+    /// and iterating the grid while it changes is how an entity gets visited twice or not at all.
+    fn each_nearby(
+        &mut self,
+        from: Handle,
+        radius: f32,
+        players: bool,
+        kind: Option<ObjectType>,
+        mut each: impl FnMut(&mut World, Handle),
+    ) {
+        let Some((x, y)) = self.entities.get(from).map(|e| (e.x, e.y)) else {
+            return;
+        };
+
+        self.grid.within(x, y, radius, &mut self.nearby);
+        let found = std::mem::take(&mut self.nearby);
+
+        for handle in &found {
+            if *handle == from {
+                continue;
+            }
+            let Some(entity) = self.entities.get(*handle) else {
+                continue;
+            };
+            if entity.dead
+                || (entity.kind == Kind::Player) != players
+                || kind.is_some_and(|wanted| entity.object_type != wanted)
+            {
+                continue;
+            }
+
+            each(self, *handle);
+        }
+
+        self.nearby = found;
+    }
+
+    /// Damages everything of the opposite side within a circle.
+    fn explode(&mut self, catalog: &Catalog, at: (f32, f32), blast: Blast) {
+        let (x, y) = at;
+        let Blast {
+            radius,
+            damage,
+            effect,
+            effect_ms,
+        } = blast;
+        self.grid.within(x, y, radius, &mut self.nearby);
+        let found = std::mem::take(&mut self.nearby);
+
+        for handle in &found {
+            let hit = self
+                .entities
+                .get(*handle)
+                .is_some_and(|entity| entity.kind == Kind::Player && !entity.dead);
+            if !hit {
+                continue;
+            }
+
+            let defence = self
+                .entities
+                .get(*handle)
+                .and_then(|entity| catalog.object(entity.object_type))
+                .map(|desc| desc.defense)
+                .unwrap_or(0);
+
+            if let Some(entity) = self.entities.get_mut(*handle) {
+                // Armour applies, as it does to a projectile. An explosion that ignored it would
+                // make every point of defence worthless in exactly the fights that use these.
+                let taken = crate::projectile::after_defence(damage, defence, false);
+                entity.hp -= taken;
+                entity.damage_since_tick += taken;
+                if entity.hp <= 0 {
+                    entity.dead = true;
+                }
+            }
+
+            if let Some(effect) = effect {
+                self.give_effect(*handle, effect, effect_ms);
+            }
+        }
+
+        self.nearby = found;
+    }
+
+    /// Puts an entity into a named state, if it has one by that name.
+    fn order_into(
+        &mut self,
+        catalog: &Catalog,
+        behaviours: &Programs,
+        handle: Handle,
+        state: &str,
+    ) {
+        let Some(program) = self
+            .entities
+            .get(handle)
+            .and_then(|entity| catalog.object(entity.object_type))
+            .and_then(|desc| behaviours.get(&desc.id))
+        else {
+            return;
+        };
+
+        // An order naming a state the target does not have is ignored rather than guessed at. The
+        // content sends one order to several kinds of minion and expects each to take the part of
+        // it that applies.
+        let Some(index) = program.state_named(state) else {
+            return;
+        };
+
+        if let Some(entity) = self.entities.get_mut(handle)
+            && let Some(mind) = entity.mind.as_mut()
+        {
+            mind.force_into(program, index);
+        }
+    }
+
+    /// Replaces the ground in a circle with another tile.
+    ///
+    /// Walkability and sight follow the new tile, and the change is recorded so a snapshot can
+    /// carry it. Without the record the ground would change for the simulation and not for anyone
+    /// looking at it, which is worse than not changing it at all.
+    fn reshape_ground(&mut self, catalog: &Catalog, x: f32, y: f32, radius: f32, tile: u16) {
+        let tile_type = hendra_content::TileType(tile);
+        let Some(desc) = catalog.tile(tile_type) else {
+            return;
+        };
+
+        let radius = radius.clamp(0.0, MAX_GROUND_RADIUS);
+        let (from_x, from_y) = ((x - radius).floor() as i32, (y - radius).floor() as i32);
+        let (to_x, to_y) = ((x + radius).ceil() as i32, (y + radius).ceil() as i32);
+
+        for square_y in from_y..=to_y {
+            for square_x in from_x..=to_x {
+                if square_x < 0 || square_y < 0 {
+                    continue;
+                }
+                let (dx, dy) = (square_x as f32 + 0.5 - x, square_y as f32 + 0.5 - y);
+                if dx * dx + dy * dy > radius * radius {
+                    continue;
+                }
+
+                // Ground never blocks sight — only objects standing on it do, and this changes
+                // the ground rather than what is on it.
+                self.terrain
+                    .set_square(square_x as u32, square_y as u32, !desc.no_walk, false);
+                if self.ground_changes.len() < MAX_PENDING_GROUND_CHANGES {
+                    self.ground_changes
+                        .push((square_x as u16, square_y as u16, tile));
+                }
+            }
+        }
+    }
+
+    /// Ages held effects, dropping the ones that have run out.
+    fn expire_effects(&mut self, elapsed_ms: u32) {
+        for (_, entity) in self.entities.iter_mut() {
+            if entity.effects.is_empty() {
+                continue;
+            }
+
+            entity.effects.retain_mut(|(_, left)| {
+                *left = left.saturating_sub(elapsed_ms);
+                *left > 0
+            });
+
+            // Rebuilt from what is left rather than cleared per effect, so an effect held by two
+            // sources does not vanish when the first of them lapses.
+            let mut conditions = ConditionSet::EMPTY;
+            for (effect, _) in &entity.effects {
+                if let Some(known) = hendra_content::ConditionEffect::from_index(*effect as u16) {
+                    conditions.insert(known);
+                }
+            }
+            entity.conditions = conditions;
+        }
+    }
+
+    /// Grows or shrinks whatever is changing size.
+    fn resize(&mut self, elapsed_ms: u32) {
+        for (_, entity) in self.entities.iter_mut() {
+            let Some((rate, target)) = entity.resizing else {
+                continue;
+            };
+
+            let step = rate * (elapsed_ms as f32 / 1000.0);
+            let now = entity.size as f32 + step;
+
+            // Stops at the target rather than oscillating around it, whichever way it was going.
+            let reached = if rate >= 0.0 {
+                now >= target as f32
+            } else {
+                now <= target as f32
+            };
+
+            if reached {
+                entity.size = target;
+                entity.resizing = None;
+            } else {
+                entity.size = now.clamp(0.0, 65_535.0) as u16;
             }
         }
     }
@@ -959,6 +1608,160 @@ impl World {
         }
     }
 
+    /// Runs whatever the dying have arranged to happen after them.
+    ///
+    /// Between loot and reaping, because these need the entity still in the world — where it was
+    /// standing is most of what a portal, a transformation or a change of ground is about.
+    fn run_death_effects(&mut self, catalog: &Catalog) {
+        self.handles.clear();
+        self.handles.extend(
+            self.entities
+                .iter()
+                .filter(|(_, entity)| entity.dead && !entity.no_experience && entity.mind.is_some())
+                .map(|(handle, _)| handle),
+        );
+
+        if self.handles.is_empty() {
+            return;
+        }
+
+        let behaviours = std::mem::take(&mut self.behaviours);
+        let dying = std::mem::take(&mut self.handles);
+
+        for handle in &dying {
+            let Some(program) = self
+                .entities
+                .get(*handle)
+                .and_then(|entity| catalog.object(entity.object_type))
+                .and_then(|desc| behaviours.get(&desc.id))
+            else {
+                continue;
+            };
+
+            // Every state's effects, not only the one it died in: the content puts these on the
+            // outermost state precisely so that dying anywhere triggers them.
+            for state in &program.states {
+                for primitive in &state.behaviours {
+                    let Some(effect) = primitive.death_effect() else {
+                        continue;
+                    };
+                    self.run_death_effect(catalog, &behaviours, program, *handle, effect);
+                }
+            }
+        }
+
+        self.handles = dying;
+        self.behaviours = behaviours;
+    }
+
+    fn run_death_effect(
+        &mut self,
+        catalog: &Catalog,
+        behaviours: &Programs,
+        program: &Program,
+        handle: Handle,
+        effect: &DeathEffect,
+    ) {
+        let Some((x, y, hp)) = self
+            .entities
+            .get(handle)
+            .map(|entity| (entity.x, entity.y, entity.max_hp))
+        else {
+            return;
+        };
+
+        match effect {
+            DeathEffect::Spawn { child, count } => {
+                let Some(kind) = program.kind_of(*child).map(ObjectType) else {
+                    return;
+                };
+                for index in 0..(*count).min(MAX_SPAWNED_AT_ONCE) {
+                    self.spawn_child(catalog, behaviours, kind, x + index as f32 * 0.35, y, None);
+                }
+            }
+
+            DeathEffect::TransformInto { child } => {
+                if let Some(kind) = program.kind_of(*child).map(ObjectType) {
+                    self.spawn_child(catalog, behaviours, kind, x, y, None);
+                }
+            }
+
+            DeathEffect::Portal {
+                name,
+                probability,
+                duration_ms,
+            } => {
+                if self.roll() > *probability {
+                    return;
+                }
+                let Some(kind) = program.kind_of(*name).map(ObjectType) else {
+                    return;
+                };
+                if let Some(portal) = self.spawn_child(catalog, behaviours, kind, x, y, None)
+                    && let Some(entity) = self.entities.get_mut(portal)
+                {
+                    entity.expires_in_ms = Some(*duration_ms);
+                }
+            }
+
+            DeathEffect::ChangeGround { tile, radius } => {
+                if let Some(kind) = program.kind_of(*tile) {
+                    self.reshape_ground(catalog, x, y, *radius, kind);
+                }
+            }
+
+            DeathEffect::RemoveObjects { radius, kind } => {
+                let wanted = kind.and_then(|name| program.kind_of(name)).map(ObjectType);
+                self.each_nearby(handle, *radius, false, wanted, |world, other| {
+                    if let Some(entity) = world.entities.get_mut(other) {
+                        entity.dead = true;
+                        entity.no_experience = true;
+                    }
+                });
+            }
+
+            DeathEffect::Order {
+                radius,
+                kind,
+                state,
+            } => {
+                let wanted = kind.and_then(|name| program.kind_of(name)).map(ObjectType);
+                let state = state.clone();
+                self.each_nearby(handle, *radius, false, wanted, |world, other| {
+                    world.order_into(catalog, behaviours, other, &state);
+                });
+            }
+
+            // What it could still have taken, dealt to whatever it was standing with. This is how
+            // the game's linked bosses die together.
+            DeathEffect::TransferDamage { radius, kind } => {
+                let wanted = kind.and_then(|name| program.kind_of(name)).map(ObjectType);
+                self.each_nearby(handle, *radius, false, wanted, |world, other| {
+                    if let Some(entity) = world.entities.get_mut(other) {
+                        entity.hp -= hp;
+                        entity.damage_since_tick += hp;
+                        if entity.hp <= 0 {
+                            entity.dead = true;
+                        }
+                    }
+                });
+            }
+        }
+    }
+
+    /// Takes everything said since the last call.
+    ///
+    /// Draining rather than reading, because each of these should be sent once. A caller that
+    /// forgets to drain gets a queue that stops growing rather than one that grows forever.
+    pub fn take_announcements(&mut self) -> Vec<Announcement> {
+        std::mem::take(&mut self.announcements)
+    }
+
+    /// Takes every ground change since the last call, as `(x, y, tile)`.
+    pub fn take_ground_changes(&mut self) -> Vec<(u16, u16, u16)> {
+        std::mem::take(&mut self.ground_changes)
+    }
+
     /// Removes everything marked dead.
     fn reap(&mut self) {
         self.entities.retain(|_, entity| !entity.dead);
@@ -1021,6 +1824,11 @@ mod tests {
             <MinDamage>20</MinDamage><MaxDamage>20</MaxDamage>
             <LifetimeMS>2000</LifetimeMS></Projectile>
         </Object>
+        <Object type="0x503" id="Guard"><Class>Character</Class><Enemy/>
+          <MaxHitPoints>50</MaxHitPoints></Object>
+        <Object type="0x505" id="Spawnling"><Class>Character</Class><Enemy/>
+          <MaxHitPoints>10</MaxHitPoints></Object>
+        <Object type="0x506" id="Doorway"><Class>Portal</Class><Static/></Object>
         <Object type="0x600" id="Hero"><Class>Player</Class><Player/></Object>
         <Object type="0x900" id="Bolt"><Class>Projectile</Class></Object>
         <Object type="0x901" id="Wand">
@@ -1323,6 +2131,475 @@ mod tests {
             "the slime has no weapon"
         );
         assert_eq!(world.projectile_count(), 0);
+    }
+
+    // -- what behaviours do to the world -------------------------------------------------------
+
+    /// Installs behaviours from source and gives everything already present a mind.
+    fn behaving(world: &mut World, catalog: &Catalog, source: &str) {
+        use hendra_behavior::compile::compile;
+        use hendra_behavior::parse::parse;
+
+        let (programs, diagnostics) = compile(&parse(source).expect("parses"));
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        world.set_behaviours(catalog, programs);
+    }
+
+    fn count_of(world: &World, kind: u16) -> usize {
+        world
+            .iter()
+            .filter(|(_, entity)| entity.object_type == ObjectType(kind) && !entity.dead)
+            .count()
+    }
+
+    #[test]
+    fn a_behaviour_that_names_an_entity_has_it_resolved_at_load() {
+        // Nothing resolves names but this, and without it every behaviour that names an entity is
+        // inert: a boss waits forever for guardians it cannot recognise.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+        behaving(
+            &mut world,
+            &catalog,
+            r#"enemy "Slime" { state a { on entity_exists("Guard", 10) -> b } state b { } }"#,
+        );
+
+        let program = world.behaviours.get("Slime").expect("compiled");
+        assert_eq!(
+            program.kind_of(hendra_behavior::NameRef(0)),
+            Some(0x503),
+            "the guard should have been resolved to its object type"
+        );
+    }
+
+    #[test]
+    fn a_boss_wakes_when_the_entity_it_watches_for_is_gone() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut boss = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
+        boss.kind = Kind::Enemy;
+        boss.max_hp = 200;
+        boss.hp = 200;
+        let boss = world.spawn(boss).unwrap();
+
+        let mut guard = Entity::fixture(ObjectType(0x503), 12.0, 10.0);
+        guard.kind = Kind::Enemy;
+        guard.max_hp = 50;
+        guard.hp = 50;
+        let guard = world.spawn(guard).unwrap();
+
+        behaving(
+            &mut world,
+            &catalog,
+            r#"enemy "Slime" {
+                 state sealed { on entities_not_exists(20, "Guard") -> awake }
+                 state awake { }
+               }"#,
+        );
+        world.reindex();
+
+        world.advance(&catalog, 50);
+        let state_of = |world: &World, handle: Handle| {
+            let entity = world.get(handle).unwrap();
+            let mind = entity.mind.as_ref().unwrap();
+            let program = world.behaviours.get("Slime").unwrap();
+            mind.state_name(program).to_string()
+        };
+        assert_eq!(state_of(&world, boss), "sealed", "the guard is still there");
+
+        world.get_mut(guard).unwrap().dead = true;
+        world.advance(&catalog, 50);
+        assert_eq!(state_of(&world, boss), "awake");
+    }
+
+    #[test]
+    fn a_conditional_effect_lands_and_lifts_when_the_state_does() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut boss = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
+        boss.kind = Kind::Enemy;
+        boss.max_hp = 200;
+        boss.hp = 200;
+        let boss = world.spawn(boss).unwrap();
+
+        behaving(
+            &mut world,
+            &catalog,
+            r#"enemy "Slime" {
+                 state shielded {
+                   conditional_effect(invulnerable)
+                   on timed(200ms) -> open
+                 }
+                 state open { }
+               }"#,
+        );
+        world.reindex();
+
+        world.advance(&catalog, 50);
+        assert!(
+            world
+                .get(boss)
+                .unwrap()
+                .conditions
+                .contains(hendra_content::ConditionEffect::Invulnerable),
+            "should be invulnerable while shielded"
+        );
+
+        // Out of the state and past the renewal window, it should wear off on its own.
+        for _ in 0..12 {
+            world.advance(&catalog, 50);
+        }
+        assert!(
+            !world
+                .get(boss)
+                .unwrap()
+                .conditions
+                .contains(hendra_content::ConditionEffect::Invulnerable),
+            "should have lapsed once the state was left"
+        );
+    }
+
+    #[test]
+    fn a_spawn_makes_children_that_have_minds_of_their_own() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut parent = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
+        parent.kind = Kind::Enemy;
+        parent.max_hp = 200;
+        parent.hp = 200;
+        world.spawn(parent).unwrap();
+
+        behaving(
+            &mut world,
+            &catalog,
+            r#"enemy "Slime" { state a { spawn("Spawnling", 3, cooldown: 100ms) } }
+               enemy "Spawnling" { state b { wander(0.4) } }"#,
+        );
+        world.reindex();
+
+        for _ in 0..10 {
+            world.advance(&catalog, 50);
+        }
+
+        let children = count_of(&world, 0x505);
+        assert_eq!(children, 3, "three, and no more than three");
+
+        assert!(
+            world
+                .iter()
+                .filter(|(_, e)| e.object_type == ObjectType(0x505))
+                .all(|(_, e)| e.mind.is_some()),
+            "each child should be running its own behaviour"
+        );
+    }
+
+    #[test]
+    fn an_order_drives_other_entities_into_a_state() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut boss = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
+        boss.kind = Kind::Enemy;
+        boss.max_hp = 200;
+        boss.hp = 200;
+        world.spawn(boss).unwrap();
+
+        let mut minion = Entity::fixture(ObjectType(0x503), 12.0, 10.0);
+        minion.kind = Kind::Enemy;
+        minion.max_hp = 50;
+        minion.hp = 50;
+        let minion = world.spawn(minion).unwrap();
+
+        behaving(
+            &mut world,
+            &catalog,
+            r#"enemy "Slime" { state a { order(20, "Guard", "charge") } }
+               enemy "Guard" { state waiting { } state charge { } }"#,
+        );
+        world.reindex();
+        world.advance(&catalog, 50);
+
+        let program = world.behaviours.get("Guard").unwrap();
+        let state = world
+            .get(minion)
+            .unwrap()
+            .mind
+            .as_ref()
+            .unwrap()
+            .state_name(program);
+        assert_eq!(state, "charge", "the minion should have taken the order");
+    }
+
+    #[test]
+    fn an_order_naming_a_state_the_target_lacks_leaves_it_alone() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut boss = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
+        boss.kind = Kind::Enemy;
+        boss.max_hp = 200;
+        boss.hp = 200;
+        world.spawn(boss).unwrap();
+
+        let mut minion = Entity::fixture(ObjectType(0x503), 12.0, 10.0);
+        minion.kind = Kind::Enemy;
+        minion.max_hp = 50;
+        minion.hp = 50;
+        let minion = world.spawn(minion).unwrap();
+
+        behaving(
+            &mut world,
+            &catalog,
+            r#"enemy "Slime" { state a { order(20, "Guard", "nowhere") } }
+               enemy "Guard" { state waiting { } }"#,
+        );
+        world.reindex();
+        world.advance(&catalog, 50);
+
+        let program = world.behaviours.get("Guard").unwrap();
+        assert_eq!(
+            world
+                .get(minion)
+                .unwrap()
+                .mind
+                .as_ref()
+                .unwrap()
+                .state_name(program),
+            "waiting"
+        );
+    }
+
+    #[test]
+    fn a_portal_is_left_behind_when_the_boss_dies() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut boss = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
+        boss.kind = Kind::Enemy;
+        boss.max_hp = 200;
+        boss.hp = 200;
+        let boss = world.spawn(boss).unwrap();
+
+        behaving(
+            &mut world,
+            &catalog,
+            r#"enemy "Slime" { state a { drop_portal_on_death("Doorway", 1) } }"#,
+        );
+        world.reindex();
+
+        world.advance(&catalog, 50);
+        assert_eq!(count_of(&world, 0x506), 0, "not until it dies");
+
+        world.get_mut(boss).unwrap().dead = true;
+        world.advance(&catalog, 50);
+
+        assert_eq!(count_of(&world, 0x506), 1, "the way in should be open");
+    }
+
+    #[test]
+    fn a_death_effect_runs_once_rather_than_every_tick() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut boss = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
+        boss.kind = Kind::Enemy;
+        boss.max_hp = 200;
+        boss.hp = 200;
+        let boss = world.spawn(boss).unwrap();
+
+        behaving(
+            &mut world,
+            &catalog,
+            r#"enemy "Slime" { state a { drop_portal_on_death("Doorway", 1) } }"#,
+        );
+        world.reindex();
+
+        world.get_mut(boss).unwrap().dead = true;
+        for _ in 0..10 {
+            world.advance(&catalog, 50);
+        }
+
+        assert_eq!(count_of(&world, 0x506), 1, "one portal, not ten");
+    }
+
+    #[test]
+    fn a_transform_replaces_the_body_without_awarding_a_kill() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut boss = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
+        boss.kind = Kind::Enemy;
+        boss.max_hp = 200;
+        boss.hp = 200;
+        let boss = world.spawn(boss).unwrap();
+
+        behaving(
+            &mut world,
+            &catalog,
+            r#"enemy "Slime" { state a { transform("Guard") } }
+               enemy "Guard" { state b { } }"#,
+        );
+        world.reindex();
+        world.advance(&catalog, 50);
+
+        assert!(world.get(boss).is_none(), "the old body is gone");
+        assert_eq!(count_of(&world, 0x503), 1, "and the new one is there");
+    }
+
+    #[test]
+    fn changing_the_ground_changes_what_can_be_walked_on() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+        assert!(world.terrain().walkable(10, 10), "grass to begin with");
+
+        let mut boss = Entity::fixture(ObjectType(0x502), 10.5, 10.5);
+        boss.kind = Kind::Enemy;
+        boss.max_hp = 200;
+        boss.hp = 200;
+        world.spawn(boss).unwrap();
+
+        behaving(
+            &mut world,
+            &catalog,
+            r#"enemy "Slime" { state a { ground_transform("Water", 2) } }"#,
+        );
+        world.reindex();
+        world.advance(&catalog, 50);
+
+        assert!(!world.terrain().walkable(10, 10), "water now");
+        assert!(world.terrain().walkable(20, 20), "and only where it stood");
+    }
+
+    #[test]
+    fn a_grenade_hurts_players_and_respects_their_armour() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut boss = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
+        boss.kind = Kind::Enemy;
+        boss.max_hp = 200;
+        boss.hp = 200;
+        world.spawn(boss).unwrap();
+
+        let victim = world
+            .spawn(Entity::player(ObjectType(0x600), 12.0, 10.0, 500))
+            .unwrap();
+
+        behaving(
+            &mut world,
+            &catalog,
+            r#"enemy "Slime" { state a { grenade(4, 100, 20, cooldown: 100000) } }"#,
+        );
+        world.reindex();
+        world.advance(&catalog, 50);
+
+        let hurt = world.get(victim).unwrap().hp;
+        assert!(hurt < 500, "should have been caught in the blast");
+        assert!(hurt > 0, "but not killed outright");
+    }
+
+    #[test]
+    fn a_grenade_misses_someone_standing_clear_of_it() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut boss = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
+        boss.kind = Kind::Enemy;
+        boss.max_hp = 200;
+        boss.hp = 200;
+        world.spawn(boss).unwrap();
+
+        // Near enough to be aimed at, and the blast is small.
+        let near = world
+            .spawn(Entity::player(ObjectType(0x600), 11.0, 10.0, 500))
+            .unwrap();
+        let far = world
+            .spawn(Entity::player(ObjectType(0x600), 25.0, 10.0, 500))
+            .unwrap();
+
+        behaving(
+            &mut world,
+            &catalog,
+            r#"enemy "Slime" { state a { grenade(1, 100, 20, cooldown: 100000) } }"#,
+        );
+        world.reindex();
+        world.advance(&catalog, 50);
+
+        assert!(world.get(near).unwrap().hp < 500, "the near one is hit");
+        assert_eq!(world.get(far).unwrap().hp, 500, "the far one is not");
+    }
+
+    #[test]
+    fn an_entity_that_shrinks_stops_at_its_target_size() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut boss = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
+        boss.kind = Kind::Enemy;
+        boss.max_hp = 200;
+        boss.hp = 200;
+        boss.size = 100;
+        let boss = world.spawn(boss).unwrap();
+
+        behaving(
+            &mut world,
+            &catalog,
+            r#"enemy "Slime" { state a { change_size(-100, 25) } }"#,
+        );
+        world.reindex();
+
+        for _ in 0..60 {
+            world.advance(&catalog, 50);
+        }
+
+        assert_eq!(
+            world.get(boss).unwrap().size,
+            25,
+            "should have stopped at the target rather than shrinking away"
+        );
+    }
+
+    #[test]
+    fn speech_is_taken_once_and_does_not_pile_up_forever() {
+        // A boss left alive in an empty room talks to itself, and nothing in the simulation makes
+        // it stop. A queue nobody drains has to stop growing on its own.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut boss = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
+        boss.kind = Kind::Enemy;
+        boss.max_hp = 200;
+        boss.hp = 200;
+        world.spawn(boss).unwrap();
+
+        behaving(
+            &mut world,
+            &catalog,
+            r#"enemy "Slime" { state a { taunt("a", "b", cooldown: 0) } }"#,
+        );
+        world.reindex();
+
+        for _ in 0..40 {
+            world.advance(&catalog, 50);
+        }
+
+        let said = world.take_announcements();
+        assert!(!said.is_empty(), "it should have said something");
+        assert!(
+            world.take_announcements().is_empty(),
+            "and taking it should have emptied the queue"
+        );
+
+        for _ in 0..5_000 {
+            world.advance(&catalog, 50);
+        }
+        assert!(
+            world.take_announcements().len() <= MAX_PENDING_ANNOUNCEMENTS,
+            "the queue should be bounded when nobody drains it"
+        );
     }
 
     #[test]
