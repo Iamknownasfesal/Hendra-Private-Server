@@ -133,6 +133,16 @@ public partial class HudView : Control
     /// <summary>Raised by a potion counter, with true for health.</summary>
     public event Action<bool> PotionRequested;
 
+    /// <summary>Asked whether a dragged slot may be dropped on a potion counter.</summary>
+    /// <remarks>
+    /// A question rather than an event because the answer is needed while the drag is still in the
+    /// air -- Godot refuses the drop itself if this is false, so the wrong potion never lands.
+    /// </remarks>
+    public event Func<SlotAddress, bool, bool> PotionAccepted;
+
+    /// <summary>Raised when a potion is dropped onto a counter, with true for health.</summary>
+    public event Action<SlotAddress, bool> PotionStacked;
+
     public event Action OptionsPressed;
 
     /// <summary>The buttons on the card, wired as named events rather than to panels.</summary>
@@ -865,6 +875,8 @@ public partial class HudView : Control
         };
 
         counter.Pressed += () => PotionRequested?.Invoke(health);
+        counter.Accepts = from => PotionAccepted?.Invoke(from, health) ?? false;
+        counter.Filled += from => PotionStacked?.Invoke(from, health);
         counter.UseSprite(SpriteOf(health ? "Health Potion" : "Magic Potion"));
         _vitals.AddChild(counter);
         return counter;
@@ -888,6 +900,29 @@ public partial class HudView : Control
 
         /// <summary>The item this counts, so the plate shows the thing rather than a shape.</summary>
         private Assets.Sprite _bottle;
+
+        /// <summary>Raised when a potion is dropped onto this counter, with where it came from.</summary>
+        public event Action<SlotAddress> Filled;
+
+        /// <summary>
+        /// Only takes what it is a counter for.
+        /// </summary>
+        /// <remarks>
+        /// Godot asks this while the drag is over the control and refuses the drop itself when it
+        /// answers false, so a health potion dragged onto the magic stack never leaves the cursor.
+        /// The check is the item's type against the one this counter holds -- the owner answers
+        /// that, since a counter knows nothing about what is in any slot.
+        /// </remarks>
+        public Func<SlotAddress, bool> Accepts { get; set; }
+
+        public override bool _CanDropData(Vector2 atPosition, Variant data) =>
+            SlotView.PayloadAddress(data, out var from) && (Accepts?.Invoke(from) ?? false);
+
+        public override void _DropData(Vector2 atPosition, Variant data)
+        {
+            if (SlotView.PayloadAddress(data, out var from))
+                Filled?.Invoke(from);
+        }
 
         public void UseSprite(Assets.Sprite sprite)
         {

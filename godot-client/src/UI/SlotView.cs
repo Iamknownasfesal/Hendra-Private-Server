@@ -190,6 +190,17 @@ public sealed partial class SlotView : Control
             Dropped?.Invoke(from, Address);
     }
 
+    /// <summary>
+    /// Reads a slot drag, for anything that is not itself a slot.
+    /// </summary>
+    /// <remarks>
+    /// The potion counters take drops and are not slots -- there is nothing stored in them to swap
+    /// with. They read the payload through here rather than knowing its shape, so the drag protocol
+    /// stays written down once.
+    /// </remarks>
+    public static bool PayloadAddress(Variant data, out World.SlotAddress address) =>
+        IsSlotPayload(data, out address);
+
     private static bool IsSlotPayload(Variant data, out World.SlotAddress address)
     {
         address = default;

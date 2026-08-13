@@ -214,6 +214,15 @@ public partial class WorldController : Node
             _hud.SlotDropped += OnSlotDropped;
             _hud.SlotDroppedOutside += OnSlotDroppedOutside;
             _hud.PotionRequested += health => _inventory.UsePotion(health);
+
+            // Dropping a potion on its counter stacks it. The question and the answer are separate
+            // because the first is asked while the drag is still in the air.
+            _hud.PotionAccepted += (from, health) => CanStack(from, health);
+            _hud.PotionStacked += (from, health) =>
+            {
+                _inventory.OpenContainer = OpenContainer;
+                _inventory.Stack(from, health);
+            };
             _hud.OptionsPressed += () => OptionsToggled?.Invoke();
             _hud.BuyPressed += OnBuyPressed;
 
@@ -1385,6 +1394,26 @@ public partial class WorldController : Node
     /// changes as the player walks around, and a drag that started over one chest should not land
     /// in another.
     /// </remarks>
+    /// <summary>
+    /// Whether the item being dragged is the potion that counter counts.
+    /// </summary>
+    /// <remarks>
+    /// The vault is excluded, and not because of the item: an InvSwap names its slots by the object
+    /// that owns them and the vault's slots belong to no object, so there is no way to write the
+    /// move down. Taking it out to the bag first is one extra drag and the only one there is.
+    /// </remarks>
+    private bool CanStack(SlotAddress from, bool health)
+    {
+        if (from.Owner is SlotOwner.Vault or SlotOwner.VaultGift)
+            return false;
+
+        var source = from.Owner == SlotOwner.Player ? _map?.Player : OpenContainer;
+        if (source?.Equipment == null || from.Index < 0 || from.Index >= source.Equipment.Length)
+            return false;
+
+        return source.Equipment[from.Index] == _inventory.PotionType(health);
+    }
+
     private void OnSlotDropped(SlotAddress from, SlotAddress to)
     {
         // Anything touching the vault goes on the vault's own wire: its slots belong to no entity,

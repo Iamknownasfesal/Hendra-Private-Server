@@ -217,6 +217,58 @@ public sealed class Inventory
         destination.Equipment[to.Index] = moved;
     }
 
+    /// <summary>
+    /// The two slots the character's potion stacks answer to.
+    /// </summary>
+    /// <remarks>
+    /// Two hundred and fifty-four and five, on the player's own object. They are the server's
+    /// numbers -- see <c>ItemStacker</c> -- and they are slots in name only: nothing is stored
+    /// there, an InvSwap that names one is read as "add this to that stack" and the item is
+    /// consumed rather than exchanged.
+    /// </remarks>
+    private const byte HealthStackSlot = 254;
+
+    private const byte MagicStackSlot = 255;
+
+    /// <summary>
+    /// Puts a potion into one of the two stacks beside the bars.
+    /// </summary>
+    /// <remarks>
+    /// The same InvSwap a move uses, aimed at a slot that is not a slot. The wrong potion is
+    /// refused here rather than on the wire: the server answers a refusal by force-updating the
+    /// source slot, which arrives as the item flickering out and back with no reason given.
+    /// </remarks>
+    public void Stack(SlotAddress from, bool health)
+    {
+        var player = _map.Player;
+        if (player?.Equipment == null)
+            return;
+
+        var source = OwnerOf(from);
+        if (source?.Equipment == null || from.Index < 0 || from.Index >= source.Equipment.Length)
+            return;
+
+        int moved = source.Equipment[from.Index];
+        if (moved == NoItem || moved != PotionType(health))
+            return;
+
+        _session.Send(new InvSwapPacket
+        {
+            Time = _clock.FrameMs,
+            Position = new WorldPos(player.X, player.Y),
+            Slot1 = new SlotObject(source.ObjectId, (byte)from.Index, moved),
+            Slot2 = new SlotObject(player.ObjectId, health ? HealthStackSlot : MagicStackSlot, moved),
+        });
+
+        // The potion is consumed by the stack rather than swapped for what was there, so the slot
+        // it came from empties. The count itself arrives as a stat and is not guessed at here.
+        source.Equipment[from.Index] = NoItem;
+    }
+
+    /// <summary>Which item each stack takes, by name, so no type number is written down twice.</summary>
+    public int PotionType(bool health) =>
+        _data?.GetObject(health ? "Health Potion" : "Magic Potion") is { } desc ? desc.Type : NoItem;
+
     private Entity OwnerOf(SlotAddress address) =>
         address.Owner == SlotOwner.Player ? _map.Player : OpenContainer;
 
