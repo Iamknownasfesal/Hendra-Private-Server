@@ -13,11 +13,12 @@
 
 mod session;
 mod world_task;
+mod worlds;
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use hendra_content::{Catalog, ObjectType, legacy};
+use hendra_content::{Catalog, ObjectType};
 use hendra_sim::{Terrain, World};
 use hendra_transport::{Listener, ServerIdentity};
 
@@ -96,6 +97,28 @@ async fn main() {
         "content loaded"
     );
 
+    let catalog = Arc::new(catalog);
+    let loadout = world_task::Loadout {
+        avatar: catalog
+            .type_of(DEFAULT_PLAYER_OBJECT)
+            .unwrap_or(ObjectType(0x0300)),
+        weapon: catalog.type_of(DEFAULT_WEAPON),
+    };
+    if loadout.weapon.is_none() {
+        tracing::warn!(
+            weapon = DEFAULT_WEAPON,
+            "starter weapon not in the catalog; players cannot shoot"
+        );
+    }
+
+    let registry = Arc::new(worlds::Worlds::load(
+        &options.worlds,
+        Arc::clone(&catalog),
+        loadout,
+    ));
+
+    // The entry world is built from the requested map directly, so `--map` still works for a map
+    // that no world definition mentions.
     let map_path = options.worlds.join(&options.map);
     let raw = match std::fs::read(&map_path) {
         Ok(bytes) => bytes,
@@ -105,57 +128,45 @@ async fn main() {
         }
     };
 
-    // Our own format when the file is one, and the legacy importers otherwise, so a half-converted
-    // content directory still boots.
-    let map = if raw.starts_with(&hendra_content::map::MAGIC) {
-        hendra_content::Map::read(&raw).map_err(|err| err.to_string())
-    } else if options.map.ends_with(".wmap") {
-        legacy::from_wmap(&raw, &catalog)
-            .map(|(map, _)| map)
-            .map_err(|err| err.to_string())
-    } else {
-        std::str::from_utf8(&raw)
-            .map_err(|err| err.to_string())
-            .and_then(|text| {
-                legacy::from_jm(text, &catalog)
-                    .map(|(map, _)| map)
-                    .map_err(|err| err.to_string())
-            })
+    let Some(map) = worlds::load_map_bytes(&raw, &options.map, &catalog) else {
+        tracing::error!(path = %map_path.display(), "cannot load map");
+        std::process::exit(1);
     };
 
-    let map = match map {
-        Ok(map) => map,
-        Err(err) => {
-            tracing::error!(path = %map_path.display(), %err, "cannot load map");
-            std::process::exit(1);
-        }
-    };
-
-    let name = options.map.trim_end_matches(".jm").trim_end_matches(".wmap").to_string();
+    let name = options
+        .map
+        .trim_end_matches(".jm")
+        .trim_end_matches(".wmap")
+        .to_string();
     let terrain = Terrain::build(map, &catalog);
     tracing::info!(
         world = %name,
         width = terrain.width(),
         height = terrain.height(),
         walkable = terrain.walkable_count(),
-        "map loaded"
+        "entry world loaded"
     );
 
-    let catalog = Arc::new(catalog);
-    let loadout = world_task::Loadout {
-        avatar: catalog
-            .type_of(DEFAULT_PLAYER_OBJECT)
-            .unwrap_or(ObjectType(0x0300)),
-        weapon: catalog.type_of(DEFAULT_WEAPON),
-    };
-    if loadout.weapon.is_none() {
-        tracing::warn!(weapon = DEFAULT_WEAPON, "starter weapon not in the catalog; players cannot shoot");
+    let world = World::new(name.clone(), terrain, &catalog);
+    tracing::info!(
+        world = %name,
+        entities = world.len(),
+        portals = world_task::portals_in(&world).len(),
+        "world populated"
+    );
+    for (handle, object_type) in world_task::portals_in(&world) {
+        match registry.destination_of(object_type) {
+            Some(destination) => tracing::info!(
+                ?handle, object_type = format!("0x{object_type:04x}"), %destination, "portal"
+            ),
+            None => tracing::warn!(
+                object_type = format!("0x{object_type:04x}"),
+                "portal leads nowhere: no world definition claims this type"
+            ),
+        }
     }
 
-    let world = World::new(name.clone(), terrain, &catalog);
-    tracing::info!(world = %name, entities = world.len(), "world populated");
-
-    let handle = world_task::spawn(world, Arc::clone(&catalog), loadout);
+    let entry = world_task::spawn(world, Arc::clone(&catalog), loadout);
 
     let identity = match &options.certificate {
         Some((cert, key)) => match ServerIdentity::from_pem_files(cert, key) {
@@ -192,6 +203,7 @@ async fn main() {
     tracing::info!(
         address = %listener.local_address().expect("a bound address"),
         world = %name,
+        known_worlds = registry.known(),
         "listening"
     );
 
@@ -199,7 +211,11 @@ async fn main() {
         while let Some(incoming) = listener.accept().await {
             match incoming {
                 Ok(link) => {
-                    tokio::spawn(session::serve(link, handle.clone()));
+                    tokio::spawn(session::serve(
+                        link,
+                        Arc::clone(&registry),
+                        entry.clone(),
+                    ));
                 }
                 Err(err) => tracing::warn!(%err, "handshake failed"),
             }

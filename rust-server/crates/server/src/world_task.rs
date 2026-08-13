@@ -55,10 +55,24 @@ pub enum ToWorld {
         text: String,
     },
 
+    /// A player is stepping into a portal. The world answers with the portal's object type, or
+    /// nothing if the player is not actually standing at one.
+    UsePortal {
+        handle: Handle,
+        portal: hendra_net::EntityId,
+        reply: tokio::sync::oneshot::Sender<Option<u16>>,
+    },
+
     Leave {
         handle: Handle,
     },
 }
+
+/// How close a player must be to a portal to use it, in tiles.
+///
+/// Checked because the client names the portal it wants, and one that names a portal across the map
+/// should be refused rather than obliged.
+pub const PORTAL_REACH: f32 = 1.5;
 
 /// Everything the world keeps about one connected player.
 struct Player {
@@ -254,12 +268,38 @@ fn handle(
             }
         }
 
+        ToWorld::UsePortal {
+            handle,
+            portal,
+            reply,
+        } => {
+            let _ = reply.send(resolve_portal(world, handle, portal));
+        }
+
         ToWorld::Leave { handle } => {
             players.retain(|player| player.handle != handle);
             world.despawn(handle);
             tracing::info!(world = %world.name, ?handle, "player left");
         }
     }
+}
+
+/// Checks that a player really is standing at the portal they named, and reports its type.
+fn resolve_portal(world: &World, handle: Handle, portal: hendra_net::EntityId) -> Option<u16> {
+    let player = world.get(handle)?;
+    let target = world.get(Handle::from_entity_id(portal))?;
+
+    if target.kind != hendra_sim::Kind::Portal {
+        return None;
+    }
+
+    let (dx, dy) = (target.x - player.x, target.y - player.y);
+    if dx * dx + dy * dy > PORTAL_REACH * PORTAL_REACH {
+        tracing::debug!(?handle, "refused a portal the player is not standing at");
+        return None;
+    }
+
+    Some(target.object_type.0)
 }
 
 /// Sends every player the world as they see it.
@@ -354,6 +394,18 @@ impl WorldHandle {
     pub async fn send(&self, command: ToWorld) -> bool {
         self.inbox.send(command).await.is_ok()
     }
+}
+
+/// Every portal a world contains, as (entity, object type).
+///
+/// Logged when a world starts. A dungeon whose portals do not appear here leads nowhere, and that
+/// is far easier to see at boot than to work out from a player reporting that a portal does nothing.
+pub fn portals_in(world: &World) -> Vec<(Handle, u16)> {
+    world
+        .iter()
+        .filter(|(_, entity)| entity.kind == hendra_sim::Kind::Portal)
+        .map(|(handle, entity)| (handle, entity.object_type.0))
+        .collect()
 }
 
 /// Starts a world on its own task.
