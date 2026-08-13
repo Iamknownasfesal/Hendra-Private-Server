@@ -17,7 +17,7 @@ mod moves;
 mod trade;
 
 pub use model::{Account, Character, CharacterSummary, Currency};
-pub use moves::{Location, MoveOutcome, Placed};
+pub use moves::{Location, MoveOutcome, Placed, Purchase};
 pub use trade::{Offer, TradeOutcome};
 
 use sqlx::PgPool;

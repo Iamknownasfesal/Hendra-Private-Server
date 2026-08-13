@@ -7,7 +7,7 @@
 //! Set `HENDRA_TEST_DATABASE` to point at one. Without it the tests skip rather than fail, so a
 //! machine with no Postgres can still run the rest of the suite.
 
-use hendra_store::{Currency, Location, Offer, Store, StoreError};
+use hendra_store::{Currency, Location, Offer, Purchase, Store, StoreError};
 
 /// A store with a schema of its own, or `None` when no database is configured.
 ///
@@ -892,7 +892,15 @@ async fn buying_something_pays_for_it_and_delivers_it() {
 
     store.credit(account.id, Currency::Gold, 100).await.unwrap();
     let slot = store
-        .buy_item(account.id, character.id, WAND, Currency::Gold, 40, 4, 11)
+        .buy_item(Purchase {
+            account_id: account.id,
+            character_id: character.id,
+            item: WAND,
+            currency: Currency::Gold,
+            price: 40,
+            first_slot: 4,
+            last_slot: 11,
+        })
         .await
         .unwrap();
 
@@ -917,7 +925,15 @@ async fn buying_what_you_cannot_afford_costs_nothing_and_delivers_nothing() {
     store.credit(account.id, Currency::Gold, 10).await.unwrap();
     assert!(
         store
-            .buy_item(account.id, character.id, WAND, Currency::Gold, 40, 4, 11)
+            .buy_item(Purchase {
+                account_id: account.id,
+                character_id: character.id,
+                item: WAND,
+                currency: Currency::Gold,
+                price: 40,
+                first_slot: 4,
+                last_slot: 11,
+            })
             .await
             .is_err()
     );
@@ -954,7 +970,15 @@ async fn a_purchase_with_nowhere_to_put_it_leaves_the_money_alone() {
 
     assert!(
         store
-            .buy_item(account.id, character.id, WAND, Currency::Gold, 40, 4, 11)
+            .buy_item(Purchase {
+                account_id: account.id,
+                character_id: character.id,
+                item: WAND,
+                currency: Currency::Gold,
+                price: 40,
+                first_slot: 4,
+                last_slot: 11,
+            })
             .await
             .is_err()
     );
@@ -981,8 +1005,24 @@ async fn two_purchases_racing_for_the_last_coin_cannot_both_win() {
     store.credit(account.id, Currency::Gold, 40).await.unwrap();
 
     let (first, second) = tokio::join!(
-        store.buy_item(account.id, character.id, WAND, Currency::Gold, 40, 4, 11),
-        store.buy_item(account.id, character.id, ROBE, Currency::Gold, 40, 4, 11)
+        store.buy_item(Purchase {
+            account_id: account.id,
+            character_id: character.id,
+            item: WAND,
+            currency: Currency::Gold,
+            price: 40,
+            first_slot: 4,
+            last_slot: 11,
+        }),
+        store.buy_item(Purchase {
+            account_id: account.id,
+            character_id: character.id,
+            item: ROBE,
+            currency: Currency::Gold,
+            price: 40,
+            first_slot: 4,
+            last_slot: 11,
+        })
     );
 
     let winners = [first.is_ok(), second.is_ok()]

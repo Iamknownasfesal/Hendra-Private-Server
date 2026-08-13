@@ -107,22 +107,37 @@ impl Store {
     }
 }
 
+/// What one purchase is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Purchase {
+    pub account_id: i64,
+    pub character_id: i64,
+    pub item: uuid::Uuid,
+    pub currency: crate::model::Currency,
+    pub price: i32,
+
+    /// The carried range the item may land in. Worn slots are not somewhere a purchase arrives.
+    pub first_slot: i16,
+    pub last_slot: i16,
+}
+
 impl Store {
     /// Buys an item, paying for it and receiving it in one transaction.
     ///
     /// Both halves or neither. Paying outside the transaction that grants the item is how a player
     /// loses the money and gets nothing, and granting outside it is how they get the item twice:
     /// the balance check and the slot claim have to agree at the same instant.
-    pub async fn buy_item(
-        &self,
-        account_id: i64,
-        character_id: i64,
-        item: uuid::Uuid,
-        currency: crate::model::Currency,
-        price: i32,
-        first_slot: i16,
-        last_slot: i16,
-    ) -> Result<i16> {
+    pub async fn buy_item(&self, purchase: Purchase) -> Result<i16> {
+        let Purchase {
+            account_id,
+            character_id,
+            item,
+            currency,
+            price,
+            first_slot,
+            last_slot,
+        } = purchase;
+
         let mut transaction = self.pool().begin().await?;
 
         // Paid first. A purchase that fails for want of room should leave the money alone, and
