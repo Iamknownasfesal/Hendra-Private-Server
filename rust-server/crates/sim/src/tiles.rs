@@ -47,12 +47,28 @@ impl BitGrid {
     }
 }
 
+/// How many tiles wide a blocker-summary region is.
+///
+/// A coarse second grid recording only "does this region contain anything that blocks sight". Most
+/// of most maps is open ground, and a sight test across open ground can then be answered by a
+/// handful of bitset lookups instead of walking twenty squares.
+const REGION: u32 = 8;
+
 /// The terrain of one world.
 pub struct Terrain {
     width: u32,
     height: u32,
     walkable: BitGrid,
     blocks_sight: BitGrid,
+
+    /// One bit per [`REGION`]-sized block, set when anything in it blocks sight.
+    blocker_regions: BitGrid,
+    region_columns: u32,
+    region_rows: u32,
+
+    /// Whether the map blocks sight anywhere at all.
+    any_blockers: bool,
+
     map: Map,
 }
 
@@ -86,13 +102,62 @@ impl Terrain {
             }
         }
 
+        // Summarise the blockers into coarse regions, so an open sight line can be answered without
+        // walking it.
+        let region_columns = width.div_ceil(REGION);
+        let region_rows = height.div_ceil(REGION);
+        let mut blocker_regions = BitGrid::new(region_columns, region_rows);
+        let mut any_blockers = false;
+
+        for y in 0..height {
+            for x in 0..width {
+                if blocks_sight.get(x, y) {
+                    blocker_regions.set(x / REGION, y / REGION);
+                    any_blockers = true;
+                }
+            }
+        }
+
         Terrain {
             width,
             height,
             walkable,
             blocks_sight,
+            blocker_regions,
+            region_columns,
+            region_rows,
+            any_blockers,
             map,
         }
+    }
+
+    /// Whether anything between two points could possibly block sight.
+    ///
+    /// A conservative test over the coarse grid: false means definitely clear, true means walk it
+    /// properly. Checking the segment's bounding box rather than the regions it actually crosses
+    /// costs a few extra lookups and keeps this simple enough to be obviously correct.
+    fn could_block(&self, from_x: f32, from_y: f32, to_x: f32, to_y: f32) -> bool {
+        if !self.any_blockers {
+            return false;
+        }
+
+        let region = |value: f32, limit: u32| -> u32 {
+            (value.max(0.0) as u32 / REGION).min(limit.saturating_sub(1))
+        };
+
+        let min_column = region(from_x.min(to_x), self.region_columns);
+        let max_column = region(from_x.max(to_x), self.region_columns);
+        let min_row = region(from_y.min(to_y), self.region_rows);
+        let max_row = region(from_y.max(to_y), self.region_rows);
+
+        for row in min_row..=max_row {
+            for column in min_column..=max_column {
+                if self.blocker_regions.get(column, row) {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     pub fn width(&self) -> u32 {
@@ -153,6 +218,136 @@ impl Terrain {
         }
         let tile = catalog.tile(self.map.at(x as u32, y as u32)?.tile)?;
         tile.hurts().then_some((tile.min_damage, tile.max_damage))
+    }
+
+    /// Whether one point can see another.
+    ///
+    /// Walks the squares between the two and stops at the first that blocks. The endpoints are
+    /// deliberately excluded: standing on a sight-blocking square must not hide you from yourself,
+    /// and something standing *on* a tree is visible even though the tree blocks what is behind it.
+    ///
+    /// This is a supercover walk rather than a Bresenham line — it visits every square the segment
+    /// touches, including the ones it merely clips at a corner. A thin Bresenham line slips
+    /// diagonally between two walls that meet at a corner, which players notice immediately because
+    /// it lets them see and be seen through what is visibly a solid join.
+    pub fn line_of_sight(&self, from_x: f32, from_y: f32, to_x: f32, to_y: f32) -> bool {
+        let (mut x, mut y) = (from_x.floor() as i64, from_y.floor() as i64);
+        let (target_x, target_y) = (to_x.floor() as i64, to_y.floor() as i64);
+
+        if x == target_x && y == target_y {
+            return true;
+        }
+
+        // Both ends must be on the map before the coarse test can vouch for the space between them.
+        let inside = |x: f32, y: f32| {
+            x >= 0.0 && y >= 0.0 && (x as u32) < self.width && (y as u32) < self.height
+        };
+        if inside(from_x, from_y)
+            && inside(to_x, to_y)
+            && !self.could_block(from_x, from_y, to_x, to_y)
+        {
+            return true;
+        }
+
+        let (dx, dy) = (to_x - from_x, to_y - from_y);
+        let (step_x, step_y) = (dx.signum() as i64, dy.signum() as i64);
+
+        // Distance along the ray to the next square boundary on each axis, and how much distance
+        // one whole square costs. An infinite delta means the ray never crosses that axis.
+        let delta_x = if dx == 0.0 { f32::INFINITY } else { (1.0 / dx).abs() };
+        let delta_y = if dy == 0.0 { f32::INFINITY } else { (1.0 / dy).abs() };
+
+        let mut next_x = if dx == 0.0 {
+            f32::INFINITY
+        } else if dx > 0.0 {
+            ((x + 1) as f32 - from_x) / dx
+        } else {
+            (from_x - x as f32) / -dx
+        };
+        let mut next_y = if dy == 0.0 {
+            f32::INFINITY
+        } else if dy > 0.0 {
+            ((y + 1) as f32 - from_y) / dy
+        } else {
+            (from_y - y as f32) / -dy
+        };
+
+        // Bounded so a ray that somehow fails to terminate cannot spin. The bound is the taxicab
+        // distance, which no correct walk exceeds.
+        let limit = ((target_x - x).abs() + (target_y - y).abs() + 2) as usize;
+
+        for _ in 0..limit {
+            if next_x < next_y {
+                next_x += delta_x;
+                x += step_x;
+            } else {
+                next_y += delta_y;
+                y += step_y;
+            }
+
+            if x == target_x && y == target_y {
+                return true;
+            }
+
+            if x < 0 || y < 0 || self.blocks_sight(x as u32, y as u32) {
+                return false;
+            }
+        }
+
+        // Ran out of steps without arriving: treat as blocked rather than claim a view that was
+        // never traced.
+        false
+    }
+
+    /// The sight walk with the coarse short-circuit skipped.
+    ///
+    /// Exists so a test can check that the optimisation only ever saves work, never changes an
+    /// answer — the failure mode of a conservative filter that turns out not to be.
+    #[cfg(test)]
+    fn line_of_sight_walked(&self, from_x: f32, from_y: f32, to_x: f32, to_y: f32) -> bool {
+        let (mut x, mut y) = (from_x.floor() as i64, from_y.floor() as i64);
+        let (target_x, target_y) = (to_x.floor() as i64, to_y.floor() as i64);
+        if x == target_x && y == target_y {
+            return true;
+        }
+
+        let (dx, dy) = (to_x - from_x, to_y - from_y);
+        let (step_x, step_y) = (dx.signum() as i64, dy.signum() as i64);
+        let delta_x = if dx == 0.0 { f32::INFINITY } else { (1.0 / dx).abs() };
+        let delta_y = if dy == 0.0 { f32::INFINITY } else { (1.0 / dy).abs() };
+
+        let mut next_x = if dx == 0.0 {
+            f32::INFINITY
+        } else if dx > 0.0 {
+            ((x + 1) as f32 - from_x) / dx
+        } else {
+            (from_x - x as f32) / -dx
+        };
+        let mut next_y = if dy == 0.0 {
+            f32::INFINITY
+        } else if dy > 0.0 {
+            ((y + 1) as f32 - from_y) / dy
+        } else {
+            (from_y - y as f32) / -dy
+        };
+
+        let limit = ((target_x - x).abs() + (target_y - y).abs() + 2) as usize;
+        for _ in 0..limit {
+            if next_x < next_y {
+                next_x += delta_x;
+                x += step_x;
+            } else {
+                next_y += delta_y;
+                y += step_y;
+            }
+            if x == target_x && y == target_y {
+                return true;
+            }
+            if x < 0 || y < 0 || self.blocks_sight(x as u32, y as u32) {
+                return false;
+            }
+        }
+        false
     }
 
     /// How many squares can be walked on. Useful for a sanity check after loading a map.
@@ -278,6 +473,122 @@ mod tests {
         assert_eq!(terrain.sight_blocking_count(), 1);
         assert_eq!(terrain.width(), 4);
         assert_eq!(terrain.height(), 1);
+    }
+
+    /// A 16×16 field of grass, with sight-blocking trees at the given squares.
+    fn walled(trees: &[(u32, u32)]) -> Terrain {
+        let mut squares: Vec<Composition> = (0..16 * 16)
+            .map(|_| square(0x10, ObjectType::NONE.0))
+            .collect();
+        for (x, y) in trees {
+            squares[(*y as usize) * 16 + (*x as usize)] = square(0x10, 0x501);
+        }
+        Terrain::build(Map::from_squares(16, 16, squares).unwrap(), &catalog())
+    }
+
+    #[test]
+    fn open_ground_is_visible_across() {
+        let terrain = walled(&[]);
+        assert!(terrain.line_of_sight(1.5, 1.5, 14.5, 1.5));
+        assert!(terrain.line_of_sight(1.5, 1.5, 14.5, 14.5));
+        assert!(terrain.line_of_sight(14.5, 14.5, 1.5, 1.5), "and back again");
+    }
+
+    #[test]
+    fn a_wall_blocks_what_is_behind_it() {
+        let wall: Vec<(u32, u32)> = (0..16).map(|y| (8, y)).collect();
+        let terrain = walled(&wall);
+
+        assert!(!terrain.line_of_sight(2.5, 8.5, 13.5, 8.5), "straight through");
+        assert!(!terrain.line_of_sight(2.5, 2.5, 13.5, 13.5), "diagonally through");
+        assert!(terrain.line_of_sight(2.5, 8.5, 6.5, 8.5), "short of the wall");
+    }
+
+    #[test]
+    fn sight_is_symmetric() {
+        // Asymmetric visibility is the classic ray-casting bug: A sees B but B does not see A, so
+        // one of them is shot by something they cannot see.
+        let terrain = walled(&[(6, 6), (7, 6), (6, 7)]);
+
+        for a in [(2.5f32, 2.5f32), (3.2, 9.8), (11.5, 4.5), (9.1, 9.1)] {
+            for b in [(12.5f32, 12.5f32), (5.5, 11.5), (10.5, 2.5), (1.5, 7.5)] {
+                assert_eq!(
+                    terrain.line_of_sight(a.0, a.1, b.0, b.1),
+                    terrain.line_of_sight(b.0, b.1, a.0, a.1),
+                    "{a:?} and {b:?} disagree about seeing each other"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_diagonal_join_cannot_be_seen_through() {
+        // Two walls meeting at a corner. A thin line slips between them; a supercover walk does not.
+        let terrain = walled(&[(8, 7), (7, 8)]);
+        assert!(
+            !terrain.line_of_sight(7.5, 7.5, 8.5, 8.5),
+            "the corner between two walls is not a gap"
+        );
+    }
+
+    #[test]
+    fn standing_on_cover_does_not_hide_you() {
+        let terrain = walled(&[(8, 8)]);
+
+        assert!(terrain.line_of_sight(5.5, 8.5, 8.5, 8.5), "the tree itself is visible");
+        assert!(terrain.line_of_sight(8.5, 8.5, 8.5, 8.5), "and it can see itself");
+        assert!(!terrain.line_of_sight(5.5, 8.5, 11.5, 8.5), "but not past it");
+    }
+
+    #[test]
+    fn a_ray_leaving_the_map_is_blocked() {
+        let terrain = walled(&[]);
+        assert!(!terrain.line_of_sight(1.5, 1.5, -5.0, 1.5));
+        assert!(!terrain.line_of_sight(1.5, 1.5, 40.0, 40.0));
+    }
+
+    #[test]
+    fn the_coarse_filter_saves_work_without_changing_answers() {
+        // The optimisation must be conservative: it may only skip a walk it can prove is clear.
+        // Blockers are scattered so that some region boxes contain one and some do not.
+        let trees: Vec<(u32, u32)> = vec![
+            (3, 3), (4, 3), (8, 7), (7, 8), (12, 2), (2, 12), (9, 9), (10, 9), (14, 14),
+        ];
+        let terrain = walled(&trees);
+
+        let mut checked = 0usize;
+        let mut x = 0.5f32;
+        while x < 16.0 {
+            let mut y = 0.5f32;
+            while y < 16.0 {
+                for target in [
+                    (0.5f32, 0.5f32),
+                    (15.5, 15.5),
+                    (8.5, 1.5),
+                    (1.5, 8.5),
+                    (11.3, 6.7),
+                    (6.7, 11.3),
+                ] {
+                    assert_eq!(
+                        terrain.line_of_sight(x, y, target.0, target.1),
+                        terrain.line_of_sight_walked(x, y, target.0, target.1),
+                        "({x}, {y}) to {target:?} disagreed"
+                    );
+                    checked += 1;
+                }
+                y += 1.7;
+            }
+            x += 1.3;
+        }
+
+        assert!(checked > 400, "the sweep should be broad, checked {checked}");
+    }
+
+    #[test]
+    fn an_open_map_needs_no_walk_at_all() {
+        let terrain = walled(&[]);
+        assert!(!terrain.any_blockers, "nothing on this map blocks sight");
+        assert!(terrain.line_of_sight(0.5, 0.5, 15.5, 15.5));
     }
 
     #[test]

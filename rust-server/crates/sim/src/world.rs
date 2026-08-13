@@ -538,9 +538,18 @@ impl World {
 
         self.visible.clear();
         for handle in &self.nearby {
-            if let Some(entity) = self.entities.get(*handle) {
-                self.visible.push((handle.to_entity_id(), entity.state()));
+            let Some(entity) = self.entities.get(*handle) else {
+                continue;
+            };
+
+            // Within range is not the same as in view. Without this a player sees, and is seen by,
+            // anything on the far side of a wall — which in a game where being seen means being
+            // shot is a correctness problem rather than a cosmetic one.
+            if *handle != viewer && !self.terrain.line_of_sight(x, y, entity.x, entity.y) {
+                continue;
             }
+
+            self.visible.push((handle.to_entity_id(), entity.state()));
         }
 
         WorldSnapshot::from_unsorted(std::mem::take(&mut self.visible))
