@@ -469,101 +469,11 @@ public static class HudIcons
 
     // ─── the vault's filter rail ──────────────────────────────────────────────────────────────
     //
-    // One mark per item category. They are silhouettes rather than pictures of items: the rail is
-    // read at a glance and out of the corner of the eye, and a shape with two tones and a highlight
-    // on it stops being legible at fifty-six pixels next to seven of its neighbours.
-
-    /// <summary>Weapons: a blade on the diagonal, and nothing else.</summary>
-    /// <remarks>
-    /// No guard and no grip. They were there in the first pass and they are what made this read as
-    /// a small picture of a sword rather than as a mark: three shapes inside a forty-pixel square,
-    /// none of them legible on their own. One tapered stroke is a weapon at any size.
-    /// </remarks>
-    public static void Sword(CanvasItem into, Rect2 box, Color colour)
-    {
-        into.DrawColoredPolygon(Map(box,
-            0.88f, 0.10f,
-            0.86f, 0.26f,
-            0.20f, 0.90f,
-            0.10f, 0.88f,
-            0.12f, 0.74f,
-            0.74f, 0.12f), colour);
-    }
-
-    /// <summary>Light armour: a tabard, square across the shoulders and pointed below.</summary>
-    public static void Robe(CanvasItem into, Rect2 box, Color colour)
-    {
-        // A neck notch, and sides that taper the whole way down rather than stepping in. Stepped,
-        // this was a wide head on a narrow shank and it read as a nail.
-        into.DrawColoredPolygon(Map(box,
-            0.24f, 0.14f,
-            0.43f, 0.14f,
-            0.50f, 0.26f,
-            0.57f, 0.14f,
-            0.76f, 0.14f,
-            0.70f, 0.42f,
-            0.64f, 0.76f,
-            0.50f, 0.90f,
-            0.36f, 0.76f,
-            0.30f, 0.42f), colour);
-    }
-
-    /// <summary>Heavy armour: a shield, because a heavier robe is not a distinguishable shape.</summary>
-    public static void Shield(CanvasItem into, Rect2 box, Color colour)
-    {
-        into.DrawColoredPolygon(Map(box,
-            0.50f, 0.10f,
-            0.86f, 0.24f,
-            0.86f, 0.50f,
-            0.50f, 0.90f,
-            0.14f, 0.50f,
-            0.14f, 0.24f), colour);
-    }
-
-    /// <summary>Rings: a band, and nothing set into it.</summary>
-    /// <remarks>
-    /// The stone is gone. At this size it welded itself to the top of the band and the whole mark
-    /// became a keyhole; a plain circle is the only ring shape that survives being small.
-    /// </remarks>
-    public static void Ring(CanvasItem into, Rect2 box, Color colour)
-    {
-        into.DrawArc(At(box, 0.5f, 0.5f), Span(box) * 0.32f, 0f, Mathf.Tau, 40, colour,
-            Mathf.Max(2f, Span(box) * 0.12f));
-    }
-
-    /// <summary>Abilities: a filled orb inside its own ring.</summary>
-    public static void Orb(CanvasItem into, Rect2 box, Color colour)
-    {
-        into.DrawArc(At(box, 0.5f, 0.5f), Span(box) * 0.36f, 0f, Mathf.Tau, 40, colour,
-            Mathf.Max(2f, Span(box) * 0.09f));
-        into.DrawCircle(At(box, 0.5f, 0.5f), Span(box) * 0.18f, colour);
-    }
-
-    /// <summary>
-    /// Pets: a cat's head.
-    /// </summary>
-    /// <remarks>
-    /// A paw was the first pass and it is the wrong mark. Four toes and a pad is five shapes that
-    /// have to stay apart from each other, and at forty pixels they close up into a cloud. A head
-    /// with two ears is one outline and reads instantly.
-    /// </remarks>
-    public static void Cat(CanvasItem into, Rect2 box, Color colour)
-    {
-        // Two ears standing clear above a wide head. The ears have to come to a point and start
-        // outside the skull, or the whole thing reads as a shield.
-        into.DrawColoredPolygon(Map(box, 0.14f, 0.08f, 0.34f, 0.20f, 0.30f, 0.44f), colour);
-        into.DrawColoredPolygon(Map(box, 0.86f, 0.08f, 0.66f, 0.20f, 0.70f, 0.44f), colour);
-
-        into.DrawColoredPolygon(Map(box,
-            0.22f, 0.30f,
-            0.34f, 0.22f,
-            0.66f, 0.22f,
-            0.78f, 0.30f,
-            0.80f, 0.58f,
-            0.62f, 0.82f,
-            0.38f, 0.82f,
-            0.20f, 0.58f), colour);
-    }
+    // Nothing is drawn here any more. Three passes of hand-drawn category marks went in and none of
+    // them survived being looked at: a shape invented for one rail belongs to nothing else on the
+    // screen and has to be learnt before it can be read. The rail uses the game's own item art with
+    // the colour taken out instead -- see VaultView.MarkFor and Assets.SpriteSilhouette. Only the
+    // fallback below is still drawn, for a category no item stands for.
 
     /// <summary>Everything else: a sparkle, for the things that are one of a kind.</summary>
     /// <remarks>

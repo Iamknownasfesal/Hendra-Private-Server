@@ -344,26 +344,64 @@ public sealed partial class VaultView : ModalPanel
     // ─── the filter rail ──────────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// The mark on each filter button.
+    /// The item whose shape stands for each category.
     /// </summary>
     /// <remarks>
-    /// A silhouette, in the same geometry the rest of the interface draws its icons in -- not a
-    /// picture of an item. The rail is read out of the corner of the eye at fifty-six pixels, and a
-    /// sword sprite with a wooden hilt and a steel highlight stops being a sword down there; a
-    /// sword-shaped hole in the plate never does. Which category gets which mark is a question about
-    /// the interface, so it is answered here and not in the item data.
+    /// <para>
+    /// A real sprite out of the game's own sheets, flattened to one tone -- see
+    /// <see cref="SpriteSilhouette"/>. Two earlier passes drew these by hand and neither survived
+    /// contact: a shape invented for the rail is a shape that belongs to nothing else on the
+    /// screen, and next to seven of its neighbours it reads as a symbol you have to learn rather
+    /// than as the thing itself. A sword the game already draws is a sword.
+    /// </para>
+    /// <para>
+    /// Which item stands for which category is a question about the interface, not about the data,
+    /// so it is answered here. They are picked for their outline and nothing else: a robe because
+    /// its flared skirt is the one worn shape that is not the same vest as heavy armour, an egg for
+    /// pets because a pet has no item of its own, a plain shield for abilities because the
+    /// twenty-odd things that go in that slot have no common shape at all.
+    /// </para>
     /// </remarks>
-    private static Action<CanvasItem, Rect2, Color> GlyphFor(string category) => category switch
+    private static string MarkItem(string category) => category switch
     {
-        "Weapon" => HudIcons.Sword,
-        "Armor" => HudIcons.Robe,
-        "Heavy" => HudIcons.Shield,
-        "Ring" => HudIcons.Ring,
-        "Ability" => HudIcons.Orb,
-        "Consumable" => HudIcons.Flask,
-        "Pet" => HudIcons.Cat,
-        _ => HudIcons.Spark,
+        "Weapon" => "Long Sword",
+        "Armor" => "Robe of the Neophyte",
+        "Heavy" => "Plate Mail",
+        "Ring" => "Ring of Attack",
+        "Ability" => "Wooden Shield",
+        "Consumable" => "Health Potion",
+        "Pet" => "Common Feline Egg",
+        _ => null,
     };
+
+    /// <summary>
+    /// Turns that into something that can draw itself on a button.
+    /// </summary>
+    /// <remarks>
+    /// Sized to a whole multiple of the source sprite, for the reason every sprite in this
+    /// interface is: an eight-pixel shape drawn at thirty-six puts four and a half screen pixels on
+    /// each of its own, and half the mark comes out a pixel fatter than the other half.
+    /// </remarks>
+    private Action<CanvasItem, Rect2, Color> MarkFor(string category)
+    {
+        var desc = _data?.GetObject(MarkItem(category) ?? string.Empty);
+        var sprite = desc != null ? (_textures?.Resolve(desc.Texture) ?? default).Still : default;
+        var shape = SpriteSilhouette.Of(sprite);
+
+        if (shape == null)
+            return HudIcons.Spark;
+
+        return (into, box, colour) =>
+        {
+            float source = Mathf.Max(1f, Mathf.Min(shape.GetWidth(), shape.GetHeight()));
+            float room = Mathf.Min(box.Size.X, box.Size.Y);
+            float side = Mathf.Max(source, Mathf.Floor(room / source) * source);
+
+            into.DrawTextureRect(shape, new Rect2(
+                box.Position + (box.Size - new Vector2(side, side)) / 2f,
+                new Vector2(side, side)), false, colour);
+        };
+    }
 
     private void BuildRail()
     {
@@ -372,7 +410,7 @@ public sealed partial class VaultView : ModalPanel
         Add(null, ItemCategories.All, null);
 
         foreach (string category in ItemCategories.Present(_data))
-            Add(category, category, GlyphFor(category));
+            Add(category, category, MarkFor(category));
 
         void Add(string category, string label, Action<CanvasItem, Rect2, Color> glyph)
         {
