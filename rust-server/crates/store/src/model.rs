@@ -327,6 +327,24 @@ impl Store {
     }
 
     /// Loads a character and its inventory.
+    /// The living character of that name, if there is one.
+    ///
+    /// Names are compared without case, as everywhere else a player types one: somebody asked to
+    /// trade by typing a name, and they should not have to match its capitals.
+    pub async fn character_named(&self, name: &str) -> Result<Option<Character>> {
+        let found = sqlx::query_as::<_, (i64,)>(
+            "SELECT id FROM character WHERE lower(name) = lower($1) AND alive LIMIT 1",
+        )
+        .bind(name)
+        .fetch_optional(self.pool())
+        .await?;
+
+        match found {
+            Some((id,)) => Ok(Some(self.character(id).await?)),
+            None => Ok(None),
+        }
+    }
+
     pub async fn character(&self, id: i64) -> Result<Character> {
         let row = sqlx::query_as::<
             _,

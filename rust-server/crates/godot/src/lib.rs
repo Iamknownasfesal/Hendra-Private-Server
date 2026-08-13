@@ -88,6 +88,32 @@ enum Event {
     /// Squares whose ground changed, as `(x, y, tile)`.
     Ground(Vec<(u16, u16, u16)>),
 
+    /// Somebody asked to trade.
+    TradeRequested(String),
+
+    /// A trade began. Each slot is `(item, slot_type, included, tradeable)`, with the item absent
+    /// where the slot is empty.
+    TradeStart {
+        mine: Vec<hendra_net::TradeSlot>,
+        their_name: String,
+        theirs: Vec<hendra_net::TradeSlot>,
+    },
+
+    /// The other side changed what they are offering.
+    TradeChanged(Vec<bool>),
+
+    /// The other side agreed, and to what.
+    TradeAccepted {
+        mine: Vec<bool>,
+        theirs: Vec<bool>,
+    },
+
+    /// The trade ended. Zero means it went through.
+    TradeDone {
+        code: u32,
+        message: String,
+    },
+
     /// The scenery standing in one row of the map, as `(x, object, size)`.
     ///
     /// Not entities: scenery never moves and never acts, so it arrives once with the ground rather
@@ -372,6 +398,34 @@ impl HendraConnection {
 
                     let row: Vec<i32> = tiles.iter().map(|tile| *tile as i32).collect();
                     entry.set("tiles", &PackedInt32Array::from(row.as_slice()));
+                }
+                Event::TradeRequested(name) => {
+                    entry.set("kind", "trade_requested");
+                    entry.set("name", name.as_str());
+                }
+                Event::TradeStart {
+                    mine,
+                    their_name,
+                    theirs,
+                } => {
+                    entry.set("kind", "trade_start");
+                    entry.set("their_name", their_name.as_str());
+                    entry.set("mine", &slots_of(&mine));
+                    entry.set("theirs", &slots_of(&theirs));
+                }
+                Event::TradeChanged(offer) => {
+                    entry.set("kind", "trade_changed");
+                    entry.set("offer", &flags_of(&offer));
+                }
+                Event::TradeAccepted { mine, theirs } => {
+                    entry.set("kind", "trade_accepted");
+                    entry.set("mine", &flags_of(&mine));
+                    entry.set("theirs", &flags_of(&theirs));
+                }
+                Event::TradeDone { code, message } => {
+                    entry.set("kind", "trade_done");
+                    entry.set("code", code as i64);
+                    entry.set("message", message.as_str());
                 }
                 Event::Scenery { y, objects } => {
                     entry.set("kind", "scenery");
@@ -793,6 +847,24 @@ fn apply(
 
         ServerMessage::Scenery { y, objects } => shared.push(Event::Scenery { y, objects }),
 
+        ServerMessage::TradeRequested { name } => shared.push(Event::TradeRequested(name)),
+        ServerMessage::TradeStart {
+            mine,
+            their_name,
+            theirs,
+        } => shared.push(Event::TradeStart {
+            mine,
+            their_name,
+            theirs,
+        }),
+        ServerMessage::TradeChanged { offer } => shared.push(Event::TradeChanged(offer)),
+        ServerMessage::TradeAccepted { mine, theirs } => {
+            shared.push(Event::TradeAccepted { mine, theirs })
+        }
+        ServerMessage::TradeDone { code, message } => {
+            shared.push(Event::TradeDone { code, message })
+        }
+
         ServerMessage::Terrain { x, y, runs } => {
             // Expanded here rather than in the game, so a script sees a row of squares rather than
             // an encoding it has to understand.
@@ -865,6 +937,31 @@ fn apply(
 }
 
 /// Resolves a host and port, preferring IPv4 when both are offered.
+/// One trade side's slots, as parallel arrays: one marshalled block per field beats a dictionary
+/// per slot, which is how the containers and the world view are handed over too.
+fn slots_of(slots: &[hendra_net::TradeSlot]) -> VarDictionary {
+    let items: Vec<i32> = slots
+        .iter()
+        .map(|slot| slot.item.map_or(-1, |item| item as i32))
+        .collect();
+    let kinds: Vec<i32> = slots.iter().map(|slot| slot.slot_type).collect();
+    let included: Vec<i32> = slots.iter().map(|slot| i32::from(slot.included)).collect();
+    let tradeable: Vec<i32> = slots.iter().map(|slot| i32::from(slot.tradeable)).collect();
+
+    let mut held = VarDictionary::new();
+    held.set("items", &PackedInt32Array::from(items.as_slice()));
+    held.set("slot_types", &PackedInt32Array::from(kinds.as_slice()));
+    held.set("included", &PackedInt32Array::from(included.as_slice()));
+    held.set("tradeable", &PackedInt32Array::from(tradeable.as_slice()));
+    held
+}
+
+/// An offer, as one flag per slot.
+fn flags_of(offer: &[bool]) -> PackedInt32Array {
+    let flags: Vec<i32> = offer.iter().map(|on| i32::from(*on)).collect();
+    PackedInt32Array::from(flags.as_slice())
+}
+
 fn resolve(host: &str, port: u16) -> Option<std::net::SocketAddr> {
     use std::net::ToSocketAddrs;
 

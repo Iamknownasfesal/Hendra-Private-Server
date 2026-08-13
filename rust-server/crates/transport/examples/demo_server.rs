@@ -133,8 +133,12 @@ async fn handle(
     let message = ClientMessage::decode(&mut reader).map_err(|err| err.to_string())?;
 
     match message {
-        // The demo has no inventory, so there is nothing to use.
+        // The demo has no inventory, so there is nothing to use and nobody to trade with.
         ClientMessage::UseItem { .. } => {}
+        ClientMessage::RequestTrade { .. }
+        | ClientMessage::ChangeTrade { .. }
+        | ClientMessage::AcceptTrade { .. }
+        | ClientMessage::CancelTrade => {}
         ClientMessage::Hello {
             protocol,
             token,

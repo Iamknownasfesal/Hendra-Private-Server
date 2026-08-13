@@ -66,6 +66,9 @@ pub struct Context {
 
     /// Verifies session tokens. This process cannot mint one.
     pub key: hendra_auth::TokenKey,
+
+    /// Who is trading with whom.
+    pub trades: Arc<crate::trades::Trades>,
 }
 
 /// Turns a wire slot into a durable one.
@@ -114,6 +117,11 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
         "session started"
     );
 
+    // Reachable by name from now on, which is what lets somebody else ask them to trade.
+    context
+        .trades
+        .arrived(&name, player.character.id, link.sender());
+
     // The ground first, because a client that has not been told the map cannot place anything it
     // is about to be told about.
     send_terrain(&mut link, &placement).await;
@@ -144,6 +152,10 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
 
             Outcome::UseItem { slot, x, y } => {
                 use_item(&mut link, &context, &player, &placement, slot, (x, y)).await;
+            }
+
+            Outcome::Trade(asked) => {
+                trade(&mut link, &context, &player, &name, asked).await;
             }
 
             Outcome::Travel(portal_type) => {
@@ -181,6 +193,10 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
         }
     }
 
+    // Before anything else: a trade left half-agreed by a disconnection is the shape a duplication
+    // is built on.
+    context.trades.left(&name);
+
     placement
         .world
         .send(ToWorld::Leave {
@@ -195,6 +211,15 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
     }
 
     tracing::info!(%peer, %name, "session ended");
+}
+
+/// What a player asked for about a trade.
+#[derive(Debug, Clone, PartialEq)]
+enum Trade {
+    Request(String),
+    Change(Vec<bool>),
+    Accept { mine: Vec<bool>, theirs: Vec<bool> },
+    Cancel,
 }
 
 enum Outcome {
@@ -215,6 +240,12 @@ enum Outcome {
     /// Handled by the caller rather than sent straight to the world, because whether they may speak
     /// at all is an account question and the world does not hold accounts.
     Chat(String),
+
+    /// Something to do with trading.
+    ///
+    /// Handled by the caller for the same reason a move is: a trade is two connections and a
+    /// durable inventory, and the world holds neither.
+    Trade(Trade),
 
     /// The player wants to use what is in a slot.
     ///
@@ -965,6 +996,212 @@ async fn send_scenery(link: &mut Link, placement: &Placement) {
     }
 }
 
+/// Carries out what a player asked for about a trade.
+///
+/// The registry decides who may trade with whom and what was agreed to. The store decides whether
+/// the items actually move, and its refusal is an answer rather than a failure: an offer can name an
+/// item that has been dropped, sold or traded elsewhere since it was made.
+async fn trade(
+    link: &mut Link,
+    context: &Context,
+    player: &crate::accounts::Session,
+    name: &str,
+    asked: Trade,
+) {
+    use crate::trades::Step;
+
+    let step = match asked {
+        Trade::Request(to) => {
+            let step = context.trades.request(name, &to);
+
+            // A trade that has just begun needs both sides shown what the other is holding, which
+            // is a read of two inventories rather than anything the registry knows.
+            if step == Step::Done
+                && let Some(partner) = context.trades.partner(name)
+            {
+                open_trade(context, name, &partner).await;
+            }
+            step
+        }
+
+        Trade::Change(offer) => context.trades.change(name, &offer),
+        Trade::Accept { mine, theirs } => context.trades.accept(name, &mine, &theirs),
+        Trade::Cancel => context.trades.cancel(name, "Trade cancelled."),
+    };
+
+    match step {
+        Step::Done => {}
+        Step::Say(reason) => say(link, &reason).await,
+
+        Step::Settle {
+            partner_character,
+            partner_name,
+            mine,
+            theirs,
+        } => {
+            settle_trade(
+                context,
+                name,
+                player.character.id,
+                &partner_name,
+                partner_character,
+                mine,
+                theirs,
+            )
+            .await;
+        }
+    }
+}
+
+/// Tells both sides what the other is holding, which is what a trade window shows.
+async fn open_trade(context: &Context, name: &str, partner: &str) {
+    let Some(first) = trade_slots(context, name).await else {
+        context.trades.cancel(name, "Trade cancelled.");
+        return;
+    };
+    let Some(second) = trade_slots(context, partner).await else {
+        context.trades.cancel(name, "Trade cancelled.");
+        return;
+    };
+
+    context.trades.send(
+        name,
+        &ServerMessage::TradeStart {
+            mine: first.clone(),
+            their_name: partner.to_string(),
+            theirs: second.clone(),
+        },
+    );
+    context.trades.send(
+        partner,
+        &ServerMessage::TradeStart {
+            mine: second,
+            their_name: name.to_string(),
+            theirs: first,
+        },
+    );
+}
+
+/// What one player is holding, as the other side of a trade sees it.
+///
+/// Read by name rather than passed in, because the other side's inventory belongs to another
+/// session and this is the only place that can ask for it.
+async fn trade_slots(context: &Context, name: &str) -> Option<Vec<hendra_net::TradeSlot>> {
+    let character = context.store.character_named(name).await.ok()??;
+
+    let mut slots = vec![
+        hendra_net::TradeSlot {
+            item: None,
+            slot_type: 0,
+            included: false,
+            tradeable: false,
+        };
+        crate::trades::TRADE_SLOTS
+    ];
+
+    for (slot, item) in &character.inventory {
+        let (slot, item) = (*slot, *item);
+        let Ok(index) = usize::try_from(slot) else {
+            continue;
+        };
+        if index >= slots.len() {
+            continue;
+        }
+
+        let desc = context
+            .catalog
+            .type_of_uuid(item)
+            .and_then(|kind| context.catalog.object(kind));
+
+        slots[index] = hendra_net::TradeSlot {
+            item: desc.map(|desc| desc.object_type.0),
+            slot_type: desc
+                .and_then(|desc| desc.item.as_ref())
+                .map(|item| item.slot_type)
+                .unwrap_or(0),
+            included: false,
+            // Worn slots are not somewhere a trade may take from, and a soulbound item is one the
+            // content says belongs to whoever found it.
+            tradeable: index >= crate::trades::FIRST_TRADEABLE
+                && desc
+                    .and_then(|desc| desc.item.as_ref())
+                    .is_some_and(|item| !item.soulbound),
+        };
+    }
+
+    Some(slots)
+}
+
+/// Moves the items, and tells both sides how it went.
+#[allow(clippy::too_many_arguments)]
+async fn settle_trade(
+    context: &Context,
+    name: &str,
+    character_id: i64,
+    partner_name: &str,
+    partner_character: i64,
+    mine: Vec<i16>,
+    theirs: Vec<i16>,
+) {
+    // What is in each offered slot, read now rather than remembered from when the offer was made.
+    // The store refuses a trade whose items have moved since, and this is what it compares against.
+    let Some(first) = offered_items(context, character_id, &mine).await else {
+        context
+            .trades
+            .finished(name, partner_name, 2, "Trade unsuccessful.");
+        return;
+    };
+    let Some(second) = offered_items(context, partner_character, &theirs).await else {
+        context
+            .trades
+            .finished(name, partner_name, 2, "Trade unsuccessful.");
+        return;
+    };
+
+    let outcome = context
+        .store
+        .trade(
+            &hendra_store::Offer::new(character_id, first),
+            &hendra_store::Offer::new(partner_character, second),
+            EQUIPPED_SLOTS as i16,
+            LAST_CARRIED_SLOT,
+        )
+        .await;
+
+    match outcome {
+        Ok(_) => context
+            .trades
+            .finished(name, partner_name, 0, "Trade successful."),
+        Err(err) => {
+            tracing::info!(%name, %partner_name, %err, "a trade was refused");
+            context
+                .trades
+                .finished(name, partner_name, 2, &err.to_string());
+        }
+    }
+}
+
+/// What is in the slots one side offered.
+///
+/// A slot that turns out to be empty makes the whole offer wrong rather than smaller: the other
+/// side agreed to what they were shown.
+async fn offered_items(
+    context: &Context,
+    character_id: i64,
+    slots: &[i16],
+) -> Option<Vec<(i16, uuid::Uuid)>> {
+    let held = context.store.character(character_id).await.ok()?.inventory;
+
+    slots
+        .iter()
+        .map(|slot| {
+            held.iter()
+                .find(|(at, _)| at == slot)
+                .map(|(at, item)| (*at, *item))
+        })
+        .collect()
+}
+
 /// Works out what a player meant and, if they may say it, says it.
 async fn say_something(
     link: &mut Link,
@@ -1417,6 +1654,16 @@ async fn dispatch(received: &Received, placement: &Placement) -> Outcome {
             tracing::debug!("ignoring a repeated hello");
             true
         }
+
+        // Handled by the caller, which owns the connection, the store and the trade registry.
+        ClientMessage::RequestTrade { name } => {
+            return Outcome::Trade(Trade::Request(name.to_owned()));
+        }
+        ClientMessage::ChangeTrade { offer } => return Outcome::Trade(Trade::Change(offer)),
+        ClientMessage::AcceptTrade { mine, theirs } => {
+            return Outcome::Trade(Trade::Accept { mine, theirs });
+        }
+        ClientMessage::CancelTrade => return Outcome::Trade(Trade::Cancel),
 
         ClientMessage::Pong { .. } => true,
     };

@@ -32,6 +32,10 @@ pub mod client_id {
     pub const PONG: u16 = 0x0005;
     pub const SHOOT: u16 = 0x0006;
     pub const MOVE_ITEM: u16 = 0x0007;
+    pub const REQUEST_TRADE: u16 = 0x000a;
+    pub const CHANGE_TRADE: u16 = 0x000b;
+    pub const ACCEPT_TRADE: u16 = 0x000c;
+    pub const CANCEL_TRADE: u16 = 0x000d;
 }
 
 /// Messages travelling from server to client.
@@ -63,6 +67,11 @@ pub mod server_id {
     pub const GROUND: u16 = 0x8009;
     pub const TERRAIN: u16 = 0x800a;
     pub const SCENERY: u16 = 0x800b;
+    pub const TRADE_REQUESTED: u16 = 0x800c;
+    pub const TRADE_START: u16 = 0x800d;
+    pub const TRADE_CHANGED: u16 = 0x800e;
+    pub const TRADE_ACCEPTED: u16 = 0x800f;
+    pub const TRADE_DONE: u16 = 0x8010;
 }
 
 /// Why a connection was refused.
@@ -295,7 +304,105 @@ pub enum ClientMessage<'a> {
         from: SlotLocation,
         to: SlotLocation,
     },
+
+    /// Asks a named player to trade.
+    ///
+    /// Asking somebody who has already asked you accepts theirs, which is how a trade begins: there
+    /// is no separate accept, and both sides having asked is the agreement.
+    RequestTrade {
+        name: &'a str,
+    },
+
+    /// What this player is now offering, one flag per inventory slot.
+    ChangeTrade {
+        offer: Vec<bool>,
+    },
+
+    /// Agrees to a trade: what this player is offering and what they believe the other is.
+    ///
+    /// Both are sent because an offer can change between the moment it is shown and the moment it
+    /// is agreed to. A player accepts what they were looking at, and an accept that names a stale
+    /// offer is ignored rather than trusted.
+    AcceptTrade {
+        mine: Vec<bool>,
+        theirs: Vec<bool>,
+    },
+
+    /// Ends the trade, from either side.
+    CancelTrade,
 }
+
+/// One inventory slot, as the other side of a trade sees it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TradeSlot {
+    /// What is in it, or `None` for empty.
+    pub item: Option<u16>,
+
+    /// What the slot accepts, so a client can show why something will not go there.
+    pub slot_type: i32,
+
+    /// Whether it is part of the current offer.
+    pub included: bool,
+
+    /// Whether it could be offered at all. Worn slots and soulbound items cannot.
+    pub tradeable: bool,
+}
+
+/// Writes what one side is holding.
+fn write_slots(w: &mut Writer<'_>, slots: &[TradeSlot]) {
+    w.varint(slots.len() as u64);
+    for slot in slots {
+        w.varint(slot.item.map_or(0, |item| item as u64 + 1));
+        w.varint(slot.slot_type.max(0) as u64);
+        w.u8(u8::from(slot.included) | (u8::from(slot.tradeable) << 1));
+    }
+}
+
+/// Reads what one side is holding.
+fn read_slots(r: &mut Reader<'_>) -> Result<Vec<TradeSlot>, CodecError> {
+    let count = r.varint_u32()? as usize;
+
+    let mut slots = Vec::with_capacity(count.min(MAX_TRADE_SLOTS));
+    for _ in 0..count {
+        // Shifted by one so that zero means empty, which is what keeps object type zero from
+        // meaning both "nothing" and a real object.
+        let item = r.varint_u32()?;
+        let slot_type = r.varint_u32()? as i32;
+        let flags = r.u8()?;
+
+        slots.push(TradeSlot {
+            item: (item > 0).then(|| (item - 1) as u16),
+            slot_type,
+            included: flags & 1 != 0,
+            tradeable: flags & 2 != 0,
+        });
+    }
+    Ok(slots)
+}
+
+/// Writes one side's offer: a flag per inventory slot.
+fn write_offer(w: &mut Writer<'_>, offer: &[bool]) {
+    w.varint(offer.len() as u64);
+    for included in offer {
+        w.u8(u8::from(*included));
+    }
+}
+
+/// Reads one side's offer.
+fn read_offer(r: &mut Reader<'_>) -> Result<Vec<bool>, CodecError> {
+    let count = r.varint_u32()? as usize;
+
+    let mut offer = Vec::with_capacity(count.min(MAX_TRADE_SLOTS));
+    for _ in 0..count {
+        offer.push(r.u8()? != 0);
+    }
+    Ok(offer)
+}
+
+/// The most inventory slots a trade message may claim.
+///
+/// A length prefix is attacker-controlled, so the capacity is bounded before anything is reserved.
+pub const MAX_TRADE_SLOTS: usize = 64;
 
 impl ClientMessage<'_> {
     pub fn id(&self) -> u16 {
@@ -308,6 +415,10 @@ impl ClientMessage<'_> {
             ClientMessage::Pong { .. } => client_id::PONG,
             ClientMessage::Shoot { .. } => client_id::SHOOT,
             ClientMessage::MoveItem { .. } => client_id::MOVE_ITEM,
+            ClientMessage::RequestTrade { .. } => client_id::REQUEST_TRADE,
+            ClientMessage::ChangeTrade { .. } => client_id::CHANGE_TRADE,
+            ClientMessage::AcceptTrade { .. } => client_id::ACCEPT_TRADE,
+            ClientMessage::CancelTrade => client_id::CANCEL_TRADE,
         }
     }
 
@@ -343,12 +454,29 @@ impl ClientMessage<'_> {
                 from.encode(w);
                 to.encode(w);
             }
+            ClientMessage::RequestTrade { name } => w.string(name),
+            ClientMessage::ChangeTrade { offer } => write_offer(w, offer),
+            ClientMessage::AcceptTrade { mine, theirs } => {
+                write_offer(w, mine);
+                write_offer(w, theirs);
+            }
+            ClientMessage::CancelTrade => {}
         }
     }
 
     pub fn decode<'b>(r: &mut Reader<'b>) -> Result<ClientMessage<'b>, CodecError> {
         let id = r.u16()?;
         Ok(match id {
+            client_id::REQUEST_TRADE => ClientMessage::RequestTrade { name: r.string()? },
+            client_id::CHANGE_TRADE => ClientMessage::ChangeTrade {
+                offer: read_offer(r)?,
+            },
+            client_id::ACCEPT_TRADE => ClientMessage::AcceptTrade {
+                mine: read_offer(r)?,
+                theirs: read_offer(r)?,
+            },
+            client_id::CANCEL_TRADE => ClientMessage::CancelTrade,
+
             client_id::HELLO => ClientMessage::Hello {
                 protocol: r.varint_u32()?,
                 token: r.string()?,
@@ -486,6 +614,36 @@ pub enum ServerMessage<'a> {
         objects: Vec<(u16, u16, u16)>,
     },
 
+    /// Somebody has asked to trade.
+    TradeRequested {
+        name: String,
+    },
+
+    /// A trade has begun, with what both sides are holding.
+    TradeStart {
+        mine: Vec<TradeSlot>,
+        their_name: String,
+        theirs: Vec<TradeSlot>,
+    },
+
+    /// The other side changed what they are offering.
+    TradeChanged {
+        offer: Vec<bool>,
+    },
+
+    /// The other side agreed to a trade, and to what.
+    TradeAccepted {
+        mine: Vec<bool>,
+        theirs: Vec<bool>,
+    },
+
+    /// The trade ended, one way or the other.
+    TradeDone {
+        /// Zero when it went through, and anything else when it did not.
+        code: u32,
+        message: String,
+    },
+
     /// Squares whose ground has changed, as `(x, y, tile)`.
     ///
     /// Sent rather than folded into the snapshot because ground is not an entity: it has no id, it
@@ -513,6 +671,11 @@ impl ServerMessage<'_> {
             ServerMessage::Ground { .. } => server_id::GROUND,
             ServerMessage::Terrain { .. } => server_id::TERRAIN,
             ServerMessage::Scenery { .. } => server_id::SCENERY,
+            ServerMessage::TradeRequested { .. } => server_id::TRADE_REQUESTED,
+            ServerMessage::TradeStart { .. } => server_id::TRADE_START,
+            ServerMessage::TradeChanged { .. } => server_id::TRADE_CHANGED,
+            ServerMessage::TradeAccepted { .. } => server_id::TRADE_ACCEPTED,
+            ServerMessage::TradeDone { .. } => server_id::TRADE_DONE,
         }
     }
 
@@ -536,6 +699,26 @@ impl ServerMessage<'_> {
                 w.string(from);
                 w.string(text);
             }
+            ServerMessage::TradeRequested { name } => w.string(name),
+            ServerMessage::TradeStart {
+                mine,
+                their_name,
+                theirs,
+            } => {
+                write_slots(w, mine);
+                w.string(their_name);
+                write_slots(w, theirs);
+            }
+            ServerMessage::TradeChanged { offer } => write_offer(w, offer),
+            ServerMessage::TradeAccepted { mine, theirs } => {
+                write_offer(w, mine);
+                write_offer(w, theirs);
+            }
+            ServerMessage::TradeDone { code, message } => {
+                w.varint(*code as u64);
+                w.string(message);
+            }
+
             ServerMessage::Scenery { y, objects } => {
                 w.varint(*y as u64);
                 w.varint(objects.len() as u64);
@@ -659,6 +842,26 @@ impl ServerMessage<'_> {
                 }
                 ServerMessage::Terrain { x, y, runs }
             }
+            server_id::TRADE_REQUESTED => ServerMessage::TradeRequested {
+                name: r.string()?.to_string(),
+            },
+            server_id::TRADE_START => ServerMessage::TradeStart {
+                mine: read_slots(r)?,
+                their_name: r.string()?.to_string(),
+                theirs: read_slots(r)?,
+            },
+            server_id::TRADE_CHANGED => ServerMessage::TradeChanged {
+                offer: read_offer(r)?,
+            },
+            server_id::TRADE_ACCEPTED => ServerMessage::TradeAccepted {
+                mine: read_offer(r)?,
+                theirs: read_offer(r)?,
+            },
+            server_id::TRADE_DONE => ServerMessage::TradeDone {
+                code: r.varint_u32()?,
+                message: r.string()?.to_string(),
+            },
+
             server_id::SCENERY => {
                 let y = r.varint_u32()? as u16;
                 let count = r.varint_u32()? as usize;
@@ -762,6 +965,75 @@ mod tests {
         let mut reader = Reader::new(&buf);
         let decoded = ServerMessage::decode(&mut reader).unwrap();
         assert_eq!(decoded, message);
+    }
+
+    #[test]
+    fn the_trade_messages_round_trip() {
+        round_trip_client(ClientMessage::RequestTrade { name: "Ana" });
+        round_trip_client(ClientMessage::ChangeTrade {
+            offer: vec![false, false, false, false, true, false, true, false],
+        });
+        round_trip_client(ClientMessage::AcceptTrade {
+            mine: vec![false, true],
+            theirs: vec![true, false, true],
+        });
+        round_trip_client(ClientMessage::CancelTrade);
+
+        round_trip_server(ServerMessage::TradeRequested {
+            name: "Bo".to_string(),
+        });
+        round_trip_server(ServerMessage::TradeStart {
+            mine: vec![
+                TradeSlot {
+                    item: None,
+                    slot_type: 0,
+                    included: false,
+                    tradeable: false,
+                },
+                // Object type zero is a real type, so an empty slot has to be told apart from one
+                // holding it by something other than the number.
+                TradeSlot {
+                    item: Some(0),
+                    slot_type: 3,
+                    included: true,
+                    tradeable: true,
+                },
+                TradeSlot {
+                    item: Some(0x0dc2),
+                    slot_type: 8,
+                    included: false,
+                    tradeable: true,
+                },
+            ],
+            their_name: "Bo".to_string(),
+            theirs: Vec::new(),
+        });
+        round_trip_server(ServerMessage::TradeChanged {
+            offer: vec![true, false],
+        });
+        round_trip_server(ServerMessage::TradeAccepted {
+            mine: vec![true],
+            theirs: vec![false, true],
+        });
+        round_trip_server(ServerMessage::TradeDone {
+            code: 0,
+            message: "Trade successful.".to_string(),
+        });
+    }
+
+    #[test]
+    fn a_trade_message_claiming_more_slots_than_it_carries_is_refused() {
+        // The length is attacker-controlled, so the capacity is bounded before anything is reserved
+        // and a short body is an error rather than a silent truncation.
+        let mut buf = Vec::new();
+        {
+            let mut w = Writer::new(&mut buf);
+            w.u16(client_id::CHANGE_TRADE);
+            w.varint(1_000_000);
+        }
+
+        let mut reader = Reader::new(&buf);
+        assert!(ClientMessage::decode(&mut reader).is_err());
     }
 
     #[test]

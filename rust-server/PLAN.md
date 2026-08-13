@@ -212,8 +212,25 @@ temples, 3 lava fissures, the djinn, the ent and the crystal, then 2,720 enemies
 
 ### 12.4 Trade — **M**
 
-- [ ] The store's trade is dupe-proof and tested, and there are no protocol messages for it, so no
+- [x] The store's trade is dupe-proof and tested, and there are no protocol messages for it, so no
       client can reach it
+
+  Nine messages, from `Player.Trade.cs` and its handlers: four in and five out. A trade begins by
+  both sides asking, which is what the original does and means one message rather than two does the
+  work; a request that is not answered expires after twenty seconds.
+
+- [x] `crates/server/src/trades.rs`, which is where two connections meet
+
+  The world knows about bodies rather than connections, so this holds each player's sender and
+  writes to the other side directly, the way the world writes snapshots. Who is trading with whom
+  is kept apart from how to reach them, which lets the agreement be checked without a connection to
+  check it over.
+
+  The guards, each confirmed by breaking it: a worn slot cannot be offered, changing an offer
+  unagrees both sides, an accept naming a stale offer does nothing, and a settled trade is cleared
+  before the items move. A disconnection ends whatever was half-agreed rather than leaving it.
+
+- [x] `Store::character_named`, so somebody can be asked to trade by typing their name
 
 ---
 
