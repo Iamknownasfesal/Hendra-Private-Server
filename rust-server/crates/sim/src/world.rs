@@ -2340,6 +2340,38 @@ impl World {
         }
     }
 
+    /// How many enemies are alive.
+    pub fn enemy_count(&self) -> usize {
+        self.entities
+            .iter()
+            .filter(|(_, entity)| entity.kind == Kind::Enemy && !entity.dead)
+            .count()
+    }
+
+    /// How many of one kind are alive, for a realm counting against a ceiling.
+    pub fn count_of_kind(&self, kind: ObjectType) -> usize {
+        self.entities
+            .iter()
+            .filter(|(_, entity)| {
+                entity.object_type == kind && entity.kind == Kind::Enemy && !entity.dead
+            })
+            .count()
+    }
+
+    /// Says something to everyone, as the world rather than as an entity.
+    ///
+    /// Used for the announcements a realm makes about itself, which have no speaker: nothing in
+    /// the world said them, and attributing them to an enemy would be a lie the client repeats.
+    pub fn announce(&mut self, text: &str) {
+        if self.announcements.len() < MAX_PENDING_ANNOUNCEMENTS {
+            self.announcements.push(Announcement {
+                from: Handle::NONE,
+                text: text.into(),
+                broadcast: true,
+            });
+        }
+    }
+
     /// Stamps a prefab map into the world.
     ///
     /// A setpiece is a small map placed at a point, not a circle of one tile painted over the
@@ -4576,6 +4608,43 @@ mod tests {
         world.advance(&catalog, 50);
 
         assert!(world.get(player).is_some(), "the player is still there");
+    }
+
+    #[test]
+    fn a_realm_announcement_is_heard_by_everyone_and_named_after_nobody() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+        world.announce("the realm is closing");
+
+        let said = world.take_announcements();
+        assert_eq!(said.len(), 1);
+        assert!(said[0].broadcast, "everybody hears it");
+        assert_eq!(said[0].from, Handle::NONE, "and nobody said it");
+    }
+
+    #[test]
+    fn counting_enemies_ignores_the_dead_and_everything_else() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        world
+            .spawn(Entity::player(ObjectType(0x600), 10.0, 10.0, 500))
+            .unwrap();
+
+        for at in 0..3 {
+            let mut enemy = Entity::fixture(ObjectType(0x502), 11.0 + at as f32, 10.0);
+            enemy.kind = Kind::Enemy;
+            enemy.max_hp = 200;
+            enemy.hp = 200;
+            let enemy = world.spawn(enemy).unwrap();
+            if at == 0 {
+                world.get_mut(enemy).unwrap().dead = true;
+            }
+        }
+
+        assert_eq!(world.enemy_count(), 2, "the dead one does not count");
+        assert_eq!(world.count_of_kind(ObjectType(0x502)), 2);
+        assert_eq!(world.count_of_kind(ObjectType(0x503)), 0);
     }
 
     #[test]

@@ -705,6 +705,8 @@ async fn announce(world: &mut World, catalog: &Catalog, players: &mut [Player]) 
 
     for announcement in &said {
         // Named by what spoke, falling back to its kind, so a boss is quoted rather than a number.
+        // Something the world said has no speaker, and attributing it to an entity would be a lie
+        // the client repeats.
         let from = world
             .get(announcement.from)
             .and_then(|entity| {
@@ -714,7 +716,7 @@ async fn announce(world: &mut World, catalog: &Catalog, players: &mut [Player]) 
                     .map(str::to_owned)
                     .or_else(|| catalog.object(entity.object_type).map(|d| d.id.clone()))
             })
-            .unwrap_or_else(|| "?".to_string());
+            .unwrap_or_else(|| world.name.to_string());
 
         let mut buffer = Vec::new();
         ServerMessage::Chat {

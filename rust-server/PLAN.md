@@ -6,7 +6,7 @@ deliberately excluded and left until last.
 Phases 0–5 are done: workspace, content, protocol, transport, simulation, behaviour language,
 persistence, authentication. What follows is phases 6–11.
 
-**Where we are:** ~86% of the old server by subsystem. 613 tests.
+**Where we are:** ~87% of the old server by subsystem. 615 tests.
 
 **Sizing** is relative, not calendar: **S** is an afternoon, **M** is a day or two, **L** is
 several days, **XL** is a week or more.
@@ -169,7 +169,7 @@ an ability, 1,942 activates across 43 kinds.
 ### 8.1 Oryx and the realm event manager — **L**
 
 - [x] Populate by terrain, with `per_realm_max` as a ceiling. `spawn_probability` is read where the content gives one, which is nowhere in the shipped files: the original carries its weights in a hardcoded table, and reproducing it here would put content back in the code
-- [ ] Count enemies and announce events
+- [x] `enemy_count` and `count_of_kind` for a realm measuring itself, and `announce` for what the realm says. An announcement with no speaker is named after the world rather than attributed to an entity, which would be a lie the client repeats
 - [x] Close the realm once nine tenths is cleared, measured against the fullest it has been so a realm that never filled still closes. Spawning the castle is a `stamp` of a setpiece, which 8.3 built
 
 ### 8.2 Portals and dungeon lifecycle — **M**
