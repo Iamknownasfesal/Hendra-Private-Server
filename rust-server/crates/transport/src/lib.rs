@@ -23,7 +23,7 @@ pub mod tls;
 use std::net::SocketAddr;
 
 pub use endpoint::{Listener, connect};
-pub use link::{Link, MAX_FRAME, Received};
+pub use link::{Link, LinkSender, MAX_FRAME, Received};
 pub use tls::{ALPN, ServerIdentity, Trust};
 
 #[derive(Debug, thiserror::Error)]

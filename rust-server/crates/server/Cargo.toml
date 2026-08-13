@@ -1,0 +1,19 @@
+[package]
+name = "hendra-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "hendra-server"
+path = "src/main.rs"
+
+[dependencies]
+hendra-content = { path = "../content" }
+hendra-net = { path = "../net" }
+hendra-sim = { path = "../sim" }
+hendra-transport = { path = "../transport" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal"] }
+tracing.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror.workspace = true

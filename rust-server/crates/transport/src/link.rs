@@ -61,6 +61,82 @@ impl Received {
     }
 }
 
+/// The sending half of a connection, which can be cloned and moved elsewhere.
+///
+/// A world owns its players' senders directly and writes snapshots to them from the tick, rather
+/// than passing bytes through another queue to whichever task owns the connection. That saves an
+/// allocation and a hop per player per tick, which at two hundred players and twenty ticks a second
+/// is four thousand of each per second.
+#[derive(Clone)]
+pub struct LinkSender {
+    connection: quinn::Connection,
+    outbound: mpsc::Sender<Vec<u8>>,
+}
+
+impl LinkSender {
+    /// Sends a payload by the route its [`Delivery`] names, waiting for room if there is none.
+    pub async fn send(&self, delivery: Delivery, payload: &[u8]) -> Result<(), TransportError> {
+        match delivery {
+            Delivery::Datagram => send_datagram(&self.connection, payload),
+            Delivery::Stream => self
+                .outbound
+                .send(payload.to_vec())
+                .await
+                .map_err(|_| TransportError::Closed),
+        }
+    }
+
+    /// Sends without waiting, reporting [`TransportError::Backlogged`] if the queue is full.
+    pub fn try_send(&self, delivery: Delivery, payload: &[u8]) -> Result<(), TransportError> {
+        match delivery {
+            Delivery::Datagram => send_datagram(&self.connection, payload),
+            Delivery::Stream => self
+                .outbound
+                .try_send(payload.to_vec())
+                .map_err(|source| match source {
+                    mpsc::error::TrySendError::Full(_) => TransportError::Backlogged,
+                    mpsc::error::TrySendError::Closed(_) => TransportError::Closed,
+                }),
+        }
+    }
+
+    pub fn max_datagram_size(&self) -> Option<usize> {
+        self.connection.max_datagram_size()
+    }
+
+    pub fn rtt(&self) -> std::time::Duration {
+        self.connection.rtt()
+    }
+
+    pub fn remote_address(&self) -> std::net::SocketAddr {
+        self.connection.remote_address()
+    }
+
+    /// Whether the peer has gone.
+    pub fn is_closed(&self) -> bool {
+        self.connection.close_reason().is_some()
+    }
+
+    pub fn close(&self, reason: &str) {
+        self.connection.close(0u32.into(), reason.as_bytes());
+    }
+}
+
+/// Datagrams never queue, so every send path shares this.
+fn send_datagram(connection: &quinn::Connection, payload: &[u8]) -> Result<(), TransportError> {
+    if let Some(limit) = connection.max_datagram_size()
+        && payload.len() > limit
+    {
+        return Err(TransportError::DatagramTooLarge {
+            len: payload.len(),
+            limit,
+        });
+    }
+    connection
+        .send_datagram(Bytes::copy_from_slice(payload))
+        .map_err(|source| TransportError::Send(source.to_string()))
+}
+
 /// An open connection to a peer.
 pub struct Link {
     connection: quinn::Connection,
@@ -188,19 +264,18 @@ impl Link {
         }
     }
 
-    /// Datagrams never queue, so both send paths share this.
-    fn send_datagram(&self, payload: &[u8]) -> Result<(), TransportError> {
-        if let Some(limit) = self.connection.max_datagram_size()
-            && payload.len() > limit
-        {
-            return Err(TransportError::DatagramTooLarge {
-                len: payload.len(),
-                limit,
-            });
+    /// A cloneable handle for sending, so another task can write to this peer.
+    ///
+    /// The world holds one of these per player and writes snapshots from the tick itself.
+    pub fn sender(&self) -> LinkSender {
+        LinkSender {
+            connection: self.connection.clone(),
+            outbound: self.outbound.clone(),
         }
-        self.connection
-            .send_datagram(Bytes::copy_from_slice(payload))
-            .map_err(|source| TransportError::Send(source.to_string()))
+    }
+
+    fn send_datagram(&self, payload: &[u8]) -> Result<(), TransportError> {
+        send_datagram(&self.connection, payload)
     }
 
     /// Waits for the next payload from the peer, or `None` once the connection is finished.

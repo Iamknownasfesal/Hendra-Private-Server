@@ -1,0 +1,28 @@
+; Registers the native networking library with Godot.
+;
+; The protocol lives in Rust so that the client and the server cannot disagree about it. This file
+; is what makes the resulting library visible to the engine; `HendraNet.cs` wraps it in a typed C#
+; API so the rest of the client never touches ClassDB by name.
+;
+; Build with:
+;   cd rust-server && cargo build -p hendra-godot --release
+;   cp target/release/libhendra_godot.dylib ../godot-client/bin/
+
+[configuration]
+entry_symbol = "gdext_rust_init"
+compatibility_minimum = 4.7
+reloadable = true
+
+[libraries]
+
+macos.debug = "res://bin/libhendra_godot.dylib"
+macos.release = "res://bin/libhendra_godot.dylib"
+
+windows.debug.x86_64 = "res://bin/hendra_godot.dll"
+windows.release.x86_64 = "res://bin/hendra_godot.dll"
+
+linux.debug.x86_64 = "res://bin/libhendra_godot.so"
+linux.release.x86_64 = "res://bin/libhendra_godot.so"
+
+linux.debug.arm64 = "res://bin/libhendra_godot.so"
+linux.release.arm64 = "res://bin/libhendra_godot.so"

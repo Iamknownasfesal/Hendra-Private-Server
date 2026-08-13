@@ -1,0 +1,22 @@
+; A small window that draws what the Rust server sends.
+;
+; Run with:
+;   /Applications/Godot_mono.app/Contents/MacOS/Godot --path rust-server/demo-client
+;
+; It needs a server: cargo run --release -p hendra-server -- --map Nexus.jm
+
+config_version=5
+
+[application]
+config/name="Hendra Server Viewer"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.7")
+
+[display]
+window/size/viewport_width=1100
+window/size/viewport_height=700
+
+; Without this the viewport runs at the display's real pixel size — 3024x1710 on a retina panel —
+; and everything drawn in logical coordinates comes out a quarter of its intended size.
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
