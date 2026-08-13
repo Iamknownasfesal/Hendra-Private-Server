@@ -266,7 +266,7 @@ Only once every phase above is done and the client has been cut over.
       shared commits and is not a call to make without asking. If the repository is going public,
       do this before it does; if the address has changed since, it may not be worth the disruption
 - [ ] Delete `Server-Side/`, keeping `XmlDatas` until the content pipeline needs nothing from it
-- [x] A two-stage `rust-server/Dockerfile` and `.github/workflows/rust.yml`. CI runs fmt, clippy with warnings denied, the full test suite against a real Postgres, all three coverage examples and the tick budget, in the order that fails fastest. The Dockerfile is not build-verified here: there is no Docker in this environment
+- [x] A two-stage `rust-server/Dockerfile` and `.github/workflows/rust.yml`. CI runs fmt, clippy with warnings denied, the full test suite against a real Postgres, all three coverage examples and the tick budget, in the order that fails fastest. The Dockerfile is not build-verified: the Docker CLI is present but its daemon is not running here, so `docker build` could not be run
 
 ---
 
