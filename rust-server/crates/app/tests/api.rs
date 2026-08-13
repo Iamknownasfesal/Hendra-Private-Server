@@ -1031,3 +1031,33 @@ async fn a_class_that_does_not_exist_is_refused() {
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_server_list_needs_no_token() {
+    // A client needs somewhere to go before it has anywhere to send a password.
+    let mut app = app_or_skip!("a_servers");
+    Arc::get_mut(&mut app).unwrap().servers = vec![hendra_app::GameServer {
+        name: "EU West".to_string(),
+        host: "eu.example.com".to_string(),
+        port: 7777,
+        region: "Europe".to_string(),
+    }];
+
+    let (status, body) = send(&app, get("/servers", None)).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body[0]["name"], "EU West");
+    assert_eq!(body[0]["port"], 7777);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_empty_server_list_is_an_empty_list_rather_than_an_error() {
+    // A server with nothing configured should say so plainly, not fail in a way a client has to
+    // tell apart from being unreachable.
+    let app = app_or_skip!("a_servers_empty");
+
+    let (status, body) = send(&app, get("/servers", None)).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body.as_array().map(Vec::len), Some(0));
+}

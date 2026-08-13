@@ -6,7 +6,7 @@ deliberately excluded and left until last.
 Phases 0–5 are done: workspace, content, protocol, transport, simulation, behaviour language,
 persistence, authentication. What follows is phases 6–11.
 
-**Where we are:** ~66% of the old server by subsystem. 553 tests.
+**Where we are:** ~67% of the old server by subsystem. 555 tests.
 
 **Sizing** is relative, not calendar: **S** is an afternoon, **M** is a day or two, **L** is
 several days, **XL** is a week or more.
@@ -228,7 +228,7 @@ Eight of 48 endpoints are done, and they are the ones that matter.
 
 ### Needed to play — **M**
 
-- [ ] A server list, so a client can learn where the game server is
+- [x] A server list at `GET /servers`, unauthenticated because a client needs it before it has anywhere to send a password. Read from `HENDRA_GAME_SERVERS` so moving a server is configuration, not a new client
 - [ ] `app/init` and `app/getServerXmls`
 - [ ] `char/list` extensions and `account/purchaseCharSlot`
 

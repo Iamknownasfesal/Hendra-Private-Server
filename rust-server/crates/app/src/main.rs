@@ -15,6 +15,47 @@ use hendra_store::Store;
 /// one made on first connection should arrive with the same things.
 const COMMON_ITEMS: &[&str] = &["Health Potion", "Magic Potion"];
 
+/// Where the game servers are, read from the environment.
+///
+/// `name|host|port|region`, separated by commas:
+///
+/// ```text
+/// HENDRA_GAME_SERVERS="EU West|eu.example.com|7777|Europe,US East|us.example.com|7777|America"
+/// ```
+///
+/// Configuration rather than a compiled-in list, so moving a server does not need a new client.
+/// An entry that does not parse is skipped and reported rather than refusing the rest: one typo
+/// should cost that server, not every server.
+fn game_servers() -> Vec<hendra_app::GameServer> {
+    let Ok(written) = std::env::var("HENDRA_GAME_SERVERS") else {
+        return Vec::new();
+    };
+
+    written
+        .split(',')
+        .filter(|entry| !entry.trim().is_empty())
+        .filter_map(|entry| {
+            let parts: Vec<&str> = entry.split('|').map(str::trim).collect();
+            let [name, host, port, region] = parts.as_slice() else {
+                tracing::warn!(%entry, "a game server entry needs name|host|port|region");
+                return None;
+            };
+
+            let Ok(port) = port.parse::<u16>() else {
+                tracing::warn!(%entry, "a game server entry has an unreadable port");
+                return None;
+            };
+
+            Some(hendra_app::GameServer {
+                name: name.to_string(),
+                host: host.to_string(),
+                port,
+                region: region.to_string(),
+            })
+        })
+        .collect()
+}
+
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
     tracing_subscriber::fmt()
@@ -97,12 +138,21 @@ async fn main() {
         }
     };
 
-    let app = Arc::new(hendra_app::App::with_content(
+    let mut app = hendra_app::App::with_content(
         store,
         key,
         Arc::new(catalog),
         hendra_characters::CommonItems::new(COMMON_ITEMS.iter().copied()),
-    ));
+    );
+    app.servers = game_servers();
+
+    if app.servers.is_empty() {
+        tracing::warn!(
+            "HENDRA_GAME_SERVERS is not set, so /servers is empty and a client has nowhere to go"
+        );
+    }
+
+    let app = Arc::new(app);
 
     let router = hendra_app::router(app);
 

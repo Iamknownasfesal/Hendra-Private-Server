@@ -11,6 +11,7 @@
 //!   POST   /select         (Bearer) {character_id}->  {token, ...}
 //!   DELETE /characters/:id (Bearer)               ->  {}
 //!   POST   /password       (Bearer) {old, new}    ->  {}
+//!   GET    /servers                               ->  [{name, host, port}]
 //!   GET    /classes        (Bearer)               ->  [{class, locked}]
 //!   POST   /characters     (Bearer) {class, name} ->  {character}
 //! ```
@@ -40,6 +41,9 @@ pub struct App {
     pub store: Store,
     pub key: TokenKey,
 
+    /// Where the game servers are, for a client that has just logged in and has nowhere to go.
+    pub servers: Vec<GameServer>,
+
     /// The content, for the character-select screen. Read-only and shared with nothing.
     pub catalog: Arc<hendra_content::Catalog>,
 
@@ -63,6 +67,7 @@ impl App {
         App {
             store,
             key,
+            servers: Vec::new(),
             catalog,
             common_items,
             throttle: Throttle::new(),
@@ -471,6 +476,26 @@ pub async fn change_password(
     Ok(Json(serde_json::json!({})))
 }
 
+/// One game server a client may connect to.
+#[derive(Debug, Clone, Serialize)]
+pub struct GameServer {
+    pub name: String,
+    pub host: String,
+    pub port: u16,
+
+    /// Where it is, for a client choosing the nearest.
+    pub region: String,
+}
+
+/// Where the game is.
+///
+/// Unauthenticated, because a client needs it before it has anywhere to send a password, and it
+/// says nothing a port scan would not. Returning it from the app server rather than compiling it
+/// into the client is what makes moving a server a configuration change.
+pub async fn servers(State(app): State<Arc<App>>) -> Json<Vec<GameServer>> {
+    Json(app.servers.clone())
+}
+
 #[derive(Serialize)]
 pub struct ClassOffer {
     pub object_type: u16,
@@ -608,6 +633,7 @@ async fn health() -> &'static str {
 pub fn router(app: Arc<App>) -> Router {
     Router::new()
         .route("/health", get(health))
+        .route("/servers", get(servers))
         .route("/register", post(register))
         .route("/login", post(login))
         .route("/characters", get(characters))
