@@ -210,7 +210,7 @@ public static class Style
     public static readonly Color TextOutline = Colors.Black;
 
     /// <summary>The floor. Nothing in the interface renders below this, except a Tier 3 token.</summary>
-    public const int SmallestReadable = 12;
+    public const int SmallestReadable = 16;
 
     // ─── the type scale ───────────────────────────────────────────────────────────────────────
     //
@@ -220,18 +220,18 @@ public static class Style
     // actually was -- the typeface was the second cause, not the first.
 
     /// <summary>A panel's own name, and the only place a display treatment is allowed.</summary>
-    public const int FontTitle = 20;
+    public const int FontTitle = 28;
 
     /// <summary>A heading inside a panel, and a player's name over the world.</summary>
-    public const int FontName = 16;
+    public const int FontName = 20;
 
-    public const int FontHeader = 14;
+    public const int FontHeader = 18;
 
     /// <summary>Reading text: stat rows, item names, chat, everything with words in it.</summary>
-    public const int FontBody = 14;
+    public const int FontBody = 18;
 
     /// <summary>Secondary text, and the smallest size in the interface.</summary>
-    public const int FontSmall = 12;
+    public const int FontSmall = 16;
 
     /// <summary>
     /// Tier 3 tokens: tier tags, slot numbers, key hints.
@@ -242,72 +242,62 @@ public static class Style
     /// shape rather than read, so the rule that produced the floor does not apply to them. Anything
     /// with a word in it goes at <see cref="FontSmall"/> or above.
     /// </remarks>
-    public const int FontTag = 11;
+    public const int FontTag = 14;
 
     /// <summary>The number an empty slot carries in the middle of itself.</summary>
-    public const int FontEmptySlot = 24;
+    public const int FontEmptySlot = 28;
 
     /// <summary>Every cluster's margin from the edge of the viewport.</summary>
     public const int EdgeMargin = 20;
 
-    private static Font _sans;
-    private static Font _bold;
-    private static FontFile _file;
+    private static Font _face;
 
     /// <summary>
-    /// The face the interface is set in.
+    /// The face the whole interface is set in.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Source Sans 3, at four hundred and seven hundred. The original is set in Myriad, which is
-    /// Adobe's and cannot be shipped; Source Sans is Adobe's own open humanist sans and the nearest
-    /// free relative of it -- the same open apertures, the same narrow rounds, the same look at a
-    /// bar's worth of text. Three passes got here: a bitmap face, then Inter, then this. The
-    /// reference is not a pixel font at all, and what read as pixelated in it is the hard outline
-    /// around everything drawn over the world.
+    /// Jersey 10, a pixel font. This is the fourth face this interface has worn: a bitmap
+    /// fallback, then Inter, then Source Sans, and the argument in revision six against a pixel
+    /// font -- that it cannot tell an <c>a</c> from an <c>o</c> at fourteen pixels -- turned out to
+    /// be an argument against a bad one. Jersey is proportional and rounded rather than blocky, so
+    /// it stays a word at small sizes while every stem still lands on a whole pixel.
     /// </para>
     /// <para>
-    /// One file, because it is a variable font: the two weights come from moving the <c>wght</c>
-    /// axis rather than from two cuts that have to be kept in step.
+    /// Everything that softens a glyph is off. That is the whole point of the face: antialiasing a
+    /// pixel font puts grey where it means black or white, and hinting would drag stems off the
+    /// grid they were drawn on.
     /// </para>
     /// <para>
-    /// Antialiasing and hinting are on. Figures are tabular -- every number here changes while you
-    /// are looking at it, and proportional digits make the column twitch when 950 becomes 949.
+    /// One weight. There is no bold cut, and a pixel face does not want a synthesised one --
+    /// emboldening it fattens stems by fractions of a pixel and undoes the grid. What used to be
+    /// carried by weight is carried by size, colour, and the outline that everything drawn over
+    /// the world gets.
     /// </para>
     /// </remarks>
-    public static Font Sans => _sans ??= Cut(Regular);
-
-    /// <summary>The same face at bold: headers, values, and everything over the world.</summary>
-    public static Font Bold => _bold ??= Cut(Heavy);
-
-    /// <summary>Whichever of the two a caller asked for.</summary>
-    public static Font Face(bool bold) => bold ? Bold : Sans;
-
-    private const int Regular = 400;
-    private const int Heavy = 700;
-
-    private static Font Cut(int weight)
+    public static Font Sans
     {
-        _file ??= ResourceLoader.Load("res://assets/fonts/SourceSans3.ttf") as FontFile;
-
-        if (_file == null)
-            return ThemeDB.FallbackFont;
-
-        _file.Antialiasing = TextServer.FontAntialiasing.Gray;
-        _file.SubpixelPositioning = TextServer.SubpixelPositioning.Auto;
-        _file.Hinting = TextServer.Hinting.Normal;
-
-        return new FontVariation
+        get
         {
-            BaseFont = _file,
-            VariationOpentype = new Godot.Collections.Dictionary { { Tag("wght"), weight } },
-            OpentypeFeatures = new Godot.Collections.Dictionary { { Tag("tnum"), 1 } },
-        };
+            if (_face != null)
+                return _face;
+
+            if (ResourceLoader.Load("res://assets/fonts/Jersey10.ttf") is not FontFile file)
+                return _face = ThemeDB.FallbackFont;
+
+            file.Antialiasing = TextServer.FontAntialiasing.None;
+            file.SubpixelPositioning = TextServer.SubpixelPositioning.Disabled;
+            file.Hinting = TextServer.Hinting.None;
+
+            return _face = file;
+        }
     }
 
-    /// <summary>An OpenType tag, which is its four characters packed big-endian.</summary>
-    private static int Tag(string name) =>
-        (name[0] << 24) | (name[1] << 16) | (name[2] << 8) | name[3];
+    /// <summary>The same face. Kept as a name so call sites do not all have to change again.</summary>
+    public static Font Bold => Sans;
+
+    /// <summary>Whichever a caller asked for, which is the same one.</summary>
+    public static Font Face(bool bold) => Sans;
 
     /// <summary>
     /// Tier 1: reading text, on an opaque plate. No outline, no shadow.
@@ -598,7 +588,7 @@ public static class Style
         theme.SetColor("font_placeholder_color", "LineEdit", Faint);
         theme.SetColor("caret_color", "LineEdit", Gold);
         theme.SetColor("selection_color", "LineEdit", Gold with { A = 0.25f });
-        theme.SetFontSize("font_size", "LineEdit", 15);
+        theme.SetFontSize("font_size", "LineEdit", FontBody);
     }
 
     private static void StyleOptionButton(Theme theme)
@@ -615,7 +605,7 @@ public static class Style
             theme.SetStylebox("focus", type, new StyleBoxEmpty());
             theme.SetColor("font_color", type, Text);
             theme.SetColor("font_hover_color", type, Colors.White);
-            theme.SetFontSize("font_size", type, 15);
+            theme.SetFontSize("font_size", type, FontBody);
         }
 
         theme.SetStylebox("panel", "PopupMenu", Box(PanelTop, PanelBottom, Edge));
@@ -631,7 +621,7 @@ public static class Style
         theme.SetStylebox("focus", "CheckBox", new StyleBoxEmpty());
         theme.SetColor("font_color", "CheckBox", Muted);
         theme.SetColor("font_hover_color", "CheckBox", Text);
-        theme.SetFontSize("font_size", "CheckBox", 14);
+        theme.SetFontSize("font_size", "CheckBox", FontSmall);
     }
 
     /// <summary>
@@ -670,7 +660,7 @@ public static class Style
         // belong to the same game.
         theme.SetStylebox("panel", "TooltipPanel", Box(PanelTop, PanelBottom, Edge, 4));
         theme.SetColor("font_color", "TooltipLabel", Text);
-        theme.SetFontSize("font_size", "TooltipLabel", 13);
+        theme.SetFontSize("font_size", "TooltipLabel", FontSmall);
     }
 
     private static void StyleLabels(Theme theme)

@@ -123,20 +123,20 @@ public partial class CharacterPanel : Control
         {
             ClipText = true,
             TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
-        }.Typeset(18, Style.Text);
+        }.Typeset(Style.FontName, Style.Text);
         _shell.Body.AddChild(_name);
 
         _classLine = new Label
         {
             ClipText = true,
             TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
-        }.Typeset(13, Style.TextDim);
+        }.Typeset(Style.FontSmall, Style.TextDim);
         _shell.Body.AddChild(_classLine);
 
-        _created = new Label().Typeset(11, Style.TextDim);
+        _created = new Label().Typeset(Style.FontTag, Style.TextDim);
         _shell.Body.AddChild(_created);
 
-        _fame = new Label { HorizontalAlignment = HorizontalAlignment.Right }.Typeset(18, Style.Text);
+        _fame = new Label { HorizontalAlignment = HorizontalAlignment.Right }.Typeset(Style.FontName, Style.Text);
         _shell.Body.AddChild(_fame);
 
         _fameIcon = new HudGlyph(HudIcons.Fame, Style.IconFame);
@@ -173,14 +173,14 @@ public partial class CharacterPanel : Control
         {
             Text = "Fame on Death",
             VerticalAlignment = VerticalAlignment.Center,
-        }.Typeset(13, Style.Text);
+        }.Typeset(Style.FontSmall, Style.Text);
         _shell.Body.AddChild(_footerLabel);
 
         _footerValue = new Label
         {
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Center,
-        }.Typeset(13, Style.StatValueMax);
+        }.Typeset(Style.FontSmall, Style.StatValueMax);
         _shell.Body.AddChild(_footerValue);
 
         _footerIcon = new HudGlyph(HudIcons.Fame, Style.StatValueMax);
@@ -462,15 +462,15 @@ public partial class CharacterPanel : Control
             MouseFilter = MouseFilterEnum.Ignore;
 
             _label = new Label { Text = key, Position = new Vector2(0f, 2f), Size = new Vector2(120f, 14f) }
-                .Typeset(11, Style.StatLabel);
+                .Typeset(Style.FontTag, Style.StatLabel);
             AddChild(_label);
 
             _value = new Label { Position = new Vector2(0f, 18f), Size = new Vector2(80f, 26f) }
-                .Typeset(20, Style.StatValue);
+                .Typeset(Style.FontTitle, Style.StatValue);
             AddChild(_value);
 
             _bonus = new Label { VerticalAlignment = VerticalAlignment.Bottom }
-                .Typeset(13, Style.StatBonus);
+                .Typeset(Style.FontSmall, Style.StatBonus);
             AddChild(_bonus);
         }
 
@@ -484,7 +484,7 @@ public partial class CharacterPanel : Control
             {
                 _value.Text = text;
 
-                float width = Style.Measure(text, 20) + 6f;
+                float width = Style.Measure(text, Style.FontTitle) + 6f;
                 _bonus.Position = new Vector2(width, 22f);
                 _bonus.Size = new Vector2(Mathf.Max(0f, Size.X - width), 20f);
             }
@@ -637,11 +637,11 @@ public partial class CharacterPanel : Control
                 if (!active)
                     DrawRect(new Rect2(box.Position.X, box.End.Y - 1f, box.Size.X, 1f), Style.ModalFrameDark);
 
-                float baseline = Style.BaselineIn(Size.Y, 14);
+                float baseline = Style.BaselineIn(Size.Y, Style.FontHeader);
 
                 this.DrawText(
-                    new Vector2(Mathf.Round(box.Position.X + (box.Size.X - Style.Measure(_labels[i], 14)) / 2f), baseline),
-                    _labels[i], 14, active ? Style.ModalHeader : Style.TextDim);
+                    new Vector2(Mathf.Round(box.Position.X + (box.Size.X - Style.Measure(_labels[i], Style.FontHeader)) / 2f), baseline),
+                    _labels[i], Style.FontHeader, active ? Style.ModalHeader : Style.TextDim);
             }
         }
     }
@@ -827,16 +827,16 @@ public partial class CharacterPanel : Control
             if (index % 2 == 1)
                 DrawRect(new Rect2(0f, y, width, RowHeight), Style.ModalStripe);
 
-            float baseline = Mathf.Round(y + (RowHeight + Style.Sans.GetAscent(13) - Style.Sans.GetDescent(13)) / 2f);
+            float baseline = Mathf.Round(y + (RowHeight + Style.Sans.GetAscent(Style.FontSmall) - Style.Sans.GetDescent(Style.FontSmall)) / 2f);
 
             // A fixed column for the value and an ellipsis on the label: a seven-digit number must
             // never be pushed off the row by a long name.
             float labelWidth = width - Inset * 2f - ValueColumn;
-            this.DrawText(new Vector2(Inset, baseline), Truncate(row.Label, labelWidth), 13,
+            this.DrawText(new Vector2(Inset, baseline), Truncate(row.Label, labelWidth), Style.FontSmall,
                 row.Dim ? Style.TextDim : Style.Text);
 
             this.DrawText(
-                new Vector2(width - Inset - Style.Measure(row.Value, 13), baseline), row.Value, 13,
+                new Vector2(width - Inset - Style.Measure(row.Value, Style.FontSmall), baseline), row.Value, Style.FontSmall,
                 row.Dim ? Style.TextDim : Style.StatNumber);
         }
 
@@ -845,20 +845,20 @@ public partial class CharacterPanel : Control
             DrawRect(new Rect2(0f, y, width, SectionHeight), Style.ModalHeader);
             DrawRect(new Rect2(0f, y + SectionHeight - 1f, width, 1f), Style.ModalFrameDark);
 
-            float baseline = Mathf.Round(y + (SectionHeight + Style.Sans.GetAscent(14) - Style.Sans.GetDescent(14)) / 2f);
-            this.DrawText(new Vector2(Inset, baseline), title, 14, Style.TextDim);
+            float baseline = Mathf.Round(y + (SectionHeight + Style.Sans.GetAscent(Style.FontHeader) - Style.Sans.GetDescent(Style.FontHeader)) / 2f);
+            this.DrawText(new Vector2(Inset, baseline), title, Style.FontHeader, Style.TextDim);
         }
 
         /// <summary>Cuts a label to fit its column, with an ellipsis. Never wraps.</summary>
         private static string Truncate(string text, float width)
         {
-            if (Style.Measure(text, 13) <= width)
+            if (Style.Measure(text, Style.FontSmall) <= width)
                 return text;
 
             for (int length = text.Length - 1; length > 1; length--)
             {
                 string cut = text[..length] + "…";
-                if (Style.Measure(cut, 13) <= width)
+                if (Style.Measure(cut, Style.FontSmall) <= width)
                     return cut;
             }
 

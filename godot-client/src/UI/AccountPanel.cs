@@ -69,13 +69,13 @@ public partial class AccountPanel : Control
         {
             ClipText = true,
             TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
-        }.Typeset(18, Style.Text);
+        }.Typeset(Style.FontName, Style.Text);
         _shell.Body.AddChild(_name);
 
         _star = new HudGlyph(HudIcons.Star, Fame.Colour(0, Classes));
         _shell.Body.AddChild(_star);
 
-        _rank = new Label().Typeset(13, Style.TextDim);
+        _rank = new Label().Typeset(Style.FontSmall, Style.TextDim);
         _shell.Body.AddChild(_rank);
 
         // Every row is the same shape, so the panel is a list rather than a layout.
@@ -243,7 +243,7 @@ public partial class AccountPanel : Control
             MouseFilter = MouseFilterEnum.Ignore;
 
             _label = new Label { Text = label, VerticalAlignment = VerticalAlignment.Center }
-                .Typeset(13, Style.Text);
+                .Typeset(Style.FontSmall, Style.Text);
             AddChild(_label);
 
             _value = new Label
@@ -252,7 +252,7 @@ public partial class AccountPanel : Control
                 VerticalAlignment = VerticalAlignment.Center,
                 ClipText = true,
                 TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
-            }.Typeset(13, Style.StatNumber);
+            }.Typeset(Style.FontSmall, Style.StatNumber);
             AddChild(_value);
         }
 
