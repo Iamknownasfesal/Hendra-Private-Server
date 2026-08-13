@@ -1,0 +1,276 @@
+//! Accounts and characters.
+
+use crate::{Result, Store, StoreError};
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Account {
+    pub id: i64,
+    pub name: String,
+    pub vault_chests: i16,
+    pub banned: bool,
+}
+
+/// A character, with everything needed to put it into a world.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Character {
+    pub id: i64,
+    pub account_id: i64,
+    pub object_type: i32,
+    pub name: String,
+    pub hp: i32,
+    pub max_hp: i32,
+    pub mp: i32,
+    pub max_mp: i32,
+    pub level: i16,
+    pub experience: i32,
+    pub fame: i32,
+    pub alive: bool,
+
+    /// Slot index to item type, only for occupied slots.
+    pub inventory: Vec<(i16, i32)>,
+}
+
+/// Enough to draw a character-select screen without loading inventories.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CharacterSummary {
+    pub id: i64,
+    pub object_type: i32,
+    pub name: String,
+    pub level: i16,
+    pub fame: i32,
+    pub alive: bool,
+}
+
+impl Store {
+    /// Creates an account, or reports that the name is taken.
+    pub async fn create_account(&self, name: &str) -> Result<Account> {
+        let row = sqlx::query_as::<_, (i64, String, i16, bool)>(
+            "INSERT INTO account (name) VALUES ($1) RETURNING id, name, vault_chests, banned",
+        )
+        .bind(name)
+        .fetch_one(self.pool())
+        .await;
+
+        match row {
+            Ok((id, name, vault_chests, banned)) => Ok(Account {
+                id,
+                name,
+                vault_chests,
+                banned,
+            }),
+            // The unique index is what decides this, not a prior lookup — a check-then-insert has a
+            // window between the two in which someone else inserts the same name.
+            Err(sqlx::Error::Database(err)) if err.is_unique_violation() => {
+                Err(StoreError::NameTaken)
+            }
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    /// Finds an account by name, ignoring case.
+    pub async fn account_by_name(&self, name: &str) -> Result<Account> {
+        let row = sqlx::query_as::<_, (i64, String, i16, bool)>(
+            "SELECT id, name, vault_chests, banned FROM account WHERE lower(name) = lower($1)",
+        )
+        .bind(name)
+        .fetch_optional(self.pool())
+        .await?;
+
+        row.map(|(id, name, vault_chests, banned)| Account {
+            id,
+            name,
+            vault_chests,
+            banned,
+        })
+        .ok_or_else(|| StoreError::NoSuchAccount(name.to_string()))
+    }
+
+    /// Creates a character for an account.
+    pub async fn create_character(
+        &self,
+        account_id: i64,
+        object_type: i32,
+        name: &str,
+        max_hp: i32,
+    ) -> Result<Character> {
+        let (id,): (i64,) = sqlx::query_as(
+            "INSERT INTO character (account_id, object_type, name, hp, max_hp)
+             VALUES ($1, $2, $3, $4, $4) RETURNING id",
+        )
+        .bind(account_id)
+        .bind(object_type)
+        .bind(name)
+        .bind(max_hp)
+        .fetch_one(self.pool())
+        .await?;
+
+        self.character(id).await
+    }
+
+    /// Loads a character and its inventory.
+    pub async fn character(&self, id: i64) -> Result<Character> {
+        let row = sqlx::query_as::<_, (i64, i64, i32, String, i32, i32, i32, i32, i16, i32, i32, bool)>(
+            "SELECT id, account_id, object_type, name, hp, max_hp, mp, max_mp,
+                    level, experience, fame, alive
+             FROM character WHERE id = $1",
+        )
+        .bind(id)
+        .fetch_optional(self.pool())
+        .await?
+        .ok_or(StoreError::NoSuchCharacter(id))?;
+
+        let inventory = sqlx::query_as::<_, (i16, i32)>(
+            "SELECT slot, item_type FROM inventory_slot WHERE character_id = $1 ORDER BY slot",
+        )
+        .bind(id)
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(Character {
+            id: row.0,
+            account_id: row.1,
+            object_type: row.2,
+            name: row.3,
+            hp: row.4,
+            max_hp: row.5,
+            mp: row.6,
+            max_mp: row.7,
+            level: row.8,
+            experience: row.9,
+            fame: row.10,
+            alive: row.11,
+            inventory,
+        })
+    }
+
+    /// Every living character on an account.
+    pub async fn characters(&self, account_id: i64) -> Result<Vec<CharacterSummary>> {
+        let rows = sqlx::query_as::<_, (i64, i32, String, i16, i32, bool)>(
+            "SELECT id, object_type, name, level, fame, alive
+             FROM character WHERE account_id = $1 AND alive ORDER BY id",
+        )
+        .bind(account_id)
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(id, object_type, name, level, fame, alive)| CharacterSummary {
+                id,
+                object_type,
+                name,
+                level,
+                fame,
+                alive,
+            })
+            .collect())
+    }
+
+    /// Writes back what a character became.
+    ///
+    /// Called at logout, at death and at the periodic checkpoint. Deliberately does not touch the
+    /// inventory: item movement has its own transactional path, and letting a checkpoint rewrite
+    /// slots wholesale would be a way to undo a move that had already committed.
+    pub async fn save_character(
+        &self,
+        id: i64,
+        hp: i32,
+        mp: i32,
+        level: i16,
+        experience: i32,
+        fame: i32,
+    ) -> Result<()> {
+        sqlx::query(
+            "UPDATE character
+             SET hp = LEAST($2, max_hp), mp = $3, level = $4, experience = $5, fame = $6,
+                 last_seen = now()
+             WHERE id = $1",
+        )
+        .bind(id)
+        .bind(hp)
+        .bind(mp)
+        .bind(level)
+        .bind(experience)
+        .bind(fame)
+        .execute(self.pool())
+        .await?;
+
+        Ok(())
+    }
+
+    /// Marks a character dead. The row stays, because the graveyard is part of the game.
+    pub async fn kill_character(&self, id: i64) -> Result<()> {
+        sqlx::query("UPDATE character SET alive = false, hp = 0, last_seen = now() WHERE id = $1")
+            .bind(id)
+            .execute(self.pool())
+            .await?;
+        Ok(())
+    }
+
+    /// Replaces a character's whole inventory.
+    ///
+    /// For giving a new character its starting kit, not for saving one mid-play — see
+    /// [`Store::move_item`] for that.
+    pub async fn set_inventory(&self, character_id: i64, slots: &[(i16, i32)]) -> Result<()> {
+        let mut transaction = self.pool().begin().await?;
+
+        sqlx::query("DELETE FROM inventory_slot WHERE character_id = $1")
+            .bind(character_id)
+            .execute(&mut *transaction)
+            .await?;
+
+        for (slot, item) in slots {
+            sqlx::query(
+                "INSERT INTO inventory_slot (character_id, slot, item_type) VALUES ($1, $2, $3)",
+            )
+            .bind(character_id)
+            .bind(slot)
+            .bind(item)
+            .execute(&mut *transaction)
+            .await?;
+        }
+
+        transaction.commit().await?;
+        Ok(())
+    }
+
+    /// What an account has in its vault.
+    pub async fn vault(&self, account_id: i64) -> Result<Vec<(i16, i32)>> {
+        Ok(sqlx::query_as::<_, (i16, i32)>(
+            "SELECT slot, item_type FROM vault_slot WHERE account_id = $1 ORDER BY slot",
+        )
+        .bind(account_id)
+        .fetch_all(self.pool())
+        .await?)
+    }
+
+    /// Puts an item straight into a vault slot. For tests and administration.
+    pub async fn set_vault_slot(&self, account_id: i64, slot: i16, item: i32) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO vault_slot (account_id, slot, item_type) VALUES ($1, $2, $3)
+             ON CONFLICT (account_id, slot) DO UPDATE SET item_type = EXCLUDED.item_type",
+        )
+        .bind(account_id)
+        .bind(slot)
+        .bind(item)
+        .execute(self.pool())
+        .await?;
+        Ok(())
+    }
+
+    /// How many vault chests an account has, each of eight slots.
+    pub async fn buy_vault_chest(&self, account_id: i64, limit: i16) -> Result<i16> {
+        let (chests,): (i16,) = sqlx::query_as(
+            "UPDATE account SET vault_chests = vault_chests + 1
+             WHERE id = $1 AND vault_chests < $2
+             RETURNING vault_chests",
+        )
+        .bind(account_id)
+        .bind(limit)
+        .fetch_optional(self.pool())
+        .await?
+        .ok_or(StoreError::Refused("no more vault chests are available"))?;
+
+        Ok(chests)
+    }
+}

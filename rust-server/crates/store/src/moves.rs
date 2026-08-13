@@ -1,0 +1,182 @@
+//! Moving an item between durable slots.
+//!
+//! # Why this is not the in-memory move
+//!
+//! An in-memory move is safe because it reads, validates and writes with nothing in between — one
+//! thread, one world, no window. Neither assumption holds here. Two connections can attempt the
+//! same move at the same instant, and the read and the write are separated by a network round trip
+//! wide enough to drive a duplication through.
+//!
+//! So the two rows are locked before either is read. Both attempts serialise, the second sees what
+//! the first did, and the move that would have duplicated an item instead finds an empty slot and
+//! refuses.
+//!
+//! # Why the rows are locked in a fixed order
+//!
+//! Two players swapping items with each other, simultaneously and in opposite directions, will each
+//! lock one row and wait for the other forever. Ordering the locks by a rule both sides compute the
+//! same way removes the cycle: one of them takes both locks and the other waits, briefly.
+
+use crate::{Result, Store, StoreError};
+
+/// Where a durable item is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Location {
+    /// A slot in a character's inventory.
+    Inventory { character_id: i64, slot: i16 },
+
+    /// A slot in an account's vault.
+    Vault { account_id: i64, slot: i16 },
+}
+
+impl Location {
+    /// A total order both parties to a swap compute identically, so locks are always taken the same
+    /// way round and two opposing swaps cannot deadlock.
+    fn lock_key(&self) -> (u8, i64, i16) {
+        match self {
+            Location::Inventory { character_id, slot } => (0, *character_id, *slot),
+            Location::Vault { account_id, slot } => (1, *account_id, *slot),
+        }
+    }
+}
+
+/// What a move did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MoveOutcome {
+    /// What ended up in the source slot. Zero means empty.
+    pub source: i32,
+    /// What ended up in the destination slot.
+    pub destination: i32,
+}
+
+impl Store {
+    /// Moves or swaps the contents of two durable slots.
+    ///
+    /// `expected` is what the caller believed was in the source. A move whose source no longer
+    /// holds that is refused — this is what stops the same item being moved twice by two requests
+    /// that both read it before either wrote.
+    pub async fn move_item(
+        &self,
+        from: Location,
+        to: Location,
+        expected: i32,
+    ) -> Result<MoveOutcome> {
+        if from == to {
+            return Err(StoreError::Refused("moving a slot onto itself"));
+        }
+
+        let mut transaction = self.pool().begin().await?;
+
+        // Lock in a fixed order, then read. Reading before locking would put the window back.
+        let (first, second) = if from.lock_key() <= to.lock_key() {
+            (from, to)
+        } else {
+            (to, from)
+        };
+        let held_first = lock_and_read(&mut transaction, first).await?;
+        let held_second = lock_and_read(&mut transaction, second).await?;
+
+        let (source_item, destination_item) = if first == from {
+            (held_first, held_second)
+        } else {
+            (held_second, held_first)
+        };
+
+        if source_item != expected {
+            // Somebody else moved it first. Refusing is the whole point.
+            return Err(StoreError::Refused(
+                "that item is no longer where you left it",
+            ));
+        }
+
+        write(&mut transaction, from, destination_item).await?;
+        write(&mut transaction, to, source_item).await?;
+
+        transaction.commit().await?;
+
+        Ok(MoveOutcome {
+            source: destination_item,
+            destination: source_item,
+        })
+    }
+}
+
+/// Locks a slot's row and reads it. Zero means the slot is empty.
+///
+/// An absent row is an empty slot, and an empty slot still has to be locked or two moves could both
+/// decide to fill it. `INSERT … ON CONFLICT DO UPDATE … RETURNING` creates the row if it is missing
+/// and locks it either way, which a plain `SELECT … FOR UPDATE` cannot do for a row that is not
+/// there yet.
+async fn lock_and_read(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    at: Location,
+) -> Result<i32> {
+    let (item,): (i32,) = match at {
+        Location::Inventory { character_id, slot } => {
+            sqlx::query_as(
+                "INSERT INTO inventory_slot (character_id, slot, item_type) VALUES ($1, $2, 0)
+                 ON CONFLICT (character_id, slot) DO UPDATE SET item_type = inventory_slot.item_type
+                 RETURNING item_type",
+            )
+            .bind(character_id)
+            .bind(slot)
+            .fetch_one(&mut **transaction)
+            .await?
+        }
+        Location::Vault { account_id, slot } => {
+            sqlx::query_as(
+                "INSERT INTO vault_slot (account_id, slot, item_type) VALUES ($1, $2, 0)
+                 ON CONFLICT (account_id, slot) DO UPDATE SET item_type = vault_slot.item_type
+                 RETURNING item_type",
+            )
+            .bind(account_id)
+            .bind(slot)
+            .fetch_one(&mut **transaction)
+            .await?
+        }
+    };
+
+    Ok(item)
+}
+
+/// Writes a slot, removing the row when it becomes empty so the tables stay sparse.
+async fn write(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    at: Location,
+    item: i32,
+) -> Result<()> {
+    match (at, item) {
+        (Location::Inventory { character_id, slot }, 0) => {
+            sqlx::query("DELETE FROM inventory_slot WHERE character_id = $1 AND slot = $2")
+                .bind(character_id)
+                .bind(slot)
+                .execute(&mut **transaction)
+                .await?;
+        }
+        (Location::Inventory { character_id, slot }, item) => {
+            sqlx::query("UPDATE inventory_slot SET item_type = $3 WHERE character_id = $1 AND slot = $2")
+                .bind(character_id)
+                .bind(slot)
+                .bind(item)
+                .execute(&mut **transaction)
+                .await?;
+        }
+        (Location::Vault { account_id, slot }, 0) => {
+            sqlx::query("DELETE FROM vault_slot WHERE account_id = $1 AND slot = $2")
+                .bind(account_id)
+                .bind(slot)
+                .execute(&mut **transaction)
+                .await?;
+        }
+        (Location::Vault { account_id, slot }, item) => {
+            sqlx::query("UPDATE vault_slot SET item_type = $3 WHERE account_id = $1 AND slot = $2")
+                .bind(account_id)
+                .bind(slot)
+                .bind(item)
+                .execute(&mut **transaction)
+                .await?;
+        }
+    }
+
+    Ok(())
+}
