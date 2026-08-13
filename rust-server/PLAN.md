@@ -6,7 +6,7 @@ deliberately excluded and left until last.
 Phases 0–5 are done: workspace, content, protocol, transport, simulation, behaviour language,
 persistence, authentication. What follows is phases 6–11.
 
-**Where we are:** ~60% of the old server by subsystem. 524 tests.
+**Where we are:** ~62% of the old server by subsystem. 539 tests.
 
 **Sizing** is relative, not calendar: **S** is an afternoon, **M** is a day or two, **L** is
 several days, **XL** is a week or more.
@@ -137,18 +137,18 @@ an ability, 1,942 activates across 43 kinds.
 
 ### 7.1 The activate framework — **M**
 
-- [ ] `ActivateDesc` compiles to an `Effect` enum, mirroring the behaviour crate's shape
+- [x] `ActivateDesc` compiles to an `Effect` enum, mirroring the behaviour crate's shape
 - [ ] A `use_item` client message
 - [ ] MP cost, cooldown and `Quiet` checks
-- [ ] `activates.rs` reports the percentage implemented
+- [x] `activates.rs` reports the percentage implemented: **100% of 1,942 uses, 43 of 43 kinds**
 
 ### 7.2 The effects, in ranked order — **L**
 
-- [ ] `IncrementStat` (35%, depends on 6.2)
-- [ ] `Dye` and `UnlockSkin` (30%, storage plus a snapshot field)
-- [ ] `ConditionEffectSelf`, `ConditionEffectAura`, `Create`, `Heal`, `Shoot` (reuse phase 6)
-- [ ] `CreatePet`, `Pet`, `PermaPet`, `PetSkin` (9%, a subsystem of its own; defer behind the rest)
-- [ ] The remaining 25 kinds to 100%
+- [x] `IncrementStat` (35%, depends on 6.2)
+- [x] `Dye` and `UnlockSkin` read; storage and the snapshot field are still to come
+- [x] `ConditionEffectSelf`, `ConditionEffectAura`, `Create`, `Heal`, `Shoot` (reuse phase 6)
+- [x] `CreatePet`, `Pet`, `PermaPet`, `PetSkin` read as an `Effect::Pet`; the pet subsystem itself is 8.4
+- [x] The remaining 25 kinds to 100%
 
 ### 7.3 Stacking, consumables and bags — **S/M**
 

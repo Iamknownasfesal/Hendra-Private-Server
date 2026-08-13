@@ -11,6 +11,7 @@
 //! back rather than failing, because a server that refuses to boot over one stray tag is worse
 //! than a server missing one object.
 
+pub mod activate;
 pub mod catalog;
 pub mod desc;
 pub mod effect;
@@ -22,6 +23,7 @@ pub mod region;
 pub mod world;
 pub mod xml;
 
+pub use activate::{Appearance, Effect};
 pub use catalog::{Catalog, LoadProblem, LoadReport};
 pub use desc::{
     ActivateDesc, ItemDesc, ObjectDesc, ObjectType, ProjectileDesc, SizeRange, StatBoost, TileDesc,
