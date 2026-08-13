@@ -7,6 +7,7 @@
 pub mod effects;
 pub mod grid;
 pub mod inventory;
+pub mod leveling;
 pub mod metrics;
 pub mod projectile;
 pub mod slab;

@@ -6,7 +6,7 @@ deliberately excluded and left until last.
 Phases 0–5 are done: workspace, content, protocol, transport, simulation, behaviour language,
 persistence, authentication. What follows is phases 6–11.
 
-**Where we are:** ~58% of the old server by subsystem. 481 tests.
+**Where we are:** ~60% of the old server by subsystem. 505 tests.
 
 **Sizing** is relative, not calendar: **S** is an afternoon, **M** is a day or two, **L** is
 several days, **XL** is a week or more.
@@ -78,12 +78,12 @@ here.
 
 ### 6.3 Experience, levels and fame — **M**
 
-- [ ] XP on kill, split by damage contribution, scaled by `exp_multiplier`
-- [ ] `no_experience` suppresses it, so summons cannot be farmed
-- [ ] Level-up rolls each stat inside its class's declared range
-- [ ] Fame from the same event
-- [ ] Call `hendra_characters::record_progress` so class unlocks advance through play
-- [ ] Persist level, experience and fame at the checkpoint
+- [x] XP on kill, shared with everyone within 25 tiles and capped at a tenth of a level, scaled by `exp_multiplier`. The original does not split by damage contribution, which an earlier draft of this plan claimed
+- [x] `no_experience` suppresses it, so summons cannot be farmed; a paused player earns none
+- [x] Level-up rolls each stat inside its class's declared range, capped at twenty levels
+- [x] Fame from lifetime experience, with the game's milestones and stars
+- [x] Call `hendra_characters::record_progress` so class unlocks advance through play
+- [x] Persist level, experience and fame at the checkpoint, read from the world rather than remembered
 
 ### 6.4 Loose ends — **S**
 

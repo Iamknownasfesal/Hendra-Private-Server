@@ -418,6 +418,7 @@ mod tests {
             resizing: None,
             no_experience: false,
             effects: Vec::new(),
+            progress: crate::leveling::Progress::new(),
             health_fraction: 0.0,
             magic_fraction: 0.0,
             flash: None,

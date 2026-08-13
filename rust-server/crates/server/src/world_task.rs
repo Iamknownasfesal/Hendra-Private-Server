@@ -108,6 +108,25 @@ pub enum ToWorld {
     Leave {
         handle: Handle,
     },
+
+    /// What a character has become, so it can be written down.
+    ///
+    /// Asked for rather than sent on leaving, because a session also checkpoints while playing and
+    /// both paths want the same answer.
+    Snapshot {
+        handle: Handle,
+        reply: tokio::sync::oneshot::Sender<Option<Vitals>>,
+    },
+}
+
+/// A character's live state, as the durable side needs it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Vitals {
+    pub hp: i32,
+    pub mp: i32,
+    pub level: i16,
+    pub experience: i32,
+    pub fame: i32,
 }
 
 /// How close a player must be to reach into a bag, in tiles.
@@ -389,6 +408,17 @@ fn handle(
             if let Some(entity) = world.get_mut(handle) {
                 entity.stats.set_equipment(boosts);
             }
+        }
+
+        ToWorld::Snapshot { handle, reply } => {
+            let vitals = world.get(handle).map(|entity| Vitals {
+                hp: entity.hp,
+                mp: entity.mp,
+                level: entity.progress.level,
+                experience: entity.progress.experience,
+                fame: entity.progress.fame,
+            });
+            let _ = reply.send(vitals);
         }
 
         ToWorld::Leave { handle } => {

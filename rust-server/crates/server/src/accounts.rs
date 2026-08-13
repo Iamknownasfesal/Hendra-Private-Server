@@ -115,22 +115,3 @@ pub async fn log_in(
     })?;
     Ok(Session { account, character })
 }
-
-/// Writes back what a character became.
-pub async fn save(
-    store: &Store,
-    character: &Character,
-    hp: i32,
-    mp: i32,
-) -> Result<(), StoreError> {
-    store
-        .save_character(
-            character.id,
-            hp,
-            mp,
-            character.level,
-            character.experience,
-            character.fame,
-        )
-        .await
-}

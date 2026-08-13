@@ -174,14 +174,7 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
 
     // Write back what the character became. Items are not saved here; they are written as they
     // move, so a checkpoint that rewrote slots wholesale could undo a move that had committed.
-    if let Err(err) = crate::accounts::save(
-        &context.store,
-        &player.character,
-        player.character.hp,
-        player.character.mp,
-    )
-    .await
-    {
+    if let Err(err) = save_progress(&context, &player, &placement).await {
         tracing::warn!(%err, %name, "could not save the character");
     }
 
@@ -712,6 +705,57 @@ async fn worn_slots_would_accept(
     };
 
     fits(to, moving) && fits(from, displaced)
+}
+
+/// Writes back what a character became, including what it learned.
+///
+/// The world is asked for the live figures rather than the session remembering them, because the
+/// world is where levelling happens and a remembered copy would be one tick stale at best.
+async fn save_progress(
+    context: &Context,
+    player: &crate::accounts::Session,
+    placement: &Placement,
+) -> Result<(), hendra_store::StoreError> {
+    let (reply, answer) = tokio::sync::oneshot::channel();
+    placement
+        .world
+        .send(ToWorld::Snapshot {
+            handle: placement.handle,
+            reply,
+        })
+        .await;
+
+    // A world that has already dropped the player leaves nothing to write, which is not an error:
+    // it happens whenever a world closes underneath a session.
+    let Ok(Some(vitals)) = answer.await else {
+        return Ok(());
+    };
+
+    context
+        .store
+        .save_character(
+            player.character.id,
+            vitals.hp,
+            vitals.mp,
+            vitals.level,
+            vitals.experience,
+            vitals.fame,
+        )
+        .await?;
+
+    // What the account has now taken this class to, which is what opens the next one. Recorded
+    // here rather than only at death, because an account whose best warrior is still alive has
+    // still levelled a warrior.
+    hendra_characters::record_progress(
+        &context.store,
+        player.account.id,
+        &hendra_store::Character {
+            level: vitals.level,
+            fame: vitals.fame,
+            ..player.character.clone()
+        },
+    )
+    .await
 }
 
 /// What the worn slots add, as a stat layer.

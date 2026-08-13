@@ -117,6 +117,9 @@ pub struct Entity {
     /// Whether killing this awards experience. Summons set this so they cannot be farmed.
     pub no_experience: bool,
 
+    /// Level, experience and fame. Only players advance.
+    pub progress: crate::leveling::Progress,
+
     /// Health owed by an effect that has not yet amounted to a whole point.
     ///
     /// Twenty a second at fifty-millisecond ticks is one point per tick, and rounding each tick
@@ -172,6 +175,7 @@ impl Entity {
             resizing: None,
             no_experience: false,
             effects: Vec::new(),
+            progress: crate::leveling::Progress::new(),
             health_fraction: 0.0,
             magic_fraction: 0.0,
             flash: None,
@@ -206,6 +210,7 @@ impl Entity {
             resizing: None,
             no_experience: false,
             effects: Vec::new(),
+            progress: crate::leveling::Progress::new(),
             health_fraction: 0.0,
             magic_fraction: 0.0,
             flash: None,
@@ -733,6 +738,7 @@ impl World {
         self.drop_loot(catalog);
 
         // Before reaping, because what an entity leaves behind is decided by what it was.
+        self.award_experience(catalog);
         self.run_death_effects(catalog);
         self.reap();
         self.reindex();
@@ -1845,6 +1851,101 @@ impl World {
         }
     }
 
+    /// Awards experience for everything that died this tick.
+    ///
+    /// Between the death and the reaping, because where the enemy fell decides who is close enough
+    /// to be paid for it.
+    fn award_experience(&mut self, catalog: &Catalog) {
+        self.handles.clear();
+        self.handles.extend(
+            self.entities
+                .iter()
+                .filter(|(_, entity)| {
+                    entity.dead && entity.kind == Kind::Enemy && !entity.no_experience
+                })
+                .map(|(handle, _)| handle),
+        );
+
+        if self.handles.is_empty() {
+            return;
+        }
+
+        let dead = std::mem::take(&mut self.handles);
+        for handle in &dead {
+            let Some(entity) = self.entities.get(*handle) else {
+                continue;
+            };
+            let (x, y, max_hp) = (entity.x, entity.y, entity.max_hp);
+            let multiplier = catalog
+                .object(entity.object_type)
+                .and_then(|desc| desc.exp_multiplier)
+                .unwrap_or(1.0);
+
+            self.grid
+                .within(x, y, crate::leveling::SHARE_RADIUS, &mut self.nearby);
+            let nearby = std::mem::take(&mut self.nearby);
+
+            for player in &nearby {
+                let earns = self.entities.get(*player).is_some_and(|entity| {
+                    entity.kind == Kind::Player
+                        && !entity.dead
+                        && !crate::effects::Rules::of(entity.conditions).paused
+                });
+                if !earns {
+                    continue;
+                }
+
+                let Some(class) = self
+                    .entities
+                    .get(*player)
+                    .and_then(|entity| catalog.class(entity.object_type))
+                    .cloned()
+                else {
+                    continue;
+                };
+
+                let level = self
+                    .entities
+                    .get(*player)
+                    .map(|entity| entity.progress.level)
+                    .unwrap_or(1);
+
+                let earned = crate::leveling::experience_for_kill(max_hp, multiplier, true, level);
+                if earned <= 0 {
+                    continue;
+                }
+
+                // The roll is drawn from the world so a level-up is reproducible from the seed.
+                let mut rolls = Vec::with_capacity(8);
+                for _ in 0..8 {
+                    rolls.push(self.roll());
+                }
+                let mut next = rolls.into_iter();
+
+                if let Some(entity) = self.entities.get_mut(*player) {
+                    let mut progress = entity.progress;
+                    let advance = progress.gain(&class, &mut entity.stats, earned, || {
+                        next.next().unwrap_or(0.5)
+                    });
+                    entity.progress = progress;
+
+                    // A level raises the ceiling and fills what it added, matching the original's
+                    // `HP = Stats[0]` after every level.
+                    if advance.levels_gained > 0 {
+                        entity.max_hp = entity.stats.max_hp().max(1);
+                        entity.max_mp = entity.stats.max_mp().max(0);
+                        entity.hp = entity.max_hp;
+                        entity.mp = entity.max_mp;
+                    }
+                }
+            }
+
+            self.nearby = nearby;
+        }
+
+        self.handles = dead;
+    }
+
     /// Runs whatever the dying have arranged to happen after them.
     ///
     /// Between loot and reaping, because these need the entity still in the world. Where it was
@@ -2069,6 +2170,16 @@ mod tests {
           <MaxHitPoints>10</MaxHitPoints></Object>
         <Object type="0x506" id="Doorway"><Class>Portal</Class><Static/></Object>
         <Object type="0x600" id="Hero"><Class>Player</Class><Player/></Object>
+        <Object type="0x030e" id="Wizard"><Class>Player</Class><Player/>
+          <MaxHitPoints max="670">100</MaxHitPoints>
+          <MaxMagicPoints max="385">100</MaxMagicPoints>
+          <Attack max="75">12</Attack><Defense max="25">0</Defense>
+          <Speed max="50">12</Speed><Dexterity max="75">15</Dexterity>
+          <HpRegen max="40">10</HpRegen><MpRegen max="60">10</MpRegen>
+          <SlotTypes>8, 5, 6, 9</SlotTypes>
+          <LevelIncrease min="20" max="30">MaxHitPoints</LevelIncrease>
+          <LevelIncrease min="2" max="8">MaxMagicPoints</LevelIncrease>
+        </Object>
         <Object type="0x900" id="Bolt"><Class>Projectile</Class></Object>
         <Object type="0x901" id="Wand">
           <Class>Equipment</Class><Item/><SlotType>8</SlotType><RateOfFire>1</RateOfFire>
@@ -3185,6 +3296,140 @@ mod tests {
             .find(|(_, state)| state.object_type == 0x502)
             .expect("and so is the enemy");
         assert_eq!(theirs.stats, [0; 8], "an enemy sends none");
+    }
+
+    #[test]
+    fn killing_something_earns_experience_and_eventually_a_level() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let player = world
+            .spawn(Entity::player(ObjectType(0x030e), 10.0, 10.0, 100))
+            .unwrap();
+        world.reindex();
+
+        assert_eq!(world.get(player).unwrap().progress.level, 1);
+
+        // Slimes have two hundred health, so each is worth five capped at five.
+        for _ in 0..12 {
+            let mut slime = Entity::fixture(ObjectType(0x502), 11.0, 10.0);
+            slime.kind = Kind::Enemy;
+            slime.max_hp = 200;
+            slime.hp = 200;
+            let slime = world.spawn(slime).unwrap();
+            world.reindex();
+            world.get_mut(slime).unwrap().dead = true;
+            world.advance(&catalog, 50);
+        }
+
+        let progress = world.get(player).unwrap().progress;
+        assert!(progress.experience > 0, "earned nothing");
+        assert_eq!(progress.level, 2, "fifty experience is one level");
+    }
+
+    #[test]
+    fn a_summon_is_worth_nothing_so_it_cannot_be_farmed() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let player = world
+            .spawn(Entity::player(ObjectType(0x030e), 10.0, 10.0, 100))
+            .unwrap();
+
+        let mut summon = Entity::fixture(ObjectType(0x502), 11.0, 10.0);
+        summon.kind = Kind::Enemy;
+        summon.max_hp = 200;
+        summon.hp = 200;
+        summon.no_experience = true;
+        let summon = world.spawn(summon).unwrap();
+        world.reindex();
+
+        world.get_mut(summon).unwrap().dead = true;
+        world.advance(&catalog, 50);
+
+        assert_eq!(world.get(player).unwrap().progress.experience, 0);
+    }
+
+    #[test]
+    fn experience_reaches_everyone_nearby_and_nobody_far_away() {
+        // Shared rather than split, so helping someone else's fight is never worse than standing
+        // elsewhere. Distance is the only thing that decides it.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let near = world
+            .spawn(Entity::player(ObjectType(0x030e), 11.0, 10.0, 100))
+            .unwrap();
+        let far = world
+            .spawn(Entity::player(ObjectType(0x030e), 10.0, 10.0, 100))
+            .unwrap();
+        world.get_mut(far).unwrap().x = 200.0;
+
+        let mut slime = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
+        slime.kind = Kind::Enemy;
+        slime.max_hp = 200;
+        slime.hp = 200;
+        let slime = world.spawn(slime).unwrap();
+        world.reindex();
+
+        world.get_mut(slime).unwrap().dead = true;
+        world.advance(&catalog, 50);
+
+        assert!(world.get(near).unwrap().progress.experience > 0);
+        assert_eq!(world.get(far).unwrap().progress.experience, 0);
+    }
+
+    #[test]
+    fn a_paused_player_earns_nothing() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let player = world
+            .spawn(Entity::player(ObjectType(0x030e), 11.0, 10.0, 100))
+            .unwrap();
+
+        let mut slime = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
+        slime.kind = Kind::Enemy;
+        slime.max_hp = 200;
+        slime.hp = 200;
+        let slime = world.spawn(slime).unwrap();
+        world.reindex();
+
+        give(&mut world, player, hendra_content::ConditionEffect::Paused);
+        world.get_mut(slime).unwrap().dead = true;
+        world.advance(&catalog, 50);
+
+        assert_eq!(world.get(player).unwrap().progress.experience, 0);
+    }
+
+    #[test]
+    fn a_level_raises_the_ceiling_and_fills_what_it_added() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let player = world
+            .spawn(Entity::player(ObjectType(0x030e), 10.0, 10.0, 100))
+            .unwrap();
+        world.get_mut(player).unwrap().stats =
+            crate::stats::Stats::starting(catalog.class(ObjectType(0x030e)).unwrap());
+        world.get_mut(player).unwrap().hp = 50;
+        world.reindex();
+
+        for _ in 0..12 {
+            let mut slime = Entity::fixture(ObjectType(0x502), 11.0, 10.0);
+            slime.kind = Kind::Enemy;
+            slime.max_hp = 200;
+            slime.hp = 200;
+            let slime = world.spawn(slime).unwrap();
+            world.reindex();
+            world.get_mut(slime).unwrap().dead = true;
+            world.advance(&catalog, 50);
+        }
+
+        let entity = world.get(player).unwrap();
+        assert!(entity.progress.level >= 2);
+        assert_eq!(entity.hp, entity.max_hp, "a level fills what it added");
+        assert!(entity.max_hp > 100, "and the ceiling moved");
     }
 
     #[test]
