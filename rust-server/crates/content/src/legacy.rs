@@ -132,7 +132,7 @@ pub fn from_jm(json: &str, catalog: &Catalog) -> Result<(Map, UnresolvedNames), 
         dictionary
             .get(index as usize)
             .cloned()
-            .unwrap_or_else(|| empty_square())
+            .unwrap_or_else(empty_square)
     });
 
     Ok((Map::from_squares(width, height, squares)?, unresolved))
@@ -149,10 +149,10 @@ fn jm_composition(
             Some(tile) => tile,
             None => {
                 UnresolvedNames::note(&mut unresolved.grounds, name);
-                TileDesc_EMPTY
+                EMPTY_TILE
             }
         },
-        None => TileDesc_EMPTY,
+        None => EMPTY_TILE,
     };
 
     // Only the first object is honoured, matching the converter this replaces. Maps in the wild do
@@ -203,12 +203,11 @@ fn jm_composition(
 }
 
 /// The tile written for a square with no ground, which the legacy converter spelled `0xff`.
-#[allow(non_upper_case_globals)]
-const TileDesc_EMPTY: TileType = TileType(0xff);
+const EMPTY_TILE: TileType = TileType(0xff);
 
 fn empty_square() -> Composition {
     Composition {
-        tile: TileDesc_EMPTY,
+        tile: EMPTY_TILE,
         object: ObjectType::NONE,
         region: Region::None,
         terrain: Terrain::None,
