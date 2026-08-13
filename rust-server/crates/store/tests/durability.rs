@@ -1685,3 +1685,115 @@ async fn banning_and_unbanning_are_both_possible() {
     store.set_banned(account.id, false).await.unwrap();
     assert!(!store.account(account.id).await.unwrap().banned);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn news_comes_back_newest_first_and_the_two_kinds_are_kept_apart() {
+    let Some(store) = store("t_news").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    store
+        .post_news("First", "an old thing", false)
+        .await
+        .unwrap();
+    store
+        .post_news("Second", "a newer thing", false)
+        .await
+        .unwrap();
+    store
+        .post_news("Inside", "for the game panel", true)
+        .await
+        .unwrap();
+
+    let front = store.news(false, 10).await.unwrap();
+    assert_eq!(front.len(), 2, "the in-game one is not here");
+    assert_eq!(front[0].title, "Second", "newest first");
+
+    let inside = store.news(true, 10).await.unwrap();
+    assert_eq!(inside.len(), 1);
+    assert_eq!(inside[0].title, "Inside");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn news_needs_a_title() {
+    let Some(store) = store("t_news_empty").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    assert!(store.post_news("   ", "a body", false).await.is_err());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn today_can_only_be_claimed_once() {
+    // The date is the primary key, so claiming twice is refused by the table rather than by a
+    // check that can race with itself.
+    let Some(store) = store("t_daily").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+
+    let before = store.calendar(account.id).await.unwrap();
+    assert_eq!(before.streak, 0);
+    assert!(!before.claimed_today);
+
+    assert!(store.claim_today(account.id).await.unwrap());
+    assert!(!store.claim_today(account.id).await.unwrap(), "only once");
+
+    let after = store.calendar(account.id).await.unwrap();
+    assert_eq!(after.streak, 1);
+    assert!(after.claimed_today);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_streak_counts_back_through_consecutive_days_and_stops_at_a_gap() {
+    let Some(store) = store("t_daily_streak").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    let today = chrono::Utc::now().date_naive();
+
+    // Today, yesterday, the day before, then a gap, then one more.
+    for back in [0i64, 1, 2, 5] {
+        sqlx::query("INSERT INTO daily_claim (account_id, claimed_on) VALUES ($1, $2)")
+            .bind(account.id)
+            .bind(today - chrono::Duration::days(back))
+            .execute(store.pool())
+            .await
+            .unwrap();
+    }
+
+    let calendar = store.calendar(account.id).await.unwrap();
+    assert_eq!(calendar.streak, 3, "the gap ends it");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_streak_survives_not_having_claimed_yet_today() {
+    // Somebody who has not claimed yet still has yesterday's run, and telling them it is broken
+    // before the day is out would be wrong.
+    let Some(store) = store("t_daily_pending").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    let today = chrono::Utc::now().date_naive();
+
+    for back in [1i64, 2, 3] {
+        sqlx::query("INSERT INTO daily_claim (account_id, claimed_on) VALUES ($1, $2)")
+            .bind(account.id)
+            .bind(today - chrono::Duration::days(back))
+            .execute(store.pool())
+            .await
+            .unwrap();
+    }
+
+    let calendar = store.calendar(account.id).await.unwrap();
+    assert_eq!(calendar.streak, 3);
+    assert!(!calendar.claimed_today, "but today is still available");
+}

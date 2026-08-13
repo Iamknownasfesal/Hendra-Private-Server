@@ -6,7 +6,7 @@ deliberately excluded and left until last.
 Phases 0–5 are done: workspace, content, protocol, transport, simulation, behaviour language,
 persistence, authentication. What follows is phases 6–11.
 
-**Where we are:** ~93% of the old server by subsystem. 634 tests.
+**Where we are:** ~94% of the old server by subsystem. 637 tests.
 
 **Sizing** is relative, not calendar: **S** is an afternoon, **M** is a day or two, **L** is
 several days, **XL** is a week or more.
@@ -246,7 +246,12 @@ Eight of 48 endpoints are done, and they are the ones that matter.
 
 ### Optional — **L**
 
-- [ ] Discord linking, credits, daily calendar, weekly quests, pictures, global news
+- [x] Global news, in-game news and the daily calendar. `endpoints` now reports **26 of 40**.
+- [ ] The last fourteen are not server work. Discord linking and credits need third-party
+      accounts; `getTextures`, `getServerXmls` and `getLanguageStrings` serve client assets the
+      client already ships with; `picture/get` needs image storage; `security/*` served the old
+      anti-cheat, which this server replaced by not trusting the client; `verifyage`,
+      `purchaseSkin`, `checkQuestIsDone` and `weekQuest` are features the game does not have yet
 
 ### Operations
 

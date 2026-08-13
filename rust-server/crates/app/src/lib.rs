@@ -23,6 +23,10 @@
 //!   POST   /email/verify   {token}                ->  {}
 //!   POST   /password/forgot {email}               ->  {}
 //!   POST   /password/reset {token, password}      ->  {}
+//!   GET    /news                                  ->  [{title, body}]
+//!   GET    /news/game      (Bearer)               ->  [{title, body}]
+//!   GET    /daily          (Bearer)               ->  {streak, claimed}
+//!   POST   /daily          (Bearer)               ->  {claimed, streak}
 //!   GET    /classes        (Bearer)               ->  [{class, locked}]
 //!   POST   /characters     (Bearer) {class, name} ->  {character}
 //! ```
@@ -1009,6 +1013,70 @@ async fn send_link(app: &App, account_id: i64, email: &str, purpose: hendra_stor
     }
 }
 
+#[derive(Serialize)]
+pub struct NewsItem {
+    pub title: String,
+    pub body: String,
+}
+
+/// What the server has announced.
+///
+/// Unauthenticated, because it is shown at the title screen before anybody has logged in.
+pub async fn news(State(app): State<Arc<App>>) -> Json<Vec<NewsItem>> {
+    Json(listed_news(&app, false).await)
+}
+
+/// The same, for the panel inside the game.
+pub async fn game_news(State(app): State<Arc<App>>, headers: HeaderMap) -> Answer<Vec<NewsItem>> {
+    authenticate(&app, &headers)?;
+    Ok(Json(listed_news(&app, true).await))
+}
+
+async fn listed_news(app: &App, in_game: bool) -> Vec<NewsItem> {
+    app.store
+        .news(in_game, 20)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|item| NewsItem {
+            title: item.title,
+            body: item.body,
+        })
+        .collect()
+}
+
+#[derive(Serialize)]
+pub struct Daily {
+    pub streak: i64,
+    pub claimed_today: bool,
+}
+
+/// How many days in a row, and whether today is still available.
+pub async fn daily(State(app): State<Arc<App>>, headers: HeaderMap) -> Answer<Daily> {
+    let claims = authenticate(&app, &headers)?;
+
+    let calendar = app.store.calendar(claims.account_id).await.map_err(|err| {
+        tracing::error!(%err, "could not read a calendar");
+        refuse(StatusCode::INTERNAL_SERVER_ERROR, "try again shortly")
+    })?;
+
+    Ok(Json(Daily {
+        streak: calendar.streak,
+        claimed_today: calendar.claimed_today,
+    }))
+}
+
+/// Claims today.
+///
+/// Answers with what the calendar became rather than only whether it worked, so a client that
+/// claimed and one that was too late show the same thing.
+pub async fn claim_daily(State(app): State<Arc<App>>, headers: HeaderMap) -> Answer<Daily> {
+    let claims = authenticate(&app, &headers)?;
+
+    let _ = app.store.claim_today(claims.account_id).await;
+    daily(State(app), headers).await
+}
+
 async fn health() -> &'static str {
     "ok"
 }
@@ -1028,6 +1096,9 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/email/verify", post(verify_email))
         .route("/password/forgot", post(forgot_password))
         .route("/password/reset", post(reset_password))
+        .route("/news", get(news))
+        .route("/news/game", get(game_news))
+        .route("/daily", get(daily).post(claim_daily))
         .route("/messages", get(messages))
         .route("/friends", get(friends).post(add_friend))
         .route("/friends/{id}", axum::routing::delete(remove_friend))

@@ -17,6 +17,7 @@ pub mod guild;
 pub mod market;
 mod model;
 mod moves;
+pub mod news;
 pub mod social;
 mod trade;
 
@@ -24,6 +25,7 @@ pub use guild::{Guild, Member, Rank};
 pub use market::{Listing, MarketPurchase};
 pub use model::{Account, Admin, Character, CharacterSummary, Currency};
 pub use moves::{Location, MoveOutcome, Placed, Purchase};
+pub use news::{Calendar, News};
 pub use social::{Friend, Message};
 pub use trade::{Offer, TradeOutcome};
 
