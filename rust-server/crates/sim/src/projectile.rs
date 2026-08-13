@@ -293,11 +293,18 @@ impl Projectiles {
                 continue;
             }
 
-            let defence = catalog
+            let base = catalog
                 .object(entity.object_type)
                 .map(|desc| desc.defense)
                 .unwrap_or(0);
-            let damage = after_defence(projectile.damage, defence, projectile.armor_piercing);
+
+            // Armour and curses are the target's; a weakened or berserk shooter has already had its
+            // multiplier applied when the projectile was made, because the shooter's state at the
+            // moment of firing is what should decide the shot.
+            let rules = crate::effects::Rules::of(entity.conditions);
+            let defence = base + rules.defence;
+            let raw = (projectile.damage as f32 * rules.damage_taken).round() as i32;
+            let damage = after_defence(raw, defence, projectile.armor_piercing);
 
             hits.push(Hit {
                 projectile: handle,
@@ -334,6 +341,12 @@ fn can_hit(projectile: &Projectile, target: Handle, entity: &Entity) -> bool {
         return false;
     }
     if entity.dead || entity.hp <= 0 {
+        return false;
+    }
+
+    // Refused here rather than by dealing zero damage, so an invulnerable target is passed through
+    // rather than stopping the shot for everyone behind it.
+    if crate::effects::Rules::of(entity.conditions).invulnerable {
         return false;
     }
 
@@ -405,6 +418,7 @@ mod tests {
             resizing: None,
             no_experience: false,
             effects: Vec::new(),
+            health_fraction: 0.0,
             flash: None,
             base_max_hp: None,
         }

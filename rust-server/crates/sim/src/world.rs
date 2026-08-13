@@ -114,6 +114,12 @@ pub struct Entity {
     /// Whether killing this awards experience. Summons set this so they cannot be farmed.
     pub no_experience: bool,
 
+    /// Health owed by an effect that has not yet amounted to a whole point.
+    ///
+    /// Twenty a second at fifty-millisecond ticks is one point per tick, and rounding each tick
+    /// independently would round it to nothing.
+    pub health_fraction: f32,
+
     /// A colour to blink, its period and how many times, for a phase change the eye can catch.
     pub flash: Option<(u32, u32, u32)>,
 
@@ -160,6 +166,7 @@ impl Entity {
             resizing: None,
             no_experience: false,
             effects: Vec::new(),
+            health_fraction: 0.0,
             flash: None,
             base_max_hp: None,
         }
@@ -192,6 +199,7 @@ impl Entity {
             resizing: None,
             no_experience: false,
             effects: Vec::new(),
+            health_fraction: 0.0,
             flash: None,
             base_max_hp: None,
         }
@@ -221,6 +229,13 @@ pub enum MoveRefusal {
 
     /// The destination cannot be stood on.
     Blocked,
+
+    /// The entity is held in place by an effect.
+    ///
+    /// Distinct from `TooFar` because it is not a speed judgement: a paralysed player claiming one
+    /// square is refused where an unaffected one would be allowed, and telling them apart is what
+    /// lets a client say why rather than looking like a rubber-banding bug.
+    Rooted,
 }
 
 /// What the server decided about a movement claim.
@@ -503,8 +518,21 @@ impl World {
     ) -> Option<MoveOutcome> {
         let entity = self.entities.get(handle)?;
 
+        // A rooted player is held where it is rather than clamped toward its claim, because a
+        // clamp still lets it creep at the tolerance every tick.
+        let rules = crate::effects::Rules::of(entity.conditions);
+        if rules.rooted {
+            return Some(MoveOutcome {
+                x: entity.x,
+                y: entity.y,
+                refused: (claimed_x != entity.x || claimed_y != entity.y)
+                    .then_some(MoveRefusal::Rooted),
+            });
+        }
+
         let ground = self.terrain.speed_at(catalog, entity.x, entity.y);
-        let allowed = entity.speed * ground * (elapsed_ms as f32 / 1000.0) * MOVE_TOLERANCE;
+        let allowed =
+            entity.speed * rules.speed * ground * (elapsed_ms as f32 / 1000.0) * MOVE_TOLERANCE;
 
         let (mut dx, mut dy) = (claimed_x - entity.x, claimed_y - entity.y);
         let distance = (dx * dx + dy * dy).sqrt();
@@ -614,6 +642,11 @@ impl World {
             return fired;
         }
 
+        let rules = crate::effects::Rules::of(entity.conditions);
+        if rules.silenced {
+            return fired;
+        }
+
         let Some(weapon) = entity.weapon else {
             return fired;
         };
@@ -667,6 +700,7 @@ impl World {
         self.resize(elapsed_ms);
         self.think(catalog, elapsed_ms);
         self.apply_hazards(catalog, elapsed_ms);
+        self.apply_effect_health(elapsed_ms);
         self.advance_projectiles(catalog, elapsed_ms);
         self.expire(elapsed_ms);
         self.drop_loot(catalog);
@@ -689,7 +723,11 @@ impl World {
         self.handles.extend(
             self.entities
                 .iter()
-                .filter(|(_, entity)| entity.mind.is_some() && !entity.dead)
+                .filter(|(_, entity)| {
+                    entity.mind.is_some()
+                        && !entity.dead
+                        && !crate::effects::Rules::of(entity.conditions).paused
+                })
                 .map(|(handle, _)| handle),
         );
 
@@ -896,6 +934,15 @@ impl World {
                 let Some(entity) = self.entities.get(handle) else {
                     return;
                 };
+
+                // Behaviours do not go through `resolve_move`, so the same rules have to be
+                // applied here or a paralysed enemy would keep walking while a paralysed player
+                // could not.
+                let rules = crate::effects::Rules::of(entity.conditions);
+                if rules.rooted {
+                    return;
+                }
+                let speed = &(speed * rules.speed);
                 // Behaviours quote speed the way the content does, in tenths of a tile per second.
                 let distance = speed * 10.0 * (elapsed_ms as f32 / 1000.0);
                 let (to_x, to_y) = (
@@ -919,7 +966,9 @@ impl World {
             }
 
             Action::Heal { amount } => {
-                if let Some(entity) = self.entities.get_mut(handle) {
+                if let Some(entity) = self.entities.get_mut(handle)
+                    && !crate::effects::Rules::of(entity.conditions).sick
+                {
                     entity.hp = (entity.hp + amount).min(entity.max_hp);
                 }
             }
@@ -1030,7 +1079,9 @@ impl World {
                 let wanted = kind.and_then(|name| program.kind_of(name)).map(ObjectType);
                 let amount = *amount;
                 self.each_nearby(handle, *radius, *players, wanted, |world, other| {
-                    if let Some(entity) = world.entities.get_mut(other) {
+                    if let Some(entity) = world.entities.get_mut(other)
+                        && !crate::effects::Rules::of(entity.conditions).sick
+                    {
                         entity.hp = (entity.hp + amount).min(entity.max_hp);
                     }
                 });
@@ -1241,7 +1292,12 @@ impl World {
             return;
         }
 
+        // An immunity refuses the effect outright rather than letting it land and be ignored, so
+        // nothing downstream has to remember to check twice.
         if let Some(known) = hendra_content::ConditionEffect::from_index(effect as u16) {
+            if !crate::effects::accepts(entity.conditions, known) {
+                return;
+            }
             entity.conditions.insert(known);
         }
         entity.effects.push((effect, duration_ms));
@@ -1570,6 +1626,42 @@ impl World {
                     entity.dead = true;
                 }
             }
+        }
+    }
+
+    /// Applies the effects that move health over time.
+    ///
+    /// Kept apart from the ground because the two answer different questions — one is where you
+    /// are standing and the other is what is on you — and because an entity can be subject to both
+    /// at once, in which case both should apply.
+    fn apply_effect_health(&mut self, elapsed_ms: u32) {
+        let seconds = elapsed_ms as f32 / 1000.0;
+
+        for (_, entity) in self.entities.iter_mut() {
+            if entity.effects.is_empty() || entity.dead || !entity.kind.is_alive_kind() {
+                continue;
+            }
+
+            let rules = crate::effects::Rules::of(entity.conditions);
+            if rules.health_per_second == 0.0 {
+                continue;
+            }
+
+            // Carried between ticks rather than rounded away: twenty a second at fifty-millisecond
+            // ticks is one point per tick, and rounding that to zero would make healing do nothing
+            // at all.
+            entity.health_fraction += rules.health_per_second * seconds;
+            let whole = entity.health_fraction.trunc();
+            entity.health_fraction -= whole;
+
+            let change = whole as i32;
+            if change == 0 {
+                continue;
+            }
+
+            // Bleeding never finishes the job — the game leaves you at one and lets something else
+            // kill you, which is what stops a stray poison being an execution.
+            entity.hp = (entity.hp + change).clamp(1, entity.max_hp);
         }
     }
 
@@ -1904,6 +1996,8 @@ mod tests {
         </Object>
         <Object type="0x503" id="Guard"><Class>Character</Class><Enemy/>
           <MaxHitPoints>50</MaxHitPoints></Object>
+        <Object type="0x507" id="Plated Slime"><Class>Character</Class><Enemy/>
+          <MaxHitPoints>200</MaxHitPoints><Defense>30</Defense></Object>
         <Object type="0x505" id="Spawnling"><Class>Character</Class><Enemy/>
           <MaxHitPoints>10</MaxHitPoints></Object>
         <Object type="0x506" id="Doorway"><Class>Portal</Class><Static/></Object>
@@ -2637,6 +2731,316 @@ mod tests {
             world.get(boss).unwrap().size,
             25,
             "should have stopped at the target rather than shrinking away"
+        );
+    }
+
+    // -- effects, which used to be recorded and ignored -----------------------------------------
+
+    fn give(world: &mut World, handle: Handle, effect: hendra_content::ConditionEffect) {
+        if let Some(entity) = world.get_mut(handle) {
+            entity.conditions.insert(effect);
+            entity.effects.push((effect.index() as u8, 60_000));
+        }
+    }
+
+    #[test]
+    fn an_invulnerable_target_takes_no_damage_and_takes_it_again_when_the_effect_lifts() {
+        // The most used behaviour in the game's content. Before this it marked a boss invulnerable
+        // and left it perfectly killable.
+        let catalog = catalog();
+        let (mut world, shooter, target) = duel(&catalog);
+
+        give(
+            &mut world,
+            target,
+            hendra_content::ConditionEffect::Invulnerable,
+        );
+        let before = world.get(target).unwrap().hp;
+
+        for _ in 0..40 {
+            world.shoot(shooter, &catalog, 0.0);
+            world.advance(&catalog, 50);
+        }
+        assert_eq!(
+            world.get(target).unwrap().hp,
+            before,
+            "a hundred shots should have done nothing"
+        );
+
+        // Lift it, and the same shots land.
+        world.get_mut(target).unwrap().conditions = hendra_content::ConditionSet::EMPTY;
+        world.get_mut(target).unwrap().effects.clear();
+
+        for _ in 0..10 {
+            world.shoot(shooter, &catalog, 0.0);
+            world.advance(&catalog, 50);
+            if world.get(target).is_none_or(|e| e.hp < before) {
+                break;
+            }
+        }
+        assert!(
+            world.get(target).is_none_or(|e| e.hp < before),
+            "should be killable once the effect is gone"
+        );
+    }
+
+    #[test]
+    fn armour_changes_what_a_shot_is_worth() {
+        let catalog = catalog();
+
+        // A target with armour of its own, because ArmorBroken removes defence rather than
+        // creating negative defence — against something with none it correctly does nothing.
+        let hp_after = |effect: Option<hendra_content::ConditionEffect>| {
+            let mut world = field(&catalog);
+
+            let mut player = Entity::player(ObjectType(0x600), 5.0, 5.0, 800);
+            player.weapon = Some(ObjectType(0x901));
+            let shooter = world.spawn(player).unwrap();
+
+            let mut plated = Entity::fixture(ObjectType(0x507), 8.0, 5.0);
+            plated.kind = Kind::Enemy;
+            plated.hp = 400;
+            plated.max_hp = 400;
+            let target = world.spawn(plated).unwrap();
+            world.reindex();
+
+            if let Some(effect) = effect {
+                give(&mut world, target, effect);
+            }
+            world.shoot(shooter, &catalog, 0.0);
+            for _ in 0..12 {
+                world.advance(&catalog, 50);
+            }
+            world.get(target).map(|e| e.hp)
+        };
+
+        let plain = hp_after(None).expect("alive");
+        let armoured = hp_after(Some(hendra_content::ConditionEffect::Armored)).expect("alive");
+        let broken = hp_after(Some(hendra_content::ConditionEffect::ArmorBroken)).expect("alive");
+
+        assert!(
+            armoured > plain,
+            "armour should absorb some: {armoured} vs {plain}"
+        );
+        assert!(
+            broken < plain,
+            "broken armour should absorb less: {broken} vs {plain}"
+        );
+    }
+
+    #[test]
+    fn a_paralysed_player_cannot_move_and_moves_again_when_it_lifts() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 10.0, 10.0, 500))
+            .unwrap();
+        world.reindex();
+
+        // Within what five tiles a second allows in fifty milliseconds.
+        let outcome = world
+            .resolve_move(player, &catalog, 10.2, 10.0, 50)
+            .unwrap();
+        assert!(outcome.refused.is_none(), "unaffected, so allowed");
+
+        give(
+            &mut world,
+            player,
+            hendra_content::ConditionEffect::Paralyzed,
+        );
+        let held = world
+            .resolve_move(player, &catalog, 10.2, 10.0, 50)
+            .unwrap();
+
+        assert_eq!(held.refused, Some(MoveRefusal::Rooted));
+        assert_eq!((held.x, held.y), (10.0, 10.0), "held exactly where it was");
+    }
+
+    #[test]
+    fn being_slowed_shortens_how_far_a_claim_may_reach() {
+        // Not refused outright — a slowed player still moves, just less. Refusing would look like
+        // a disconnection rather than an effect.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 10.0, 10.0, 500))
+            .unwrap();
+        world.reindex();
+
+        let reach = |world: &World| {
+            let outcome = world
+                .resolve_move(player, &catalog, 30.0, 10.0, 100)
+                .unwrap();
+            outcome.x - 10.0
+        };
+
+        let normal = reach(&world);
+        give(&mut world, player, hendra_content::ConditionEffect::Slowed);
+        let slowed = reach(&world);
+
+        assert!(slowed > 0.0, "still moving");
+        assert!(slowed < normal, "but less far: {slowed} vs {normal}");
+    }
+
+    #[test]
+    fn a_stunned_entity_cannot_shoot() {
+        let catalog = catalog();
+        let (mut world, shooter, _) = duel(&catalog);
+
+        give(
+            &mut world,
+            shooter,
+            hendra_content::ConditionEffect::Stunned,
+        );
+        assert!(world.shoot(shooter, &catalog, 0.0).is_empty());
+
+        world.get_mut(shooter).unwrap().conditions = hendra_content::ConditionSet::EMPTY;
+        assert_eq!(world.shoot(shooter, &catalog, 0.0).len(), 1);
+    }
+
+    #[test]
+    fn a_paused_enemy_stops_thinking_entirely() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut enemy = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
+        enemy.kind = Kind::Enemy;
+        enemy.max_hp = 200;
+        enemy.hp = 200;
+        let enemy = world.spawn(enemy).unwrap();
+
+        behaving(
+            &mut world,
+            &catalog,
+            r#"enemy "Slime" { state a { on timed(100ms) -> b } state b { } }"#,
+        );
+        world.reindex();
+
+        give(&mut world, enemy, hendra_content::ConditionEffect::Paused);
+        for _ in 0..20 {
+            world.advance(&catalog, 50);
+        }
+
+        let program = world.behaviours.get("Slime").unwrap();
+        let state = world
+            .get(enemy)
+            .unwrap()
+            .mind
+            .as_ref()
+            .unwrap()
+            .state_name(program);
+        assert_eq!(state, "a", "a paused enemy should not have transitioned");
+    }
+
+    #[test]
+    fn bleeding_hurts_over_time_but_never_finishes_the_job() {
+        // The game leaves you at one and lets something else kill you, which is what stops a stray
+        // poison being an execution.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 10.0, 10.0, 500))
+            .unwrap();
+        world.reindex();
+
+        give(
+            &mut world,
+            player,
+            hendra_content::ConditionEffect::Bleeding,
+        );
+        for _ in 0..20 {
+            world.advance(&catalog, 50);
+        }
+
+        let hurt = world.get(player).unwrap().hp;
+        assert!(hurt < 500 && hurt > 400, "one second of bleeding: {hurt}");
+
+        for _ in 0..2000 {
+            world.advance(&catalog, 50);
+        }
+        assert_eq!(world.get(player).unwrap().hp, 1, "left alive at one");
+    }
+
+    #[test]
+    fn healing_restores_over_time_and_stops_at_full() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 10.0, 10.0, 500))
+            .unwrap();
+        world.get_mut(player).unwrap().hp = 100;
+        world.reindex();
+
+        give(&mut world, player, hendra_content::ConditionEffect::Healing);
+        for _ in 0..20 {
+            world.advance(&catalog, 50);
+        }
+        assert!(world.get(player).unwrap().hp > 100);
+
+        for _ in 0..1000 {
+            world.advance(&catalog, 50);
+        }
+        assert_eq!(world.get(player).unwrap().hp, 500, "and no further");
+    }
+
+    #[test]
+    fn a_small_heal_per_tick_is_not_rounded_away() {
+        // Twenty a second at fifty-millisecond ticks is one point per tick. Rounding each tick
+        // independently would make healing do nothing at all.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 10.0, 10.0, 500))
+            .unwrap();
+        world.get_mut(player).unwrap().hp = 100;
+        world.reindex();
+
+        give(&mut world, player, hendra_content::ConditionEffect::Healing);
+        for _ in 0..10 {
+            world.advance(&catalog, 20);
+        }
+
+        assert!(
+            world.get(player).unwrap().hp > 100,
+            "two hundred milliseconds of healing should show"
+        );
+    }
+
+    #[test]
+    fn an_immunity_refuses_the_effect_rather_than_holding_it_uselessly() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 10.0, 10.0, 500))
+            .unwrap();
+        world.reindex();
+
+        give(
+            &mut world,
+            player,
+            hendra_content::ConditionEffect::ParalyzeImmune,
+        );
+        world.give_effect(
+            player,
+            hendra_content::ConditionEffect::Paralyzed.index() as u8,
+            5000,
+        );
+
+        assert!(
+            !world
+                .get(player)
+                .unwrap()
+                .conditions
+                .contains(hendra_content::ConditionEffect::Paralyzed),
+            "the immunity should have refused it"
+        );
+        assert!(
+            world
+                .resolve_move(player, &catalog, 10.2, 10.0, 50)
+                .unwrap()
+                .refused
+                .is_none(),
+            "and movement is unaffected"
         );
     }
 

@@ -4,6 +4,7 @@
 //! nothing here is shared: worlds are independent, so parallelism belongs between them rather than
 //! inside them.
 
+pub mod effects;
 pub mod grid;
 pub mod inventory;
 pub mod metrics;

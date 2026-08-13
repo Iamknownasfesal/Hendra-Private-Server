@@ -6,7 +6,7 @@ deliberately excluded and left until last.
 Phases 0–5 are done: workspace, content, protocol, transport, simulation, behaviour language,
 persistence, authentication. What follows is phases 6–11.
 
-**Where we are:** ~55% of the old server by subsystem. 434 tests. The parts that were hard —
+**Where we are:** ~57% of the old server by subsystem. 455 tests. The parts that were hard —
 transport, simulation, behaviours, dupe-safety, content — are done and better than what they
 replace. What remains is mostly breadth.
 
@@ -47,9 +47,17 @@ late. Phase 10 runs alongside anything. Phase 11 is the end.
 
 The theme: things that are *recorded* but not *acted on*.
 
-### 6.1 Condition effects act — **M**
+### 6.1 Condition effects act — **M** — **DONE**
 
-Effects are applied, expire, and go out in snapshots. Nothing reads them.
+Effects were applied, expired, and went out in snapshots, and nothing read them.
+
+`crates/sim/src/effects.rs` derives a `Rules` struct from a `ConditionSet` once per use, so the hot
+paths multiply by one number rather than testing eight bits. Immunities refuse an effect at
+`give_effect` rather than letting it land and be ignored. Five mutations confirm the tests bite.
+
+One correction to what this plan said: **ground damage was already implemented and tested** —
+`apply_hazards` has applied it all along, and `standing_in_lava_costs_hit_points_and_eventually_kills`
+covers it. 8.5 is smaller than stated.
 
 | Effect | What it must do |
 |---|---|
@@ -206,10 +214,11 @@ Needs a setpiece format (reuse HMAP) and a stamp operation. Fixes the wrong `app
 Decoy, Trap, Sign, GiftChest, ConnectedObject, Wall, GuildHallPortal. Mostly small and independent;
 several fall out of 7.2.
 
-### 8.5 Ground damage and terrain on the wire — **M**
+### 8.5 Terrain on the wire — **M**
 
-`min_damage`/`max_damage` on tiles are parsed and unapplied, so lava is decorative. Terrain never
-reaches clients at all — server-side work the client cutover depends on, which is why it is here.
+Ground damage already works — that was a mistake in an earlier draft of this plan. What is missing
+is that terrain never reaches clients at all, which is server-side work the client cutover depends
+on and why it belongs here.
 
 **Exit criteria:** a realm populates, a dungeon opens and closes, and standing in lava hurts.
 
