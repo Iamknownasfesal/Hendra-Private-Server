@@ -19,6 +19,10 @@
 //!   DELETE /friends/:id    (Bearer)               ->  {}
 //!   GET    /messages       (Bearer)               ->  [{message}]
 //!   GET    /fame           (Bearer)               ->  [{name, fame}]
+//!   POST   /email          (Bearer) {email}       ->  {}
+//!   POST   /email/verify   {token}                ->  {}
+//!   POST   /password/forgot {email}               ->  {}
+//!   POST   /password/reset {token, password}      ->  {}
 //!   GET    /classes        (Bearer)               ->  [{class, locked}]
 //!   POST   /characters     (Bearer) {class, name} ->  {character}
 //! ```
@@ -41,6 +45,7 @@ use hendra_auth::{Claims, TokenKey, hash_password, mint, now, verify, verify_pas
 use hendra_store::{Store, StoreError};
 use serde::{Deserialize, Serialize};
 
+pub mod mail;
 pub mod throttle;
 pub use throttle::Throttle;
 
@@ -50,6 +55,9 @@ pub struct App {
 
     /// Where the game servers are, for a client that has just logged in and has nowhere to go.
     pub servers: Vec<GameServer>,
+
+    /// Where verification and reset links are sent.
+    pub mail: mail::Sender,
 
     /// The content, for the character-select screen. Read-only and shared with nothing.
     pub catalog: Arc<hendra_content::Catalog>,
@@ -75,6 +83,7 @@ impl App {
             store,
             key,
             servers: Vec::new(),
+            mail: Arc::new(mail::Logged),
             catalog,
             common_items,
             throttle: Throttle::new(),
@@ -846,6 +855,160 @@ pub async fn fame(State(app): State<Arc<App>>, headers: HeaderMap) -> Answer<Vec
     Ok(Json(listed))
 }
 
+#[derive(Deserialize)]
+pub struct EmailBody {
+    pub email: String,
+}
+
+#[derive(Deserialize)]
+pub struct TokenBody {
+    pub token: String,
+}
+
+#[derive(Deserialize)]
+pub struct ResetBody {
+    pub token: String,
+    pub password: String,
+}
+
+/// Records an address and sends something to it to prove it arrives.
+pub async fn set_email(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Json(body): Json<EmailBody>,
+) -> Answer<serde_json::Value> {
+    let claims = authenticate(&app, &headers)?;
+
+    app.store
+        .set_email(claims.account_id, &body.email)
+        .await
+        .map_err(|err| match err {
+            StoreError::Refused(why) => refuse(StatusCode::BAD_REQUEST, why),
+            other => {
+                tracing::error!(%other, "could not set an address");
+                refuse(StatusCode::INTERNAL_SERVER_ERROR, "try again shortly")
+            }
+        })?;
+
+    send_link(
+        &app,
+        claims.account_id,
+        &body.email,
+        hendra_store::email::Purpose::Verify,
+    )
+    .await;
+    Ok(Json(serde_json::json!({})))
+}
+
+/// Confirms an address from the token that was sent to it.
+pub async fn verify_email(
+    State(app): State<Arc<App>>,
+    Json(body): Json<TokenBody>,
+) -> Answer<serde_json::Value> {
+    let account_id = app
+        .store
+        .spend_email_token(&body.token, hendra_store::email::Purpose::Verify)
+        .await
+        .map_err(|_| refuse(StatusCode::BAD_REQUEST, "that link is no longer valid"))?;
+
+    app.store
+        .mark_email_verified(account_id)
+        .await
+        .map_err(|err| {
+            tracing::error!(%err, "could not mark an address verified");
+            refuse(StatusCode::INTERNAL_SERVER_ERROR, "try again shortly")
+        })?;
+
+    Ok(Json(serde_json::json!({})))
+}
+
+/// Starts a password reset.
+///
+/// Answers the same way whether or not the address is known. Telling them apart turns this into a
+/// way to find out which addresses have accounts, which is worse than the small confusion of a
+/// player who mistyped their own.
+pub async fn forgot_password(
+    State(app): State<Arc<App>>,
+    Json(body): Json<EmailBody>,
+) -> Answer<serde_json::Value> {
+    if let Ok(account_id) = app.store.account_by_email(&body.email).await {
+        send_link(
+            &app,
+            account_id,
+            &body.email,
+            hendra_store::email::Purpose::Reset,
+        )
+        .await;
+    }
+
+    Ok(Json(serde_json::json!({})))
+}
+
+/// Finishes a password reset.
+pub async fn reset_password(
+    State(app): State<Arc<App>>,
+    Json(body): Json<ResetBody>,
+) -> Answer<serde_json::Value> {
+    // Hashed before the token is spent, so a password the server would refuse does not burn the
+    // one link the player has.
+    let hash = {
+        let _permit = app.hashing.acquire().await;
+        hash_password(&body.password)
+            .map_err(|err| refuse(StatusCode::BAD_REQUEST, &err.to_string()))?
+    };
+
+    let account_id = app
+        .store
+        .spend_email_token(&body.token, hendra_store::email::Purpose::Reset)
+        .await
+        .map_err(|_| refuse(StatusCode::BAD_REQUEST, "that link is no longer valid"))?;
+
+    app.store
+        .set_password(account_id, &hash)
+        .await
+        .map_err(|err| {
+            tracing::error!(%err, "could not reset a password");
+            refuse(StatusCode::INTERNAL_SERVER_ERROR, "try again shortly")
+        })?;
+
+    // Every failure recorded against the account is forgotten, or somebody who reset their password
+    // because they were locked out would still be locked out.
+    if let Ok(account) = app.store.account(account_id).await {
+        let _ = app.store.clear_failed_logins(&account.name).await;
+        app.throttle.succeeded(&account.name);
+    }
+
+    Ok(Json(serde_json::json!({})))
+}
+
+/// Makes a token and sends it.
+async fn send_link(app: &App, account_id: i64, email: &str, purpose: hendra_store::email::Purpose) {
+    let token = match app.store.issue_email_token(account_id, purpose).await {
+        Ok(token) => token,
+        Err(err) => {
+            // Reported rather than returned quietly. A link that is never made looks exactly like
+            // a link that was never delivered, and one of those is a bug in here.
+            tracing::error!(%err, "could not make a link");
+            return;
+        }
+    };
+
+    let (subject, body) = match purpose {
+        hendra_store::email::Purpose::Verify => (
+            "Confirm your address",
+            format!("Your confirmation code is {}", token.0),
+        ),
+        hendra_store::email::Purpose::Reset => (
+            "Reset your password",
+            format!("Your reset code is {}", token.0),
+        ),
+    };
+
+    if let Err(why) = app.mail.send(email, subject, &body) {
+        tracing::error!(%why, "could not send a link");
+    }
+}
+
 async fn health() -> &'static str {
     "ok"
 }
@@ -861,6 +1024,10 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/init", get(init))
         .route("/name", post(set_name))
         .route("/fame", get(fame))
+        .route("/email", post(set_email))
+        .route("/email/verify", post(verify_email))
+        .route("/password/forgot", post(forgot_password))
+        .route("/password/reset", post(reset_password))
         .route("/messages", get(messages))
         .route("/friends", get(friends).post(add_friend))
         .route("/friends/{id}", axum::routing::delete(remove_friend))

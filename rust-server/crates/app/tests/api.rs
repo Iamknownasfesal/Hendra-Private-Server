@@ -108,6 +108,11 @@ async fn send(app: &Arc<App>, request: Request<Body>) -> (StatusCode, serde_json
     (status, json)
 }
 
+/// The same as `post`, named apart so a test may shadow `post` with a captured mailbox.
+fn post_json(path: &str, body: serde_json::Value) -> Request<Body> {
+    post(path, body)
+}
+
 fn post(path: &str, body: serde_json::Value) -> Request<Body> {
     Request::builder()
         .method("POST")
@@ -1321,5 +1326,258 @@ async fn a_correct_password_clears_the_shared_count_too() {
         app.store.recent_failed_logins("Fesal", 300).await.unwrap(),
         0,
         "getting in should forget the misses"
+    );
+}
+
+/// An app whose mail is captured, so a test can read the link that was sent.
+async fn app_with_mail(schema: &str) -> Option<(Arc<App>, Arc<hendra_app::mail::Captured>)> {
+    let mut app = Arc::try_unwrap(app(schema).await?).ok()?;
+    let mailbox = Arc::new(hendra_app::mail::Captured::default());
+    app.mail = mailbox.clone();
+    Some((Arc::new(app), mailbox))
+}
+
+macro_rules! mailed_or_skip {
+    ($schema:literal) => {
+        match app_with_mail($schema).await {
+            Some(pair) => pair,
+            None => {
+                eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+                return;
+            }
+        }
+    };
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_address_is_confirmed_by_the_code_sent_to_it() {
+    let (app, mailbox) = mailed_or_skip!("a_email_verify");
+
+    let (_, mine) = send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
+    let token = mine["token"].as_str().unwrap().to_string();
+
+    let (status, _) = send(
+        &app,
+        authed(
+            "POST",
+            "/email",
+            &token,
+            serde_json::json!({ "email": "a@example.com" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let sent = mailbox.sent();
+    assert_eq!(sent.len(), 1, "something was sent");
+    assert_eq!(sent[0].0, "a@example.com");
+
+    let code = sent[0].2.rsplit(' ').next().unwrap().to_string();
+    let (status, _) = send(
+        &app,
+        post_json("/email/verify", serde_json::json!({ "token": code })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // And the same code does not work twice.
+    assert_eq!(
+        send(
+            &app,
+            post_json("/email/verify", serde_json::json!({ "token": code }))
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_reset_code_changes_the_password_and_is_spent() {
+    let (app, mailbox) = mailed_or_skip!("a_email_reset");
+
+    let (_, mine) = send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
+    let token = mine["token"].as_str().unwrap().to_string();
+    let (status, body) = send(
+        &app,
+        authed(
+            "POST",
+            "/email",
+            &token,
+            serde_json::json!({ "email": "a@example.com" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "setting the address: {body}");
+
+    send(
+        &app,
+        post_json(
+            "/password/forgot",
+            serde_json::json!({ "email": "a@example.com" }),
+        ),
+    )
+    .await;
+
+    let code = mailbox
+        .sent()
+        .last()
+        .unwrap()
+        .2
+        .rsplit(' ')
+        .next()
+        .unwrap()
+        .to_string();
+    let (status, _) = send(
+        &app,
+        post_json(
+            "/password/reset",
+            serde_json::json!({ "token": code, "password": "a whole new password" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    assert_eq!(
+        send(
+            &app,
+            post("/login", credentials("Fesal", "a whole new password"))
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        send(&app, post("/login", credentials("Fesal", PASSWORD)))
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED,
+        "the old one stopped working"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn asking_to_reset_an_unknown_address_says_nothing_about_it() {
+    // Telling a known address from an unknown one turns this into a way to find out which have
+    // accounts, which is worse than the confusion of somebody who mistyped their own.
+    let (app, mailbox) = mailed_or_skip!("a_email_unknown");
+
+    let (status, _) = send(
+        &app,
+        post_json(
+            "/password/forgot",
+            serde_json::json!({ "email": "nobody@example.com" }),
+        ),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK, "the same answer either way");
+    assert!(mailbox.sent().is_empty(), "and nothing was sent");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_password_the_server_would_refuse_does_not_burn_the_link() {
+    // Otherwise one mistyped password costs a player the only link they have.
+    let (app, mailbox) = mailed_or_skip!("a_email_short");
+
+    let (_, mine) = send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
+    let token = mine["token"].as_str().unwrap().to_string();
+    send(
+        &app,
+        authed(
+            "POST",
+            "/email",
+            &token,
+            serde_json::json!({ "email": "a@example.com" }),
+        ),
+    )
+    .await;
+    send(
+        &app,
+        post_json(
+            "/password/forgot",
+            serde_json::json!({ "email": "a@example.com" }),
+        ),
+    )
+    .await;
+
+    let code = mailbox
+        .sent()
+        .last()
+        .unwrap()
+        .2
+        .rsplit(' ')
+        .next()
+        .unwrap()
+        .to_string();
+
+    assert_eq!(
+        send(
+            &app,
+            post_json(
+                "/password/reset",
+                serde_json::json!({ "token": code, "password": "short" })
+            )
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+
+    // The link still works.
+    assert_eq!(
+        send(
+            &app,
+            post_json(
+                "/password/reset",
+                serde_json::json!({ "token": code, "password": "a whole new password" })
+            )
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_verify_code_cannot_reset_a_password() {
+    // Both reach the same inbox, and one that worked for either would let a confirmation link
+    // change a password.
+    let (app, mailbox) = mailed_or_skip!("a_email_purpose");
+
+    let (_, mine) = send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
+    let token = mine["token"].as_str().unwrap().to_string();
+    send(
+        &app,
+        authed(
+            "POST",
+            "/email",
+            &token,
+            serde_json::json!({ "email": "a@example.com" }),
+        ),
+    )
+    .await;
+
+    let code = mailbox
+        .sent()
+        .last()
+        .unwrap()
+        .2
+        .rsplit(' ')
+        .next()
+        .unwrap()
+        .to_string();
+
+    assert_eq!(
+        send(
+            &app,
+            post_json(
+                "/password/reset",
+                serde_json::json!({ "token": code, "password": "a whole new password" })
+            )
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
     );
 }

@@ -146,6 +146,16 @@ async fn main() {
     );
     app.servers = game_servers();
 
+    // Delivery is the one part of the flow that leaves the process. Without somewhere to send to,
+    // links are logged rather than sent, which is useful on a laptop and wrong in production, so
+    // it says so.
+    if !app.mail.delivers() {
+        tracing::warn!(
+            "no mail sender is configured, so verification and reset links will be logged \
+             rather than sent"
+        );
+    }
+
     if app.servers.is_empty() {
         tracing::warn!(
             "HENDRA_GAME_SERVERS is not set, so /servers is empty and a client has nowhere to go"

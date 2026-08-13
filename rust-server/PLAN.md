@@ -6,7 +6,7 @@ deliberately excluded and left until last.
 Phases 0–5 are done: workspace, content, protocol, transport, simulation, behaviour language,
 persistence, authentication. What follows is phases 6–11.
 
-**Where we are:** ~91% of the old server by subsystem. 623 tests.
+**Where we are:** ~93% of the old server by subsystem. 634 tests.
 
 **Sizing** is relative, not calendar: **S** is an afternoon, **M** is a day or two, **L** is
 several days, **XL** is a week or more.
@@ -239,9 +239,10 @@ Eight of 48 endpoints are done, and they are the ones that matter.
 
 ### Needs something outside the server
 
-- [ ] Email verification and password reset need a mail sender configured. The endpoints are a
-      morning's work once there is somewhere to send to; without one they would be a button that
-      silently does nothing
+- [x] Email verification and password reset. The tokens, expiry, single use and purpose separation
+      are all here and tested; only delivery leaves the process, behind a `Mail` trait. Without a
+      sender configured, links are logged and the server says so at startup rather than pretending
+      to have sent them
 
 ### Optional — **L**
 

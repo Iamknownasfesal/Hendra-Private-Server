@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 uuid = { version = "1", features = ["v4"] }
+sha2 = "0.10"
 hendra-content = { path = "../content" }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "macros", "migrate", "chrono", "uuid"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

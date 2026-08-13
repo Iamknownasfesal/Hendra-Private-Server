@@ -12,6 +12,7 @@
 //! discipline that makes an in-memory move safe stops being enough the moment two processes can
 //! attempt the same move at once.
 
+pub mod email;
 pub mod guild;
 pub mod market;
 mod model;
