@@ -23,6 +23,7 @@
 
 pub mod codec;
 pub mod entity;
+pub mod message;
 pub mod snapshot;
 pub mod world;
 
@@ -30,5 +31,11 @@ pub use codec::{
     CodecError, POSITION_SCALE, Reader, Writer, dequantize, quantize, unzigzag, zigzag,
 };
 pub use entity::{EntityId, EntityState, FieldMask};
+pub use message::{
+    ClientMessage, Input, PROTOCOL_VERSION, RejectReason, ServerMessage, begin_snapshot,
+};
 pub use snapshot::{Acknowledgement, Baseline, BaselineRing, SNAPSHOT_HISTORY, Tick};
-pub use world::{DATAGRAM_BUDGET, Delivery, SnapshotEncoder, WorldSnapshot, decode_snapshot};
+pub use world::{
+    DATAGRAM_BUDGET, Delivery, SnapshotEncoder, SnapshotHeader, WorldSnapshot, decode_body,
+    decode_snapshot, read_header,
+};

@@ -84,7 +84,7 @@ fn run(label: &str, moving: u32) {
             .unwrap_or(Acknowledgement::NONE);
 
         let baseline = match history.baseline_for(ack) {
-            hendra_net::Baseline::Delta { state, .. } => Some(state),
+            hendra_net::Baseline::Delta { tick, state } => Some((tick, state)),
             hendra_net::Baseline::Full => None,
         };
 
@@ -95,7 +95,7 @@ fn run(label: &str, moving: u32) {
         }
 
         // The client reconstructs from the same baseline, proving the bytes are sufficient.
-        let (_, seen) = decode_snapshot(baseline, &mut hendra_net::Reader::new(&buf))
+        let (_, seen) = decode_snapshot(baseline.map(|(_, w)| w), &mut hendra_net::Reader::new(&buf))
             .expect("a snapshot we just encoded must decode");
         assert_eq!(seen.len(), world.len(), "tick {tick} lost entities");
         client = Some(seen);

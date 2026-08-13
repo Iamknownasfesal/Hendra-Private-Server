@@ -57,6 +57,12 @@ pub enum CodecError {
 
     #[error("value {value} is not valid for {what}")]
     InvalidValue { what: &'static str, value: u64 },
+
+    #[error("snapshot was encoded against tick {needed:?}, but {supplied:?} was supplied")]
+    BaselineMismatch {
+        needed: Option<u32>,
+        supplied: Option<u32>,
+    },
 }
 
 pub type Result<T> = std::result::Result<T, CodecError>;
@@ -198,6 +204,15 @@ impl<'a> Writer<'a> {
     /// Writes a length-prefixed byte string.
     pub fn bytes(&mut self, value: &[u8]) {
         self.varint(value.len() as u64);
+        self.buf.extend_from_slice(value);
+    }
+
+    /// Appends bytes with no length prefix.
+    ///
+    /// Only sound for a payload that runs to the end of the message, since nothing marks where it
+    /// stops. Snapshots are the case that matters: they are already a self-describing block, and
+    /// prefixing them would spend bytes restating a length the frame already implies.
+    pub fn raw(&mut self, value: &[u8]) {
         self.buf.extend_from_slice(value);
     }
 
@@ -365,6 +380,12 @@ impl<'a> Reader<'a> {
     pub fn bytes(&mut self) -> Result<&'a [u8]> {
         let len = self.count(MAX_STRING_BYTES)?;
         self.take(len)
+    }
+
+    /// Consumes and returns everything left, for a payload that runs to the end of the message.
+    pub fn rest(&mut self) -> &'a [u8] {
+        let remaining = self.remaining();
+        self.take(remaining).expect("taking exactly what remains")
     }
 
     /// Reads a condition mask written by [`Writer::condition_mask`].

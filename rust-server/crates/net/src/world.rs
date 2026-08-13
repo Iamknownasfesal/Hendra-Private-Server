@@ -124,7 +124,7 @@ impl SnapshotEncoder {
         &mut self,
         tick: Tick,
         current: &WorldSnapshot,
-        baseline: Option<&WorldSnapshot>,
+        baseline: Option<(Tick, &WorldSnapshot)>,
         w: &mut Writer<'_>,
     ) -> Delivery {
         let started = w.len();
@@ -132,7 +132,7 @@ impl SnapshotEncoder {
         self.records.clear();
 
         match baseline {
-            Some(baseline) => self.diff(current, baseline),
+            Some((_, baseline)) => self.diff(current, baseline),
             None => {
                 // Nothing to compare against: every entity is a first sighting.
                 self.records.extend(current.entities.iter().enumerate().map(
@@ -147,6 +147,19 @@ impl SnapshotEncoder {
         }
 
         w.varint(tick.0 as u64);
+
+        // Name the baseline explicitly. The receiver cannot infer it: whether a position is
+        // absolute or a delta depends on which snapshot this was measured against, and "the newest
+        // one I hold" is not the same thing — datagrams reorder, and a full snapshot sent to a
+        // client that already knows these entities would otherwise be read as a delta from a value
+        // the server never used.
+        match baseline {
+            Some((from, _)) => {
+                w.bool(true);
+                w.varint(from.0 as u64);
+            }
+            None => w.bool(false),
+        }
 
         // Ids are ascending in both lists, so writing each as a step from the previous one keeps
         // them to a byte apiece even in a world with millions of entity handles issued.
@@ -165,7 +178,7 @@ impl SnapshotEncoder {
 
             let from = record
                 .baseline
-                .and_then(|index| baseline.map(|snapshot| &snapshot.entities[index].1));
+                .and_then(|index| baseline.map(|(_, snapshot)| &snapshot.entities[index].1));
             current.entities[record.current].1.encode(record.mask, from, w);
         }
 
@@ -234,17 +247,56 @@ impl SnapshotEncoder {
     }
 }
 
-/// Reconstructs a snapshot from an encoded delta and the baseline it was measured against.
+/// What a snapshot says about itself, before any of its entities are read.
 ///
-/// The decoder decides delta-versus-absolute for each entity the same way the encoder did — by
-/// whether the baseline knows the id — so the two stay in step with nothing on the wire to say so.
-pub fn decode_snapshot(
+/// Read this first. It names the baseline the sender used, which is the only way to know whether
+/// the body can be decoded at all — and, if the receiver has fallen behind or packets arrived out
+/// of order, whether it should be dropped instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SnapshotHeader {
+    /// The tick this snapshot describes.
+    pub tick: Tick,
+
+    /// The tick it was encoded against, or `None` if it is complete in itself.
+    pub baseline: Option<Tick>,
+}
+
+impl SnapshotHeader {
+    pub fn is_full(&self) -> bool {
+        self.baseline.is_none()
+    }
+}
+
+/// Reads the header, leaving the reader positioned at the body.
+pub fn read_header(r: &mut Reader<'_>) -> Result<SnapshotHeader, CodecError> {
+    let tick = Tick(r.varint_u32()?);
+    let baseline = if r.bool()? {
+        Some(Tick(r.varint_u32()?))
+    } else {
+        None
+    };
+    Ok(SnapshotHeader { tick, baseline })
+}
+
+/// Reconstructs the world from a snapshot body.
+///
+/// `baseline` must be the snapshot the header names — `Some` for a delta, `None` for a full
+/// snapshot — and passing the wrong one is an error rather than a silent misread. Getting this
+/// wrong produces entities at plausible but incorrect positions, which is far harder to notice than
+/// a refused packet.
+pub fn decode_body(
+    header: SnapshotHeader,
     baseline: Option<&WorldSnapshot>,
     r: &mut Reader<'_>,
-) -> Result<(Tick, WorldSnapshot), CodecError> {
+) -> Result<WorldSnapshot, CodecError> {
     const MAX_ENTITIES: usize = 4096;
 
-    let tick = Tick(r.varint_u32()?);
+    if header.baseline.is_some() != baseline.is_some() {
+        return Err(CodecError::BaselineMismatch {
+            needed: header.baseline.map(|tick| tick.0),
+            supplied: baseline.map(|_| 0),
+        });
+    }
 
     let despawn_count = r.count(MAX_ENTITIES)?;
     let mut despawned = Vec::with_capacity(despawn_count.min(256));
@@ -281,7 +333,20 @@ pub fn decode_snapshot(
     entities.extend(records);
     entities.sort_unstable_by_key(|(id, _)| *id);
 
-    Ok((tick, WorldSnapshot { entities }))
+    Ok(WorldSnapshot { entities })
+}
+
+/// Reads a whole snapshot when the caller already holds the right baseline.
+///
+/// A convenience over [`read_header`] and [`decode_body`]. A receiver that keeps a history should
+/// use those two directly, so it can look the named baseline up rather than assume it.
+pub fn decode_snapshot(
+    baseline: Option<&WorldSnapshot>,
+    r: &mut Reader<'_>,
+) -> Result<(Tick, WorldSnapshot), CodecError> {
+    let header = read_header(r)?;
+    let world = decode_body(header, baseline, r)?;
+    Ok((header.tick, world))
 }
 
 #[cfg(test)]
@@ -327,7 +392,7 @@ mod tests {
     ) -> (WorldSnapshot, usize, Delivery) {
         let mut buf = Vec::new();
         let delivery =
-            SnapshotEncoder::new().encode(Tick(7), current, baseline, &mut Writer::new(&mut buf));
+            SnapshotEncoder::new().encode(Tick(7), current, baseline.map(|b| (Tick(6), b)), &mut Writer::new(&mut buf));
         let (tick, decoded) = decode_snapshot(baseline, &mut Reader::new(&buf)).unwrap();
         assert_eq!(tick, Tick(7));
         (decoded, buf.len(), delivery)
@@ -348,7 +413,7 @@ mod tests {
     }
 
     #[test]
-    fn a_world_where_nothing_happened_costs_three_bytes() {
+    fn a_world_where_nothing_happened_costs_five_bytes() {
         let world = snapshot(&[
             (1, entity(0x100, 10.0, 20.0, 500)),
             (2, entity(0x100, 11.0, 21.0, 500)),
@@ -358,8 +423,10 @@ mod tests {
         let (decoded, bytes) = round_trip(&world, Some(&world));
         assert_eq!(decoded, world);
 
-        // Tick, zero despawns, zero records. The entities are not mentioned at all.
-        assert_eq!(bytes, 3);
+        // Tick, the named baseline, zero despawns, zero records. None of the three entities is
+        // mentioned at all. Naming the baseline is two of these five bytes and is what lets the
+        // receiver tell a delta from a full snapshot.
+        assert_eq!(bytes, 5);
     }
 
     #[test]
@@ -386,8 +453,8 @@ mod tests {
         );
         assert_eq!(quantize(decoded.get(EntityId(1)).unwrap().x), quantize(10.0));
 
-        // Header, then one record: id step, mask, two axes.
-        assert!(bytes <= 8, "{bytes} bytes for one entity moving");
+        // Header and named baseline, then one record: id step, mask, two axes.
+        assert!(bytes <= 10, "{bytes} bytes for one entity moving");
     }
 
     #[test]
@@ -454,14 +521,14 @@ mod tests {
         let mut encoder = SnapshotEncoder::new();
         let mut buf = Vec::new();
 
-        let first = encoder.encode(Tick(1), &after, Some(&before), &mut Writer::new(&mut buf));
+        let first = encoder.encode(Tick(1), &after, Some((Tick(0), &before)), &mut Writer::new(&mut buf));
         assert_eq!(first, Delivery::Datagram);
         let warm = (encoder.records.capacity(), encoder.despawns.capacity());
 
         for tick in 2..50 {
             buf.clear();
             let repeat =
-                encoder.encode(Tick(tick), &after, Some(&before), &mut Writer::new(&mut buf));
+                encoder.encode(Tick(tick), &after, Some((Tick(0), &before)), &mut Writer::new(&mut buf));
             assert_eq!(repeat, first, "delivery should not vary for an identical diff");
         }
 
@@ -481,7 +548,7 @@ mod tests {
         ]);
 
         let mut buf = Vec::new();
-        let _ = SnapshotEncoder::new().encode(Tick(3), &after, Some(&before), &mut Writer::new(&mut buf));
+        let _ = SnapshotEncoder::new().encode(Tick(3), &after, Some((Tick(2), &before)), &mut Writer::new(&mut buf));
 
         for cut in 0..buf.len() {
             let mut reader = Reader::new(&buf[..cut]);
