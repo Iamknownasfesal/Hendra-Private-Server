@@ -151,6 +151,16 @@ public sealed class Settings
     /// </remarks>
     public int RenderScale { get; set; } = 150;
 
+    /// <summary>
+    /// How large the interface is drawn, as a percentage, or zero to fit it to the window.
+    /// </summary>
+    /// <remarks>
+    /// Fitting is the default and it is right on most screens, but it is a calculation about
+    /// proportions and not about eyesight: on a large panel at a normal viewing distance it lands
+    /// on something correct and small. This is the override.
+    /// </remarks>
+    public int HudScale { get; set; }
+
     /// <summary>0 off, 1 FXAA, 2 MSAA 2x, 3 MSAA 4x, 4 MSAA 8x.</summary>
     /// <remarks>
     /// Two different tools under one control. FXAA smooths the finished image and so reaches the
@@ -279,6 +289,7 @@ public sealed class Settings
         settings.MaxFps = (int)file.GetValue(Section, "max_fps", settings.MaxFps);
         settings.VSync = (int)file.GetValue(Section, "vsync", settings.VSync);
         settings.RenderScale = (int)file.GetValue(Section, "render_scale", settings.RenderScale);
+        settings.HudScale = (int)file.GetValue(Section, "hud_scale", settings.HudScale);
         settings.AntiAliasing = (int)file.GetValue(Section, "anti_aliasing", settings.AntiAliasing);
         settings.CameraZoom = (float)file.GetValue(Section, "camera_zoom", settings.CameraZoom);
         settings.BagSize = (float)file.GetValue(Section, "bag_size", settings.BagSize);
@@ -348,6 +359,7 @@ public sealed class Settings
         file.SetValue(Section, "max_fps", MaxFps);
         file.SetValue(Section, "vsync", VSync);
         file.SetValue(Section, "render_scale", RenderScale);
+        file.SetValue(Section, "hud_scale", HudScale);
         file.SetValue(Section, "anti_aliasing", AntiAliasing);
         file.SetValue(Section, "camera_zoom", CameraZoom);
         file.SetValue(Section, "bag_size", BagSize);

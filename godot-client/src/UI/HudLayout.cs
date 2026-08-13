@@ -197,6 +197,17 @@ public readonly struct HudLayout
         return Mathf.Min(window.X / MinimumSpace.X, window.Y / MinimumSpace.Y);
     }
 
+    /// <summary>
+    /// The largest scale a window can hold the layout at without two clusters touching.
+    /// </summary>
+    /// <remarks>
+    /// The ceiling on a hand-picked interface scale. Past it the chat panel and the vitals grow
+    /// into each other, which is a worse answer to "the text is small" than a smaller number.
+    /// </remarks>
+    public static float LargestFor(Vector2 window) =>
+        window.X <= 0f || window.Y <= 0f ? MinScale
+            : Mathf.Max(MinScale, Mathf.Min(window.X / MinimumSpace.X, window.Y / MinimumSpace.Y));
+
     /// <summary>The rectangle the layout is solved in, for a window of the given size.</summary>
     public static Vector2 SpaceFor(Vector2 window) =>
         window.X <= 0f || window.Y <= 0f ? new Vector2(ReferenceWidth, ReferenceHeight)

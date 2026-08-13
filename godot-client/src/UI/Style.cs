@@ -300,6 +300,47 @@ public static class Style
     public static Font Face(bool bold) => Sans;
 
     /// <summary>
+    /// How many screen pixels one interface pixel currently covers.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Set by <see cref="HudLayer"/>, which is the thing that scales. Everything in this interface
+    /// is laid out in reference pixels and the canvas is scaled to fit the window, which is fine
+    /// for a rectangle and ruinous for a glyph: at one and a half, every font pixel lands on one
+    /// and a half screen pixels and a face drawn on a whole-pixel grid comes out mush. That is what
+    /// "the text is blurry and the icons look pixelated" is.
+    /// </para>
+    /// <para>
+    /// So text is not drawn at its nominal size and then scaled. It is drawn at the size it will
+    /// actually occupy, under a transform that undoes the canvas scale -- the glyph is rasterised
+    /// once, at screen resolution, on whole pixels. Callers still work in reference pixels and
+    /// never see this; <see cref="Measure"/> and <see cref="BaselineIn"/> answer in the same units
+    /// they always did.
+    /// </para>
+    /// </remarks>
+    public static float Sharpness
+    {
+        get => _sharpness;
+        set
+        {
+            value = Mathf.Clamp(value, 0.25f, 8f);
+            if (Mathf.IsEqualApprox(_sharpness, value))
+                return;
+
+            _sharpness = value;
+            _measured.Clear();
+        }
+    }
+
+    private static float _sharpness = 1f;
+
+    /// <summary>Whether the canvas is at one to one, in which case none of this is needed.</summary>
+    private static bool Native => Mathf.IsEqualApprox(_sharpness, 1f);
+
+    /// <summary>The size to rasterise at, so that what lands on screen is whole pixels.</summary>
+    private static int Snap(int size) => Mathf.Max(1, Mathf.RoundToInt(size * _sharpness));
+
+    /// <summary>
     /// Tier 1: reading text, on an opaque plate. No outline, no shadow.
     /// </summary>
     /// <remarks>
@@ -344,8 +385,27 @@ public static class Style
         this CanvasItem into, Vector2 at, string text, int size, Color colour, bool bold = false,
         HorizontalAlignment alignment = HorizontalAlignment.Left, float width = -1f)
     {
-        into.DrawString(Face(bold), at, text, alignment, width, size, colour);
+        if (Native)
+        {
+            into.DrawString(Face(bold), at, text, alignment, width, size, colour);
+            return;
+        }
+
+        Sharpen(into);
+        into.DrawString(Face(bold), Up(at), text, alignment, Up(width), Snap(size), colour);
+        Restore(into);
     }
+
+    /// <summary>Undoes the canvas scale for the draws that follow, so glyphs land on whole pixels.</summary>
+    private static void Sharpen(CanvasItem into) =>
+        into.DrawSetTransform(Vector2.Zero, 0f, Vector2.One / _sharpness);
+
+    private static void Restore(CanvasItem into) =>
+        into.DrawSetTransform(Vector2.Zero, 0f, Vector2.One);
+
+    private static Vector2 Up(Vector2 at) => (at * _sharpness).Round();
+
+    private static float Up(float width) => width < 0f ? width : width * _sharpness;
 
     /// <summary>
     /// Tier 2, drawn: over the world, where the background is whatever the player walked onto.
@@ -361,8 +421,7 @@ public static class Style
         this CanvasItem into, Vector2 at, string text, int size, Color colour,
         HorizontalAlignment alignment = HorizontalAlignment.Left, float width = -1f)
     {
-        into.DrawStringOutline(Bold, at, text, alignment, width, size, 1, TextOutline);
-        into.DrawString(Bold, at, text, alignment, width, size, colour);
+        Outlined(into, at, text, size, colour, alignment, width);
     }
 
     /// <summary>
@@ -377,8 +436,29 @@ public static class Style
         this CanvasItem into, Vector2 at, string text, int size, Color colour,
         HorizontalAlignment alignment = HorizontalAlignment.Left, float width = -1f)
     {
-        into.DrawStringOutline(Bold, at, text, alignment, width, size, 1, TextOutline);
-        into.DrawString(Bold, at, text, alignment, width, size, colour);
+        Outlined(into, at, text, size, colour, alignment, width);
+    }
+
+    /// <summary>A string with a one-pixel black edge, rasterised at screen resolution.</summary>
+    private static void Outlined(
+        CanvasItem into, Vector2 at, string text, int size, Color colour,
+        HorizontalAlignment alignment, float width)
+    {
+        if (Native)
+        {
+            into.DrawStringOutline(Bold, at, text, alignment, width, size, 1, TextOutline);
+            into.DrawString(Bold, at, text, alignment, width, size, colour);
+            return;
+        }
+
+        // The outline grows with everything else, or it disappears at high scales and swallows the
+        // glyph at low ones.
+        int edge = Mathf.Max(1, Mathf.RoundToInt(_sharpness));
+
+        Sharpen(into);
+        into.DrawStringOutline(Bold, Up(at), text, alignment, Up(width), Snap(size), edge, TextOutline);
+        into.DrawString(Bold, Up(at), text, alignment, Up(width), Snap(size), colour);
+        Restore(into);
     }
 
     /// <summary>
@@ -393,7 +473,8 @@ public static class Style
     /// being a ring.
     /// </remarks>
     public static float SpriteOutline(in Rect2 box) =>
-        Mathf.Clamp(Mathf.Round(Mathf.Min(box.Size.X, box.Size.Y) / 26f), 1f, 3f);
+        Mathf.Clamp(Mathf.Round(Mathf.Min(box.Size.X, box.Size.Y) / 26f), 1f, 3f) / _sharpness
+        * Mathf.Max(1f, Mathf.Round(_sharpness));
 
     /// <summary>The eight directions an outline is dilated in, as unit offsets.</summary>
     /// <remarks>
@@ -471,7 +552,9 @@ public static class Style
         if (_measured.TryGetValue(key, out float width))
             return width;
 
-        width = Face(bold).GetStringSize(text, HorizontalAlignment.Left, -1, size).X;
+        // Measured at the size it will be rasterised at and brought back into reference pixels, so
+        // that what is measured is what is drawn however the canvas is scaled.
+        width = Face(bold).GetStringSize(text, HorizontalAlignment.Left, -1, Snap(size)).X / _sharpness;
 
         // Cleared wholesale rather than evicted one at a time: it only grows when the game starts
         // showing text it has never shown, which is not something that happens in a steady state.
@@ -493,7 +576,10 @@ public static class Style
     public static float BaselineIn(float height, int size, bool bold = false)
     {
         var face = Face(bold);
-        return Mathf.Round((height + face.GetAscent(size) - face.GetDescent(size)) / 2f);
+        int at = Snap(size);
+
+        return Mathf.Round(
+            (height + (face.GetAscent(at) - face.GetDescent(at)) / _sharpness) / 2f);
     }
 
     private const int MostMeasured = 4096;

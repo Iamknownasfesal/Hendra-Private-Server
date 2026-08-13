@@ -469,6 +469,10 @@ public partial class OptionsView : Control
             Choice("Anti-Aliasing", new[] { "Off", "FXAA", "MSAA 2x", "MSAA 4x", "MSAA 8x + FXAA" },
                 () => Options.AntiAliasing, value => Options.AntiAliasing = value);
 
+            Choice("Interface Scale", HudScaleLabels,
+                () => Nearest(HudScaleChoices, Options.HudScale),
+                value => Options.HudScale = HudScaleChoices[value]);
+
             Heading("Display");
             Choice("Window Mode", new[] { "Fullscreen", "Windowed" },
                 () => Options.Windowed ? 1 : 0, value => Options.Windowed = value == 1);
@@ -539,6 +543,12 @@ public partial class OptionsView : Control
             Presets.Select(p => p.Name).Append("Custom").ToArray();
 
         private static readonly int[] ScaleChoices = { 75, 100, 125, 150, 175, 200 };
+
+        /// <summary>Zero is "fit to the window", which is what the interface has always done.</summary>
+        private static readonly int[] HudScaleChoices = { 0, 100, 125, 150, 175, 200, 250 };
+
+        private static readonly string[] HudScaleLabels =
+            { "Fit to Window", "100%", "125%", "150%", "175%", "200%", "250%" };
 
         private static readonly string[] ScaleLabels =
             ScaleChoices.Select(v => $"{v}%").ToArray();

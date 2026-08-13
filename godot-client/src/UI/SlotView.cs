@@ -375,7 +375,16 @@ public sealed partial class SlotView : Control
         float room = Mathf.Floor(shortest * ArtworkFill);
 
         int source = sprite.IsValid ? Mathf.Min(sprite.Region.Size.X, sprite.Region.Size.Y) : 0;
-        float side = source > 0 ? Mathf.Max(source, Mathf.Floor(room / source) * source) : room;
+
+        // The whole multiple is counted in screen pixels, not in reference ones. A slot is drawn
+        // through a canvas that may be at one and a half, and a sprite that is a clean ten times
+        // its source in reference pixels is fifteen on the glass -- which is clean too -- while an
+        // eleven times is sixteen and a half, and half its rows come out a pixel fatter than the
+        // rest. Counting on the far side of the scale is what stops that.
+        float scale = Style.Sharpness;
+        float side = source > 0
+            ? Mathf.Max(source, Mathf.Floor(room * scale / source) * source / scale)
+            : room;
 
         return new Rect2(Mathf.Round((size.X - side) / 2f), Mathf.Round((size.Y - side) / 2f), side, side);
     }
