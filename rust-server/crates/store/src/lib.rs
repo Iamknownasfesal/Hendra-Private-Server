@@ -13,12 +13,14 @@
 //! attempt the same move at once.
 
 pub mod guild;
+pub mod market;
 mod model;
 mod moves;
 pub mod social;
 mod trade;
 
 pub use guild::{Guild, Member, Rank};
+pub use market::{Listing, MarketPurchase};
 pub use model::{Account, Character, CharacterSummary, Currency};
 pub use moves::{Location, MoveOutcome, Placed, Purchase};
 pub use social::{Friend, Message};

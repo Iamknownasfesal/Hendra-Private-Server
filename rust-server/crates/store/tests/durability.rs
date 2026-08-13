@@ -7,7 +7,7 @@
 //! Set `HENDRA_TEST_DATABASE` to point at one. Without it the tests skip rather than fail, so a
 //! machine with no Postgres can still run the rest of the suite.
 
-use hendra_store::{Currency, Location, Offer, Purchase, Rank, Store, StoreError};
+use hendra_store::{Currency, Location, MarketPurchase, Offer, Purchase, Rank, Store, StoreError};
 
 /// A store with a schema of its own, or `None` when no database is configured.
 ///
@@ -1329,4 +1329,278 @@ async fn ranking_somebody_in_another_guild_is_refused() {
             .await
             .is_err()
     );
+}
+
+/// A seller and a buyer, each with a character and some gold.
+async fn market(store: &Store) -> (i64, i64, i64, i64) {
+    let seller = store.create_account("Fesal").await.unwrap();
+    let buyer = store.create_account("Someone").await.unwrap();
+
+    let seller_character = store
+        .create_character(seller.id, WIZARD, "Seller", 800)
+        .await
+        .unwrap();
+    let buyer_character = store
+        .create_character(buyer.id, WIZARD, "Buyer", 800)
+        .await
+        .unwrap();
+
+    store
+        .set_inventory(seller_character.id, &[(4, WAND)])
+        .await
+        .unwrap();
+    store.credit(buyer.id, Currency::Gold, 1000).await.unwrap();
+
+    (seller.id, seller_character.id, buyer.id, buyer_character.id)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn listing_something_takes_it_out_of_the_inventory() {
+    // An item that existed in both places is an item that could be sold and kept.
+    let Some(store) = store("t_market_list").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let (seller, seller_character, _, _) = market(&store).await;
+    store
+        .list_item(seller, seller_character, 4, WAND, Currency::Gold, 100)
+        .await
+        .unwrap();
+
+    assert!(
+        store
+            .character(seller_character)
+            .await
+            .unwrap()
+            .inventory
+            .is_empty(),
+        "the wand is in the listing, not the inventory"
+    );
+    assert_eq!(store.listings(10).await.unwrap().len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn buying_moves_the_item_and_the_money() {
+    let Some(store) = store("t_market_buy").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let (seller, seller_character, buyer, buyer_character) = market(&store).await;
+    let listing = store
+        .list_item(seller, seller_character, 4, WAND, Currency::Gold, 100)
+        .await
+        .unwrap();
+
+    store
+        .buy_listing(MarketPurchase {
+            buyer_id: buyer,
+            character_id: buyer_character,
+            listing_id: listing,
+            first_slot: 4,
+            last_slot: 11,
+        })
+        .await
+        .unwrap();
+
+    let held = store.character(buyer_character).await.unwrap();
+    assert!(held.inventory.iter().any(|(_, item)| *item == WAND));
+    assert_eq!(store.account(buyer).await.unwrap().gold, 900);
+
+    // The seller is paid the price less the fee.
+    let fee = hendra_store::market::fee(100);
+    assert_eq!(store.account(seller).await.unwrap().gold, 100 - fee);
+    assert!(store.listings(10).await.unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn two_buyers_racing_for_one_listing_cannot_both_win() {
+    // The whole point of closing the listing first. This is the one place a dupe would be worth
+    // the most, so it is run repeatedly.
+    let Some(store) = store("t_market_race").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    for attempt in 0..20 {
+        let seller = store
+            .create_account(&format!("Seller{attempt}"))
+            .await
+            .unwrap();
+        let one = store
+            .create_account(&format!("One{attempt}"))
+            .await
+            .unwrap();
+        let two = store
+            .create_account(&format!("Two{attempt}"))
+            .await
+            .unwrap();
+
+        let stock = store
+            .create_character(seller.id, WIZARD, "S", 800)
+            .await
+            .unwrap();
+        let first = store
+            .create_character(one.id, WIZARD, "A", 800)
+            .await
+            .unwrap();
+        let second = store
+            .create_character(two.id, WIZARD, "B", 800)
+            .await
+            .unwrap();
+
+        store.set_inventory(stock.id, &[(4, WAND)]).await.unwrap();
+        store.credit(one.id, Currency::Gold, 1000).await.unwrap();
+        store.credit(two.id, Currency::Gold, 1000).await.unwrap();
+
+        let listing = store
+            .list_item(seller.id, stock.id, 4, WAND, Currency::Gold, 100)
+            .await
+            .unwrap();
+
+        let (a, b) = tokio::join!(
+            store.buy_listing(MarketPurchase {
+                buyer_id: one.id,
+                character_id: first.id,
+                listing_id: listing,
+                first_slot: 4,
+                last_slot: 11,
+            }),
+            store.buy_listing(MarketPurchase {
+                buyer_id: two.id,
+                character_id: second.id,
+                listing_id: listing,
+                first_slot: 4,
+                last_slot: 11,
+            })
+        );
+
+        let winners = [a.is_ok(), b.is_ok()].iter().filter(|ok| **ok).count();
+        assert_eq!(winners, 1, "one listing sells once (attempt {attempt})");
+
+        let wands = store.character(first.id).await.unwrap().inventory.len()
+            + store.character(second.id).await.unwrap().inventory.len();
+        assert_eq!(wands, 1, "and exactly one wand exists (attempt {attempt})");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_cancel_racing_a_sale_resolves_to_one_of_them() {
+    let Some(store) = store("t_market_cancel_race").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    for attempt in 0..10 {
+        let seller = store
+            .create_account(&format!("Seller{attempt}"))
+            .await
+            .unwrap();
+        let buyer = store
+            .create_account(&format!("Buyer{attempt}"))
+            .await
+            .unwrap();
+        let stock = store
+            .create_character(seller.id, WIZARD, "S", 800)
+            .await
+            .unwrap();
+        let theirs = store
+            .create_character(buyer.id, WIZARD, "B", 800)
+            .await
+            .unwrap();
+
+        store.set_inventory(stock.id, &[(4, WAND)]).await.unwrap();
+        store.credit(buyer.id, Currency::Gold, 1000).await.unwrap();
+
+        let listing = store
+            .list_item(seller.id, stock.id, 4, WAND, Currency::Gold, 100)
+            .await
+            .unwrap();
+
+        let (sold, cancelled) = tokio::join!(
+            store.buy_listing(MarketPurchase {
+                buyer_id: buyer.id,
+                character_id: theirs.id,
+                listing_id: listing,
+                first_slot: 4,
+                last_slot: 11,
+            }),
+            store.cancel_listing(seller.id, listing, stock.id, 4, 11)
+        );
+
+        let winners = [sold.is_ok(), cancelled.is_ok()]
+            .iter()
+            .filter(|ok| **ok)
+            .count();
+        assert_eq!(
+            winners, 1,
+            "sold or returned, never both (attempt {attempt})"
+        );
+
+        let wands = store.character(stock.id).await.unwrap().inventory.len()
+            + store.character(theirs.id).await.unwrap().inventory.len();
+        assert_eq!(wands, 1, "and the wand is in exactly one place");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_buyer_who_cannot_pay_leaves_the_listing_open() {
+    let Some(store) = store("t_market_poor").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let (seller, seller_character, buyer, buyer_character) = market(&store).await;
+    let listing = store
+        .list_item(seller, seller_character, 4, WAND, Currency::Gold, 5000)
+        .await
+        .unwrap();
+
+    assert!(
+        store
+            .buy_listing(MarketPurchase {
+                buyer_id: buyer,
+                character_id: buyer_character,
+                listing_id: listing,
+                first_slot: 4,
+                last_slot: 11,
+            })
+            .await
+            .is_err()
+    );
+
+    assert_eq!(store.listings(10).await.unwrap().len(), 1, "still for sale");
+    assert_eq!(store.account(buyer).await.unwrap().gold, 1000);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cancelling_gives_the_item_back_and_only_to_its_seller() {
+    let Some(store) = store("t_market_cancel").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let (seller, seller_character, buyer, buyer_character) = market(&store).await;
+    let listing = store
+        .list_item(seller, seller_character, 4, WAND, Currency::Gold, 100)
+        .await
+        .unwrap();
+
+    assert!(
+        store
+            .cancel_listing(buyer, listing, buyer_character, 4, 11)
+            .await
+            .is_err(),
+        "somebody else's listing is not yours to cancel"
+    );
+
+    store
+        .cancel_listing(seller, listing, seller_character, 4, 11)
+        .await
+        .unwrap();
+
+    let held = store.character(seller_character).await.unwrap();
+    assert!(held.inventory.iter().any(|(_, item)| *item == WAND));
+    assert!(store.listings(10).await.unwrap().is_empty());
 }

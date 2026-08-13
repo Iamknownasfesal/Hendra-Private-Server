@@ -6,7 +6,7 @@ deliberately excluded and left until last.
 Phases 0–5 are done: workspace, content, protocol, transport, simulation, behaviour language,
 persistence, authentication. What follows is phases 6–11.
 
-**Where we are:** ~72% of the old server by subsystem. 579 tests.
+**Where we are:** ~75% of the old server by subsystem. 585 tests.
 
 **Sizing** is relative, not calendar: **S** is an afternoon, **M** is a day or two, **L** is
 several days, **XL** is a week or more.
@@ -215,8 +215,8 @@ Independent of everything above and blocks nothing.
 
 ### 9.4 Market — **L**
 
-- [ ] Listings and escrow through the same row locking the trade path proved
-- [ ] Fees
+- [x] Listings hold the item, so it exists in exactly one place. A sale closes the listing first, which is what makes the race resolve at all
+- [x] A fee taken from the seller rather than added to the price, so what a buyer is quoted is what a buyer pays
 
 The single most dupe-prone thing left to build: every listing is an item move.
 
