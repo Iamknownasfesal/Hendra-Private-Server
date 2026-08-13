@@ -24,6 +24,15 @@ namespace wServer.networking.packets.incoming
         /// <summary>Chest index meaning "not a chest -- the player's own inventory".</summary>
         public const short Player = -1;
 
+        /// <summary>
+        /// Chest index meaning the gifts waiting to be claimed.
+        /// </summary>
+        /// <remarks>
+        /// A source and never a destination. A gift is claimed by moving it out, which is the only
+        /// thing that has ever been possible with one, and claiming is what removes it.
+        /// </remarks>
+        public const short Gifts = -2;
+
         public int Version { get; set; }
 
         public short FromChest { get; set; }

@@ -53,7 +53,8 @@ public sealed partial class VaultView : ModalPanel
     /// <summary>How deep the locked section goes. Three, never the theoretical maximum.</summary>
     private const int LockedRows = 3;
 
-    private const float LockedBandHeight = 32f;
+    /// <summary>The full-width label that introduces a section. Gifts above, locked below.</summary>
+    private const float BandHeight = 32f;
 
     /// <summary>How long the search waits after a keystroke before it filters.</summary>
     private const double SearchDebounceSeconds = 0.150;
@@ -71,6 +72,9 @@ public sealed partial class VaultView : ModalPanel
     private HudIconButton _magnifier;
     private Label _note;
     private Label _lockedBand;
+    private Label _giftBand;
+    private HudIconButton _info;
+    private Label _explainer;
 
     private int[] _slotTypes = Array.Empty<int>();
 
@@ -96,8 +100,8 @@ public sealed partial class VaultView : ModalPanel
     /// <summary>Raised when a slot is dragged onto another, either here or in the HUD.</summary>
     public event Action<SlotAddress, SlotAddress> Dropped;
 
-    /// <summary>Raised when a slot is clicked: the quick move between vault and inventory.</summary>
-    public event Action<int> Activated;
+    /// <summary>Raised when a slot is clicked: the quick move out to the inventory.</summary>
+    public event Action<SlotAddress> Activated;
 
     /// <summary>Raised when a locked slot is clicked and the purchase should begin.</summary>
     public event Action PurchaseRequested;
@@ -116,6 +120,7 @@ public sealed partial class VaultView : ModalPanel
     {
         base._Ready();
 
+        BuildHeader();
         BuildSortBar();
         BuildRail();
         BuildGrid();
@@ -148,6 +153,38 @@ public sealed partial class VaultView : ModalPanel
     {
         _mountedFrom = -1;
         Refresh();
+    }
+
+    /// <summary>
+    /// The one control in the header: what this panel is and how to get more of it.
+    /// </summary>
+    /// <remarks>
+    /// There is no close cross beside it. Escape and walking away are the exits, and the corner it
+    /// would have occupied is better spent on the only question the panel raises that it does not
+    /// otherwise answer -- what a chest costs and how many you may have.
+    /// </remarks>
+    private void BuildHeader()
+    {
+        _info = new HudIconButton(Info, "About storage", inset: 8f) { Tint = Style.ModalFrame };
+        _info.Pressed += () => _explainer.Visible = !_explainer.Visible;
+        AddChild(_info);
+
+        _explainer = new Label
+        {
+            Visible = false,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            MouseFilter = MouseFilterEnum.Ignore,
+        }.Typeset(Style.FontSmall, Style.Text);
+        AddChild(_explainer);
+    }
+
+    private static void Info(CanvasItem into, Rect2 box, Color colour)
+    {
+        into.DrawRect(box, colour, filled: false, width: 2f);
+
+        float x = box.Position.X + box.Size.X / 2f - 1f;
+        into.DrawRect(new Rect2(x, box.Position.Y + box.Size.Y * 0.22f, 2f, 2f), colour);
+        into.DrawRect(new Rect2(x, box.Position.Y + box.Size.Y * 0.40f, 2f, box.Size.Y * 0.36f), colour);
     }
 
     // ─── the sort bar ─────────────────────────────────────────────────────────────────────────
@@ -277,6 +314,14 @@ public sealed partial class VaultView : ModalPanel
         _grid.Draw += DrawGridChrome;
         Body.AddChild(_grid);
 
+        _giftBand = new Label
+        {
+            Text = "Gifts",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        }.Typeset(Style.FontSmall, Style.TextDim);
+        _grid.AddChild(_giftBand);
+
         _lockedBand = new Label
         {
             Text = "Locked",
@@ -292,6 +337,18 @@ public sealed partial class VaultView : ModalPanel
     /// <summary>Rows of owned storage, which is what the view currently has to show.</summary>
     private int ViewRows => Mathf.CeilToInt(_store.View.Count / (float)Columns);
 
+    /// <summary>
+    /// Rows of unclaimed gifts, which come first and are never sorted or filtered.
+    /// </summary>
+    /// <remarks>
+    /// Hidden entirely under any view but plain Custom. A gift is not storage and has no place in
+    /// an ordering of storage, and showing it under "A-Z" would invite a drag it cannot accept.
+    /// </remarks>
+    private int GiftRows => _store.CanReorder ? _store.GiftRows : 0;
+
+    /// <summary>Where the owned rows start, below the gifts if there are any.</summary>
+    private float ChestTop => GiftRows > 0 ? BandHeight + GiftRows * RowPitch : 0f;
+
     /// <summary>Locked rows offered: three, or none at all once the account is at its cap.</summary>
     private int LockedShown =>
         _store.Known && !_store.AtCapacity && _store.CanReorder
@@ -303,9 +360,9 @@ public sealed partial class VaultView : ModalPanel
     {
         get
         {
-            float height = ViewRows * RowPitch;
+            float height = ChestTop + ViewRows * RowPitch;
             if (LockedShown > 0 || _store.AtCapacity)
-                height += LockedBandHeight + LockedShown * RowPitch;
+                height += BandHeight + LockedShown * RowPitch;
 
             return height;
         }
@@ -397,7 +454,7 @@ public sealed partial class VaultView : ModalPanel
             return;
 
         float y = at.Y + _offset;
-        float lockedTop = ViewRows * RowPitch + LockedBandHeight;
+        float lockedTop = ChestTop + ViewRows * RowPitch + BandHeight;
 
         if (y >= lockedTop && y < lockedTop + LockedShown * RowPitch)
             PurchaseRequested?.Invoke();
@@ -409,6 +466,19 @@ public sealed partial class VaultView : ModalPanel
     {
         if (_grid == null)
             return;
+
+        // The header's one control, inset from the frame by the brief's sixteen.
+        _info.Size = new Vector2(40f, 40f);
+        _info.Position = new Vector2(Size.X - Padding - 40f, (HeaderTall - 40f) / 2f + ModalPanel.FrameWidth);
+
+        _explainer.Text = _store.Known
+            ? $"One row is one chest. You own {_store.ChestCount} of a possible {_store.MaxChests}; " +
+              $"the next costs {_store.NextChestPrice} fame, and locked rows can be bought by " +
+              "clicking them. Sorting only changes what you see -- your own arrangement is kept."
+            : "One row is one chest.";
+
+        _explainer.Position = new Vector2(Padding, HeaderTall + ModalPanel.FrameWidth);
+        _explainer.Size = new Vector2(Size.X - Padding * 2f, 72f);
 
         float inner = Body.Size.X - Padding * 2f;
         float y = Padding;
@@ -469,7 +539,12 @@ public sealed partial class VaultView : ModalPanel
         if (_grid == null)
             return;
 
-        int first = Mathf.Max(0, Mathf.FloorToInt(_offset / RowPitch) - Overscan);
+        // Rows are counted across both sections at once -- gifts first, then storage -- so one walk
+        // over the pool fills whatever is on screen wherever the scroll happens to be sitting.
+        int gifts = GiftRows;
+        int total = gifts + ViewRows;
+
+        int first = Mathf.Clamp(Mathf.FloorToInt(_offset / RowPitch) - Overscan, 0, Mathf.Max(0, total));
         int rows = VisibleRows + Overscan * 2;
 
         Mount(rows * Columns);
@@ -480,38 +555,51 @@ public sealed partial class VaultView : ModalPanel
         {
             int row = first + cell / Columns;
             int column = cell % Columns;
-            int at = row * Columns + column;
 
             var slot = _pool[cell];
 
-            if (at >= view.Count)
+            if (row >= total)
             {
                 slot.Visible = false;
                 continue;
             }
 
-            int index = view[at];
+            bool gift = row < gifts;
+            int at = gift ? row * Columns + column : (row - gifts) * Columns + column;
+
+            if (gift ? at >= _store.Gifts.Count : at >= view.Count)
+            {
+                slot.Visible = false;
+                continue;
+            }
 
             slot.Visible = true;
-            slot.Position = new Vector2(
-                column * (SlotSize + SlotGap), row * RowPitch - _offset);
             slot.Size = new Vector2(SlotSize, SlotSize);
+            slot.Position = new Vector2(
+                column * (SlotSize + SlotGap),
+                (gift ? BandHeight + row * RowPitch : ChestTop + (row - gifts) * RowPitch) - _offset);
 
             // The address is the storage index, never the position on screen: a drag under a filter
-            // would otherwise name whichever slot happens to be drawn fourth.
-            slot.Address = new SlotAddress(SlotOwner.Vault, index);
-            slot.Draggable = _store.CanReorder;
+            // would otherwise name whichever slot happens to be drawn fourth. Gifts are addressed
+            // in their own space and cannot be dragged at all -- they only come out.
+            slot.Address = new SlotAddress(gift ? SlotOwner.VaultGift : SlotOwner.Vault,
+                gift ? at : view[at]);
+            slot.Draggable = !gift && _store.CanReorder;
 
-            Fill(slot, index);
+            Fill(slot, gift, slot.Address.Index);
         }
 
-        float lockedTop = ViewRows * RowPitch - _offset;
+        _giftBand.Visible = gifts > 0;
+        _giftBand.Position = new Vector2(0f, -_offset);
+        _giftBand.Size = new Vector2(Columns * SlotSize + (Columns - 1) * SlotGap, BandHeight);
+
+        float lockedTop = ChestTop + ViewRows * RowPitch - _offset;
 
         _lockedBand.Visible = LockedShown > 0 || _store.AtCapacity;
         _lockedBand.Text = _store.AtCapacity ? "Maximum capacity" : "Locked";
         _lockedBand.Position = new Vector2(0f, lockedTop);
         _lockedBand.Size = new Vector2(
-            Columns * SlotSize + (Columns - 1) * SlotGap, LockedBandHeight);
+            Columns * SlotSize + (Columns - 1) * SlotGap, BandHeight);
 
         _grid.QueueRedraw();
         UpdateNote();
@@ -524,16 +612,16 @@ public sealed partial class VaultView : ModalPanel
         {
             var slot = new SlotView { Draggable = true };
             slot.Dropped += (from, to) => Dropped?.Invoke(from, to);
-            slot.Activated += () => Activated?.Invoke(slot.Address.Index);
+            slot.Activated += () => Activated?.Invoke(slot.Address);
 
             _grid.AddChild(slot);
             _pool.Add(slot);
         }
     }
 
-    private void Fill(SlotView slot, int index)
+    private void Fill(SlotView slot, bool gift, int index)
     {
-        var desc = _store.DescAt(index);
+        var desc = gift ? _store.DescOfGift(index) : _store.DescAt(index);
         if (desc == null)
         {
             slot.Usable = true;
@@ -583,7 +671,7 @@ public sealed partial class VaultView : ModalPanel
     /// <summary>The locked rows and the scrollbar, which are drawn rather than built.</summary>
     private void DrawGridChrome()
     {
-        float lockedTop = ViewRows * RowPitch - _offset + LockedBandHeight;
+        float lockedTop = ChestTop + ViewRows * RowPitch - _offset + BandHeight;
 
         for (int row = 0; row < LockedShown; row++)
             for (int column = 0; column < Columns; column++)

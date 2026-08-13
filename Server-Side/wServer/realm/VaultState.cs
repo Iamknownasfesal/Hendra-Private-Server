@@ -90,6 +90,7 @@ namespace wServer.realm
 
         private readonly RealmManager _manager;
         private readonly int _accountId;
+        private readonly DbAccount _account;
         private readonly List<Chest> _chests = new List<Chest>();
         private readonly object _lock = new object();
 
@@ -97,6 +98,7 @@ namespace wServer.realm
         {
             _manager = manager;
             _accountId = account.AccountId;
+            _account = account;
 
             for (var i = 0; i < account.VaultCount; i++)
                 _chests.Add(new Chest(account, i));
@@ -156,7 +158,8 @@ namespace wServer.realm
                     ChestCount = _chests.Count,
                     MaxChests = _manager.Resources.Settings.MaxVaultChests,
                     NextChestPrice = _manager.Resources.Settings.VaultChestCost,
-                    Slots = slots
+                    Slots = slots,
+                    Gifts = _account.Gifts ?? new ushort[0]
                 };
             }
         }
@@ -209,6 +212,17 @@ namespace wServer.realm
                     return false;
                 }
 
+                // A gift is claimed rather than swapped: there is nothing to send back the other
+                // way, and the destination slot has to be empty for that reason.
+                if (move.FromChest == VaultMove.Gifts)
+                    return TryClaimGift(player, move, out refusal);
+
+                if (move.ToChest == VaultMove.Gifts)
+                {
+                    refusal = "gifts are one way";
+                    return false;
+                }
+
                 IContainer from, to;
                 if (!Resolve(player, move.FromChest, move.FromSlot, out from) ||
                     !Resolve(player, move.ToChest, move.ToSlot, out to))
@@ -254,6 +268,71 @@ namespace wServer.realm
                 Version++;
                 return true;
             }
+        }
+
+        /// <summary>
+        /// Claims a gift into the player's inventory.
+        /// </summary>
+        /// <remarks>
+        /// The gift leaves the account's list and the item appears in the slot together: the write
+        /// to Redis is what makes the claim real, so it goes first, and the inventory is only
+        /// touched once it has gone through. A failure here leaves the gift unclaimed, which is the
+        /// safe direction to fail in.
+        /// </remarks>
+        private bool TryClaimGift(Player player, VaultMove move, out string refusal)
+        {
+            refusal = null;
+
+            var gifts = _account.Gifts ?? new ushort[0];
+            if (move.FromSlot < 0 || move.FromSlot >= gifts.Length)
+            {
+                refusal = "no such gift";
+                return false;
+            }
+
+            if (move.ToChest != VaultMove.Player ||
+                move.ToSlot < 0 || move.ToSlot >= player.Inventory.Length)
+            {
+                refusal = "gifts go to the inventory";
+                return false;
+            }
+
+            if (player.Inventory[move.ToSlot] != null)
+            {
+                refusal = "slot taken";
+                return false;
+            }
+
+            var type = gifts[move.FromSlot];
+            var item = _manager.Resources.GameData.Items[type];
+
+            if (!((IContainer)player).AuditItem(item, move.ToSlot))
+            {
+                refusal = "wrong slot";
+                return false;
+            }
+
+            if (!_manager.Database.RemoveGift(_account, type))
+            {
+                refusal = "could not claim";
+                return false;
+            }
+
+            var trans = player.Inventory.CreateTransaction();
+            trans[move.ToSlot] = item;
+
+            if (!Inventory.Execute(trans))
+            {
+                // The gift is already gone from the account, so putting it back is the only honest
+                // thing to do -- an item that vanished between two writes is the failure this whole
+                // design is arranged to avoid.
+                _manager.Database.AddGift(_account, type);
+                refusal = "contention";
+                return false;
+            }
+
+            Version++;
+            return true;
         }
 
         /// <summary>A swap inside one container, which needs one transaction rather than two.</summary>

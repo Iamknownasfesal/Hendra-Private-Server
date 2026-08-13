@@ -18,6 +18,15 @@ public enum SlotOwner
     /// eight per chest.
     /// </remarks>
     Vault,
+
+    /// <summary>
+    /// A gift waiting to be claimed, indexed in its own dense list.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="Vault"/> because it is not storage: it accepts nothing, holds no
+    /// empty slots, and claiming one removes it from the account rather than moving it.
+    /// </remarks>
+    VaultGift,
 }
 
 /// <summary>

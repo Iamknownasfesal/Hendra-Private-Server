@@ -34,6 +34,16 @@ namespace wServer.networking.packets.outgoing
         /// <summary>Item types, <see cref="ChestCount"/> times eight of them. 0xffff is empty.</summary>
         public ushort[] Slots { get; set; }
 
+        /// <summary>
+        /// Gifts waiting to be claimed, which arrive in the same panel and come out of it one way.
+        /// </summary>
+        /// <remarks>
+        /// The gift chests were objects in this room too, and they went the same way as the vault
+        /// chests: one place to look rather than several to walk between. They are not storage --
+        /// nothing can be put into them -- so they are sent separately rather than as more slots.
+        /// </remarks>
+        public ushort[] Gifts { get; set; }
+
         public override PacketId ID => PacketId.VAULTUPDATE;
         public override Packet CreateInstance() { return new VaultUpdate(); }
 
@@ -47,6 +57,10 @@ namespace wServer.networking.packets.outgoing
             Slots = new ushort[rdr.ReadUInt16()];
             for (var i = 0; i < Slots.Length; i++)
                 Slots[i] = rdr.ReadUInt16();
+
+            Gifts = new ushort[rdr.ReadUInt16()];
+            for (var i = 0; i < Gifts.Length; i++)
+                Gifts[i] = rdr.ReadUInt16();
         }
 
         protected override void Write(NWriter wtr)
@@ -59,6 +73,10 @@ namespace wServer.networking.packets.outgoing
             wtr.Write((ushort)Slots.Length);
             foreach (var slot in Slots)
                 wtr.Write(slot);
+
+            wtr.Write((ushort)Gifts.Length);
+            foreach (var gift in Gifts)
+                wtr.Write(gift);
         }
     }
 }

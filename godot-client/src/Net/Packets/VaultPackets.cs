@@ -20,6 +20,15 @@ public sealed class VaultMovePacket : ClientPacket
     /// <summary>The chest number meaning "the player's own inventory".</summary>
     public const short PlayerChest = -1;
 
+    /// <summary>
+    /// The chest number meaning the gifts waiting to be claimed.
+    /// </summary>
+    /// <remarks>
+    /// A source and never a destination: a gift is claimed by moving it out, and moving it out is
+    /// what removes it from the account.
+    /// </remarks>
+    public const short GiftChest = -2;
+
     public override PacketId Id => PacketId.VaultMove;
 
     public int Version;
@@ -68,6 +77,9 @@ public sealed class VaultUpdatePacket : ServerPacket
     /// <summary>Item types, eight per chest, flat. 0xffff is an empty slot.</summary>
     public ushort[] Slots = System.Array.Empty<ushort>();
 
+    /// <summary>Gifts waiting to be claimed. Dense, and one way out of the panel.</summary>
+    public ushort[] Gifts = System.Array.Empty<ushort>();
+
     public override void Read(ref NetReader r)
     {
         Version = r.ReadInt32();
@@ -78,5 +90,9 @@ public sealed class VaultUpdatePacket : ServerPacket
         Slots = new ushort[r.ReadUInt16()];
         for (int i = 0; i < Slots.Length; i++)
             Slots[i] = r.ReadUInt16();
+
+        Gifts = new ushort[r.ReadUInt16()];
+        for (int i = 0; i < Gifts.Length; i++)
+            Gifts[i] = r.ReadUInt16();
     }
 }

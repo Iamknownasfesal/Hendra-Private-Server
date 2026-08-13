@@ -52,6 +52,7 @@ public sealed class VaultStore
     private readonly GameData _data;
 
     private int[] _slots = Array.Empty<int>();
+    private int[] _gifts = Array.Empty<int>();
     private int[] _view = Array.Empty<int>();
 
     /// <summary>Bumped by anything that changes storage, so the view knows it must be rebuilt.</summary>
@@ -92,6 +93,18 @@ public sealed class VaultStore
 
     /// <summary>Storage: item types by flat index, <see cref="NoItem"/> where empty.</summary>
     public IReadOnlyList<int> Slots => _slots;
+
+    /// <summary>
+    /// Gifts waiting to be claimed, which the same panel shows and the same click takes.
+    /// </summary>
+    /// <remarks>
+    /// Dense and never empty in the middle, because a claimed gift leaves the list rather than
+    /// leaving a hole. They are not storage: nothing can be put into them, and no sort or filter
+    /// touches them -- they are always the first rows and always in the order they arrived.
+    /// </remarks>
+    public IReadOnlyList<int> Gifts => _gifts;
+
+    public int GiftRows => (_gifts.Length + SlotsPerChest - 1) / SlotsPerChest;
 
     /// <summary>What to draw, as indices into <see cref="Slots"/>.</summary>
     public IReadOnlyList<int> View
@@ -171,6 +184,12 @@ public sealed class VaultStore
         for (int i = 0; i < packet.Slots.Length; i++)
             _slots[i] = packet.Slots[i] == ushort.MaxValue ? NoItem : packet.Slots[i];
 
+        if (_gifts.Length != packet.Gifts.Length)
+            _gifts = new int[packet.Gifts.Length];
+
+        for (int i = 0; i < packet.Gifts.Length; i++)
+            _gifts[i] = packet.Gifts[i] == ushort.MaxValue ? NoItem : packet.Gifts[i];
+
         _storageRevision++;
         Changed?.Invoke();
     }
@@ -184,6 +203,7 @@ public sealed class VaultStore
         Known = false;
         ChestCount = 0;
         _slots = Array.Empty<int>();
+        _gifts = Array.Empty<int>();
         _storageRevision++;
         Changed?.Invoke();
     }
@@ -191,11 +211,38 @@ public sealed class VaultStore
     public int ItemAt(int flatIndex) =>
         flatIndex >= 0 && flatIndex < _slots.Length ? _slots[flatIndex] : NoItem;
 
+    public int GiftAt(int index) =>
+        index >= 0 && index < _gifts.Length ? _gifts[index] : NoItem;
+
     /// <summary>The item's description, or null for an empty slot.</summary>
-    public ObjectDesc DescAt(int flatIndex)
+    public ObjectDesc DescAt(int flatIndex) => Describe(ItemAt(flatIndex));
+
+    public ObjectDesc DescOfGift(int index) => Describe(GiftAt(index));
+
+    private ObjectDesc Describe(int type) =>
+        type == NoItem ? null : _data?.GetObject((ushort)type);
+
+    /// <summary>
+    /// Claims a gift into a slot of the player's own inventory.
+    /// </summary>
+    /// <remarks>
+    /// No local guess: a gift leaves the account as well as the panel, and the item only exists in
+    /// one place at a time. Drawing it as taken before the server agrees would show an item the
+    /// player might not get.
+    /// </remarks>
+    public void ClaimGift(int index, int intoSlot)
     {
-        int type = ItemAt(flatIndex);
-        return type == NoItem ? null : _data?.GetObject((ushort)type);
+        if (GiftAt(index) == NoItem)
+            return;
+
+        _session?.Send(new VaultMovePacket
+        {
+            Version = Version,
+            FromChest = VaultMovePacket.GiftChest,
+            FromSlot = (short)index,
+            ToChest = VaultMovePacket.PlayerChest,
+            ToSlot = (short)intoSlot,
+        });
     }
 
     /// <summary>

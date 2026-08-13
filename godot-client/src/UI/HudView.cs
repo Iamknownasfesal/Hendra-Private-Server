@@ -120,8 +120,8 @@ public partial class HudView : Control
     /// <summary>Raised with the slot's index in the open container.</summary>
     public event Action<int> ContainerSlotActivated;
 
-    /// <summary>A vault slot was clicked: the quick move between the vault and the inventory.</summary>
-    public event Action<int> VaultSlotActivated;
+    /// <summary>A vault or gift slot was clicked: the quick move out to the inventory.</summary>
+    public event Action<World.SlotAddress> VaultSlotActivated;
 
     /// <summary>A locked vault row was clicked and the purchase should begin.</summary>
     public event Action VaultPurchaseRequested;
@@ -1282,7 +1282,7 @@ public partial class HudView : Control
 
         _vaultView = new VaultView(store, _data, _textures);
         _vaultView.Dropped += (from, to) => SlotDropped?.Invoke(from, to);
-        _vaultView.Activated += index => VaultSlotActivated?.Invoke(index);
+        _vaultView.Activated += address => VaultSlotActivated?.Invoke(address);
         _vaultView.PurchaseRequested += () => VaultPurchaseRequested?.Invoke();
         AddChild(_vaultView);
 

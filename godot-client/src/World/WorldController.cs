@@ -1409,10 +1409,16 @@ public partial class WorldController : Node
     /// sort and filter: taking an item out names no destination in the vault, so nothing about the
     /// view can make it ambiguous.
     /// </remarks>
-    private void OnVaultSlotActivated(int index)
+    private void OnVaultSlotActivated(SlotAddress from)
     {
         var player = _map.Player;
-        if (player?.Equipment == null || _vault.ItemAt(index) == VaultStore.NoItem)
+        if (player?.Equipment == null)
+            return;
+
+        bool gift = from.Owner == SlotOwner.VaultGift;
+        int held = gift ? _vault.GiftAt(from.Index) : _vault.ItemAt(from.Index);
+
+        if (held == VaultStore.NoItem)
             return;
 
         int free = -1;
@@ -1429,7 +1435,10 @@ public partial class WorldController : Node
             return;
         }
 
-        _vault.Move(new SlotAddress(SlotOwner.Vault, index), new SlotAddress(SlotOwner.Player, free));
+        if (gift)
+            _vault.ClaimGift(from.Index, free);
+        else
+            _vault.Move(from, new SlotAddress(SlotOwner.Player, free));
     }
 
     private void OnContainerSlotActivated(int slotIndex)

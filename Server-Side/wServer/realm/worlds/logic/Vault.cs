@@ -32,13 +32,18 @@ namespace wServer.realm.worlds.logic
                 // the chests had so that nothing else in the data files has to be renumbered, but it
                 // is not a container: it holds nothing, and its class is what tells the client to
                 // open the vault panel rather than an eight-slot grid.
+                //
+                // The artwork is the game's own event chest -- thrown open, gold spilling out of it
+                // -- drawn at twice size. It is the one thing in the room now and it should read as
+                // the reason the room exists, which the little closed chest never did.
                 ExtraXML = ExtraXML.Concat(new[]
                 {
                     @"	<Objects>
 		                    <Object type=""0x0504"" id=""Vault"">
 			                    <Class>VaultAccess</Class>
 			                    <ShowName/>
-			                    <Texture><File>lofiObj2</File><Index>0x0e</Index></Texture>
+			                    <Size>200</Size>
+			                    <Texture><File>lofiObj3</File><Index>0x466</Index></Texture>
 		                    </Object>
 	                    </Objects>"
                 }).ToArray();
@@ -62,7 +67,6 @@ namespace wServer.realm.worlds.logic
         void InitVault()
         {
             var vaultChestPosition = new List<IntPoint>();
-            var giftChestPosition = new List<IntPoint>();
             var spawn = new IntPoint(0, 0);
 
             var w = Map.Width;
@@ -80,9 +84,6 @@ namespace wServer.realm.worlds.logic
                         case TileRegion.Vault:
                             vaultChestPosition.Add(new IntPoint(x, y));
                             break;
-                        case TileRegion.Gifting_Chest:
-                            giftChestPosition.Add(new IntPoint(x, y));
-                            break;
                     }
                 }
 
@@ -90,43 +91,22 @@ namespace wServer.realm.worlds.logic
                 (x.X - spawn.X) * (x.X - spawn.X) + (x.Y - spawn.Y) * (x.Y - spawn.Y),
                 (y.X - spawn.X) * (y.X - spawn.X) + (y.Y - spawn.Y) * (y.Y - spawn.Y)));
 
-            giftChestPosition.Sort((x, y) => Comparer<int>.Default.Compare(
-                (x.X - spawn.X) * (x.X - spawn.X) + (x.Y - spawn.Y) * (x.Y - spawn.Y),
-                (y.X - spawn.X) * (y.X - spawn.X) + (y.Y - spawn.Y) * (y.Y - spawn.Y)));
-
-            // One access object, on the vault tile nearest the spawn, and nothing on the rest of
-            // them. The chests are not in the world any more -- see VaultState -- so the remaining
-            // floor is floor. Capacity is an integer on the account and no longer a count of how
-            // much room the map happens to have.
+            // One access object, on the one tile the map still marks. There used to be eighty of
+            // them ringing the garden and the map's own floor was the capacity limit; the chests
+            // are not in the world any more -- see VaultState -- and capacity is an integer on the
+            // account, so the garden is garden and the middle of it is the chest.
             if (vaultChestPosition.Count > 0)
             {
                 var access = new StaticObject(_client.Manager, VaultAccessType, null, true, false, false);
                 access.Move(vaultChestPosition[0].X + 0.5f, vaultChestPosition[0].Y + 0.5f);
                 EnterWorld(access);
+
+                Crackle(access);
             }
 
-            var gifts = _client.Account.Gifts.ToList();
-            while (gifts.Count > 0 && giftChestPosition.Count > 0)
-            {
-                var c = Math.Min(8, gifts.Count);
-                var items = gifts.GetRange(0, c);
-                gifts.RemoveRange(0, c);
-                if (c < 8)
-                    items.AddRange(Enumerable.Repeat(ushort.MaxValue, 8 - c));
-
-                var con = new GiftChest(_client.Manager, 0x0744, null, false);
-                con.BagOwners = new int[] { _client.Account.AccountId };
-                con.Inventory.SetItems(items);
-                con.Move(giftChestPosition[0].X + 0.5f, giftChestPosition[0].Y + 0.5f);
-                EnterWorld(con);
-                giftChestPosition.RemoveAt(0);
-            }
-            foreach (var i in giftChestPosition)
-            {
-                var x = new StaticObject(_client.Manager, 0x0743, null, true, false, false);
-                x.Move(i.X + 0.5f, i.Y + 0.5f);
-                EnterWorld(x);
-            }
+            // Gifts used to be chests of their own along the far wall. They arrive in the vault
+            // panel now, sent with everything else -- see VaultUpdate -- so there is nothing to
+            // place here and the map no longer marks anywhere to place it.
 
             // devon roach
             if (_client.Account.Name.Equals("Devon"))
@@ -136,6 +116,54 @@ namespace wServer.realm.worlds.logic
                 EnterWorld(e);
             }
         }
+
+        /// <summary>How often the chest throws a spark, in milliseconds.</summary>
+        private const int CrackleEveryMs = 2600;
+
+        /// <summary>How far above the chest the arcs come down from, in tiles.</summary>
+        private const float CrackleHeight = 3.5f;
+
+        /// <summary>
+        /// Keeps the chest arcing.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The lightning is the server's, not the sprite's. Both sides already know how to draw an
+        /// arc between two points -- it is what every storm behaviour in the game uses -- so the
+        /// chest borrows it rather than the client growing a second animation system for one
+        /// object. The sprite is a still, and everything that moves around it is particles.
+        /// </para>
+        /// <para>
+        /// The timer re-arms itself, which is how a world timer repeats here, and it costs one
+        /// packet every couple of seconds to whoever is in the room. Nobody else is: the vault is
+        /// one account's own world.
+        /// </para>
+        /// </remarks>
+        private void Crackle(Entity chest)
+        {
+            AddTimer(new WorldTimer(CrackleEveryMs, (world, t) =>
+            {
+                if (chest.Owner == null)
+                    return;
+
+                // Down onto the chest from a point overhead, offset a little each time so the
+                // strike does not land in exactly the same place twice.
+                var drift = (float)(_crackle.NextDouble() * 2.0 - 1.0) * 1.6f;
+
+                chest.Owner.BroadcastPacket(new ShowEffect
+                {
+                    EffectType = EffectType.Lightning,
+                    TargetObjectId = chest.Id,
+                    Pos1 = new Position { X = chest.X + drift, Y = chest.Y - CrackleHeight },
+                    Pos2 = new Position { X = 5 },
+                    Color = new ARGB(0xffffe9a0)
+                }, null);
+
+                Crackle(chest);
+            }));
+        }
+
+        private readonly Random _crackle = new Random();
 
         /// <summary>
         /// Hands a player arriving in the vault the whole of it.
@@ -155,22 +183,5 @@ namespace wServer.realm.worlds.logic
             return id;
         }
 
-        public override void LeaveWorld(Entity entity)
-        {
-            base.LeaveWorld(entity);
-
-            if (entity.ObjectType != 0x0744)
-                return;
-
-            var x = new StaticObject(_client.Manager, 0x0743, null, true, false, false);
-            x.Move(entity.X, entity.Y);
-            EnterWorld(x);
-
-            if (_client.Account.Gifts.Length <= 0)
-                _client.SendPacket(new GlobalNotification
-                {
-                    Text = "giftChestEmpty"
-                });
-        }
     }
 }
