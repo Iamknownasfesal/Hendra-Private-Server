@@ -132,6 +132,9 @@ pub enum Action {
 
         /// The state the children start in, when they should not start at their own beginning.
         state: Option<Arc<str>>,
+
+        /// How long before it arrives. Zero appears at once.
+        delay_ms: u32,
     },
 
     /// Remove this entity without it counting as a kill.

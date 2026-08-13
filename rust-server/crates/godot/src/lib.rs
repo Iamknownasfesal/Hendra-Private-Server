@@ -85,6 +85,9 @@ enum Event {
     /// Something the player asked for was refused, with a line to show them.
     Refused(String),
 
+    /// Squares whose ground changed, as `(x, y, tile)`.
+    Ground(Vec<(u16, u16, u16)>),
+
     /// A projectile was fired. Its whole flight follows from these fields, so this arrives once and
     /// the client animates the rest itself.
     Shot {
@@ -345,6 +348,19 @@ impl HendraConnection {
                 Event::Disconnected(why) => {
                     entry.set("kind", "disconnected");
                     entry.set("reason", why);
+                }
+                Event::Ground(changes) => {
+                    entry.set("kind", "ground");
+
+                    // Parallel arrays, as the containers and the world view use: one marshalled
+                    // block per field beats a dictionary per square.
+                    let xs: Vec<i32> = changes.iter().map(|(x, _, _)| *x as i32).collect();
+                    let ys: Vec<i32> = changes.iter().map(|(_, y, _)| *y as i32).collect();
+                    let tiles: Vec<i32> = changes.iter().map(|(_, _, t)| *t as i32).collect();
+
+                    entry.set("x", &PackedInt32Array::from(xs.as_slice()));
+                    entry.set("y", &PackedInt32Array::from(ys.as_slice()));
+                    entry.set("tiles", &PackedInt32Array::from(tiles.as_slice()));
                 }
                 Event::Container { container, slots } => {
                     entry.set("kind", "container");
@@ -734,6 +750,8 @@ fn apply(
         }),
 
         ServerMessage::Refused { message } => shared.push(Event::Refused(message.to_owned())),
+
+        ServerMessage::Ground { changes } => shared.push(Event::Ground(changes)),
 
         ServerMessage::Shot {
             projectile,

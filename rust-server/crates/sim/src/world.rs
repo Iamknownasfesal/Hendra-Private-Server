@@ -325,6 +325,13 @@ pub struct World {
     /// Squares whose ground changed, waiting to be sent out. Bounded for the same reason.
     ground_changes: Vec<(u16, u16, u16)>,
 
+    /// Objects thrown but not yet landed, with the time left before they do.
+    ///
+    /// A thrown object that appeared instantly would be an unavoidable hit. The delay is what the
+    /// content calls a throw time, and it is the difference between a hard attack and one nobody
+    /// can play around.
+    falling: Vec<Falling>,
+
     /// Advanced for every child spawned, so two children of one parent do not move in lockstep.
     spawn_seed: u32,
 
@@ -391,6 +398,7 @@ impl World {
             neighbours: Vec::new(),
             announcements: Vec::new(),
             ground_changes: Vec::new(),
+            falling: Vec::new(),
             spawn_seed: 0x2545_f491,
             visible: Vec::new(),
             hits: Vec::new(),
@@ -726,6 +734,12 @@ impl World {
     pub fn advance(&mut self, catalog: &Catalog, elapsed_ms: u32) {
         self.tick = self.tick.next();
 
+        // Before thinking, so something thrown this tick waits its full time rather than landing
+        // on the same tick it was thrown.
+        let behaviours = std::mem::take(&mut self.behaviours);
+        self.land_thrown(catalog, &behaviours, elapsed_ms);
+        self.behaviours = behaviours;
+
         self.cool_weapons(elapsed_ms);
         self.expire_effects(elapsed_ms);
         self.resize(elapsed_ms);
@@ -852,6 +866,20 @@ const MAX_PENDING_ANNOUNCEMENTS: usize = 256;
 
 /// How many unsent ground changes are held before the rest is dropped.
 const MAX_PENDING_GROUND_CHANGES: usize = 4096;
+
+/// Something thrown, waiting to arrive.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Falling {
+    kind: ObjectType,
+    x: f32,
+    y: f32,
+    remaining_ms: u32,
+}
+
+/// How many objects may be in the air at once.
+///
+/// A behaviour with no cooldown could otherwise fill the queue faster than it drains.
+const MAX_FALLING: usize = 256;
 
 /// What an explosion does where it lands.
 #[derive(Debug, Clone, Copy)]
@@ -1018,6 +1046,7 @@ impl World {
                 offset_x,
                 offset_y,
                 state,
+                delay_ms,
             } => {
                 let Some(kind) = program.kind_of(*child).map(ObjectType) else {
                     return;
@@ -1025,6 +1054,20 @@ impl World {
                 let Some((x, y)) = self.entities.get(handle).map(|e| (e.x, e.y)) else {
                     return;
                 };
+
+                // Thrown rather than placed: it lands after its telegraph, which is what makes it
+                // dodgeable rather than an unavoidable hit.
+                if *delay_ms > 0 {
+                    if self.falling.len() < MAX_FALLING {
+                        self.falling.push(Falling {
+                            kind,
+                            x: x + offset_x,
+                            y: y + offset_y,
+                            remaining_ms: *delay_ms,
+                        });
+                    }
+                    return;
+                }
 
                 for index in 0..(*count).min(MAX_SPAWNED_AT_ONCE) {
                     // Fanned slightly, so a group spawned together does not sit in one square and
@@ -1848,6 +1891,31 @@ impl World {
                 let pick = (self.roll() * candidates.len() as f32) as usize;
                 candidates.get(pick.min(candidates.len() - 1)).copied()
             }
+        }
+    }
+
+    /// Lands whatever has finished falling.
+    fn land_thrown(&mut self, catalog: &Catalog, behaviours: &Programs, elapsed_ms: u32) {
+        if self.falling.is_empty() {
+            return;
+        }
+
+        let mut waiting = std::mem::take(&mut self.falling);
+        let mut arrived = Vec::new();
+
+        waiting.retain_mut(|falling| {
+            falling.remaining_ms = falling.remaining_ms.saturating_sub(elapsed_ms);
+            if falling.remaining_ms == 0 {
+                arrived.push(*falling);
+                false
+            } else {
+                true
+            }
+        });
+        self.falling = waiting;
+
+        for landed in arrived {
+            self.spawn_child(catalog, behaviours, landed.kind, landed.x, landed.y, None);
         }
     }
 
@@ -3430,6 +3498,70 @@ mod tests {
         assert!(entity.progress.level >= 2);
         assert_eq!(entity.hp, entity.max_hp, "a level fills what it added");
         assert!(entity.max_hp > 100, "and the ceiling moved");
+    }
+
+    #[test]
+    fn a_thrown_object_telegraphs_before_it_lands() {
+        // Landing instantly makes a thrown attack unavoidable, which is the difference between a
+        // hard fight and one nobody can play around.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut thrower = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
+        thrower.kind = Kind::Enemy;
+        thrower.max_hp = 200;
+        thrower.hp = 200;
+        world.spawn(thrower).unwrap();
+
+        world
+            .spawn(Entity::player(ObjectType(0x600), 14.0, 10.0, 500))
+            .unwrap();
+
+        behaving(
+            &mut world,
+            &catalog,
+            r#"enemy "Slime" {
+                 state a {
+                   toss_object("Spawnling", range: 3, cooldown: 100000, throw_delay: 500)
+                 }
+               }"#,
+        );
+        world.reindex();
+
+        world.advance(&catalog, 50);
+        assert_eq!(count_of(&world, 0x505), 0, "still in the air");
+
+        for _ in 0..8 {
+            world.advance(&catalog, 50);
+        }
+        assert_eq!(count_of(&world, 0x505), 0, "not yet");
+
+        for _ in 0..4 {
+            world.advance(&catalog, 50);
+        }
+        assert_eq!(count_of(&world, 0x505), 1, "and now it lands");
+    }
+
+    #[test]
+    fn a_spawn_with_no_telegraph_arrives_at_once() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut parent = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
+        parent.kind = Kind::Enemy;
+        parent.max_hp = 200;
+        parent.hp = 200;
+        world.spawn(parent).unwrap();
+
+        behaving(
+            &mut world,
+            &catalog,
+            r#"enemy "Slime" { state a { spawn("Spawnling", 1, cooldown: 100000) } }"#,
+        );
+        world.reindex();
+
+        world.advance(&catalog, 50);
+        assert_eq!(count_of(&world, 0x505), 1);
     }
 
     #[test]

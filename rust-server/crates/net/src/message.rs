@@ -34,6 +34,11 @@ pub mod client_id {
 }
 
 /// Messages travelling from server to client.
+/// The most ground changes one message may claim.
+///
+/// A length prefix is attacker-controlled, so the capacity is bounded before anything is reserved.
+pub const MAX_GROUND_CHANGES: usize = 8192;
+
 pub mod server_id {
     pub const WELCOME: u16 = 0x8001;
     pub const REJECTED: u16 = 0x8002;
@@ -43,6 +48,7 @@ pub mod server_id {
     pub const SHOT: u16 = 0x8006;
     pub const CONTAINER: u16 = 0x8007;
     pub const REFUSED: u16 = 0x8008;
+    pub const GROUND: u16 = 0x8009;
 }
 
 /// Why a connection was refused.
@@ -414,6 +420,18 @@ pub enum ServerMessage<'a> {
     Refused {
         message: &'a str,
     },
+
+    /// Squares whose ground has changed, as `(x, y, tile)`.
+    ///
+    /// Sent rather than folded into the snapshot because ground is not an entity: it has no id, it
+    /// does not move, and a square that changed once should not be re-sent every tick for the rest
+    /// of the world's life.
+    Ground {
+        /// Owned for the same reason a container's slots are: decoding varints cannot hand back a
+        /// slice of the input. Ground changes are rare, so the allocation costs nothing that
+        /// matters.
+        changes: Vec<(u16, u16, u16)>,
+    },
 }
 
 impl ServerMessage<'_> {
@@ -427,6 +445,7 @@ impl ServerMessage<'_> {
             ServerMessage::Shot { .. } => server_id::SHOT,
             ServerMessage::Container { .. } => server_id::CONTAINER,
             ServerMessage::Refused { .. } => server_id::REFUSED,
+            ServerMessage::Ground { .. } => server_id::GROUND,
         }
     }
 
@@ -449,6 +468,14 @@ impl ServerMessage<'_> {
             ServerMessage::Chat { from, text } => {
                 w.string(from);
                 w.string(text);
+            }
+            ServerMessage::Ground { changes } => {
+                w.varint(changes.len() as u64);
+                for (x, y, tile) in changes {
+                    w.varint(*x as u64);
+                    w.varint(*y as u64);
+                    w.varint(*tile as u64);
+                }
             }
             ServerMessage::Ping { serial } => w.varint(*serial as u64),
             ServerMessage::Shot {
@@ -536,6 +563,18 @@ impl ServerMessage<'_> {
             server_id::REFUSED => ServerMessage::Refused {
                 message: r.string()?,
             },
+            server_id::GROUND => {
+                let count = r.varint_u32()? as usize;
+                let mut changes = Vec::with_capacity(count.min(MAX_GROUND_CHANGES));
+                for _ in 0..count {
+                    changes.push((
+                        r.varint_u32()? as u16,
+                        r.varint_u32()? as u16,
+                        r.varint_u32()? as u16,
+                    ));
+                }
+                ServerMessage::Ground { changes }
+            }
             unknown => {
                 return Err(CodecError::InvalidValue {
                     what: "server message id",
@@ -556,6 +595,39 @@ pub fn begin_snapshot(w: &mut Writer<'_>) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn ground_changes_survive_a_round_trip() {
+        let changes = vec![(3u16, 4u16, 0x11u16), (5, 6, 0x12), (0, 0, 0)];
+
+        let mut buffer = Vec::new();
+        let mut writer = Writer::new(&mut buffer);
+        let message = ServerMessage::Ground {
+            changes: changes.clone(),
+        };
+        message.encode(&mut writer);
+
+        let mut reader = Reader::new(&buffer);
+        let read = ServerMessage::decode(&mut reader).unwrap();
+
+        match read {
+            ServerMessage::Ground { changes: back } => assert_eq!(back, changes),
+            other => panic!("expected ground, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_ground_message_claiming_more_than_it_holds_is_refused() {
+        // This checks the refusal, not the bound: `with_capacity` is capped separately so a
+        // claimed million cannot reserve a million, and nothing in a test can observe that.
+        let mut buffer = Vec::new();
+        let mut writer = Writer::new(&mut buffer);
+        writer.u16(server_id::GROUND);
+        writer.varint(1_000_000);
+
+        let mut reader = Reader::new(&buffer);
+        assert!(ServerMessage::decode(&mut reader).is_err());
+    }
+
     use super::*;
 
     fn round_trip_client(message: ClientMessage<'_>) -> Vec<u8> {

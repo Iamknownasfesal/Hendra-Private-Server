@@ -87,14 +87,17 @@ here.
 
 ### 6.4 Loose ends — **S**
 
-- [ ] `toss_object`'s telegraph: a delayed spawn queue on `World`, so thrown attacks are dodgeable
-- [ ] Drain `take_announcements` into a server message, so bosses are heard
-- [ ] Drain `take_ground_changes` into a server message
-- [ ] `App::new` builds an empty catalog and silently offers zero classes; remove or rename it
-- [ ] `apply_setpiece` compiles to a ground transform, which is wrong rather than missing. Make it
-      unsupported until 8.3 so it reports instead of doing the wrong thing
-- [ ] Decide whether to fix the 9 dangling transitions and 18 shadowed state names in the `.beh`
-      files, now that those are the source of truth
+- [x] `toss_object`'s telegraph: a delayed spawn queue on `World`, so thrown attacks are dodgeable
+- [x] Drain `take_announcements` into the chat message, heard nearby or worldwide
+- [x] Drain `take_ground_changes` into a new `Ground` message, surfaced to Godot
+- [x] `App::new` removed; `with_content` is the only way to build one
+- [x] `apply_setpiece` now reports itself unsupported rather than painting a circle of one tile,
+      which is a different operation and was silently wrong. Four uses, restored in 8.3
+- [x] Decided: leave them. The `.beh` files are regenerated from the C# on every conversion, so a
+      hand edit is lost at the next run. The 18 renames already preserve the C# semantics, and the
+      9 dangling transitions are bugs in the original that throw `KeyNotFoundException` when their
+      enemy spawns, so dropping them is strictly better than reproducing the crash. Revisit in
+      phase 11, when the `.beh` files become the source rather than an output
 
 **Exit criteria:** every behaviour the content uses has an observable effect on the world.
 

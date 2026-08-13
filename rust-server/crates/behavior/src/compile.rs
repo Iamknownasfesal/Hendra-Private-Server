@@ -742,8 +742,22 @@ fn behaviour(call: &Call, names: &mut Names, diagnostics: &mut Vec<Diagnostic>) 
             kind: maybe_entity(call, names, "target", 0),
         },
 
+        // A setpiece stamps a prefab map into the world. Painting a circle of one tile is a
+        // different operation, and doing it silently is worse than doing nothing: the room ends up
+        // wrong and nothing says so.
+        "apply_setpiece" => {
+            diagnostics.push(Diagnostic {
+                message: "`apply_setpiece` needs a setpiece format and does nothing yet"
+                    .to_string(),
+                at: call.at,
+            });
+            Primitive::Unsupported {
+                name: "apply_setpiece".to_string(),
+            }
+        }
+
         // `GroundTransform(tileId, radius, ...)`.
-        "ground_transform" | "apply_setpiece" => Primitive::GroundTransform {
+        "ground_transform" => Primitive::GroundTransform {
             tile: entity(call, names, "tile", 0),
             radius: number(call, "radius", 1, 1.0) as f32,
             cooldown_ms: number(call, "cooldown", 2, 0.0).max(0.0) as u32,

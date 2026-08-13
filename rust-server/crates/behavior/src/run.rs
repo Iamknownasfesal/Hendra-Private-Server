@@ -492,6 +492,7 @@ impl Mind {
                     offset_x: 0.0,
                     offset_y: 0.0,
                     state: None,
+                    delay_ms: 0,
                 });
                 self.children += 1;
 
@@ -554,6 +555,7 @@ impl Mind {
                     offset_x: 0.0,
                     offset_y: 0.0,
                     state: None,
+                    delay_ms: 0,
                 });
                 if let Some(cooldown) = self.cooldowns.get_mut(slot) {
                     *cooldown = *cooldown_ms;
@@ -591,8 +593,8 @@ impl Mind {
                     offset_x: angle.cos() * reach,
                     offset_y: angle.sin() * reach,
                     state: None,
+                    delay_ms: *warning_ms,
                 });
-                let _ = warning_ms;
 
                 if let Some(cooldown) = self.cooldowns.get_mut(slot) {
                     *cooldown = *cooldown_ms;

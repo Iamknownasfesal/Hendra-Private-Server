@@ -181,6 +181,7 @@ pub async fn run(
                 let started = Instant::now();
 
                 world.advance(&catalog, elapsed_ms);
+                announce(&mut world, &catalog, &mut players).await;
                 broadcast(&mut world, &mut players).await;
 
                 metrics.record(started.elapsed());
@@ -615,6 +616,68 @@ fn resolve_portal(world: &World, handle: Handle, portal: hendra_net::EntityId) -
 }
 
 /// Sends every player the world as they see it.
+/// Sends what the world said and what its ground became.
+///
+/// Drained every tick whether or not anyone is listening, because a queue nobody empties is a slow
+/// leak, and the world bounds its own but only after it has already grown.
+async fn announce(world: &mut World, catalog: &Catalog, players: &mut [Player]) {
+    let said = world.take_announcements();
+    let ground = world.take_ground_changes();
+
+    if players.is_empty() {
+        return;
+    }
+
+    for announcement in &said {
+        // Named by what spoke, falling back to its kind, so a boss is quoted rather than a number.
+        let from = world
+            .get(announcement.from)
+            .and_then(|entity| {
+                entity
+                    .name
+                    .as_deref()
+                    .map(str::to_owned)
+                    .or_else(|| catalog.object(entity.object_type).map(|d| d.id.clone()))
+            })
+            .unwrap_or_else(|| "?".to_string());
+
+        let mut buffer = Vec::new();
+        ServerMessage::Chat {
+            from: &from,
+            text: &announcement.text,
+        }
+        .encode(&mut Writer::new(&mut buffer));
+
+        for player in players.iter() {
+            // A broadcast reaches the world; anything else reaches whoever can see the speaker.
+            let heard = announcement.broadcast
+                || world
+                    .get(announcement.from)
+                    .zip(world.get(player.handle))
+                    .is_some_and(|(speaker, listener)| {
+                        let (dx, dy) = (speaker.x - listener.x, speaker.y - listener.y);
+                        dx * dx + dy * dy <= SIGHT_RADIUS * SIGHT_RADIUS
+                    });
+
+            if heard {
+                let _ = player.sender.try_send(Delivery::Stream, &buffer);
+            }
+        }
+    }
+
+    if !ground.is_empty() {
+        let mut buffer = Vec::new();
+        ServerMessage::Ground {
+            changes: ground.clone(),
+        }
+        .encode(&mut Writer::new(&mut buffer));
+
+        for player in players.iter() {
+            let _ = player.sender.try_send(Delivery::Stream, &buffer);
+        }
+    }
+}
+
 async fn broadcast(world: &mut World, players: &mut Vec<Player>) {
     // A connection that has gone should not be encoded for.
     players.retain(|player| !player.sender.is_closed());

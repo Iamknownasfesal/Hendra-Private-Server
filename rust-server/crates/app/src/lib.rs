@@ -54,15 +54,6 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(store: Store, key: TokenKey) -> App {
-        App::with_content(
-            store,
-            key,
-            Arc::new(hendra_content::Catalog::default()),
-            hendra_characters::CommonItems::new(Vec::<String>::new()),
-        )
-    }
-
     pub fn with_content(
         store: Store,
         key: TokenKey,
