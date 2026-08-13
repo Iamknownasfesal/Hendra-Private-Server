@@ -20,6 +20,7 @@ hendra-content = { path = "../content" }
 axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
 serde = { workspace = true }
+uuid = { version = "1" }
 serde_json = { workspace = true }
 tower-http = { version = "0.6", features = ["trace", "limit"] }
 tracing.workspace = true

@@ -19,6 +19,27 @@ use tower::ServiceExt;
 
 const PASSWORD: &str = "correct horse battery";
 
+/// A class identity for characters that only need to exist.
+///
+/// Any UUID does: these tests never ask the catalog what the class is, only that the character is
+/// there and belongs to the right account.
+fn a_class() -> uuid::Uuid {
+    uuid::Uuid::from_u128(0x0300)
+}
+
+/// The identity the catalog gave a class, which is what progress is keyed by.
+fn class_uuid(app: &App, object_type: u16) -> uuid::Uuid {
+    app.catalog
+        .object(hendra_content::ObjectType(object_type))
+        .map(|desc| desc.uuid)
+        .expect("the class is in the catalog")
+}
+
+/// The warrior, which is what unlocks the knight.
+fn warrior(app: &App) -> uuid::Uuid {
+    class_uuid(app, 0x031d)
+}
+
 /// The key both servers share in these tests, and the only one they share.
 fn key() -> TokenKey {
     TokenKey::new(vec![3u8; 32]).unwrap()
@@ -283,11 +304,11 @@ async fn characters_needs_a_token_and_lists_only_that_account_s() {
     let other = theirs["account_id"].as_i64().unwrap();
 
     app.store
-        .create_character(account, 0x0300, "Wizard", 800)
+        .create_character(account, a_class(), "Wizard", 800)
         .await
         .unwrap();
     app.store
-        .create_character(other, 0x0301, "Archer", 800)
+        .create_character(other, a_class(), "Archer", 800)
         .await
         .unwrap();
 
@@ -509,7 +530,7 @@ async fn selecting_a_character_puts_it_in_the_token() {
 
     let character = app
         .store
-        .create_character(account, 0x0300, "Wizard", 800)
+        .create_character(account, a_class(), "Wizard", 800)
         .await
         .unwrap();
 
@@ -545,7 +566,7 @@ async fn a_character_belonging_to_someone_else_cannot_be_selected() {
         .store
         .create_character(
             theirs["account_id"].as_i64().unwrap(),
-            0x0300,
+            a_class(),
             "Theirs",
             800,
         )
@@ -594,11 +615,17 @@ async fn deleting_a_character_takes_its_items_with_it() {
 
     let character = app
         .store
-        .create_character(account, 0x0300, "Wizard", 800)
+        .create_character(account, a_class(), "Wizard", 800)
         .await
         .unwrap();
     app.store
-        .set_inventory(character.id, &[(0, 0x900), (1, 0x901)])
+        .set_inventory(
+            character.id,
+            &[
+                (0, uuid::Uuid::from_u128(0x900)),
+                (1, uuid::Uuid::from_u128(0x901)),
+            ],
+        )
         .await
         .unwrap();
 
@@ -631,7 +658,7 @@ async fn a_character_belonging_to_someone_else_cannot_be_deleted() {
 
     let other = app
         .store
-        .create_character(other_account, 0x0300, "Theirs", 800)
+        .create_character(other_account, a_class(), "Theirs", 800)
         .await
         .unwrap();
 
@@ -847,7 +874,8 @@ async fn a_created_character_gets_its_own_class_s_gear_and_health() {
             .find(|(at, _)| *at == slot)
             .and_then(|(_, item)| {
                 app.catalog
-                    .object(hendra_content::ObjectType(*item as u16))
+                    .type_of_uuid(*item)
+                    .and_then(|found| app.catalog.object(found))
                     .map(|desc| desc.id.clone())
             })
     };
@@ -906,13 +934,13 @@ async fn levelling_a_class_unlocks_the_next() {
 
     // Nineteen is not twenty.
     app.store
-        .record_class_progress(account, 0x031d, 19, 0)
+        .record_class_progress(account, warrior(&app), 19, 0)
         .await
         .unwrap();
     assert_eq!(send(&app, knight()).await.0, StatusCode::FORBIDDEN);
 
     app.store
-        .record_class_progress(account, 0x031d, 20, 0)
+        .record_class_progress(account, warrior(&app), 20, 0)
         .await
         .unwrap();
     assert_eq!(send(&app, knight()).await.0, StatusCode::OK);
@@ -927,16 +955,16 @@ async fn progress_only_ever_rises() {
     let account = body["account_id"].as_i64().unwrap();
 
     app.store
-        .record_class_progress(account, 0x031d, 20, 500)
+        .record_class_progress(account, warrior(&app), 20, 500)
         .await
         .unwrap();
     app.store
-        .record_class_progress(account, 0x031d, 3, 10)
+        .record_class_progress(account, warrior(&app), 3, 10)
         .await
         .unwrap();
 
     let progress = app.store.class_progress(account).await.unwrap();
-    assert_eq!(progress.get(&0x031d), Some(&(20, 500)));
+    assert_eq!(progress.get(&warrior(&app)), Some(&(20, 500)));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -949,7 +977,7 @@ async fn a_bought_class_needs_no_levelling() {
     let account = body["account_id"].as_i64().unwrap();
 
     app.store
-        .purchase_class(account, KNIGHT as i32)
+        .purchase_class(account, class_uuid(&app, KNIGHT))
         .await
         .unwrap();
 

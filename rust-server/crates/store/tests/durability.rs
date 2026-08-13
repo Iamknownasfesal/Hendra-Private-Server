@@ -42,8 +42,15 @@ async fn store(schema: &str) -> Option<Store> {
     Store::connect(&scoped).await.ok()
 }
 
-const WAND: i32 = 0x900;
-const ROBE: i32 = 0x901;
+/// Two item identities, fixed so a test can name the same item twice.
+///
+/// Any two distinct UUIDs would do: the store never looks one up, it only moves it about and
+/// refuses to let it exist twice.
+const WAND: uuid::Uuid = uuid::Uuid::from_u128(0x900);
+const ROBE: uuid::Uuid = uuid::Uuid::from_u128(0x901);
+
+/// A class identity, for characters that only need to exist.
+const WIZARD: uuid::Uuid = uuid::Uuid::from_u128(0x0300);
 
 #[tokio::test(flavor = "multi_thread")]
 async fn an_account_and_character_survive_a_round_trip() {
@@ -56,7 +63,7 @@ async fn an_account_and_character_survive_a_round_trip() {
     assert_eq!(account.vault_chests, 4, "everyone starts with four chests");
 
     let character = store
-        .create_character(account.id, 0x0300, "Wizard", 800)
+        .create_character(account.id, WIZARD, "Wizard", 800)
         .await
         .unwrap();
     assert_eq!(character.hp, 800);
@@ -101,7 +108,7 @@ async fn an_item_moves_between_inventory_and_vault() {
 
     let account = store.create_account("Mover").await.unwrap();
     let character = store
-        .create_character(account.id, 0x0300, "Wizard", 800)
+        .create_character(account.id, WIZARD, "Wizard", 800)
         .await
         .unwrap();
 
@@ -119,9 +126,9 @@ async fn an_item_moves_between_inventory_and_vault() {
         slot: 3,
     };
 
-    let outcome = store.move_item(from, to, WAND).await.unwrap();
-    assert_eq!(outcome.source, 0, "the inventory slot is now empty");
-    assert_eq!(outcome.destination, WAND);
+    let outcome = store.move_item(from, to, Some(WAND)).await.unwrap();
+    assert_eq!(outcome.source, None, "the inventory slot is now empty");
+    assert_eq!(outcome.destination, Some(WAND));
 
     assert!(
         store
@@ -142,7 +149,7 @@ async fn two_occupied_slots_swap() {
 
     let account = store.create_account("Swapper").await.unwrap();
     let character = store
-        .create_character(account.id, 0x0300, "Wizard", 800)
+        .create_character(account.id, WIZARD, "Wizard", 800)
         .await
         .unwrap();
 
@@ -161,7 +168,7 @@ async fn two_occupied_slots_swap() {
         slot: 0,
     };
 
-    store.move_item(inventory, vault, WAND).await.unwrap();
+    store.move_item(inventory, vault, Some(WAND)).await.unwrap();
 
     assert_eq!(
         store.character(character.id).await.unwrap().inventory,
@@ -178,7 +185,7 @@ async fn moving_something_that_is_not_there_is_refused() {
 
     let account = store.create_account("Stale").await.unwrap();
     let character = store
-        .create_character(account.id, 0x0300, "Wizard", 800)
+        .create_character(account.id, WIZARD, "Wizard", 800)
         .await
         .unwrap();
 
@@ -193,7 +200,7 @@ async fn moving_something_that_is_not_there_is_refused() {
 
     // The slot is empty, so a request claiming a wand is stale.
     assert!(matches!(
-        store.move_item(from, to, WAND).await,
+        store.move_item(from, to, Some(WAND)).await,
         Err(StoreError::Refused(_))
     ));
     assert!(store.vault(account.id).await.unwrap().is_empty());
@@ -210,7 +217,7 @@ async fn the_same_item_cannot_be_moved_twice_at_once() {
 
     let account = store.create_account("Racer").await.unwrap();
     let character = store
-        .create_character(account.id, 0x0300, "Wizard", 800)
+        .create_character(account.id, WIZARD, "Wizard", 800)
         .await
         .unwrap();
 
@@ -238,7 +245,7 @@ async fn the_same_item_cannot_be_moved_twice_at_once() {
                             account_id: account.id,
                             slot: slot_a,
                         },
-                        WAND,
+                        Some(WAND),
                     )
                     .await
             })
@@ -253,7 +260,7 @@ async fn the_same_item_cannot_be_moved_twice_at_once() {
                             account_id: account.id,
                             slot: slot_b,
                         },
-                        WAND,
+                        Some(WAND),
                     )
                     .await
             })
@@ -290,7 +297,7 @@ async fn the_same_item_cannot_be_moved_twice_at_once() {
 
         // Clear the vault for the next attempt.
         for (slot, _) in store.vault(account.id).await.unwrap() {
-            store.set_vault_slot(account.id, slot, 0).await.unwrap();
+            store.clear_vault_slot(account.id, slot).await.unwrap();
         }
     }
 }
@@ -305,11 +312,11 @@ async fn opposing_swaps_do_not_deadlock() {
 
     let account = store.create_account("Deadlock").await.unwrap();
     let one = store
-        .create_character(account.id, 0x0300, "One", 800)
+        .create_character(account.id, WIZARD, "One", 800)
         .await
         .unwrap();
     let two = store
-        .create_character(account.id, 0x0300, "Two", 800)
+        .create_character(account.id, WIZARD, "Two", 800)
         .await
         .unwrap();
 
@@ -328,11 +335,11 @@ async fn opposing_swaps_do_not_deadlock() {
 
         let forward = {
             let store = store.clone();
-            tokio::spawn(async move { store.move_item(a, b, WAND).await })
+            tokio::spawn(async move { store.move_item(a, b, Some(WAND)).await })
         };
         let backward = {
             let store = store.clone();
-            tokio::spawn(async move { store.move_item(b, a, ROBE).await })
+            tokio::spawn(async move { store.move_item(b, a, Some(ROBE)).await })
         };
 
         // The assertion is that these finish at all. A deadlock shows up as a timeout.
@@ -364,7 +371,7 @@ async fn giving_an_item_finds_the_first_free_slot() {
 
     let account = store.create_account("Giver").await.unwrap();
     let character = store
-        .create_character(account.id, 0x0300, "Wizard", 800)
+        .create_character(account.id, WIZARD, "Wizard", 800)
         .await
         .unwrap();
 
@@ -399,11 +406,11 @@ async fn a_full_inventory_refuses_an_item() {
 
     let account = store.create_account("Full").await.unwrap();
     let character = store
-        .create_character(account.id, 0x0300, "Wizard", 800)
+        .create_character(account.id, WIZARD, "Wizard", 800)
         .await
         .unwrap();
 
-    let packed: Vec<(i16, i32)> = (4..=11).map(|slot| (slot, WAND)).collect();
+    let packed: Vec<(i16, uuid::Uuid)> = (4..=11).map(|slot| (slot, WAND)).collect();
     store.set_inventory(character.id, &packed).await.unwrap();
 
     assert!(matches!(
@@ -422,13 +429,13 @@ async fn two_pickups_cannot_claim_the_same_slot() {
 
     let account = store.create_account("Picker").await.unwrap();
     let character = store
-        .create_character(account.id, 0x0300, "Wizard", 800)
+        .create_character(account.id, WIZARD, "Wizard", 800)
         .await
         .unwrap();
 
     for _ in 0..20 {
         // Everything full except slot 11.
-        let packed: Vec<(i16, i32)> = (4..=10).map(|slot| (slot, WAND)).collect();
+        let packed: Vec<(i16, uuid::Uuid)> = (4..=10).map(|slot| (slot, WAND)).collect();
         store.set_inventory(character.id, &packed).await.unwrap();
 
         let one = {
@@ -465,7 +472,7 @@ async fn taking_an_item_that_moved_is_refused() {
 
     let account = store.create_account("Taker").await.unwrap();
     let character = store
-        .create_character(account.id, 0x0300, "Wizard", 800)
+        .create_character(account.id, WIZARD, "Wizard", 800)
         .await
         .unwrap();
 
@@ -494,7 +501,7 @@ async fn a_character_saves_and_dies() {
 
     let account = store.create_account("Saver").await.unwrap();
     let character = store
-        .create_character(account.id, 0x0300, "Wizard", 800)
+        .create_character(account.id, WIZARD, "Wizard", 800)
         .await
         .unwrap();
 
@@ -551,11 +558,11 @@ async fn vault_chests_are_bought_up_to_a_limit() {
 async fn traders(store: &Store, schema_name: &str) -> (i64, i64) {
     let account = store.create_account(schema_name).await.unwrap();
     let one = store
-        .create_character(account.id, 0x0300, "One", 800)
+        .create_character(account.id, WIZARD, "One", 800)
         .await
         .unwrap();
     let two = store
-        .create_character(account.id, 0x0300, "Two", 800)
+        .create_character(account.id, WIZARD, "Two", 800)
         .await
         .unwrap();
 
@@ -565,8 +572,8 @@ async fn traders(store: &Store, schema_name: &str) -> (i64, i64) {
 }
 
 /// Every item both characters hold, sorted.
-async fn between(store: &Store, one: i64, two: i64) -> Vec<i32> {
-    let mut items: Vec<i32> = store
+async fn between(store: &Store, one: i64, two: i64) -> Vec<uuid::Uuid> {
+    let mut items: Vec<uuid::Uuid> = store
         .character(one)
         .await
         .unwrap()
@@ -596,7 +603,7 @@ async fn a_trade_exchanges_both_sides() {
         .await
         .unwrap();
 
-    let first: Vec<i32> = store
+    let first: Vec<uuid::Uuid> = store
         .character(one)
         .await
         .unwrap()
@@ -604,7 +611,7 @@ async fn a_trade_exchanges_both_sides() {
         .iter()
         .map(|(_, item)| *item)
         .collect();
-    let second: Vec<i32> = store
+    let second: Vec<uuid::Uuid> = store
         .character(two)
         .await
         .unwrap()
@@ -654,16 +661,16 @@ async fn a_trade_into_a_full_inventory_is_refused_before_anything_moves() {
 
     let account = store.create_account("Hoarder").await.unwrap();
     let one = store
-        .create_character(account.id, 0x0300, "One", 800)
+        .create_character(account.id, WIZARD, "One", 800)
         .await
         .unwrap();
     let two = store
-        .create_character(account.id, 0x0300, "Two", 800)
+        .create_character(account.id, WIZARD, "Two", 800)
         .await
         .unwrap();
 
     // One offers nothing and has no room; two offers two items.
-    let packed: Vec<(i16, i32)> = (4..=11).map(|slot| (slot, WAND)).collect();
+    let packed: Vec<(i16, uuid::Uuid)> = (4..=11).map(|slot| (slot, WAND)).collect();
     store.set_inventory(one.id, &packed).await.unwrap();
     store
         .set_inventory(two.id, &[(4, ROBE), (5, ROBE)])
@@ -716,15 +723,15 @@ async fn the_same_item_cannot_be_traded_to_two_people_at_once() {
 
     let account = store.create_account("Duper").await.unwrap();
     let seller = store
-        .create_character(account.id, 0x0300, "Seller", 800)
+        .create_character(account.id, WIZARD, "Seller", 800)
         .await
         .unwrap();
     let buyer_one = store
-        .create_character(account.id, 0x0300, "One", 800)
+        .create_character(account.id, WIZARD, "One", 800)
         .await
         .unwrap();
     let buyer_two = store
-        .create_character(account.id, 0x0300, "Two", 800)
+        .create_character(account.id, WIZARD, "Two", 800)
         .await
         .unwrap();
 

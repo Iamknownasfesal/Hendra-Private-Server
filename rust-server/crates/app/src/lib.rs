@@ -81,6 +81,9 @@ pub struct Credentials {
 pub struct Character {
     pub id: i64,
     pub name: String,
+
+    /// The runtime number, for a client that draws by type. Resolved from the identity at read
+    /// time rather than stored, because a runtime number is not durable.
     pub object_type: i32,
     pub level: i16,
     pub fame: i32,
@@ -247,7 +250,7 @@ pub async fn login(State(app): State<Arc<App>>, Json(body): Json<Credentials>) -
         .map(|summary| Character {
             id: summary.id,
             name: summary.name,
-            object_type: summary.object_type,
+            object_type: class_number(&app.catalog, summary.class),
             level: summary.level,
             fame: summary.fame,
         })
@@ -274,7 +277,7 @@ pub async fn characters(State(app): State<Arc<App>>, headers: HeaderMap) -> Answ
             .map(|summary| Character {
                 id: summary.id,
                 name: summary.name,
-                object_type: summary.object_type,
+                object_type: class_number(&app.catalog, summary.class),
                 level: summary.level,
                 fame: summary.fame,
             })
@@ -554,7 +557,7 @@ pub async fn create_character(
         Ok(character) => Ok(Json(Character {
             id: character.id,
             name: character.name,
-            object_type: character.object_type,
+            object_type: class_number(&app.catalog, character.class),
             level: character.level,
             fame: character.fame,
         })),
@@ -581,6 +584,17 @@ pub async fn create_character(
             ))
         }
     }
+}
+
+/// The runtime number a class identity currently has, or zero if the catalog does not hold it.
+///
+/// Resolved on the way out rather than stored, because the number is assigned at load and only the
+/// identity is durable.
+fn class_number(catalog: &hendra_content::Catalog, class: uuid::Uuid) -> i32 {
+    catalog
+        .type_of_uuid(class)
+        .map(|found| found.0 as i32)
+        .unwrap_or(0)
 }
 
 async fn health() -> &'static str {

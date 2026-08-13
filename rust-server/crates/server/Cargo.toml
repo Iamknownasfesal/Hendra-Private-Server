@@ -15,6 +15,7 @@ hendra-sim = { path = "../sim" }
 hendra-transport = { path = "../transport" }
 hendra-store = { path = "../store" }
 hendra-characters = { path = "../characters" }
+uuid = { version = "1" }
 hendra-auth = { path = "../auth" }
 hendra-behavior = { path = "../behavior" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal"] }

@@ -115,7 +115,7 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
     );
 
     // The client needs to see what it is carrying before it can move any of it.
-    send_containers(&mut link, &context.store, &player).await;
+    send_containers(&mut link, &context.catalog, &context.store, &player).await;
 
     loop {
         let Some(received) = link.recv().await else {
@@ -301,7 +301,12 @@ async fn refresh_equipment(
         .await;
 }
 
-async fn send_containers(link: &mut Link, store: &Store, player: &crate::accounts::Session) {
+async fn send_containers(
+    link: &mut Link,
+    catalog: &hendra_content::Catalog,
+    store: &Store,
+    player: &crate::accounts::Session,
+) {
     let inventory = store
         .character(player.character.id)
         .await
@@ -312,12 +317,17 @@ async fn send_containers(link: &mut Link, store: &Store, player: &crate::account
     let worn: Vec<(u16, u16)> = inventory
         .iter()
         .filter(|(slot, _)| *slot < EQUIPPED_SLOTS as i16)
-        .map(|(slot, item)| (*slot as u16, *item as u16))
+        .filter_map(|(slot, item)| Some((*slot as u16, number(catalog, *item)?)))
         .collect();
     let carried: Vec<(u16, u16)> = inventory
         .iter()
         .filter(|(slot, _)| *slot >= EQUIPPED_SLOTS as i16)
-        .map(|(slot, item)| ((*slot - EQUIPPED_SLOTS as i16) as u16, *item as u16))
+        .filter_map(|(slot, item)| {
+            Some((
+                (*slot - EQUIPPED_SLOTS as i16) as u16,
+                number(catalog, *item)?,
+            ))
+        })
         .collect();
 
     let vault: Vec<(u16, u16)> = store
@@ -325,7 +335,7 @@ async fn send_containers(link: &mut Link, store: &Store, player: &crate::account
         .await
         .unwrap_or_default()
         .into_iter()
-        .map(|(slot, item)| (slot as u16, item as u16))
+        .filter_map(|(slot, item)| Some((slot as u16, number(catalog, item)?)))
         .collect();
 
     for (container, slots) in [
@@ -407,9 +417,13 @@ async fn move_item(
         }
     };
 
-    match context.store.move_item(source, destination, expected).await {
+    match context
+        .store
+        .move_item(source, destination, Some(expected))
+        .await
+    {
         Ok(_) => {
-            send_containers(link, &context.store, player).await;
+            send_containers(link, &context.catalog, &context.store, player).await;
             refresh_equipment(context, player, placement).await;
             if touches_vault {
                 place_chests(context, player, placement).await;
@@ -418,7 +432,7 @@ async fn move_item(
         Err(hendra_store::StoreError::Refused(reason)) => {
             say(link, reason).await;
             // Re-read rather than assume: the client's picture is now known to be wrong.
-            send_containers(link, &context.store, player).await;
+            send_containers(link, &context.catalog, &context.store, player).await;
         }
         Err(err) => {
             tracing::warn!(%err, "a move failed");
@@ -435,7 +449,7 @@ async fn place_chests(context: &Context, player: &crate::accounts::Session, plac
         .await
         .unwrap_or_default()
         .into_iter()
-        .map(|(slot, item)| (slot as u16, item as u16))
+        .filter_map(|(slot, item)| Some((slot as u16, number(&context.catalog, item)?)))
         .collect();
 
     let (reply, answer) = tokio::sync::oneshot::channel();
@@ -485,11 +499,22 @@ async fn take_from_bag(
         return;
     };
 
+    // The world names items by runtime number; the durable side names them by identity. This is
+    // the seam, and an item the catalog cannot name is one that must not be written down.
+    let Some(identity) = context
+        .catalog
+        .object(ObjectType(item))
+        .map(|desc| desc.uuid)
+    else {
+        say(link, "that is not something you can carry").await;
+        return;
+    };
+
     let outcome = match locate(destination, player.character.id, player.account.id) {
         // A named durable slot: it has to be free, because there is nothing to swap with.
         Some(Location::Inventory { character_id, slot }) => context
             .store
-            .give_item(character_id, item as i32, slot, slot)
+            .give_item(character_id, identity, slot, slot)
             .await
             .map(|_| ()),
 
@@ -499,7 +524,7 @@ async fn take_from_bag(
                 .store
                 .give_item(
                     player.character.id,
-                    item as i32,
+                    identity,
                     EQUIPPED_SLOTS as i16,
                     LAST_CARRIED_SLOT,
                 )
@@ -527,7 +552,7 @@ async fn take_from_bag(
         return;
     }
 
-    send_containers(link, &context.store, player).await;
+    send_containers(link, &context.catalog, &context.store, player).await;
 }
 
 /// Puts an item from the player's inventory into a bag.
@@ -567,7 +592,7 @@ async fn put_in_bag(
         .send(ToWorld::PutInBag {
             player: placement.handle,
             bag,
-            item: item as u16,
+            item: number(&context.catalog, item).unwrap_or(0),
             reply,
         })
         .await;
@@ -582,14 +607,14 @@ async fn put_in_bag(
         say(link, "there is nowhere to put that").await;
     }
 
-    send_containers(link, &context.store, player).await;
+    send_containers(link, &context.catalog, &context.store, player).await;
 }
 
 /// The highest carried slot a player has.
 const LAST_CARRIED_SLOT: i16 = 11;
 
 /// What is currently in a durable slot.
-async fn read_slot(store: &Store, at: Location) -> Option<i32> {
+async fn read_slot(store: &Store, at: Location) -> Option<uuid::Uuid> {
     match at {
         Location::Inventory { character_id, slot } => store
             .character(character_id)
@@ -662,7 +687,8 @@ async fn worn_slots_would_accept(
 ) -> bool {
     let Some(class) = context
         .catalog
-        .class(ObjectType(player.character.object_type as u16))
+        .type_of_uuid(player.character.class)
+        .and_then(|found| context.catalog.class(found))
     else {
         // A character whose class is not in the catalog cannot have its slots judged, and refusing
         // every move it makes would be a worse answer than allowing them.
@@ -689,17 +715,16 @@ async fn worn_slots_would_accept(
         return true;
     };
 
-    let moving = read_slot(&context.store, source).await.unwrap_or(0);
-    let displaced = read_slot(&context.store, destination).await.unwrap_or(0);
+    let moving = read_slot(&context.store, source).await;
+    let displaced = read_slot(&context.store, destination).await;
 
-    let fits = |location: SlotLocation, item: i32| match location {
+    // An empty slot accepts anything, which is what taking an item out of one means.
+    let fits = |location: SlotLocation, item: Option<uuid::Uuid>| match location {
         SlotLocation::Inventory { slot } | SlotLocation::Equipment { slot } => {
-            hendra_characters::slot_accepts(
-                &context.catalog,
-                class,
-                slot as i16,
-                ObjectType(item as u16),
-            )
+            let kind = item
+                .and_then(|item| context.catalog.type_of_uuid(item))
+                .unwrap_or(ObjectType::NONE);
+            hendra_characters::slot_accepts(&context.catalog, class, slot as i16, kind)
         }
         _ => true,
     };
@@ -758,15 +783,24 @@ async fn save_progress(
     .await
 }
 
+/// The runtime number an item identity currently has.
+///
+/// Resolved on the way to the wire rather than stored, because a runtime number is assigned at load
+/// and only the identity survives content changing.
+fn number(catalog: &hendra_content::Catalog, item: uuid::Uuid) -> Option<u16> {
+    catalog.type_of_uuid(item).map(|found| found.0)
+}
+
 /// What the worn slots add, as a stat layer.
 ///
 /// Read from what is worn rather than accumulated as items move, so a missed change cannot leave a
 /// stat permanently wrong: the answer is always a function of the inventory as it stands.
-fn worn_boosts(catalog: &hendra_content::Catalog, inventory: &[(i16, i32)]) -> [i32; 8] {
+fn worn_boosts(catalog: &hendra_content::Catalog, inventory: &[(i16, uuid::Uuid)]) -> [i32; 8] {
     let worn = inventory
         .iter()
         .filter(|(slot, _)| *slot < hendra_characters::EQUIPPED_SLOTS)
-        .filter_map(|(_, item)| catalog.object(ObjectType(*item as u16)))
+        .filter_map(|(_, item)| catalog.type_of_uuid(*item))
+        .filter_map(|found| catalog.object(found))
         .filter_map(|desc| desc.item.as_ref());
 
     hendra_sim::stats::equipment_boosts(worn)
@@ -778,7 +812,11 @@ fn worn_boosts(catalog: &hendra_content::Catalog, inventory: &[(i16, i32)]) -> [
 /// between a dungeon and a series of unrelated rooms. The weapon is whatever is in slot zero, so
 /// unequipping one and walking through a portal does not hand it back.
 fn arrival_of(player: &crate::accounts::Session, context: &Context) -> crate::world_task::Arrival {
-    let avatar = ObjectType(player.character.object_type as u16);
+    // The class is stored as an identity; the world draws by number.
+    let avatar = context
+        .catalog
+        .type_of_uuid(player.character.class)
+        .unwrap_or(ObjectType::NONE);
     let max_hp = player.character.max_hp.max(1);
 
     // The class decides the base stats. A character whose class the catalog does not have keeps
@@ -800,7 +838,7 @@ fn arrival_of(player: &crate::accounts::Session, context: &Context) -> crate::wo
             .inventory
             .iter()
             .find(|(slot, _)| *slot == 0)
-            .map(|(_, item)| ObjectType(*item as u16))
+            .and_then(|(_, item)| context.catalog.type_of_uuid(*item))
             .filter(|item| context.catalog.object(*item).is_some()),
     }
 }

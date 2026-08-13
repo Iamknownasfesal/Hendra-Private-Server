@@ -19,7 +19,7 @@ pub struct Account {
 pub struct Character {
     pub id: i64,
     pub account_id: i64,
-    pub object_type: i32,
+    pub class: uuid::Uuid,
     pub name: String,
     pub hp: i32,
     pub max_hp: i32,
@@ -30,15 +30,15 @@ pub struct Character {
     pub fame: i32,
     pub alive: bool,
 
-    /// Slot index to item type, only for occupied slots.
-    pub inventory: Vec<(i16, i32)>,
+    /// Slot index to item identity, only for occupied slots.
+    pub inventory: Vec<(i16, uuid::Uuid)>,
 }
 
 /// Enough to draw a character-select screen without loading inventories.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CharacterSummary {
     pub id: i64,
-    pub object_type: i32,
+    pub class: uuid::Uuid,
     pub name: String,
     pub level: i16,
     pub fame: i32,
@@ -128,16 +128,16 @@ impl Store {
     pub async fn create_character(
         &self,
         account_id: i64,
-        object_type: i32,
+        class: uuid::Uuid,
         name: &str,
         max_hp: i32,
     ) -> Result<Character> {
         let (id,): (i64,) = sqlx::query_as(
-            "INSERT INTO character (account_id, object_type, name, hp, max_hp)
+            "INSERT INTO character (account_id, class, name, hp, max_hp)
              VALUES ($1, $2, $3, $4, $4) RETURNING id",
         )
         .bind(account_id)
-        .bind(object_type)
+        .bind(class)
         .bind(name)
         .bind(max_hp)
         .fetch_one(self.pool())
@@ -153,7 +153,7 @@ impl Store {
             (
                 i64,
                 i64,
-                i32,
+                uuid::Uuid,
                 String,
                 i32,
                 i32,
@@ -165,7 +165,7 @@ impl Store {
                 bool,
             ),
         >(
-            "SELECT id, account_id, object_type, name, hp, max_hp, mp, max_mp,
+            "SELECT id, account_id, class, name, hp, max_hp, mp, max_mp,
                     level, experience, fame, alive
              FROM character WHERE id = $1",
         )
@@ -174,8 +174,9 @@ impl Store {
         .await?
         .ok_or(StoreError::NoSuchCharacter(id))?;
 
-        let inventory = sqlx::query_as::<_, (i16, i32)>(
-            "SELECT slot, item_type FROM inventory_slot WHERE character_id = $1 ORDER BY slot",
+        let inventory = sqlx::query_as::<_, (i16, uuid::Uuid)>(
+            "SELECT slot, item FROM inventory_slot
+             WHERE character_id = $1 AND item IS NOT NULL ORDER BY slot",
         )
         .bind(id)
         .fetch_all(self.pool())
@@ -184,7 +185,7 @@ impl Store {
         Ok(Character {
             id: row.0,
             account_id: row.1,
-            object_type: row.2,
+            class: row.2,
             name: row.3,
             hp: row.4,
             max_hp: row.5,
@@ -200,8 +201,8 @@ impl Store {
 
     /// Every living character on an account.
     pub async fn characters(&self, account_id: i64) -> Result<Vec<CharacterSummary>> {
-        let rows = sqlx::query_as::<_, (i64, i32, String, i16, i32, bool)>(
-            "SELECT id, object_type, name, level, fame, alive
+        let rows = sqlx::query_as::<_, (i64, uuid::Uuid, String, i16, i32, bool)>(
+            "SELECT id, class, name, level, fame, alive
              FROM character WHERE account_id = $1 AND alive ORDER BY id",
         )
         .bind(account_id)
@@ -210,16 +211,14 @@ impl Store {
 
         Ok(rows
             .into_iter()
-            .map(
-                |(id, object_type, name, level, fame, alive)| CharacterSummary {
-                    id,
-                    object_type,
-                    name,
-                    level,
-                    fame,
-                    alive,
-                },
-            )
+            .map(|(id, class, name, level, fame, alive)| CharacterSummary {
+                id,
+                class,
+                name,
+                level,
+                fame,
+                alive,
+            })
             .collect())
     }
 
@@ -302,9 +301,9 @@ impl Store {
     pub async fn class_progress(
         &self,
         account_id: i64,
-    ) -> Result<std::collections::HashMap<i32, (i16, i32)>> {
-        let rows = sqlx::query_as::<_, (i32, i16, i32)>(
-            "SELECT object_type, best_level, best_fame FROM class_progress WHERE account_id = $1",
+    ) -> Result<std::collections::HashMap<uuid::Uuid, (i16, i32)>> {
+        let rows = sqlx::query_as::<_, (uuid::Uuid, i16, i32)>(
+            "SELECT class, best_level, best_fame FROM class_progress WHERE account_id = $1",
         )
         .bind(account_id)
         .fetch_all(self.pool())
@@ -312,7 +311,7 @@ impl Store {
 
         Ok(rows
             .into_iter()
-            .map(|(object_type, level, fame)| (object_type, (level, fame)))
+            .map(|(class, level, fame)| (class, (level, fame)))
             .collect())
     }
 
@@ -323,20 +322,20 @@ impl Store {
     pub async fn record_class_progress(
         &self,
         account_id: i64,
-        object_type: i32,
+        class: uuid::Uuid,
         level: i16,
         fame: i32,
     ) -> Result<()> {
         sqlx::query(
-            "INSERT INTO class_progress (account_id, object_type, best_level, best_fame)
+            "INSERT INTO class_progress (account_id, class, best_level, best_fame)
              VALUES ($1, $2, $3, $4)
-             ON CONFLICT (account_id, object_type) DO UPDATE
+             ON CONFLICT (account_id, class) DO UPDATE
              SET best_level = GREATEST(class_progress.best_level, EXCLUDED.best_level),
                  best_fame  = GREATEST(class_progress.best_fame,  EXCLUDED.best_fame),
                  updated_at = now()",
         )
         .bind(account_id)
-        .bind(object_type)
+        .bind(class)
         .bind(level)
         .bind(fame)
         .execute(self.pool())
@@ -346,25 +345,25 @@ impl Store {
     }
 
     /// Classes this account has bought.
-    pub async fn purchased_classes(&self, account_id: i64) -> Result<Vec<i32>> {
-        let rows = sqlx::query_as::<_, (i32,)>(
-            "SELECT object_type FROM class_unlock WHERE account_id = $1",
+    pub async fn purchased_classes(&self, account_id: i64) -> Result<Vec<uuid::Uuid>> {
+        let rows = sqlx::query_as::<_, (uuid::Uuid,)>(
+            "SELECT class FROM class_unlock WHERE account_id = $1",
         )
         .bind(account_id)
         .fetch_all(self.pool())
         .await?;
 
-        Ok(rows.into_iter().map(|(object_type,)| object_type).collect())
+        Ok(rows.into_iter().map(|(class,)| class).collect())
     }
 
     /// Records a class as bought. Buying one twice is not an error and costs nothing extra.
-    pub async fn purchase_class(&self, account_id: i64, object_type: i32) -> Result<()> {
+    pub async fn purchase_class(&self, account_id: i64, class: uuid::Uuid) -> Result<()> {
         sqlx::query(
-            "INSERT INTO class_unlock (account_id, object_type) VALUES ($1, $2)
-             ON CONFLICT (account_id, object_type) DO NOTHING",
+            "INSERT INTO class_unlock (account_id, class) VALUES ($1, $2)
+             ON CONFLICT (account_id, class) DO NOTHING",
         )
         .bind(account_id)
-        .bind(object_type)
+        .bind(class)
         .execute(self.pool())
         .await?;
 
@@ -375,7 +374,11 @@ impl Store {
     ///
     /// For giving a new character its starting kit, not for saving one mid-play. See
     /// [`Store::move_item`] for that.
-    pub async fn set_inventory(&self, character_id: i64, slots: &[(i16, i32)]) -> Result<()> {
+    pub async fn set_inventory(
+        &self,
+        character_id: i64,
+        slots: &[(i16, uuid::Uuid)],
+    ) -> Result<()> {
         let mut transaction = self.pool().begin().await?;
 
         sqlx::query("DELETE FROM inventory_slot WHERE character_id = $1")
@@ -385,7 +388,7 @@ impl Store {
 
         for (slot, item) in slots {
             sqlx::query(
-                "INSERT INTO inventory_slot (character_id, slot, item_type) VALUES ($1, $2, $3)",
+                "INSERT INTO inventory_slot (character_id, slot, item) VALUES ($1, $2, $3)",
             )
             .bind(character_id)
             .bind(slot)
@@ -399,9 +402,10 @@ impl Store {
     }
 
     /// What an account has in its vault.
-    pub async fn vault(&self, account_id: i64) -> Result<Vec<(i16, i32)>> {
-        Ok(sqlx::query_as::<_, (i16, i32)>(
-            "SELECT slot, item_type FROM vault_slot WHERE account_id = $1 ORDER BY slot",
+    pub async fn vault(&self, account_id: i64) -> Result<Vec<(i16, uuid::Uuid)>> {
+        Ok(sqlx::query_as::<_, (i16, uuid::Uuid)>(
+            "SELECT slot, item FROM vault_slot
+             WHERE account_id = $1 AND item IS NOT NULL ORDER BY slot",
         )
         .bind(account_id)
         .fetch_all(self.pool())
@@ -409,16 +413,26 @@ impl Store {
     }
 
     /// Puts an item straight into a vault slot. For tests and administration.
-    pub async fn set_vault_slot(&self, account_id: i64, slot: i16, item: i32) -> Result<()> {
+    pub async fn set_vault_slot(&self, account_id: i64, slot: i16, item: uuid::Uuid) -> Result<()> {
         sqlx::query(
-            "INSERT INTO vault_slot (account_id, slot, item_type) VALUES ($1, $2, $3)
-             ON CONFLICT (account_id, slot) DO UPDATE SET item_type = EXCLUDED.item_type",
+            "INSERT INTO vault_slot (account_id, slot, item) VALUES ($1, $2, $3)
+             ON CONFLICT (account_id, slot) DO UPDATE SET item = EXCLUDED.item",
         )
         .bind(account_id)
         .bind(slot)
         .bind(item)
         .execute(self.pool())
         .await?;
+        Ok(())
+    }
+
+    /// Empties a vault slot. For tests and administration.
+    pub async fn clear_vault_slot(&self, account_id: i64, slot: i16) -> Result<()> {
+        sqlx::query("DELETE FROM vault_slot WHERE account_id = $1 AND slot = $2")
+            .bind(account_id)
+            .bind(slot)
+            .execute(self.pool())
+            .await?;
         Ok(())
     }
 

@@ -5,8 +5,9 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+uuid = { version = "1", features = ["v4"] }
 hendra-content = { path = "../content" }
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "macros", "migrate", "chrono"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "macros", "migrate", "chrono", "uuid"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 thiserror.workspace = true
 tracing.workspace = true

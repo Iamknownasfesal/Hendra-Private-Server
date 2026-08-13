@@ -46,11 +46,11 @@ pub struct Offer {
     ///
     /// The expected item matters: an offer is agreed at one moment and executed at another, and in
     /// between the player may have moved, dropped or traded the very thing they offered.
-    pub items: Vec<(i16, i32)>,
+    pub items: Vec<(i16, uuid::Uuid)>,
 }
 
 impl Offer {
-    pub fn new(character_id: i64, items: Vec<(i16, i32)>) -> Offer {
+    pub fn new(character_id: i64, items: Vec<(i16, uuid::Uuid)>) -> Offer {
         Offer {
             character_id,
             items,
@@ -66,8 +66,8 @@ impl Offer {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TradeOutcome {
     /// Where each item the first player received ended up.
-    pub to_first: Vec<(i16, i32)>,
-    pub to_second: Vec<(i16, i32)>,
+    pub to_first: Vec<(i16, uuid::Uuid)>,
+    pub to_second: Vec<(i16, uuid::Uuid)>,
 }
 
 impl Store {
@@ -139,12 +139,12 @@ impl Store {
             remove(&mut transaction, second.character_id, *slot, *item).await?;
         }
 
-        let received_by_first: Vec<(i16, i32)> = to_first
+        let received_by_first: Vec<(i16, uuid::Uuid)> = to_first
             .iter()
             .zip(second.items.iter())
             .map(|(slot, (_, item))| (*slot, *item))
             .collect();
-        let received_by_second: Vec<(i16, i32)> = to_second
+        let received_by_second: Vec<(i16, uuid::Uuid)> = to_second
             .iter()
             .zip(first.items.iter())
             .map(|(slot, (_, item))| (*slot, *item))
@@ -170,9 +170,9 @@ impl Store {
 async fn held(
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     character_id: i64,
-) -> Result<Vec<(i16, i32)>> {
-    Ok(sqlx::query_as::<_, (i16, i32)>(
-        "SELECT slot, item_type FROM inventory_slot WHERE character_id = $1",
+) -> Result<Vec<(i16, uuid::Uuid)>> {
+    Ok(sqlx::query_as::<_, (i16, uuid::Uuid)>(
+        "SELECT slot, item FROM inventory_slot WHERE character_id = $1",
     )
     .bind(character_id)
     .fetch_all(&mut **transaction)
@@ -180,7 +180,7 @@ async fn held(
 }
 
 /// Checks that every offered slot still holds what was offered.
-fn confirm(held: &[(i16, i32)], offered: &[(i16, i32)]) -> Result<()> {
+fn confirm(held: &[(i16, uuid::Uuid)], offered: &[(i16, uuid::Uuid)]) -> Result<()> {
     for (slot, item) in offered {
         let actual = held
             .iter()
@@ -201,8 +201,8 @@ fn confirm(held: &[(i16, i32)], offered: &[(i16, i32)]) -> Result<()> {
 /// Returns one slot per incoming item, or refuses if there is not room for all of them. Deciding
 /// this before anything moves is what makes the whole trade atomic rather than optimistic.
 fn place(
-    held: &[(i16, i32)],
-    leaving: &[(i16, i32)],
+    held: &[(i16, uuid::Uuid)],
+    leaving: &[(i16, uuid::Uuid)],
     incoming: usize,
     first_slot: i16,
     last_slot: i16,
@@ -230,10 +230,10 @@ async fn remove(
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     character_id: i64,
     slot: i16,
-    item: i32,
+    item: uuid::Uuid,
 ) -> Result<()> {
     let removed = sqlx::query(
-        "DELETE FROM inventory_slot WHERE character_id = $1 AND slot = $2 AND item_type = $3",
+        "DELETE FROM inventory_slot WHERE character_id = $1 AND slot = $2 AND item = $3",
     )
     .bind(character_id)
     .bind(slot)
@@ -254,9 +254,9 @@ async fn insert(
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     character_id: i64,
     slot: i16,
-    item: i32,
+    item: uuid::Uuid,
 ) -> Result<()> {
-    sqlx::query("INSERT INTO inventory_slot (character_id, slot, item_type) VALUES ($1, $2, $3)")
+    sqlx::query("INSERT INTO inventory_slot (character_id, slot, item) VALUES ($1, $2, $3)")
         .bind(character_id)
         .bind(slot)
         .bind(item)

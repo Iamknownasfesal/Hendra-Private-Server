@@ -89,7 +89,7 @@ pub async fn offers(
                 description: desc.and_then(|d| d.display_id.clone()),
                 starting_hp: class.starting_hp(),
                 starting_mp: class.starting_mp(),
-                locked: unlocks.locked(class),
+                locked: unlocks.locked(catalog, class),
                 cost: class.unlock.cost,
             }
         })
@@ -98,33 +98,41 @@ pub async fn offers(
 
 /// What an account has unlocked, loaded once and asked many times.
 pub struct Unlocks {
-    progress: HashMap<i32, (i16, i32)>,
-    purchased: Vec<ObjectType>,
+    /// Keyed by identity rather than runtime number, because this outlives a load.
+    progress: HashMap<uuid::Uuid, (i16, i32)>,
+    purchased: Vec<uuid::Uuid>,
 }
 
 impl Unlocks {
     pub async fn load(store: &Store, account_id: i64) -> Result<Unlocks, StoreError> {
         Ok(Unlocks {
             progress: store.class_progress(account_id).await?,
-            purchased: store
-                .purchased_classes(account_id)
-                .await?
-                .into_iter()
-                .map(|object_type| ObjectType(object_type as u16))
-                .collect(),
+            purchased: store.purchased_classes(account_id).await?,
         })
     }
 
     /// Why this class cannot be played, if it cannot.
-    pub fn locked(&self, class: &hendra_content::PlayerDesc) -> Option<Locked> {
+    /// Why this class cannot be played, if it cannot.
+    ///
+    /// Takes the catalog because progress is keyed by identity and the unlock names a runtime
+    /// number: the two have to be brought together somewhere, and here is the only place that has
+    /// both.
+    pub fn locked(&self, catalog: &Catalog, class: &hendra_content::PlayerDesc) -> Option<Locked> {
         let best_level = |needed: ObjectType| {
-            self.progress
-                .get(&(needed.0 as i32))
+            catalog
+                .object(needed)
+                .and_then(|desc| self.progress.get(&desc.uuid))
                 .map(|(level, _)| *level as i32)
                 .unwrap_or(0)
         };
 
-        class.locked_for(&best_level, &self.purchased)
+        let purchased: Vec<ObjectType> = self
+            .purchased
+            .iter()
+            .filter_map(|bought| catalog.type_of_uuid(*bought))
+            .collect();
+
+        class.locked_for(&best_level, &purchased)
     }
 }
 
@@ -151,16 +159,20 @@ pub async fn create(
     name: &str,
 ) -> Result<Character, CreateError> {
     let desc = catalog.class(class).ok_or(CreateError::NoSuchClass)?;
+    let desc_uuid = catalog
+        .object(class)
+        .map(|object| object.uuid)
+        .ok_or(CreateError::NoSuchClass)?;
 
     let unlocks = Unlocks::load(store, account_id).await?;
-    if let Some(locked) = unlocks.locked(desc) {
+    if let Some(locked) = unlocks.locked(catalog, desc) {
         return Err(CreateError::Locked(locked));
     }
 
     // Health comes from the class, so a warrior is not a wizard with a different sprite.
     let max_hp = desc.starting_hp().max(1);
     let character = store
-        .create_character(account_id, class.0 as i32, name, max_hp)
+        .create_character(account_id, desc_uuid, name, max_hp)
         .await?;
 
     let mut slots = starting_slots(catalog, desc, common);
@@ -183,8 +195,8 @@ pub fn starting_slots(
     catalog: &Catalog,
     class: &hendra_content::PlayerDesc,
     common: &CommonItems,
-) -> Vec<(i16, i32)> {
-    let mut slots: Vec<(i16, i32)> = Vec::new();
+) -> Vec<(i16, uuid::Uuid)> {
+    let mut slots: Vec<(i16, uuid::Uuid)> = Vec::new();
 
     for worn in 0..EQUIPPED_SLOTS as usize {
         // A class listing fewer worn slots than four gets fewer, rather than a slot filled with
@@ -195,19 +207,25 @@ pub fn starting_slots(
         let Some(object_type) = catalog.lowest_tier_for_slot(slot_type) else {
             continue;
         };
-        slots.push((worn as i16, object_type.0 as i32));
+        let Some(item) = catalog.object(object_type) else {
+            continue;
+        };
+        slots.push((worn as i16, item.uuid));
     }
 
     let mut next_carried = EQUIPPED_SLOTS;
     for name in &common.names {
         // Anything the catalog does not have is skipped rather than fatal: a half-converted content
         // directory should still let someone play.
-        let Some(object_type) = catalog.type_of(name) else {
+        let Some(item) = catalog
+            .type_of(name)
+            .and_then(|found| catalog.object(found))
+        else {
             tracing::warn!(item = %name, "common kit names an item the catalog does not have");
             continue;
         };
 
-        slots.push((next_carried, object_type.0 as i32));
+        slots.push((next_carried, item.uuid));
         next_carried += 1;
     }
 
@@ -253,11 +271,6 @@ pub async fn record_progress(
     character: &Character,
 ) -> Result<(), StoreError> {
     store
-        .record_class_progress(
-            account_id,
-            character.object_type,
-            character.level,
-            character.fame,
-        )
+        .record_class_progress(account_id, character.class, character.level, character.fame)
         .await
 }

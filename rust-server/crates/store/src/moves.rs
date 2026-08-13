@@ -50,9 +50,9 @@ pub struct Placed {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MoveOutcome {
     /// What ended up in the source slot. Zero means empty.
-    pub source: i32,
+    pub source: Option<uuid::Uuid>,
     /// What ended up in the destination slot.
-    pub destination: i32,
+    pub destination: Option<uuid::Uuid>,
 }
 
 impl Store {
@@ -65,7 +65,7 @@ impl Store {
         &self,
         from: Location,
         to: Location,
-        expected: i32,
+        expected: Option<uuid::Uuid>,
     ) -> Result<MoveOutcome> {
         if from == to {
             return Err(StoreError::Refused("moving a slot onto itself"));
@@ -116,7 +116,7 @@ impl Store {
     pub async fn give_item(
         &self,
         character_id: i64,
-        item: i32,
+        item: uuid::Uuid,
         first_slot: i16,
         last_slot: i16,
     ) -> Result<Placed> {
@@ -153,7 +153,7 @@ impl Store {
         // same slot between the scan and here, this affects nothing and the pickup is refused
         // rather than overwriting what they put there.
         let written = sqlx::query(
-            "INSERT INTO inventory_slot (character_id, slot, item_type) VALUES ($1, $2, $3)
+            "INSERT INTO inventory_slot (character_id, slot, item) VALUES ($1, $2, $3)
              ON CONFLICT (character_id, slot) DO NOTHING",
         )
         .bind(character_id)
@@ -174,10 +174,15 @@ impl Store {
     ///
     /// The condition is what makes two simultaneous requests to drop the same item
     /// resolve to one drop rather than two.
-    pub async fn take_item(&self, character_id: i64, slot: i16, expected: i32) -> Result<()> {
+    pub async fn take_item(
+        &self,
+        character_id: i64,
+        slot: i16,
+        expected: uuid::Uuid,
+    ) -> Result<()> {
         let removed = sqlx::query(
             "DELETE FROM inventory_slot
-             WHERE character_id = $1 AND slot = $2 AND item_type = $3",
+             WHERE character_id = $1 AND slot = $2 AND item = $3",
         )
         .bind(character_id)
         .bind(slot)
@@ -203,13 +208,13 @@ impl Store {
 async fn lock_and_read(
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     at: Location,
-) -> Result<i32> {
-    let (item,): (i32,) = match at {
+) -> Result<Option<uuid::Uuid>> {
+    let (item,): (Option<uuid::Uuid>,) = match at {
         Location::Inventory { character_id, slot } => {
             sqlx::query_as(
-                "INSERT INTO inventory_slot (character_id, slot, item_type) VALUES ($1, $2, 0)
-                 ON CONFLICT (character_id, slot) DO UPDATE SET item_type = inventory_slot.item_type
-                 RETURNING item_type",
+                "INSERT INTO inventory_slot (character_id, slot, item) VALUES ($1, $2, NULL)
+                 ON CONFLICT (character_id, slot) DO UPDATE SET item = inventory_slot.item
+                 RETURNING item",
             )
             .bind(character_id)
             .bind(slot)
@@ -218,9 +223,9 @@ async fn lock_and_read(
         }
         Location::Vault { account_id, slot } => {
             sqlx::query_as(
-                "INSERT INTO vault_slot (account_id, slot, item_type) VALUES ($1, $2, 0)
-                 ON CONFLICT (account_id, slot) DO UPDATE SET item_type = vault_slot.item_type
-                 RETURNING item_type",
+                "INSERT INTO vault_slot (account_id, slot, item) VALUES ($1, $2, NULL)
+                 ON CONFLICT (account_id, slot) DO UPDATE SET item = vault_slot.item
+                 RETURNING item",
             )
             .bind(account_id)
             .bind(slot)
@@ -236,19 +241,19 @@ async fn lock_and_read(
 async fn write(
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     at: Location,
-    item: i32,
+    item: Option<uuid::Uuid>,
 ) -> Result<()> {
     match (at, item) {
-        (Location::Inventory { character_id, slot }, 0) => {
+        (Location::Inventory { character_id, slot }, None) => {
             sqlx::query("DELETE FROM inventory_slot WHERE character_id = $1 AND slot = $2")
                 .bind(character_id)
                 .bind(slot)
                 .execute(&mut **transaction)
                 .await?;
         }
-        (Location::Inventory { character_id, slot }, item) => {
+        (Location::Inventory { character_id, slot }, Some(item)) => {
             sqlx::query(
-                "UPDATE inventory_slot SET item_type = $3 WHERE character_id = $1 AND slot = $2",
+                "UPDATE inventory_slot SET item = $3 WHERE character_id = $1 AND slot = $2",
             )
             .bind(character_id)
             .bind(slot)
@@ -256,15 +261,15 @@ async fn write(
             .execute(&mut **transaction)
             .await?;
         }
-        (Location::Vault { account_id, slot }, 0) => {
+        (Location::Vault { account_id, slot }, None) => {
             sqlx::query("DELETE FROM vault_slot WHERE account_id = $1 AND slot = $2")
                 .bind(account_id)
                 .bind(slot)
                 .execute(&mut **transaction)
                 .await?;
         }
-        (Location::Vault { account_id, slot }, item) => {
-            sqlx::query("UPDATE vault_slot SET item_type = $3 WHERE account_id = $1 AND slot = $2")
+        (Location::Vault { account_id, slot }, Some(item)) => {
+            sqlx::query("UPDATE vault_slot SET item = $3 WHERE account_id = $1 AND slot = $2")
                 .bind(account_id)
                 .bind(slot)
                 .bind(item)

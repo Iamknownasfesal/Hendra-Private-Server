@@ -6,7 +6,7 @@ deliberately excluded and left until last.
 Phases 0–5 are done: workspace, content, protocol, transport, simulation, behaviour language,
 persistence, authentication. What follows is phases 6–11.
 
-**Where we are:** ~60% of the old server by subsystem. 505 tests.
+**Where we are:** ~60% of the old server by subsystem. 524 tests.
 
 **Sizing** is relative, not calendar: **S** is an afternoon, **M** is a day or two, **L** is
 several days, **XL** is a week or more.
@@ -96,11 +96,10 @@ runtime number from the content's identity, deterministically and independent of
       files use
 - [x] `cargo run -p hendra-content --example new_id` prints a fresh identity for new content
 - [x] A number reached by probing is reported, because it depends on what else is loaded
-- [ ] **Store identities rather than numbers in the database.** An assigned number is stable only
-      while nothing collides with it; adding content can move a probed one, which would silently
-      orphan saved inventories. `inventory_slot`, `vault_slot` and `character` hold `integer` today
-      and must hold the UUID, with the server translating through the catalog. Until this lands,
-      content may be added freely but a probe report is a warning that some item moved
+- [x] **Store identities rather than numbers in the database.** `inventory_slot`, `vault_slot`,
+      `character`, `class_progress` and `class_unlock` hold UUIDs, and the server translates at the
+      seam between the world, which draws by number, and the durable side, which does not. An empty
+      slot is `NULL` rather than zero, and both dupe protections were re-checked against that
 
 ### 6.4 Loose ends — **S**
 

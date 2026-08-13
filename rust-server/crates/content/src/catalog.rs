@@ -347,6 +347,18 @@ impl Catalog {
         None
     }
 
+    /// The runtime number an identity was given, if the catalog holds it.
+    ///
+    /// A scan rather than a map: this is asked at load and on a character screen, never per tick,
+    /// and a second index would have to be kept in step for no gain.
+    pub fn type_of_uuid(&self, uuid: uuid::Uuid) -> Option<ObjectType> {
+        self.objects
+            .iter()
+            .flatten()
+            .find(|desc| desc.uuid == uuid)
+            .map(|desc| desc.object_type)
+    }
+
     /// Every playable class, in the order the files list them.
     pub fn classes(&self) -> &[PlayerDesc] {
         &self.classes
