@@ -117,6 +117,11 @@ pub enum ToWorld {
         reply: tokio::sync::oneshot::Sender<Vec<hendra_content::Effect>>,
     },
 
+    /// The whole map, as one run-length encoded strip per row.
+    Terrain {
+        reply: tokio::sync::oneshot::Sender<Vec<TerrainStrip>>,
+    },
+
     /// A line meant for one named player.
     Tell {
         to: String,
@@ -133,6 +138,9 @@ pub enum ToWorld {
         reply: tokio::sync::oneshot::Sender<Option<Vitals>>,
     },
 }
+
+/// One row of the map: which row, and its squares run-length encoded as `(count, tile)`.
+pub type TerrainStrip = (u16, Vec<(u16, u16)>);
 
 /// A character's live state, as the durable side needs it.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -391,6 +399,14 @@ fn handle(
                     let _ = player.sender.try_send(Delivery::Stream, &buf);
                 }
             }
+        }
+
+        ToWorld::Terrain { reply } => {
+            let terrain = world.terrain();
+            let strips = (0..terrain.height())
+                .map(|y| (y as u16, terrain.row_runs(y, 0, terrain.width())))
+                .collect();
+            let _ = reply.send(strips);
         }
 
         ToWorld::Tell { to, from, text } => {

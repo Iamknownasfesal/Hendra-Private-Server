@@ -9,7 +9,7 @@
 //! mask. Speed and damage stay behind the descriptor, because those are read only when an entity is
 //! actually standing somewhere and are not worth the memory.
 
-use hendra_content::{Catalog, Map};
+use hendra_content::{Catalog, Map, TileType};
 
 /// A bit per square.
 struct BitGrid {
@@ -85,6 +85,13 @@ pub struct Terrain {
     /// Whether the map blocks sight anywhere at all.
     any_blockers: bool,
 
+    /// What each square is, so it can be told to a client.
+    ///
+    /// Two bytes a square, which is eight megabytes for the largest map in the game. Kept because
+    /// there is no other way to send the ground, and derived from the map rather than stored twice:
+    /// the map itself is dropped once this is built.
+    tiles: Vec<TileType>,
+
     map: Map,
 }
 
@@ -94,10 +101,12 @@ impl Terrain {
         let (width, height) = (map.width(), map.height());
         let mut walkable = BitGrid::new(width, height);
         let mut blocks_sight = BitGrid::new(width, height);
+        let mut tiles = vec![TileType(0); (width as usize) * (height as usize)];
 
         for y in 0..height {
             for x in 0..width {
                 let Some(square) = map.at(x, y) else { continue };
+                tiles[(y as usize) * (width as usize) + x as usize] = square.tile;
 
                 // A square is walkable when its ground allows it and nothing standing there
                 // objects. Absent ground is not walkable: that is how maps spell a hole.
@@ -142,6 +151,7 @@ impl Terrain {
             region_columns,
             region_rows,
             any_blockers,
+            tiles,
             map,
         }
     }
@@ -198,14 +208,59 @@ impl Terrain {
         self.contains(x, y) && self.walkable.get(x, y)
     }
 
+    /// What one square is.
+    pub fn tile_at(&self, x: u32, y: u32) -> TileType {
+        if !self.contains(x, y) {
+            return TileType(0);
+        }
+        self.tiles
+            .get((y * self.width + x) as usize)
+            .copied()
+            .unwrap_or(TileType(0))
+    }
+
+    /// What each square of a row is, run-length encoded.
+    ///
+    /// A map is mostly the same square repeated, so runs are the difference between a strip that
+    /// fits in a message and one that does not. Returns nothing for a row outside the map.
+    pub fn row_runs(&self, y: u32, from_x: u32, width: u32) -> Vec<(u16, u16)> {
+        if y >= self.height || from_x >= self.width {
+            return Vec::new();
+        }
+
+        let end = (from_x + width).min(self.width);
+        let mut runs: Vec<(u16, u16)> = Vec::new();
+
+        for x in from_x..end {
+            let tile = self.tile_at(x, y).0;
+            match runs.last_mut() {
+                Some((count, held)) if *held == tile && *count < u16::MAX => *count += 1,
+                _ => runs.push((1, tile)),
+            }
+        }
+
+        runs
+    }
+
     /// Changes what one square is, for behaviours that reshape the ground.
     ///
     /// The blocker regions are rebuilt for the square's own region rather than for the whole map,
     /// because a boss paving a floor does it a square at a time and rebuilding everything each
     /// time would cost more than the tick has.
-    pub fn set_square(&mut self, x: u32, y: u32, walkable: bool, blocks_sight: bool) {
+    pub fn set_square(
+        &mut self,
+        x: u32,
+        y: u32,
+        tile: TileType,
+        walkable: bool,
+        blocks_sight: bool,
+    ) {
         if !self.contains(x, y) {
             return;
+        }
+
+        if let Some(held) = self.tiles.get_mut((y * self.width + x) as usize) {
+            *held = tile;
         }
 
         self.walkable.put(x, y, walkable);
@@ -426,6 +481,71 @@ impl Terrain {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_row_of_one_tile_is_one_run() {
+        // A map is mostly the same square repeated, which is the difference between a strip that
+        // fits in a message and one that does not.
+        let catalog = catalog();
+        let squares = (0..16 * 4).map(|_| square(0x10, 0));
+        let terrain = Terrain::build(Map::from_squares(16, 4, squares).unwrap(), &catalog);
+
+        let runs = terrain.row_runs(0, 0, 16);
+        assert_eq!(runs, vec![(16, 0x10)]);
+    }
+
+    #[test]
+    fn a_row_that_changes_is_several_runs_in_order() {
+        let catalog = catalog();
+        let mut squares: Vec<_> = (0..8 * 2).map(|_| square(0x10, 0)).collect();
+        squares[2] = square(0x11, 0);
+        squares[3] = square(0x11, 0);
+        let terrain = Terrain::build(Map::from_squares(8, 2, squares).unwrap(), &catalog);
+
+        assert_eq!(
+            terrain.row_runs(0, 0, 8),
+            vec![(2, 0x10), (2, 0x11), (4, 0x10)]
+        );
+    }
+
+    #[test]
+    fn every_row_together_is_the_whole_map() {
+        let catalog = catalog();
+        let squares = (0..8 * 6).map(|_| square(0x10, 0));
+        let terrain = Terrain::build(Map::from_squares(8, 6, squares).unwrap(), &catalog);
+
+        let total: u32 = (0..terrain.height())
+            .flat_map(|y| terrain.row_runs(y, 0, terrain.width()))
+            .map(|(count, _)| count as u32)
+            .sum();
+
+        assert_eq!(total, 8 * 6, "no square is left out or sent twice");
+    }
+
+    #[test]
+    fn a_row_outside_the_map_is_nothing_rather_than_a_panic() {
+        let catalog = catalog();
+        let squares = (0..4 * 4).map(|_| square(0x10, 0));
+        let terrain = Terrain::build(Map::from_squares(4, 4, squares).unwrap(), &catalog);
+
+        assert!(terrain.row_runs(99, 0, 4).is_empty());
+        assert!(terrain.row_runs(0, 99, 4).is_empty());
+    }
+
+    #[test]
+    fn changing_the_ground_changes_what_is_sent() {
+        // Otherwise a client joining after a boss reshaped the room would be told the old map.
+        let catalog = catalog();
+        let squares = (0..8 * 2).map(|_| square(0x10, 0));
+        let mut terrain = Terrain::build(Map::from_squares(8, 2, squares).unwrap(), &catalog);
+
+        terrain.set_square(3, 0, TileType(0x11), false, false);
+
+        assert_eq!(
+            terrain.row_runs(0, 0, 8),
+            vec![(3, 0x10), (1, 0x11), (4, 0x10)]
+        );
+    }
+
     use super::*;
     use hendra_content::map::Composition;
     use hendra_content::{ObjectType, Region, TileType};

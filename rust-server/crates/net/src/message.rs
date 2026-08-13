@@ -35,6 +35,11 @@ pub mod client_id {
 }
 
 /// Messages travelling from server to client.
+/// The most runs one terrain strip may claim.
+///
+/// A length prefix is attacker-controlled, so the capacity is bounded before anything is reserved.
+pub const MAX_TERRAIN_RUNS: usize = 4096;
+
 /// The most ground changes one message may claim.
 ///
 /// A length prefix is attacker-controlled, so the capacity is bounded before anything is reserved.
@@ -50,6 +55,7 @@ pub mod server_id {
     pub const CONTAINER: u16 = 0x8007;
     pub const REFUSED: u16 = 0x8008;
     pub const GROUND: u16 = 0x8009;
+    pub const TERRAIN: u16 = 0x800a;
 }
 
 /// Why a connection was refused.
@@ -443,6 +449,20 @@ pub enum ServerMessage<'a> {
         message: &'a str,
     },
 
+    /// One horizontal run of the map, so a client can draw the ground.
+    ///
+    /// Sent in strips rather than whole, because a map is four million squares and one message
+    /// holding all of it would be larger than anything the transport will carry. A strip is a row
+    /// of a rectangle, which is what the client fills in as it arrives.
+    ///
+    /// The tiles are run-length encoded as `(count, tile)`. A map is mostly the same square
+    /// repeated, so this is the difference between a strip that fits and one that does not.
+    Terrain {
+        x: u16,
+        y: u16,
+        runs: Vec<(u16, u16)>,
+    },
+
     /// Squares whose ground has changed, as `(x, y, tile)`.
     ///
     /// Sent rather than folded into the snapshot because ground is not an entity: it has no id, it
@@ -468,6 +488,7 @@ impl ServerMessage<'_> {
             ServerMessage::Container { .. } => server_id::CONTAINER,
             ServerMessage::Refused { .. } => server_id::REFUSED,
             ServerMessage::Ground { .. } => server_id::GROUND,
+            ServerMessage::Terrain { .. } => server_id::TERRAIN,
         }
     }
 
@@ -490,6 +511,15 @@ impl ServerMessage<'_> {
             ServerMessage::Chat { from, text } => {
                 w.string(from);
                 w.string(text);
+            }
+            ServerMessage::Terrain { x, y, runs } => {
+                w.varint(*x as u64);
+                w.varint(*y as u64);
+                w.varint(runs.len() as u64);
+                for (count, tile) in runs {
+                    w.varint(*count as u64);
+                    w.varint(*tile as u64);
+                }
             }
             ServerMessage::Ground { changes } => {
                 w.varint(changes.len() as u64);
@@ -585,6 +615,17 @@ impl ServerMessage<'_> {
             server_id::REFUSED => ServerMessage::Refused {
                 message: r.string()?,
             },
+            server_id::TERRAIN => {
+                let x = r.varint_u32()? as u16;
+                let y = r.varint_u32()? as u16;
+                let count = r.varint_u32()? as usize;
+
+                let mut runs = Vec::with_capacity(count.min(MAX_TERRAIN_RUNS));
+                for _ in 0..count {
+                    runs.push((r.varint_u32()? as u16, r.varint_u32()? as u16));
+                }
+                ServerMessage::Terrain { x, y, runs }
+            }
             server_id::GROUND => {
                 let count = r.varint_u32()? as usize;
                 let mut changes = Vec::with_capacity(count.min(MAX_GROUND_CHANGES));

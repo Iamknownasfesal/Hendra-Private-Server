@@ -88,6 +88,13 @@ enum Event {
     /// Squares whose ground changed, as `(x, y, tile)`.
     Ground(Vec<(u16, u16, u16)>),
 
+    /// One row of the map, expanded from the runs it arrived as.
+    Terrain {
+        x: u16,
+        y: u16,
+        tiles: Vec<u16>,
+    },
+
     /// A projectile was fired. Its whole flight follows from these fields, so this arrives once and
     /// the client animates the rest itself.
     Shot {
@@ -348,6 +355,14 @@ impl HendraConnection {
                 Event::Disconnected(why) => {
                     entry.set("kind", "disconnected");
                     entry.set("reason", why);
+                }
+                Event::Terrain { x, y, tiles } => {
+                    entry.set("kind", "terrain");
+                    entry.set("x", x as i64);
+                    entry.set("y", y as i64);
+
+                    let row: Vec<i32> = tiles.iter().map(|tile| *tile as i32).collect();
+                    entry.set("tiles", &PackedInt32Array::from(row.as_slice()));
                 }
                 Event::Ground(changes) => {
                     entry.set("kind", "ground");
@@ -752,6 +767,16 @@ fn apply(
         ServerMessage::Refused { message } => shared.push(Event::Refused(message.to_owned())),
 
         ServerMessage::Ground { changes } => shared.push(Event::Ground(changes)),
+
+        ServerMessage::Terrain { x, y, runs } => {
+            // Expanded here rather than in the game, so a script sees a row of squares rather than
+            // an encoding it has to understand.
+            let mut tiles = Vec::new();
+            for (count, tile) in runs {
+                tiles.extend(std::iter::repeat_n(tile, count as usize));
+            }
+            shared.push(Event::Terrain { x, y, tiles });
+        }
 
         ServerMessage::Shot {
             projectile,

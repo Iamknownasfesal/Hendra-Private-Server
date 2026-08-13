@@ -6,7 +6,7 @@ deliberately excluded and left until last.
 Phases 0–5 are done: workspace, content, protocol, transport, simulation, behaviour language,
 persistence, authentication. What follows is phases 6–11.
 
-**Where we are:** ~87% of the old server by subsystem. 615 tests.
+**Where we are:** ~89% of the old server by subsystem. 620 tests.
 
 **Sizing** is relative, not calendar: **S** is an afternoon, **M** is a day or two, **L** is
 several days, **XL** is a week or more.
@@ -188,7 +188,7 @@ an ability, 1,942 activates across 43 kinds.
 
 ### 8.5 Terrain on the wire — **M**
 
-- [ ] Send terrain to clients, which the cutover depends on
+- [x] Terrain is sent on join, one run-length encoded row at a time, and ground changes update what a later joiner is told. The tick budget went from 24x to 18x headroom at 200 players, which is the cost of holding the tile grid
 
 Ground damage already works and is tested; an earlier draft of this plan was wrong about that.
 

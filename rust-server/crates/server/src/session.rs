@@ -114,7 +114,11 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
         "session started"
     );
 
-    // The client needs to see what it is carrying before it can move any of it.
+    // The ground first, because a client that has not been told the map cannot place anything it
+    // is about to be told about.
+    send_terrain(&mut link, &placement).await;
+
+    // Then what it is carrying, before it can move any of it.
     send_containers(&mut link, &context.catalog, &context.store, &player).await;
 
     // One per connection. A limit shared between players would let a busy world silence a quiet
@@ -809,6 +813,35 @@ async fn save_progress(
         },
     )
     .await
+}
+
+/// Tells a client what the ground is.
+///
+/// Sent in strips, one row at a time, because a map is millions of squares and one message holding
+/// all of it would be larger than the transport carries. Run-length encoded, because a map is
+/// mostly the same square repeated.
+async fn send_terrain(link: &mut Link, placement: &Placement) {
+    let (reply, answer) = tokio::sync::oneshot::channel();
+    placement.world.send(ToWorld::Terrain { reply }).await;
+
+    let Ok(strips) = answer.await else {
+        return;
+    };
+
+    for (y, runs) in strips {
+        if runs.is_empty() {
+            continue;
+        }
+
+        let mut buffer = Vec::new();
+        ServerMessage::Terrain { x: 0, y, runs }.encode(&mut Writer::new(&mut buffer));
+
+        // A client that cannot keep up with the map is one that cannot play, so this waits rather
+        // than dropping strips and leaving holes in the ground.
+        if link.send(Delivery::Stream, &buffer).await.is_err() {
+            return;
+        }
+    }
 }
 
 /// Works out what a player meant and, if they may say it, says it.

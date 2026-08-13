@@ -1616,8 +1616,13 @@ impl World {
 
                 // Ground never blocks sight. Only objects standing on it do, and this changes
                 // the ground rather than what is on it.
-                self.terrain
-                    .set_square(square_x as u32, square_y as u32, !desc.no_walk, false);
+                self.terrain.set_square(
+                    square_x as u32,
+                    square_y as u32,
+                    tile_type,
+                    !desc.no_walk,
+                    false,
+                );
                 if self.ground_changes.len() < MAX_PENDING_GROUND_CHANGES {
                     self.ground_changes
                         .push((square_x as u16, square_y as u16, tile));
@@ -2409,7 +2414,7 @@ impl World {
 
                 if let Some(tile) = catalog.tile(square.tile) {
                     self.terrain
-                        .set_square(world_x, world_y, !tile.no_walk, false);
+                        .set_square(world_x, world_y, square.tile, !tile.no_walk, false);
                     if self.ground_changes.len() < MAX_PENDING_GROUND_CHANGES {
                         self.ground_changes
                             .push((world_x as u16, world_y as u16, square.tile.0));
