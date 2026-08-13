@@ -75,6 +75,12 @@ public partial class GameScene : Node
     /// </remarks>
     public bool OpenVault { get; set; }
 
+    /// <summary>Opens the options page once in the world. Set from the command line.</summary>
+    public bool OpenOptions { get; set; }
+
+    /// <summary>Which options tab to open on, or null for the first. Set from the command line.</summary>
+    public string OptionsTab { get; set; }
+
     /// <summary>Overrides the starting camera heading, in radians. Set from the command line.</summary>
     public float? StartingCameraAngle { get; set; }
 
@@ -256,6 +262,12 @@ public partial class GameScene : Node
 
             if (OpenAccountPanel && !_account.IsOpen)
                 _account.Toggle();
+
+            if (OpenOptions && !_options.IsOpen)
+            {
+                _options.ShowTab(OptionsTab);
+                _options.Toggle();
+            }
         };
         _controller.OptionsToggled += () => _options.Toggle();
         _controller.DebugToggled += () => _debug.Toggle();
@@ -431,6 +443,12 @@ public partial class GameScene : Node
 
             if (OpenAccountPanel && !_account.IsOpen)
                 _account.Toggle();
+
+            if (OpenOptions && !_options.IsOpen)
+            {
+                _options.ShowTab(OptionsTab);
+                _options.Toggle();
+            }
         };
         _controller.OptionsToggled += () => _options.Toggle();
         _controller.DebugToggled += () => _debug.Toggle();

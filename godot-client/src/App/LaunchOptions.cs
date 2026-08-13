@@ -68,6 +68,12 @@ public sealed class LaunchOptions
     /// <summary>Opens the vault panel once in the world, for unattended screenshots of it.</summary>
     public bool OpenVault { get; private set; }
 
+    /// <summary>Opens the options page once in the world. Same purpose as the three above.</summary>
+    public bool OpenOptions { get; private set; }
+
+    /// <summary>Which of its tabs to open on, or null for the first.</summary>
+    public string OptionsTab { get; private set; }
+
     /// <summary>
     /// Starting camera heading in degrees, or null for the usual one.
     /// </summary>
@@ -120,6 +126,16 @@ public sealed class LaunchOptions
                 case "--character": options.OpenCharacterPanel = true; break;
                 case "--account": options.OpenAccountPanel = true; break;
                 case "--vault": options.OpenVault = true; break;
+                case "--options":
+                {
+                    options.OpenOptions = true;
+
+                    // An optional tab name after it, but only if what follows is not another flag.
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--"))
+                        options.OptionsTab = args[++i];
+
+                    break;
+                }
                 case "--camera-angle": options.CameraAngleDegrees = ParseFloat(Next(), 0f); break;
                 case "--say":
                 {

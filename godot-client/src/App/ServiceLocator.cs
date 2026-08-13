@@ -85,6 +85,8 @@ public partial class ServiceLocator : Node
             _ => DisplayServer.VSyncMode.Enabled,
         });
 
+        ApplyRendering(options);
+
         // Only when it is actually changing. Setting the mode unconditionally churns the window on
         // every saved setting, and every panel in the game relays itself when the window resizes.
         var wanted = options.Windowed
@@ -95,6 +97,42 @@ public partial class ServiceLocator : Node
             DisplayServer.WindowSetMode(wanted);
 
         _instance._settings.Save();
+    }
+
+    /// <summary>
+    /// Puts the quality settings on the viewport the world is drawn into.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The root viewport, which is the only one with 3D in it. The interface lives on canvas layers
+    /// above it and none of this reaches them -- supersampling the world does not soften a single
+    /// glyph, which is the reason it can be turned up as far as the machine will take it.
+    /// </para>
+    /// <para>
+    /// Bilinear scaling rather than FSR. FSR sharpens as it upscales and is built for rendering
+    /// *below* native; this is used the other way round, to render above it, and there bilinear is
+    /// simply the box filter that averaging wants.
+    /// </para>
+    /// </remarks>
+    private static void ApplyRendering(Settings options)
+    {
+        if (Engine.GetMainLoop() is not SceneTree tree || tree.Root is not { } root)
+            return;
+
+        root.Scaling3DMode = Viewport.Scaling3DModeEnum.Bilinear;
+        root.Scaling3DScale = Mathf.Clamp(options.RenderScale, 50, 200) / 100f;
+
+        root.ScreenSpaceAA = options.AntiAliasing is 1 or 4
+            ? Viewport.ScreenSpaceAAEnum.Fxaa
+            : Viewport.ScreenSpaceAAEnum.Disabled;
+
+        root.Msaa3D = options.AntiAliasing switch
+        {
+            2 => Viewport.Msaa.Msaa2X,
+            3 => Viewport.Msaa.Msaa4X,
+            4 => Viewport.Msaa.Msaa8X,
+            _ => Viewport.Msaa.Disabled,
+        };
     }
 
     public static bool ContentLoaded => Assets != null && Data != null;

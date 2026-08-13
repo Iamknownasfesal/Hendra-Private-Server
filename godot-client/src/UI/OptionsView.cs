@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 using Hendra.App;
 
@@ -99,6 +100,20 @@ public partial class OptionsView : Control
     }
 
     /// <summary>Opens the panel, or closes it if it is already open.</summary>
+    /// <summary>
+    /// Which page the panel opens on, by name.
+    /// </summary>
+    /// <remarks>
+    /// For the command line, which is the only caller: an unattended run that wants a picture of
+    /// the video settings has no hand on the keyboard to click the tab with.
+    /// </remarks>
+    public void ShowTab(string name)
+    {
+        int at = Array.FindIndex(TabNames, t => string.Equals(t, name, StringComparison.OrdinalIgnoreCase));
+        if (at >= 0)
+            _tab = at;
+    }
+
     public void Toggle()
     {
         if (_panel == null)
@@ -440,6 +455,20 @@ public partial class OptionsView : Control
 
         private void BuildVideo()
         {
+            Heading("Rendering");
+
+            // The preset writes the two below it. It is not stored anywhere -- it is read back
+            // from what they say, so moving either one on its own is not overridden the next time
+            // this page is opened, and lands on "Custom" if the pair matches no preset.
+            Choice("Quality", QualityNames, () => QualityOf(Options), value => ApplyQuality(Options, value));
+
+            Choice("Render Scale", ScaleLabels,
+                () => Nearest(ScaleChoices, Options.RenderScale),
+                value => Options.RenderScale = ScaleChoices[value]);
+
+            Choice("Anti-Aliasing", new[] { "Off", "FXAA", "MSAA 2x", "MSAA 4x", "MSAA 8x + FXAA" },
+                () => Options.AntiAliasing, value => Options.AntiAliasing = value);
+
             Heading("Display");
             Choice("Window Mode", new[] { "Fullscreen", "Windowed" },
                 () => Options.Windowed ? 1 : 0, value => Options.Windowed = value == 1);
@@ -488,6 +517,60 @@ public partial class OptionsView : Control
             Toggle("Curse Indication", () => Options.CurseIndication, on => Options.CurseIndication = on);
             Choice("Ally Shoot", new[] { "Show All", "Hide Projectiles", "Hide All" },
                 () => Options.AllyShoot, value => Options.AllyShoot = value);
+        }
+
+        /// <summary>
+        /// The presets, as the pair of values each one stands for.
+        /// </summary>
+        /// <remarks>
+        /// Supersampling is where the quality is, so the ladder is mostly render scale: half again
+        /// at High and double at Ultra. Low turns everything off for a machine that is struggling,
+        /// which on this game is a real case -- a full realm is a few thousand sprites.
+        /// </remarks>
+        private static readonly (string Name, int Scale, int Aa)[] Presets =
+        {
+            ("Low", 100, 0),
+            ("Medium", 100, 1),
+            ("High", 150, 1),
+            ("Ultra", 200, 4),
+        };
+
+        private static readonly string[] QualityNames =
+            Presets.Select(p => p.Name).Append("Custom").ToArray();
+
+        private static readonly int[] ScaleChoices = { 75, 100, 125, 150, 175, 200 };
+
+        private static readonly string[] ScaleLabels =
+            ScaleChoices.Select(v => $"{v}%").ToArray();
+
+        /// <summary>Which preset the current pair of values is, or Custom.</summary>
+        private static int QualityOf(App.Settings options)
+        {
+            for (int i = 0; i < Presets.Length; i++)
+                if (Presets[i].Scale == options.RenderScale && Presets[i].Aa == options.AntiAliasing)
+                    return i;
+
+            return Presets.Length;
+        }
+
+        private static void ApplyQuality(App.Settings options, int preset)
+        {
+            if (preset < 0 || preset >= Presets.Length)
+                return;
+
+            options.RenderScale = Presets[preset].Scale;
+            options.AntiAliasing = Presets[preset].Aa;
+        }
+
+        /// <summary>The index of the nearest offered value, so a hand-edited file still shows.</summary>
+        private static int Nearest(int[] choices, int value)
+        {
+            int best = 0;
+            for (int i = 1; i < choices.Length; i++)
+                if (Mathf.Abs(choices[i] - value) < Mathf.Abs(choices[best] - value))
+                    best = i;
+
+            return best;
         }
 
         private void BuildSound()

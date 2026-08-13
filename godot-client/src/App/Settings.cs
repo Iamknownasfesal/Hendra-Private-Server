@@ -133,6 +133,33 @@ public sealed class Settings
     /// <summary>Windowed rather than fullscreen.</summary>
     public bool Windowed { get; set; }
 
+    /// <summary>
+    /// What fraction of native the world is rendered at, as a percentage.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Above a hundred is supersampling: the world is drawn larger than the window and scaled back
+    /// down, so every sprite edge is averaged from several samples instead of landing on one pixel
+    /// or the next. It is the one setting that meaningfully changes how this game looks. The art is
+    /// eight pixels square drawn forty pixels tall, so every diagonal in it is a staircase, and no
+    /// amount of filtering fixes a staircase -- more samples do.
+    /// </para>
+    /// <para>
+    /// Only the world. The interface is drawn on its own canvas and is never scaled by this, so a
+    /// hundred and fifty per cent costs nothing in text sharpness.
+    /// </para>
+    /// </remarks>
+    public int RenderScale { get; set; } = 150;
+
+    /// <summary>0 off, 1 FXAA, 2 MSAA 2x, 3 MSAA 4x, 4 MSAA 8x.</summary>
+    /// <remarks>
+    /// Two different tools under one control. FXAA smooths the finished image and so reaches the
+    /// alpha-cut edges of sprites, which is most of what is jagged here; MSAA works on geometry
+    /// edges and so mainly helps the ground and the walls. Both, at once, is what the top setting
+    /// is for.
+    /// </remarks>
+    public int AntiAliasing { get; set; } = 1;
+
     /// <summary>Keys the player has moved, as action name to keycode. Empty means all default.</summary>
     public System.Collections.Generic.Dictionary<string, int> KeyOverrides { get; }
         = new System.Collections.Generic.Dictionary<string, int>();
@@ -251,6 +278,8 @@ public sealed class Settings
         settings.Windowed = (bool)file.GetValue(Section, "windowed", settings.Windowed);
         settings.MaxFps = (int)file.GetValue(Section, "max_fps", settings.MaxFps);
         settings.VSync = (int)file.GetValue(Section, "vsync", settings.VSync);
+        settings.RenderScale = (int)file.GetValue(Section, "render_scale", settings.RenderScale);
+        settings.AntiAliasing = (int)file.GetValue(Section, "anti_aliasing", settings.AntiAliasing);
         settings.CameraZoom = (float)file.GetValue(Section, "camera_zoom", settings.CameraZoom);
         settings.BagSize = (float)file.GetValue(Section, "bag_size", settings.BagSize);
         settings.MinimapRotation = (bool)file.GetValue(Section, "minimap_rotation", settings.MinimapRotation);
@@ -318,6 +347,8 @@ public sealed class Settings
         file.SetValue(Section, "windowed", Windowed);
         file.SetValue(Section, "max_fps", MaxFps);
         file.SetValue(Section, "vsync", VSync);
+        file.SetValue(Section, "render_scale", RenderScale);
+        file.SetValue(Section, "anti_aliasing", AntiAliasing);
         file.SetValue(Section, "camera_zoom", CameraZoom);
         file.SetValue(Section, "bag_size", BagSize);
         file.SetValue(Section, "minimap_rotation", MinimapRotation);
