@@ -1,0 +1,15 @@
+[package]
+name = "hendra-net"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# This crate is compiled into the dedicated server *and*, through a GDExtension, into the Godot
+# client. Everything here must therefore stay free of server-only assumptions: no database, no
+# world simulation, no tokio in the codec path. Keeping the dependency list this short is what lets
+# the same protocol code run on both ends and never drift.
+
+[dependencies]
+thiserror.workspace = true
+
+[dev-dependencies]
