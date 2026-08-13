@@ -6,7 +6,7 @@ deliberately excluded and left until last.
 Phases 0–5 are done: workspace, content, protocol, transport, simulation, behaviour language,
 persistence, authentication. What follows is phases 6–11.
 
-**Where we are:** ~64% of the old server by subsystem. 544 tests.
+**Where we are:** ~64% of the old server by subsystem. 546 tests.
 
 **Sizing** is relative, not calendar: **S** is an afternoon, **M** is a day or two, **L** is
 several days, **XL** is a week or more.
@@ -154,7 +154,7 @@ an ability, 1,942 activates across 43 kinds.
 
 - [ ] Potions stack to a limit
 - [x] Consumables are taken from the slot after they are used
-- [ ] Bag type decides which colour bag loot drops in
+- [x] Bag type decides which colour bag loot drops in, taking the best thing in the bag
 
 ### 7.4 Vendors and gift chests — **M**
 

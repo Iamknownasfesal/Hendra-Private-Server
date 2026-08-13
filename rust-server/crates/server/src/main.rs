@@ -130,7 +130,20 @@ async fn main() {
         "classes loaded"
     );
 
+    // The content numbers loot colours from zero upward and names the bags in the same order.
+    // Anything the catalog does not have leaves a hole, which falls back to the plain bag rather
+    // than dropping nothing.
+    let bag_types: Vec<hendra_content::ObjectType> = std::iter::once("Loot Bag".to_string())
+        .chain((2..=9).map(|colour| format!("Loot Bag {colour}")))
+        .map(|name| {
+            catalog
+                .type_of(&name)
+                .unwrap_or(hendra_content::ObjectType::NONE)
+        })
+        .collect();
+
     let loadout = world_task::Loadout {
+        bag_types,
         avatar: default_class.object_type,
         weapon: default_class
             .slot_type(0)
@@ -171,7 +184,7 @@ async fn main() {
     let registry = Arc::new(worlds::Worlds::load(
         &options.worlds,
         Arc::clone(&catalog),
-        loadout,
+        loadout.clone(),
     ));
 
     // The entry world is built from the requested map directly, so `--map` still works for a map
@@ -223,7 +236,7 @@ async fn main() {
         }
     }
 
-    let entry = world_task::spawn(world, Arc::clone(&catalog), loadout);
+    let entry = world_task::spawn(world, Arc::clone(&catalog), loadout.clone());
 
     let identity = match &options.certificate {
         Some((cert, key)) => match ServerIdentity::from_pem_files(cert, key) {

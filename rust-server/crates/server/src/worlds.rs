@@ -159,7 +159,7 @@ impl Worlds {
 
         let world = World::new(name.to_string(), terrain, &self.catalog);
         report_portals(&world, self);
-        let handle = world_task::spawn(world, Arc::clone(&self.catalog), self.loadout);
+        let handle = world_task::spawn(world, Arc::clone(&self.catalog), self.loadout.clone());
 
         running.insert(key.to_string(), handle.clone());
         tracing::info!(running = running.len(), "worlds now ticking");

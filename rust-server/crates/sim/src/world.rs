@@ -317,6 +317,9 @@ pub struct World {
     /// What a loot bag looks like.
     bag_type: ObjectType,
 
+    /// The object to use for each loot colour, indexed by the content's own numbering.
+    bag_types: Vec<ObjectType>,
+
     /// Reused between ticks so a warm world allocates nothing.
     handles: Vec<Handle>,
     nearby: Vec<Handle>,
@@ -398,6 +401,7 @@ impl World {
             seed: 0x9e37_79b9,
             behaviours: Programs::default(),
             bag_type: ObjectType(0x0500),
+            bag_types: Vec::new(),
             handles: Vec::new(),
             nearby: Vec::new(),
             neighbours: Vec::new(),
@@ -1876,18 +1880,46 @@ impl World {
                 continue;
             }
 
+            // The bag takes the colour of the best thing in it. A white bag beside a brown one is
+            // how a player knows which to walk back for, and reading the highest rather than the
+            // first means the order loot rolled in does not decide it.
+            let colour = dropped
+                .iter()
+                .filter_map(|item| catalog.object(*item))
+                .filter_map(|desc| desc.item.as_ref())
+                .map(|item| item.bag_type)
+                .max()
+                .unwrap_or(0);
+
             let mut container = Container::new(ContainerKind::Bag, 8);
             for item in dropped {
                 container.insert(item, catalog);
             }
 
-            let mut bag = Entity::fixture(self.bag_type, x, y);
+            let mut bag = Entity::fixture(self.bag_kind(colour), x, y);
             bag.kind = Kind::Container;
             bag.container = Some(Box::new(container));
             // Long enough to walk back for, short enough that a dungeon does not fill with bags.
             bag.expires_in_ms = Some(60_000);
             self.spawn(bag);
         }
+    }
+
+    /// Which bag a loot colour is dropped in.
+    ///
+    /// The content numbers these from zero upward and the world is told the object for each. A
+    /// colour with nothing registered falls back to the plain bag rather than dropping nothing,
+    /// because losing the loot is worse than losing its colour.
+    fn bag_kind(&self, colour: i32) -> ObjectType {
+        self.bag_types
+            .get(colour.max(0) as usize)
+            .copied()
+            .unwrap_or(self.bag_type)
+    }
+
+    /// Registers the object to use for each loot colour.
+    pub fn set_bag_types(&mut self, bags: Vec<ObjectType>) {
+        self.bag_types = bags;
     }
 
     /// Decides whether one loot entry drops, and what.
@@ -2560,6 +2592,11 @@ mod tests {
           <LevelIncrease min="2" max="8">MaxMagicPoints</LevelIncrease>
         </Object>
         <Object type="0x900" id="Bolt"><Class>Projectile</Class></Object>
+        <Object type="0x510" id="Loot Bag"><Class>Container</Class><Static/></Object>
+        <Object type="0x511" id="Loot Bag 5"><Class>Container</Class><Static/></Object>
+        <Object type="0x904" id="Rare Blade">
+          <Class>Equipment</Class><Item/><SlotType>1</SlotType><BagType>5</BagType>
+        </Object>
         <Object type="0x902" id="Health Potion">
           <Class>Equipment</Class><Item/><SlotType>4</SlotType><Consumable/>
           <Activate amount="100">Heal</Activate>
@@ -4003,6 +4040,77 @@ mod tests {
             world.get(victim).unwrap().hp < 500,
             "the blast should have landed where it was aimed"
         );
+    }
+
+    #[test]
+    fn a_bag_takes_the_colour_of_the_best_thing_in_it() {
+        // A white bag beside a brown one is how a player knows which to walk back for, and reading
+        // the highest rather than the first means the order loot rolled in does not decide it.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+        world.set_bag_types(vec![
+            ObjectType(0x510),
+            ObjectType::NONE,
+            ObjectType::NONE,
+            ObjectType::NONE,
+            ObjectType::NONE,
+            ObjectType(0x511),
+        ]);
+
+        let mut enemy = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
+        enemy.kind = Kind::Enemy;
+        enemy.max_hp = 200;
+        enemy.hp = 200;
+        let enemy = world.spawn(enemy).unwrap();
+
+        behaving(
+            &mut world,
+            &catalog,
+            r#"enemy "Slime" {
+                 state a { }
+                 loot {
+                   item("Health Potion", 1)
+                   item("Rare Blade", 1)
+                 }
+               }"#,
+        );
+        world.reindex();
+
+        world.get_mut(enemy).unwrap().dead = true;
+        world.advance(&catalog, 50);
+
+        assert_eq!(count_of(&world, 0x511), 1, "the rarer colour wins");
+        assert_eq!(count_of(&world, 0x510), 0);
+    }
+
+    #[test]
+    fn a_colour_with_no_bag_registered_still_drops_the_loot() {
+        // Losing the loot is worse than losing its colour.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+        world.set_bag_types(vec![ObjectType(0x510)]);
+
+        let mut enemy = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
+        enemy.kind = Kind::Enemy;
+        enemy.max_hp = 200;
+        enemy.hp = 200;
+        let enemy = world.spawn(enemy).unwrap();
+
+        behaving(
+            &mut world,
+            &catalog,
+            r#"enemy "Slime" { state a { } loot { item("Rare Blade", 1) } }"#,
+        );
+        world.reindex();
+
+        world.get_mut(enemy).unwrap().dead = true;
+        world.advance(&catalog, 50);
+
+        let bags = world
+            .iter()
+            .filter(|(_, entity)| entity.container.is_some())
+            .count();
+        assert_eq!(bags, 1, "the loot is still there");
     }
 
     #[test]

@@ -178,6 +178,8 @@ pub async fn run(
 
     let mut reported = Instant::now();
 
+    let loadout = &loadout;
+
     loop {
         tokio::select! {
             command = inbox.recv() => {
@@ -217,8 +219,11 @@ pub async fn run(
 /// A character carries its own class, health and weapon, so this is only reached when the catalog
 /// has no class at all. A content directory too broken to name an avatar should still let someone
 /// connect and see the problem.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Loadout {
+    /// The object to use for each loot colour, in the content's own order.
+    pub bag_types: Vec<ObjectType>,
+
     pub avatar: ObjectType,
     pub weapon: Option<ObjectType>,
 }
@@ -244,7 +249,7 @@ pub struct Arrival {
 fn handle(
     world: &mut World,
     catalog: &Catalog,
-    loadout: Loadout,
+    loadout: &Loadout,
     players: &mut Vec<Player>,
     command: ToWorld,
 ) {
@@ -804,7 +809,9 @@ pub fn portals_in(world: &World) -> Vec<(Handle, u16)> {
 }
 
 /// Starts a world on its own task.
-pub fn spawn(world: World, catalog: Arc<Catalog>, loadout: Loadout) -> WorldHandle {
+pub fn spawn(mut world: World, catalog: Arc<Catalog>, loadout: Loadout) -> WorldHandle {
+    world.set_bag_types(loadout.bag_types.clone());
+
     let name: Arc<str> = Arc::from(world.name.as_str());
     let (inbox, receiver) = mpsc::channel(1024);
 
