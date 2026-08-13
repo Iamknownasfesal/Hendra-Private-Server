@@ -170,8 +170,42 @@ public partial class GameScene : Node
 
         _hudLayer.Refit();
 
+        // The card's buttons go straight to the panels they open, wired once, here.
+        //
+        // They used to travel out to the world controller and back as events, and the controller is
+        // rebuilt every time you change world while the interface is not -- so the wiring aged: old
+        // controllers kept answering, new ones added themselves beside them, and a single click
+        // arrived at the panel more than once. Guarding the dead ones made the count right and did
+        // not make the route sensible. This object owns the HUD and it owns the panels; there is
+        // nothing in between for a world change to invalidate.
+        //
+        // The keys that do the same thing still come through the controller, because that is where
+        // input is read. One handler each, on a controller that is new every time.
+        WireCardButtons();
+
         _controller = new WorldController();
         AddChild(_controller);
+    }
+
+    /// <summary>Opens each panel from its own button, for as long as this scene exists.</summary>
+    private void WireCardButtons()
+    {
+        _hud.StatsPressed += ShowCharacter;
+        _hud.AccountPressed += ShowAccount;
+        _hud.OptionsPressed += () => _options.Toggle();
+    }
+
+    /// <summary>The two share a slot on the screen, so opening one closes the other.</summary>
+    private void ShowCharacter()
+    {
+        _account.Close();
+        _character.Toggle();
+    }
+
+    private void ShowAccount()
+    {
+        _character.Close();
+        _account.Toggle();
     }
 
     /// <summary>Connects and loads an existing character.</summary>
@@ -284,18 +318,8 @@ public partial class GameScene : Node
             _guild.AccountName = _controller.Map?.Player?.Name;
             _guild.Toggle();
         };
-        // The two share a slot on the screen, so opening one closes the other.
-        _controller.CharacterToggled += () =>
-        {
-            _account.Close();
-            _character.Toggle();
-        };
-
-        _controller.AccountToggled += () =>
-        {
-            _character.Close();
-            _account.Toggle();
-        };
+        _controller.CharacterToggled += ShowCharacter;
+        _controller.AccountToggled += ShowAccount;
 
         _account.Connect($"http://{_host}:8888", _guid, _password);
         _character.Connect($"http://{_host}:8888", _guid, _password, _characterId);
@@ -465,18 +489,8 @@ public partial class GameScene : Node
             _guild.AccountName = _controller.Map?.Player?.Name;
             _guild.Toggle();
         };
-        // The two share a slot on the screen, so opening one closes the other.
-        _controller.CharacterToggled += () =>
-        {
-            _account.Close();
-            _character.Toggle();
-        };
-
-        _controller.AccountToggled += () =>
-        {
-            _character.Close();
-            _account.Toggle();
-        };
+        _controller.CharacterToggled += ShowCharacter;
+        _controller.AccountToggled += ShowAccount;
 
         _account.Connect($"http://{_host}:8888", _guid, _password);
         _character.Connect($"http://{_host}:8888", _guid, _password, _characterId);

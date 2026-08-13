@@ -231,14 +231,10 @@ public partial class WorldController : Node
                 _inventory.OpenContainer = OpenContainer;
                 _inventory.Stack(from, health);
             });
-            _hud.OptionsPressed += Alive(() => OptionsToggled?.Invoke());
             _hud.BuyPressed += Alive(OnBuyPressed);
 
-            // The card's own buttons open the panels they name. Routed through the controller
-            // rather than wired straight to a panel inside the view, so what a button does is
-            // decided in one place and can be changed without opening the interface.
-            _hud.AccountPressed += Alive(() => AccountToggled?.Invoke());
-            _hud.StatsPressed += Alive(() => CharacterToggled?.Invoke());
+            // The card's own buttons are wired in GameScene, which owns both the HUD and the
+            // panels and outlives every world. See WireCardButtons.
             _hud.PartyMemberActivated += Alive<string>(who => _chat?.BeginTyping($"/tell {who} "));
 
             // Four buttons the reference has and this server does not answer. Saying so is better
