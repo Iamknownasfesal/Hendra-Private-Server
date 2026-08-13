@@ -352,9 +352,11 @@ fn can_hit(projectile: &Projectile, target: Handle, entity: &Entity) -> bool {
 
     // Players shoot enemies and enemies shoot players. Nothing shoots scenery, and players do not
     // shoot each other.
+    // A decoy is shot by enemies and not by its owner, which is the whole reason it is its own
+    // kind rather than an enemy with a flag.
     matches!(
         (projectile.from_player, entity.kind),
-        (true, Kind::Enemy) | (false, Kind::Player)
+        (true, Kind::Enemy) | (false, Kind::Player) | (false, Kind::Decoy)
     )
 }
 
@@ -418,6 +420,7 @@ mod tests {
             resizing: None,
             no_experience: false,
             effects: Vec::new(),
+            armed: None,
             ability_cooldown_ms: 0,
             progress: crate::leveling::Progress::new(),
             health_fraction: 0.0,

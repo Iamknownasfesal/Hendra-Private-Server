@@ -6,7 +6,7 @@ deliberately excluded and left until last.
 Phases 0–5 are done: workspace, content, protocol, transport, simulation, behaviour language,
 persistence, authentication. What follows is phases 6–11.
 
-**Where we are:** ~80% of the old server by subsystem. 595 tests.
+**Where we are:** ~82% of the old server by subsystem. 599 tests.
 
 **Sizing** is relative, not calendar: **S** is an afternoon, **M** is a day or two, **L** is
 several days, **XL** is a week or more.
@@ -160,7 +160,7 @@ an ability, 1,942 activates across 43 kinds.
 
 - [x] Currency on the account: gold, fame, tokens, with the balance checked in the statement
 - [x] A purchase path that pays and delivers in one transaction, reusing the claim `give_item` proved
-- [ ] Merchant and gift chest entity kinds
+- [x] Gift chests are containers, which the loot path already builds. A merchant is a fixture whose purchase goes through 7.4's `buy_item`
 
 ---
 
@@ -184,7 +184,7 @@ an ability, 1,942 activates across 43 kinds.
 
 ### 8.4 The remaining entity kinds — **M**
 
-- [ ] Decoy, Trap, Sign, GiftChest, ConnectedObject, Wall, GuildHallPortal
+- [x] Decoy and Trap as their own kinds, so a decoy is shot by enemies and not by its owner. Sign, Wall and ConnectedObject are already fixtures; GiftChest is a container; GuildHallPortal is a portal, and 9.2's halls reach it through `get_or_start_for`
 
 ### 8.5 Terrain on the wire — **M**
 

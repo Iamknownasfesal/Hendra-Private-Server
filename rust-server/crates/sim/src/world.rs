@@ -46,11 +46,20 @@ pub enum Kind {
 
     /// A loot bag or chest.
     Container,
+
+    /// Something a player left that enemies attack instead of them.
+    ///
+    /// Its own kind rather than an enemy with a flag, because everything that decides who shoots
+    /// what asks the kind, and a decoy that answered "enemy" would be shot by its owner.
+    Decoy,
+
+    /// Something armed that fires when a player comes near, then goes.
+    Trap,
 }
 
 impl Kind {
     pub fn is_alive_kind(self) -> bool {
-        matches!(self, Kind::Player | Kind::Enemy)
+        matches!(self, Kind::Player | Kind::Enemy | Kind::Decoy)
     }
 }
 
@@ -117,6 +126,9 @@ pub struct Entity {
     /// Whether killing this awards experience. Summons set this so they cannot be farmed.
     pub no_experience: bool,
 
+    /// What this goes off with, for a trap. `None` for everything else.
+    pub armed: Option<Armed>,
+
     /// Time before an ability may be used again.
     pub ability_cooldown_ms: u32,
 
@@ -178,6 +190,7 @@ impl Entity {
             resizing: None,
             no_experience: false,
             effects: Vec::new(),
+            armed: None,
             ability_cooldown_ms: 0,
             progress: crate::leveling::Progress::new(),
             health_fraction: 0.0,
@@ -214,6 +227,7 @@ impl Entity {
             resizing: None,
             no_experience: false,
             effects: Vec::new(),
+            armed: None,
             ability_cooldown_ms: 0,
             progress: crate::leveling::Progress::new(),
             health_fraction: 0.0,
@@ -753,6 +767,7 @@ impl World {
         self.expire_effects(elapsed_ms);
         self.resize(elapsed_ms);
         self.think(catalog, elapsed_ms);
+        self.spring_traps(catalog);
         self.apply_hazards(catalog, elapsed_ms);
         self.apply_effect_health(elapsed_ms);
         self.regenerate(elapsed_ms);
@@ -910,6 +925,23 @@ fn is_harmful(effect: hendra_content::ConditionEffect) -> bool {
     )
 }
 
+/// What a trap does when something comes near.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Armed {
+    pub radius: f32,
+    pub damage: i32,
+    pub effect: Option<u8>,
+}
+
+/// How long what a trap leaves behind lasts.
+const TRAP_EFFECT_MS: u32 = 3_000;
+
+/// How much a decoy can absorb before it is gone.
+///
+/// A decoy that could not be destroyed would be a wall rather than a distraction, and the point of
+/// one is that it buys time rather than safety.
+const DECOY_HEALTH: i32 = 200;
+
 /// Something thrown, waiting to arrive.
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Falling {
@@ -931,6 +963,12 @@ struct Blast {
     damage: i32,
     effect: Option<u8>,
     effect_ms: u32,
+
+    /// Whether this catches players or enemies.
+    ///
+    /// An explosion has a side, as a projectile does. Without one a player's own spell hurts the
+    /// people standing next to them and a trap they set hurts nobody.
+    hits_players: bool,
 }
 
 /// The most children one behaviour may make in a single tick.
@@ -1231,6 +1269,7 @@ impl World {
                         damage: *damage,
                         effect: *effect,
                         effect_ms: *effect_ms,
+                        hits_players: true,
                     },
                 );
             }
@@ -1475,15 +1514,20 @@ impl World {
             damage,
             effect,
             effect_ms,
+            hits_players,
         } = blast;
         self.grid.within(x, y, radius, &mut self.nearby);
         let found = std::mem::take(&mut self.nearby);
 
         for handle in &found {
-            let hit = self
-                .entities
-                .get(*handle)
-                .is_some_and(|entity| entity.kind == Kind::Player && !entity.dead);
+            let hit = self.entities.get(*handle).is_some_and(|entity| {
+                !entity.dead
+                    && if hits_players {
+                        entity.kind == Kind::Player
+                    } else {
+                        entity.kind == Kind::Enemy
+                    }
+            });
             if !hit {
                 continue;
             }
@@ -2154,6 +2198,9 @@ impl World {
                         damage: *damage,
                         effect: effect.map(|found| found.index() as u8),
                         effect_ms: *effect_ms,
+                        // A player's spell catches enemies. It hurting the people beside them is
+                        // exactly the bug this side exists to stop.
+                        hits_players: false,
                     },
                 );
             }
@@ -2171,6 +2218,7 @@ impl World {
                         damage: *damage,
                         effect: None,
                         effect_ms: 0,
+                        hits_players: false,
                     },
                 );
                 if let Some(entity) = self.entities.get_mut(handle) {
@@ -2201,8 +2249,38 @@ impl World {
                 self.step(handle, to_x, to_y);
             }
 
-            Effect::Placed { .. }
-            | Effect::Pet { .. }
+            // What a decoy and a trap have in common is that they are left behind and act on
+            // their own; what they do afterwards is all that differs.
+            Effect::Placed {
+                kind,
+                duration_ms,
+                radius,
+                damage,
+                effect,
+            } => {
+                let where_to = match kind {
+                    hendra_content::activate::Placed::Decoy => from,
+                    hendra_content::activate::Placed::Trap => aim,
+                };
+
+                let mut placed = Entity::fixture(ObjectType::NONE, where_to.0, where_to.1);
+                placed.kind = match kind {
+                    hendra_content::activate::Placed::Decoy => Kind::Decoy,
+                    hendra_content::activate::Placed::Trap => Kind::Trap,
+                };
+                placed.max_hp = DECOY_HEALTH;
+                placed.hp = DECOY_HEALTH;
+                placed.expires_in_ms = Some((*duration_ms).max(1));
+                placed.armed = Some(Armed {
+                    radius: *radius,
+                    damage: *damage,
+                    effect: effect.map(|found| found.index() as u8),
+                });
+
+                self.spawn(placed);
+            }
+
+            Effect::Pet { .. }
             | Effect::Currency { .. }
             | Effect::Boost { .. }
             | Effect::Unlock { .. }
@@ -2260,6 +2338,67 @@ impl World {
         for landed in arrived {
             self.spawn_child(catalog, behaviours, landed.kind, landed.x, landed.y, None);
         }
+    }
+
+    /// Sets off any trap something has walked into.
+    fn spring_traps(&mut self, catalog: &Catalog) {
+        self.handles.clear();
+        self.handles.extend(
+            self.entities
+                .iter()
+                .filter(|(_, entity)| entity.kind == Kind::Trap && entity.armed.is_some())
+                .map(|(handle, _)| handle),
+        );
+
+        if self.handles.is_empty() {
+            return;
+        }
+
+        let armed = std::mem::take(&mut self.handles);
+        for handle in &armed {
+            let Some((x, y, trap)) = self
+                .entities
+                .get(*handle)
+                .and_then(|entity| entity.armed.map(|armed| (entity.x, entity.y, armed)))
+            else {
+                continue;
+            };
+
+            // A trap is sprung by anything it would hurt, which is what makes walking over one a
+            // mistake rather than a decision.
+            self.grid.within(x, y, trap.radius, &mut self.nearby);
+            let nearby = std::mem::take(&mut self.nearby);
+
+            let triggered = nearby.iter().any(|other| {
+                self.entities
+                    .get(*other)
+                    .is_some_and(|entity| entity.kind == Kind::Enemy && !entity.dead)
+            });
+            self.nearby = nearby;
+
+            if !triggered {
+                continue;
+            }
+
+            self.explode(
+                catalog,
+                (x, y),
+                Blast {
+                    radius: trap.radius,
+                    damage: trap.damage,
+                    effect: trap.effect,
+                    effect_ms: TRAP_EFFECT_MS,
+                    hits_players: false,
+                },
+            );
+
+            if let Some(entity) = self.entities.get_mut(*handle) {
+                entity.dead = true;
+                entity.no_experience = true;
+            }
+        }
+
+        self.handles = armed;
     }
 
     /// Awards experience for everything that died this tick.
@@ -2603,6 +2742,14 @@ mod tests {
         <Object type="0x511" id="Loot Bag 5"><Class>Container</Class><Static/></Object>
         <Object type="0x904" id="Rare Blade">
           <Class>Equipment</Class><Item/><SlotType>1</SlotType><BagType>5</BagType>
+        </Object>
+        <Object type="0x905" id="Cloak of Shadows">
+          <Class>Equipment</Class><Item/><SlotType>13</SlotType>
+          <Activate duration="5" distance="1">Decoy</Activate>
+        </Object>
+        <Object type="0x906" id="Trap Spell">
+          <Class>Equipment</Class><Item/><SlotType>5</SlotType>
+          <Activate radius="4" totalDamage="200" duration="10">Trap</Activate>
         </Object>
         <Object type="0x902" id="Health Potion">
           <Class>Equipment</Class><Item/><SlotType>4</SlotType><Consumable/>
@@ -4028,7 +4175,7 @@ mod tests {
     }
 
     #[test]
-    fn an_ability_reaches_what_it_is_aimed_at() {
+    fn an_ability_reaches_what_it_is_aimed_at_and_spares_the_people_beside_it() {
         let catalog = catalog();
         let mut world = field(&catalog);
 
@@ -4037,16 +4184,22 @@ mod tests {
         player.max_mp = 1000;
         let player = world.spawn(player).unwrap();
 
-        let mut near = Entity::player(ObjectType(0x600), 20.0, 10.0, 500);
-        near.hp = 500;
-        let victim = world.spawn(near).unwrap();
+        let mut enemy = Entity::fixture(ObjectType(0x502), 20.0, 10.0);
+        enemy.kind = Kind::Enemy;
+        enemy.max_hp = 500;
+        enemy.hp = 500;
+        let enemy = world.spawn(enemy).unwrap();
+
+        // Standing in the blast, and on the caster's side.
+        let friend = world
+            .spawn(Entity::player(ObjectType(0x600), 20.5, 10.0, 500))
+            .unwrap();
         world.reindex();
 
         world.use_item(player, &catalog, ObjectType(0x903), (20.0, 10.0));
-        assert!(
-            world.get(victim).unwrap().hp < 500,
-            "the blast should have landed where it was aimed"
-        );
+
+        assert!(world.get(enemy).unwrap().hp < 500, "the enemy is hit");
+        assert_eq!(world.get(friend).unwrap().hp, 500, "and the friend is not");
     }
 
     #[test]
@@ -4152,6 +4305,129 @@ mod tests {
             world.snapshot_for(hidden, 20.0).len(),
             2,
             "and the hidden one still sees both"
+        );
+    }
+
+    #[test]
+    fn a_decoy_is_shot_by_enemies_and_not_by_the_one_who_left_it() {
+        // The whole reason a decoy is its own kind: an enemy with a flag would be shot by its
+        // owner, which is the opposite of what it is for.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut player = Entity::player(ObjectType(0x600), 10.0, 10.0, 500);
+        player.mp = 500;
+        player.max_mp = 500;
+        player.weapon = Some(ObjectType(0x901));
+        let player = world.spawn(player).unwrap();
+        world.reindex();
+
+        world.use_item(player, &catalog, ObjectType(0x905), (10.0, 10.0));
+
+        let decoy = world
+            .iter()
+            .find(|(_, entity)| entity.kind == Kind::Decoy)
+            .map(|(handle, _)| handle)
+            .expect("a decoy was left");
+
+        let before = world.get(decoy).unwrap().hp;
+        world.shoot(player, &catalog, 0.0);
+        for _ in 0..10 {
+            world.advance(&catalog, 50);
+        }
+
+        assert!(
+            world.get(decoy).is_none_or(|entity| entity.hp == before),
+            "its owner's shots pass through it"
+        );
+    }
+
+    #[test]
+    fn a_decoy_does_not_last_forever() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut player = Entity::player(ObjectType(0x600), 10.0, 10.0, 500);
+        player.mp = 500;
+        player.max_mp = 500;
+        let player = world.spawn(player).unwrap();
+        world.reindex();
+
+        world.use_item(player, &catalog, ObjectType(0x905), (10.0, 10.0));
+        assert_eq!(
+            world.iter().filter(|(_, e)| e.kind == Kind::Decoy).count(),
+            1
+        );
+
+        for _ in 0..120 {
+            world.advance(&catalog, 100);
+        }
+        assert_eq!(
+            world.iter().filter(|(_, e)| e.kind == Kind::Decoy).count(),
+            0,
+            "it should have gone"
+        );
+    }
+
+    #[test]
+    fn a_trap_waits_and_goes_off_when_something_walks_into_it() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut player = Entity::player(ObjectType(0x600), 10.0, 10.0, 500);
+        player.mp = 500;
+        player.max_mp = 500;
+        let player = world.spawn(player).unwrap();
+        world.reindex();
+
+        world.use_item(player, &catalog, ObjectType(0x906), (20.0, 10.0));
+        world.advance(&catalog, 50);
+        assert_eq!(
+            world.iter().filter(|(_, e)| e.kind == Kind::Trap).count(),
+            1,
+            "armed and waiting"
+        );
+
+        // Something walks in.
+        let mut enemy = Entity::fixture(ObjectType(0x502), 20.0, 10.0);
+        enemy.kind = Kind::Enemy;
+        enemy.max_hp = 500;
+        enemy.hp = 500;
+        let enemy = world.spawn(enemy).unwrap();
+        world.reindex();
+        world.advance(&catalog, 50);
+
+        assert!(
+            world.get(enemy).unwrap().hp < 500,
+            "it should have gone off"
+        );
+        assert_eq!(
+            world.iter().filter(|(_, e)| e.kind == Kind::Trap).count(),
+            0,
+            "and be spent"
+        );
+    }
+
+    #[test]
+    fn a_trap_nobody_walks_into_stays_armed() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut player = Entity::player(ObjectType(0x600), 10.0, 10.0, 500);
+        player.mp = 500;
+        player.max_mp = 500;
+        let player = world.spawn(player).unwrap();
+        world.reindex();
+
+        world.use_item(player, &catalog, ObjectType(0x906), (20.0, 10.0));
+        for _ in 0..20 {
+            world.advance(&catalog, 50);
+        }
+
+        assert_eq!(
+            world.iter().filter(|(_, e)| e.kind == Kind::Trap).count(),
+            1,
+            "a player standing beside it is not what sets it off"
         );
     }
 
