@@ -10,8 +10,9 @@ namespace Hendra.UI;
 /// <remarks>
 /// <para>
 /// A dark plate with a light one-pixel border. Revision one had these the other way round, near
-/// white with a grey edge, and the item artwork -- dark-outlined pixel art -- was disappearing into
-/// the square it was drawn on.
+/// white with a grey edge, and the item artwork was disappearing into the square it was drawn on.
+/// The artwork is outlined too -- see <see cref="Style.DrawSprite"/> -- because a dark plate on its
+/// own does not save a dark item, and half the weapons in the game are iron.
 /// </para>
 /// <para>
 /// Everything in the corners is a caption on the item and not a control: the number key that uses
@@ -24,6 +25,9 @@ public sealed partial class SlotView : Control
 {
     /// <summary>How long a slot's border flashes when its key is pressed.</summary>
     private const double FlashSeconds = 0.1;
+
+    /// <summary>How thick the border is. Two: one vanishes, and the border is what draws the grid.</summary>
+    public const float Border = 2f;
 
     private Assets.Sprite _sprite;
     private Resources.ObjectDesc _desc;
@@ -221,8 +225,7 @@ public sealed partial class SlotView : Control
 
         public override void _Draw()
         {
-            if (_sprite.IsValid)
-                DrawTextureRectRegion(_sprite.Sheet, Artwork(_size), _sprite.Region);
+            this.DrawSprite(_sprite, Artwork(_size, _sprite));
         }
     }
 
@@ -316,12 +319,11 @@ public sealed partial class SlotView : Control
     public override void _Draw()
     {
         var full = new Rect2(Vector2.Zero, Size);
-        var (fill, edge) = SlotHighlights.Pair(Highlight);
+        var (fill, edge) = SlotHighlights.Pair(Highlight, _sprite.IsValid);
 
         DrawRect(full, fill.Lightened(_glow * 0.12f));
 
-        if (_sprite.IsValid)
-            DrawTextureRectRegion(_sprite.Sheet, Artwork(Size), _sprite.Region);
+        this.DrawSprite(_sprite, Artwork(Size, _sprite));
 
         DrawCooldown();
         DrawStack();
@@ -338,23 +340,42 @@ public sealed partial class SlotView : Control
         if (StackCount <= 1 || !_sprite.IsValid)
             return;
 
-        this.DrawOutlined(
+        this.DrawToken(
             new Vector2(4f, Style.FontTag + 4f),
             StackCount.ToString(CultureInfo.InvariantCulture), Style.FontTag, Style.Text);
     }
+
+    /// <summary>How much of the slot's short side the artwork is allowed, as a fraction.</summary>
+    /// <remarks>
+    /// Revision five: the item should look like it is in the slot rather than floating in the middle
+    /// of one. Revision two left about six tenths and the reference is nearer nine.
+    /// </remarks>
+    private const float ArtworkFill = 0.88f;
 
     /// <summary>
     /// Where the item's artwork goes: a square, centred, whatever shape the slot is.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The slots are not square -- the hotbar's are 55 by 48 and the equipment row's 85 by 78 --
     /// and filling them edge to edge stretched every sprite sideways. Item art is square pixels;
     /// the slot is the thing that is allowed to be oblong.
+    /// </para>
+    /// <para>
+    /// The side is a whole multiple of the source sprite, never the exact fraction above. An eight
+    /// by eight sprite drawn at eighty-four pixels puts ten and a half screen pixels on each source
+    /// pixel, which means half of them are eleven wide and half are ten, and which half is which
+    /// changes as the slot moves -- the shimmer the snapping rule in revision two exists to
+    /// prevent. Ten times eight is eighty, and every pixel in it is square.
+    /// </para>
     /// </remarks>
-    private static Rect2 Artwork(Vector2 size)
+    private static Rect2 Artwork(Vector2 size, in Assets.Sprite sprite)
     {
-        float inset = Mathf.Max(3f, Mathf.Round(size.X * 0.09f));
-        float side = Mathf.Round(Mathf.Min(size.X, size.Y) - inset * 2f);
+        float shortest = Mathf.Min(size.X, size.Y);
+        float room = Mathf.Floor(shortest * ArtworkFill);
+
+        int source = sprite.IsValid ? Mathf.Min(sprite.Region.Size.X, sprite.Region.Size.Y) : 0;
+        float side = source > 0 ? Mathf.Max(source, Mathf.Floor(room / source) * source) : room;
 
         return new Rect2(Mathf.Round((size.X - side) / 2f), Mathf.Round((size.Y - side) / 2f), side, side);
     }
@@ -371,7 +392,11 @@ public sealed partial class SlotView : Control
     {
         bool lit = _flashUntil > 0.0 || _glow > 0.5f;
 
-        DrawRect(full, lit ? Style.SlotBorderHi : edge, filled: false, width: 1f);
+        // Two pixels, drawn inside the bounds rather than centred on them -- Godot straddles the
+        // rectangle it is given, so a two-pixel border on the outer edge would put one pixel of
+        // every slot into its neighbour's gutter and shift the grid by half a pixel. One is what
+        // revision two drew and it disappears at every scale.
+        DrawRect(full.Grow(-Border / 2f), lit ? Style.SlotBorderHi : edge, filled: false, width: Border);
     }
 
     /// <summary>
@@ -395,17 +420,17 @@ public sealed partial class SlotView : Control
         if (_sprite.IsValid)
         {
             float tag = Style.Measure(Hotkey, Style.FontTag);
-            this.DrawOutlined(
+            this.DrawToken(
                 new Vector2(Size.X - tag - 4f, Style.FontTag + 4f), Hotkey, Style.FontTag, Style.TextDim);
             return;
         }
 
-        int size = Mathf.Max(Style.FontName, (int)(Size.Y * 0.42f));
+        // The scale's own figure, unless the slot is too short to hold it.
+        int size = Mathf.Min(Style.FontEmptySlot, (int)(Size.Y * 0.5f));
         float width = Style.Measure(Hotkey, size);
-        float baseline = Mathf.Round(
-            (Size.Y + Style.Pixel.GetAscent(size) - Style.Pixel.GetDescent(size)) / 2f);
+        float baseline = Style.BaselineIn(Size.Y, size);
 
-        this.DrawOutlined(
+        this.DrawToken(
             new Vector2(Mathf.Round((Size.X - width) / 2f), baseline), Hotkey, size, Style.SlotEmptyNumber);
     }
 
@@ -434,7 +459,7 @@ public sealed partial class SlotView : Control
             return;
 
         float width = Style.Measure(name, Style.FontTag);
-        this.DrawOutlined(new Vector2(Size.X - width - 4f, 4f + Style.FontTag), name,
+        this.DrawToken(new Vector2(Size.X - width - 4f, 4f + Style.FontTag), name,
             Style.FontTag, Style.TextDim);
     }
 
@@ -455,10 +480,9 @@ public sealed partial class SlotView : Control
             _cooldownRemainingMs >= 1000f ? "0" : "0.0", CultureInfo.InvariantCulture);
 
         float width = Style.Measure(remaining, Style.FontBody);
-        float baseline = Mathf.Round(
-            (Size.Y + Style.Pixel.GetAscent(Style.FontBody) - Style.Pixel.GetDescent(Style.FontBody)) / 2f);
+        float baseline = Style.BaselineIn(Size.Y, Style.FontBody);
 
-        this.DrawOutlined(
+        this.DrawToken(
             new Vector2(Mathf.Round((Size.X - width) / 2f), baseline), remaining, Style.FontBody, Style.Text);
     }
 
@@ -478,7 +502,7 @@ public sealed partial class SlotView : Control
 
         float width = Style.Measure(tag, Style.FontTag);
 
-        this.DrawOutlined(
+        this.DrawToken(
             new Vector2(Size.X - width - 3f, Size.Y - 4f), tag, Style.FontTag, Style.TierColour(tag));
     }
 }

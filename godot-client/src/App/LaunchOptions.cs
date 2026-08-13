@@ -65,6 +65,9 @@ public sealed class LaunchOptions
     /// <summary>The same, for the account panel.</summary>
     public bool OpenAccountPanel { get; private set; }
 
+    /// <summary>Opens the vault panel once in the world, for unattended screenshots of it.</summary>
+    public bool OpenVault { get; private set; }
+
     /// <summary>
     /// Starting camera heading in degrees, or null for the usual one.
     /// </summary>
@@ -116,6 +119,7 @@ public sealed class LaunchOptions
                 case "--walk": options.AutoWalk = true; break;
                 case "--character": options.OpenCharacterPanel = true; break;
                 case "--account": options.OpenAccountPanel = true; break;
+                case "--vault": options.OpenVault = true; break;
                 case "--camera-angle": options.CameraAngleDegrees = ParseFloat(Next(), 0f); break;
                 case "--say":
                 {

@@ -89,7 +89,15 @@ public sealed class VaultStore
     /// <summary>Whether the server has told us anything yet.</summary>
     public bool Known { get; private set; }
 
-    public bool AtCapacity => ChestCount >= MaxChests;
+    /// <summary>
+    /// Whether the account may not buy another chest.
+    /// </summary>
+    /// <remarks>
+    /// False until the server has said otherwise. Nought of a nought is nought, so a vault nobody
+    /// had described yet used to answer true here and the panel announced maximum capacity to a
+    /// player who owned nothing.
+    /// </remarks>
+    public bool AtCapacity => Known && ChestCount >= MaxChests;
 
     /// <summary>Storage: item types by flat index, <see cref="NoItem"/> where empty.</summary>
     public IReadOnlyList<int> Slots => _slots;

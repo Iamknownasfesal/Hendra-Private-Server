@@ -66,6 +66,15 @@ public partial class GameScene : Node
     /// <summary>Opens the account panel once in the world. Set from the command line.</summary>
     public bool OpenAccountPanel { get; set; }
 
+    /// <summary>
+    /// Holds the vault panel open without standing on the chest. Set from the command line.
+    /// </summary>
+    /// <remarks>
+    /// For screenshots. The panel is otherwise only reachable by walking a character onto the
+    /// access object, which an unattended run has no way to do.
+    /// </remarks>
+    public bool OpenVault { get; set; }
+
     /// <summary>Overrides the starting camera heading, in radians. Set from the command line.</summary>
     public float? StartingCameraAngle { get; set; }
 
@@ -234,6 +243,7 @@ public partial class GameScene : Node
         _controller.AutoWalk = AutoWalk;
         _controller.StartingCameraAngle = StartingCameraAngle;
         _controller.CenterOnPlayer = ServiceLocator.Settings?.CenterOnPlayer ?? true;
+        _controller.HoldVaultOpen = OpenVault;
 
         _controller.HudVisibilityChanged += hidden => ShowInterface(!hidden);
         _controller.WorldEntering += (name, difficulty) => _loading?.Show(name, difficulty);
@@ -408,6 +418,7 @@ public partial class GameScene : Node
         _controller.AutoWalk = AutoWalk;
         _controller.StartingCameraAngle = StartingCameraAngle;
         _controller.CenterOnPlayer = ServiceLocator.Settings?.CenterOnPlayer ?? true;
+        _controller.HoldVaultOpen = OpenVault;
 
         _controller.HudVisibilityChanged += hidden => ShowInterface(!hidden);
         _controller.WorldEntering += (name, difficulty) => _loading?.Show(name, difficulty);

@@ -31,10 +31,20 @@ public static class SlotHighlights
     public static readonly Color RedFill = new("4a1414");
     public static readonly Color RedEdge = new("c02020");
 
-    /// <summary>The fill and border a highlight asks for, or the neutral pair for none.</summary>
-    public static (Color Fill, Color Edge) Pair(SlotHighlight highlight) => highlight switch
-    {
-        SlotHighlight.Red => (RedFill, RedEdge),
-        _ => (Style.Slot, Style.SlotBorder),
-    };
+    /// <summary>
+    /// The fill and border a highlight asks for, or the neutral pair for none.
+    /// </summary>
+    /// <remarks>
+    /// The neutral pair is two plates, not one. An empty slot is the lighter of them: there is
+    /// nothing on it, so the plate itself is what you are looking at and it should sit clearly off
+    /// the board. A slot with an item goes a step darker, because now the artwork is the bright
+    /// thing and the plate is behind it. Both are far enough from the near-black board to survive
+    /// being desaturated, which is the test the value ladder exists to pass.
+    /// </remarks>
+    public static (Color Fill, Color Edge) Pair(SlotHighlight highlight, bool occupied) =>
+        highlight switch
+        {
+            SlotHighlight.Red => (RedFill, RedEdge),
+            _ => occupied ? (Style.Slot, Style.SlotBorder) : (Style.SlotEmpty, Style.SlotEmptyEdge),
+        };
 }

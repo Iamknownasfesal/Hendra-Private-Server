@@ -1679,6 +1679,9 @@ public partial class WorldController : Node
         }
     }
 
+    /// <summary>Keeps the vault panel open wherever the player is standing. See GameScene.OpenVault.</summary>
+    public bool HoldVaultOpen { get; set; }
+
     /// <summary>The vault access object the player is standing on, if any.</summary>
     private Entity NearbyVault =>
         _interaction.Current is { Kind: InteractionKind.Vault, Entity: { } entity } ? entity : null;
@@ -1696,9 +1699,13 @@ public partial class WorldController : Node
         if (_hud == null)
             return;
 
-        if (NearbyVault != null)
+        if (NearbyVault != null || HoldVaultOpen)
         {
             _hud.UseVault(_vault);
+
+            if (HoldVaultOpen && !_hud.VaultOpen)
+                _hud.ShowVault(true);
+
             return;
         }
 

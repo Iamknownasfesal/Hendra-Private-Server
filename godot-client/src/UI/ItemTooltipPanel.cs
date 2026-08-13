@@ -425,7 +425,7 @@ public partial class ItemTooltipPanel : MarginContainer
             const float Inset = 6f;
             float side = Mathf.Min(Size.X, Size.Y) - Inset * 2f;
             var box = new Rect2((Size.X - side) / 2f, (Size.Y - side) / 2f, side, side);
-            DrawTextureRectRegion(_sprite.Sheet, box, _sprite.Region);
+            this.DrawSprite(_sprite, box);
         }
     }
 }

@@ -92,7 +92,7 @@ public partial class AccountPanel : Control
         {
             HorizontalAlignment = HorizontalAlignment.Center,
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
-        }.Typeset(Style.FontTag, Style.TextDim);
+        }.Typeset(Style.FontSmall, Style.TextDim);
         _shell.Body.AddChild(_note);
 
         Resized += Reflow;

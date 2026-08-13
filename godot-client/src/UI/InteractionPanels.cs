@@ -116,7 +116,7 @@ public partial class ContainerPanel : HudSection
         // A line of instruction, once, at the bottom. Taking things out of a chest by clicking them
         // is not guessable -- the alternative is a player who drags every item one at a time.
         _hint = new Label { Text = "Click to take", VerticalAlignment = VerticalAlignment.Center }
-            .Typeset(Style.FontTag, Style.TextDim);
+            .Typeset(Style.FontSmall, Style.TextDim);
 
         _hint.Position = new Vector2(0f, height + 4f);
         _hint.Size = new Vector2(width, 14f);
@@ -218,7 +218,7 @@ public partial class MerchantPanel : HudSection
         Body.AddChild(_currency);
 
         _stock = new Label { Position = new Vector2(textLeft, 34f), Size = new Vector2(Width - textLeft, 14f) }
-            .Typeset(Style.FontTag, Style.TextDim);
+            .Typeset(Style.FontSmall, Style.TextDim);
         Body.AddChild(_stock);
 
         _buy = new HudMenuButton("Buy")

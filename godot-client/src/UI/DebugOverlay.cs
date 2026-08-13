@@ -219,15 +219,15 @@ public partial class DebugOverlay : Control
             {
                 // A heading, set apart by the gap above it rather than by a rule.
                 y += 4f;
-                this.DrawOutlined(new Vector2(box.Position.X + Pad, y), label, Style.FontSmall, Style.FameFill);
+                this.DrawText(new Vector2(box.Position.X + Pad, y), label, Style.FontSmall, Style.FameFill);
                 y += LineHeight;
                 continue;
             }
 
-            this.DrawOutlined(new Vector2(box.Position.X + Pad, y), label, Style.FontSmall, Style.TextDim);
+            this.DrawText(new Vector2(box.Position.X + Pad, y), label, Style.FontSmall, Style.TextDim);
 
             // Values right-aligned, so a changing number does not shuffle the column.
-            this.DrawOutlined(
+            this.DrawText(
                 new Vector2(box.End.X - Pad - Style.Measure(value, Style.FontSmall), y),
                 value, Style.FontSmall, Style.Text);
 

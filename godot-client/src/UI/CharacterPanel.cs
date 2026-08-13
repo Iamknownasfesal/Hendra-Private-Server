@@ -637,10 +637,9 @@ public partial class CharacterPanel : Control
                 if (!active)
                     DrawRect(new Rect2(box.Position.X, box.End.Y - 1f, box.Size.X, 1f), Style.ModalFrameDark);
 
-                float baseline = Mathf.Round(
-                    (Size.Y + Style.Pixel.GetAscent(14) - Style.Pixel.GetDescent(14)) / 2f);
+                float baseline = Style.BaselineIn(Size.Y, 14);
 
-                this.DrawOutlined(
+                this.DrawText(
                     new Vector2(Mathf.Round(box.Position.X + (box.Size.X - Style.Measure(_labels[i], 14)) / 2f), baseline),
                     _labels[i], 14, active ? Style.ModalHeader : Style.TextDim);
             }
@@ -828,15 +827,15 @@ public partial class CharacterPanel : Control
             if (index % 2 == 1)
                 DrawRect(new Rect2(0f, y, width, RowHeight), Style.ModalStripe);
 
-            float baseline = Mathf.Round(y + (RowHeight + Style.Pixel.GetAscent(13) - Style.Pixel.GetDescent(13)) / 2f);
+            float baseline = Mathf.Round(y + (RowHeight + Style.Sans.GetAscent(13) - Style.Sans.GetDescent(13)) / 2f);
 
             // A fixed column for the value and an ellipsis on the label: a seven-digit number must
             // never be pushed off the row by a long name.
             float labelWidth = width - Inset * 2f - ValueColumn;
-            this.DrawOutlined(new Vector2(Inset, baseline), Truncate(row.Label, labelWidth), 13,
+            this.DrawText(new Vector2(Inset, baseline), Truncate(row.Label, labelWidth), 13,
                 row.Dim ? Style.TextDim : Style.Text);
 
-            this.DrawOutlined(
+            this.DrawText(
                 new Vector2(width - Inset - Style.Measure(row.Value, 13), baseline), row.Value, 13,
                 row.Dim ? Style.TextDim : Style.StatNumber);
         }
@@ -846,8 +845,8 @@ public partial class CharacterPanel : Control
             DrawRect(new Rect2(0f, y, width, SectionHeight), Style.ModalHeader);
             DrawRect(new Rect2(0f, y + SectionHeight - 1f, width, 1f), Style.ModalFrameDark);
 
-            float baseline = Mathf.Round(y + (SectionHeight + Style.Pixel.GetAscent(14) - Style.Pixel.GetDescent(14)) / 2f);
-            this.DrawOutlined(new Vector2(Inset, baseline), title, 14, Style.TextDim);
+            float baseline = Mathf.Round(y + (SectionHeight + Style.Sans.GetAscent(14) - Style.Sans.GetDescent(14)) / 2f);
+            this.DrawText(new Vector2(Inset, baseline), title, 14, Style.TextDim);
         }
 
         /// <summary>Cuts a label to fit its column, with an ellipsis. Never wraps.</summary>

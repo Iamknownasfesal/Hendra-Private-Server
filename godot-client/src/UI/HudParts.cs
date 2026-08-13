@@ -169,10 +169,10 @@ public partial class HudBar : Control
         // Both texts on the same baseline, which is the vertical middle of the bar. Kept whole
         // white at every fill: a value that dims as the bar empties is unreadable exactly when it
         // matters.
-        float baseline = Mathf.Round((Size.Y + Style.Pixel.GetAscent(_fontSize) - Style.Pixel.GetDescent(_fontSize)) / 2f);
+        float baseline = Style.BaselineIn(Size.Y, _fontSize);
 
         if (_name.Length > 0)
-            this.DrawOutlined(new Vector2(Inset, baseline), _name, _fontSize, Style.Text);
+            this.DrawOverWorld(new Vector2(Inset, baseline), _name, _fontSize, Style.Text);
 
         if (_value.Length == 0)
             return;
@@ -182,11 +182,11 @@ public partial class HudBar : Control
         float bonusWidth = _bonus.Length == 0 ? 0f : Style.Measure(_bonus, _fontSize) + 4f;
         float right = Size.X - Inset - bonusWidth;
 
-        this.DrawOutlined(
+        this.DrawOverWorld(
             new Vector2(right - Style.Measure(_value, _fontSize), baseline), _value, _fontSize, Style.Text);
 
         if (_bonus.Length > 0)
-            this.DrawOutlined(new Vector2(right + 4f, baseline), _bonus, _fontSize, Style.StatBonus);
+            this.DrawOverWorld(new Vector2(right + 4f, baseline), _bonus, _fontSize, Style.StatBonus);
     }
 }
 
@@ -279,7 +279,7 @@ public partial class HudIconButton : Control
         var plate = new Rect2(Size.X - width, 0f, width, 11f);
 
         DrawRect(plate, Style.HpFill);
-        this.DrawOutlined(new Vector2(plate.Position.X + 2f, plate.End.Y - 3f), count, Style.FontTag, Style.Text);
+        this.DrawToken(new Vector2(plate.Position.X + 2f, plate.End.Y - 3f), count, Style.FontTag, Style.Text);
     }
 }
 
@@ -392,11 +392,10 @@ public partial class HudMenuButton : Control
         // The label shifts with the plate, so a held button reads as pressed rather than as
         // repainted.
         var shift = _held ? Vector2.One : Vector2.Zero;
-        float baseline = Mathf.Round(
-            (Size.Y + Style.Pixel.GetAscent(Style.FontBody) - Style.Pixel.GetDescent(Style.FontBody)) / 2f);
+        float baseline = Style.BaselineIn(Size.Y, Style.FontBody);
 
         var at = new Vector2(Mathf.Round((Size.X - Style.Measure(_label, Style.FontBody)) / 2f), baseline) + shift;
-        this.DrawOutlined(at, _label, Style.FontBody, _disabled ? Style.TextDim : Style.Text);
+        this.DrawText(at, _label, Style.FontBody, _disabled ? Style.TextDim : Style.Text);
 
         if (!_badged)
             return;

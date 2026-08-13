@@ -355,7 +355,7 @@ public partial class ChatView : Control
         /// </remarks>
         private static int FontSize => App.ServiceLocator.Settings?.ChatFontSize ?? Style.FontSmall;
 
-        private float RowHeight => Mathf.Round(Mathf.Max(Style.Pixel.GetHeight(FontSize), 14f) + 4f);
+        private float RowHeight => Mathf.Round(Mathf.Max(Style.Sans.GetHeight(FontSize), 14f) + 4f);
 
         private float TextWidth => Size.X - ScrollbarWidth - 6f;
 
@@ -602,7 +602,7 @@ public partial class ChatView : Control
                 Rewrap();
 
             float rowHeight = RowHeight;
-            float ascent = Style.Pixel.GetAscent(FontSize);
+            float ascent = Style.Sans.GetAscent(FontSize);
 
             float offset = Offset;
             int firstRow = Mathf.Max(0, (int)(offset / rowHeight));
@@ -640,7 +640,7 @@ public partial class ChatView : Control
         }
 
         private void Text(Vector2 at, string text, Color colour) =>
-            this.DrawOutlined(at, text, FontSize, colour);
+            this.DrawText(at, text, FontSize, colour);
 
         private void DrawScrollbar()
         {
@@ -675,7 +675,7 @@ public partial class ChatView : Control
         {
             const string Label = "New messages";
 
-            float width = Style.Measure(Label, Style.FontTag);
+            float width = Style.Measure(Label, Style.FontSmall);
             var pill = new Rect2(
                 Mathf.Round((Size.X - ScrollbarWidth - width) / 2f) - 8f,
                 Size.Y - RowHeight,
@@ -685,9 +685,9 @@ public partial class ChatView : Control
             DrawRect(pill, Style.ButtonFace);
             DrawRect(pill, Style.PanelEdge, filled: false, width: 1f);
 
-            this.DrawOutlined(
+            this.DrawText(
                 new Vector2(pill.Position.X + 8f, pill.Position.Y + pill.Size.Y - 6f),
-                Label, Style.FontTag, Style.Text);
+                Label, Style.FontSmall, Style.Text);
         }
     }
 }

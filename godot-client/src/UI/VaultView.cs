@@ -30,15 +30,12 @@ namespace Hendra.UI;
 /// </remarks>
 public sealed partial class VaultView : ModalPanel
 {
-    public const float PanelWidth = 920f;
-    public const float PanelHeight = 960f;
-
     /// <summary>Where the top edge sits, per the brief.</summary>
     public const float TopEdge = 60f;
 
     private const float Padding = 16f;
     private const float HeaderTall = 64f;
-    private const float SortBarHeight = 56f;
+    private const float SortBarHeight = 44f;
     private const float RailButtonSize = 56f;
     private const float RailGap = 6f;
 
@@ -46,6 +43,30 @@ public sealed partial class VaultView : ModalPanel
     private const float SlotSize = 96f;
     private const float SlotGap = 4f;
     private const float RowPitch = SlotSize + SlotGap;
+
+    /// <summary>
+    /// The grid's width: eight slots and the seven hairlines between them, and nothing else.
+    /// </summary>
+    /// <remarks>
+    /// Seven hundred and ninety-six pixels, and the panel is built out to hold it rather than the
+    /// grid being stretched to fill a panel. Letting the cells take up the slack is what turned
+    /// squares into rectangles and four-pixel gutters into thirteen-pixel ones, and a grid that
+    /// reads as a block of plates with hairlines between them is most of what makes it read as an
+    /// inventory rather than as a settings screen.
+    /// </remarks>
+    private const float GridWidth = Columns * SlotSize + (Columns - 1) * SlotGap;
+
+    /// <summary>The scrollbar and its gap, which sit beside the grid rather than inside it.</summary>
+    private const float GutterWidth = RailGap + HudScrollbar.Width;
+
+    public const float PanelWidth =
+        Padding + RailButtonSize + RailGap * 2f + GridWidth + GutterWidth + Padding;
+
+    /// <summary>What the panel falls back to before it knows how much screen it has.</summary>
+    public const float PanelHeight = 700f;
+
+    /// <summary>How far above the bottom of the screen the panel stops.</summary>
+    private const float BottomMargin = 40f;
 
     /// <summary>Rows kept mounted beyond the visible ones, above and below.</summary>
     private const int Overscan = 2;
@@ -59,7 +80,7 @@ public sealed partial class VaultView : ModalPanel
     /// <summary>How long the search waits after a keystroke before it filters.</summary>
     private const double SearchDebounceSeconds = 0.150;
 
-    private readonly VaultStore _store;
+    private VaultStore _store;
     private readonly GameData _data;
     private readonly TextureResolver _textures;
 
@@ -68,11 +89,10 @@ public sealed partial class VaultView : ModalPanel
     private readonly List<SlotView> _pool = new();
 
     private Control _grid;
+    private Control _trough;
     private LineEdit _search;
     private HudIconButton _magnifier;
     private Label _note;
-    private Label _lockedBand;
-    private Label _giftBand;
     private HudIconButton _info;
     private Label _explainer;
 
@@ -129,6 +149,36 @@ public sealed partial class VaultView : ModalPanel
         Closed += OnClosed;
     }
 
+    /// <summary>
+    /// Points the panel at another vault.
+    /// </summary>
+    /// <remarks>
+    /// Changing world tears down the world controller and everything it owns, the vault's store
+    /// among them, while the interface survives -- it is the same HUD from the login screen to the
+    /// last dungeon. So the panel outlives the thing it is showing, and the second time a player
+    /// walks into their vault the store it was built against is a dead object that will never be
+    /// told anything again. It showed the first visit's contents for the rest of the session.
+    /// </remarks>
+    public void Use(VaultStore store)
+    {
+        if (store == null || ReferenceEquals(store, _store))
+            return;
+
+        if (_store != null && IsNodeReady())
+            _store.Changed -= OnStoreChanged;
+
+        _store = store;
+
+        if (!IsNodeReady())
+            return;
+
+        _store.Changed += OnStoreChanged;
+
+        _offset = 0f;
+        _mountedFrom = -1;
+        Refresh();
+    }
+
     /// <summary>What the character can wear, so a slot can say whether the item is any use to it.</summary>
     public void SetSlotTypes(int[] slotTypes)
     {
@@ -139,8 +189,13 @@ public sealed partial class VaultView : ModalPanel
     /// <summary>Puts the panel where the brief says: centred across, sixty down.</summary>
     public void PlaceIn(Vector2 screen)
     {
+        _screen = screen;
         Position = new Vector2(Mathf.Round((screen.X - PanelWidth) / 2f), TopEdge);
+        Layout();
     }
+
+    /// <summary>The space the panel has to fit in, so it can stop short of filling it.</summary>
+    private Vector2 _screen = new(HudLayout.ReferenceWidth, HudLayout.ReferenceHeight);
 
     private void OnClosed()
     {
@@ -199,6 +254,11 @@ public sealed partial class VaultView : ModalPanel
 
     private void BuildSortBar()
     {
+        // Behind the four, so they read as one control with four settings.
+        _trough = new Control { MouseFilter = MouseFilterEnum.Ignore };
+        _trough.Draw += () => _trough.DrawStyleBox(Rounded(Style.ModalTrough), new Rect2(Vector2.Zero, _trough.Size));
+        Body.AddChild(_trough);
+
         foreach (var (mode, label) in Modes)
         {
             var tab = new SortTab(label) { Mode = mode };
@@ -221,7 +281,7 @@ public sealed partial class VaultView : ModalPanel
         _search.TextChanged += OnSearchTyped;
         Body.AddChild(_search);
 
-        _note = new Label { Visible = false }.Typeset(Style.FontTag, Style.TextDim);
+        _note = new Label { Visible = false }.Typeset(Style.FontSmall, Style.TextDim);
         Body.AddChild(_note);
     }
 
@@ -337,22 +397,34 @@ public sealed partial class VaultView : ModalPanel
         _grid.GuiInput += OnGridInput;
         _grid.Draw += DrawGridChrome;
         Body.AddChild(_grid);
+    }
 
-        _giftBand = new Label
-        {
-            Text = "Gifts",
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-        }.Typeset(Style.FontSmall, Style.TextDim);
-        _grid.AddChild(_giftBand);
+    /// <summary>A filled box with soft corners, for the trough and the pill inside it.</summary>
+    private static StyleBoxFlat Rounded(Color fill, int radius = 4)
+    {
+        var box = new StyleBoxFlat { BgColor = fill };
+        box.SetCornerRadiusAll(radius);
+        return box;
+    }
 
-        _lockedBand = new Label
-        {
-            Text = "Locked",
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-        }.Typeset(Style.FontSmall, Style.TextDim);
-        _grid.AddChild(_lockedBand);
+    /// <summary>
+    /// A divider across the grid: a plate the width of the grid with its name centred on it.
+    /// </summary>
+    /// <remarks>
+    /// A plate rather than floating text. Both of these separate one kind of row from another --
+    /// gifts from storage, bought from unbought -- and text on its own over a gutter reads as a
+    /// caption on whatever is under it rather than as a line drawn across the grid.
+    /// </remarks>
+    private void Band(float top, string text)
+    {
+        if (top + BandHeight < 0f || top > _grid.Size.Y)
+            return;
+
+        _grid.DrawRect(new Rect2(0f, top, GridWidth, BandHeight), Style.ModalBand);
+        _grid.DrawText(
+            new Vector2(Mathf.Round((GridWidth - Style.Measure(text, Style.FontSmall, bold: true)) / 2f),
+                top + Style.BaselineIn(BandHeight, Style.FontSmall)),
+            text, Style.FontSmall, Style.Text, bold: true);
     }
 
     /// <summary>How many rows the grid can show at once.</summary>
@@ -491,6 +563,8 @@ public sealed partial class VaultView : ModalPanel
         if (_grid == null)
             return;
 
+        SizeToContent();
+
         // The header's one control, inset from the frame by the brief's sixteen.
         _info.Size = new Vector2(40f, 40f);
         _info.Position = new Vector2(Size.X - Padding - 40f, (HeaderTall - 40f) / 2f + ModalPanel.FrameWidth);
@@ -504,32 +578,37 @@ public sealed partial class VaultView : ModalPanel
         _explainer.Position = new Vector2(Padding, HeaderTall + ModalPanel.FrameWidth);
         _explainer.Size = new Vector2(Size.X - Padding * 2f, 72f);
 
-        float inner = Body.Size.X - Padding * 2f;
+        float inner = PanelWidth - (ModalPanel.FrameWidth + 1f) * 2f - Padding * 2f;
         float y = Padding;
 
-        // The sort bar: four tabs sharing the width left of the search affordance.
+        // The sort bar. The four modes live inside one trough with the search affordance outside it,
+        // right-aligned: spread edge to edge they stopped reading as a set of alternatives and
+        // started reading as four unrelated controls.
         float searchWidth = _search.Visible ? 220f : SortBarHeight;
-        float tabsWidth = inner - searchWidth - RailGap;
-        float tabWidth = Mathf.Floor(tabsWidth / _tabs.Count);
+        float troughWidth = inner - searchWidth - RailGap * 2f;
+
+        _trough.Position = new Vector2(Padding, y);
+        _trough.Size = new Vector2(troughWidth, SortBarHeight);
+
+        float tabWidth = Mathf.Floor((troughWidth - Pill * 2f) / _tabs.Count);
 
         for (int i = 0; i < _tabs.Count; i++)
         {
-            _tabs[i].Position = new Vector2(Padding + i * tabWidth, y);
-            _tabs[i].Size = new Vector2(tabWidth, SortBarHeight);
+            _tabs[i].Position = new Vector2(Padding + Pill + i * tabWidth, y + Pill);
+            _tabs[i].Size = new Vector2(tabWidth, SortBarHeight - Pill * 2f);
         }
 
-        var searchBox = new Rect2(
-            Padding + inner - searchWidth, y, searchWidth, SortBarHeight);
+        var searchBox = new Rect2(Padding + inner - searchWidth, y, searchWidth, SortBarHeight);
 
         _magnifier.Position = searchBox.Position;
         _magnifier.Size = searchBox.Size;
 
-        _search.Position = searchBox.Position + new Vector2(0f, 8f);
-        _search.Size = new Vector2(searchBox.Size.X, SortBarHeight - 16f);
+        _search.Position = searchBox.Position;
+        _search.Size = searchBox.Size;
 
-        y += SortBarHeight + RailGap;
+        y += SortBarHeight + Padding;
 
-        // The rail down the left, the grid filling what is left beside it.
+        // The rail down the left, the grid beside it at exactly its own width.
         for (int i = 0; i < _rail.Count; i++)
         {
             _rail[i].Position = new Vector2(Padding, y + i * (RailButtonSize + RailGap));
@@ -537,17 +616,53 @@ public sealed partial class VaultView : ModalPanel
         }
 
         float gridLeft = Padding + RailButtonSize + RailGap * 2f;
-        float gridWidth = Columns * SlotSize + (Columns - 1) * SlotGap + HudScrollbar.Width + RailGap;
 
-        _note.Position = new Vector2(gridLeft, Body.Size.Y - Padding - 16f);
-        _note.Size = new Vector2(gridWidth, 16f);
-
-        float noteRoom = _note.Visible ? 20f : 0f;
+        _note.Position = new Vector2(gridLeft, y + GridHeight + 4f);
+        _note.Size = new Vector2(GridWidth, 16f);
 
         _grid.Position = new Vector2(gridLeft, y);
-        _grid.Size = new Vector2(gridWidth, Mathf.Max(0f, Body.Size.Y - y - Padding - noteRoom));
+        _grid.Size = new Vector2(GridWidth + GutterWidth, GridHeight);
 
         Reflow();
+    }
+
+    /// <summary>How far the pill is inset inside its trough.</summary>
+    private const float Pill = 4f;
+
+    /// <summary>
+    /// How tall the grid is: what there is to show, within what there is room for.
+    /// </summary>
+    /// <remarks>
+    /// Never the maximum a fully-bought vault would need. Reserving that meant a player with one
+    /// chest opened the panel onto three locked rows and then a screen-tall hole, which reads as
+    /// something failing to load rather than as an empty vault.
+    ///
+    /// The floor is the filter rail: it is a fixed stack of buttons down the left and the panel
+    /// cannot be shorter than the thing beside the grid.
+    /// </remarks>
+    private float GridHeight
+    {
+        get
+        {
+            float rail = _rail.Count * RailButtonSize + Mathf.Max(0, _rail.Count - 1) * RailGap;
+            float room = _screen.Y - TopEdge - BottomMargin - Chrome;
+
+            return Mathf.Max(Mathf.Min(ContentHeight, room), Mathf.Min(rail, room));
+        }
+    }
+
+    /// <summary>Everything the panel spends on itself, above and below the grid.</summary>
+    private float Chrome =>
+        (ModalPanel.FrameWidth + 1f) * 2f + HeaderTall + Padding + SortBarHeight + Padding + Padding
+        + (_note is { Visible: true } ? 20f : 0f);
+
+    /// <summary>Grows or shrinks the panel to hold what is in it, and no more.</summary>
+    private void SizeToContent()
+    {
+        float height = Mathf.Round(Chrome + GridHeight);
+
+        if (!Mathf.IsEqualApprox(Size.Y, height))
+            Size = new Vector2(PanelWidth, height);
     }
 
     /// <summary>
@@ -612,18 +727,6 @@ public sealed partial class VaultView : ModalPanel
 
             Fill(slot, gift, slot.Address.Index);
         }
-
-        _giftBand.Visible = gifts > 0;
-        _giftBand.Position = new Vector2(0f, -_offset);
-        _giftBand.Size = new Vector2(Columns * SlotSize + (Columns - 1) * SlotGap, BandHeight);
-
-        float lockedTop = ChestTop + ViewRows * RowPitch - _offset;
-
-        _lockedBand.Visible = LockedShown > 0 || _store.AtCapacity;
-        _lockedBand.Text = _store.AtCapacity ? "Maximum capacity" : "Locked";
-        _lockedBand.Position = new Vector2(0f, lockedTop);
-        _lockedBand.Size = new Vector2(
-            Columns * SlotSize + (Columns - 1) * SlotGap, BandHeight);
 
         _grid.QueueRedraw();
         UpdateNote();
@@ -695,7 +798,14 @@ public sealed partial class VaultView : ModalPanel
     /// <summary>The locked rows and the scrollbar, which are drawn rather than built.</summary>
     private void DrawGridChrome()
     {
-        float lockedTop = ChestTop + ViewRows * RowPitch - _offset + BandHeight;
+        if (GiftRows > 0)
+            Band(-_offset, "Gifts");
+
+        float bandTop = ChestTop + ViewRows * RowPitch - _offset;
+        float lockedTop = bandTop + BandHeight;
+
+        if (LockedShown > 0 || _store.AtCapacity)
+            Band(bandTop, _store.AtCapacity ? "Maximum capacity" : "Locked");
 
         for (int row = 0; row < LockedShown; row++)
             for (int column = 0; column < Columns; column++)
@@ -706,8 +816,9 @@ public sealed partial class VaultView : ModalPanel
                 if (box.End.Y < 0f || box.Position.Y > _grid.Size.Y)
                     continue;
 
-                _grid.DrawRect(box, Style.Slot.Darkened(0.4f));
-                _grid.DrawRect(box, Style.SlotBorder.Darkened(0.5f), filled: false, width: 1f);
+                _grid.DrawRect(box, Style.SlotLocked);
+                _grid.DrawRect(box.Grow(-SlotView.Border / 2f), Style.SlotEmptyEdge.Darkened(0.35f),
+                    filled: false, width: SlotView.Border);
                 Padlock(box);
             }
 
@@ -719,7 +830,7 @@ public sealed partial class VaultView : ModalPanel
     {
         float side = Mathf.Round(box.Size.X * 0.22f);
         var centre = box.Position + box.Size / 2f;
-        var colour = Style.TextDim.Darkened(0.2f);
+        var colour = Style.SlotLockedIcon;
 
         var body = new Rect2(centre.X - side / 2f, centre.Y - side * 0.1f, side, side * 0.7f);
         _grid.DrawRect(body, colour);
@@ -774,24 +885,31 @@ public sealed partial class VaultView : ModalPanel
         {
             var full = new Rect2(Vector2.Zero, Size);
 
+            // A filled pill for the mode in use, which is the only mark the bar carries: the trough
+            // behind all four is what says these are alternatives.
             if (_active)
-                DrawRect(full.Grow(-6f), Style.ButtonFace);
+                DrawStyleBox(Rounded(Style.ButtonFace, 3), full);
             else if (_hover)
-                DrawRect(full.Grow(-6f), Style.ButtonFace.Darkened(0.35f));
+                DrawStyleBox(Rounded(Style.ButtonFace.Darkened(0.45f), 3), full);
 
-            float width = Style.Measure(_label, Style.FontBody);
-            float baseline = Mathf.Round(
-                (Size.Y + Style.Pixel.GetAscent(Style.FontBody) - Style.Pixel.GetDescent(Style.FontBody)) / 2f);
+            float width = Style.Measure(_label, Style.FontBody, bold: _active);
+            float baseline = Style.BaselineIn(Size.Y, Style.FontBody);
 
-            this.DrawOutlined(
+            this.DrawText(
                 new Vector2(Mathf.Round((Size.X - width) / 2f), baseline), _label, Style.FontBody,
-                _active ? Style.Text : Style.TextDim);
+                _active ? Style.Text : Style.TextDim, bold: _active);
         }
     }
 
     /// <summary>One category down the left. Square, and labelled with as much as fits.</summary>
     private sealed partial class RailButton : Control
     {
+        /// <summary>The mark's colour at rest: light enough to clear the plate under it.</summary>
+        private static readonly Color RailMark = new("c8c8c8");
+
+        private static readonly Color RailActive = new("5a5a5a");
+        private static readonly Color RailHover = new("484848");
+
         private readonly string _label;
         private readonly Action<CanvasItem, Rect2, Color> _glyph;
         private bool _hover;
@@ -837,33 +955,35 @@ public sealed partial class VaultView : ModalPanel
         {
             var full = new Rect2(Vector2.Zero, Size);
 
-            DrawRect(full, _active ? Style.ButtonFace
-                : _hover ? Style.ButtonFace.Darkened(0.35f)
-                : Style.Slot);
-            DrawRect(full, Style.SlotBorder.Darkened(0.3f), filled: false, width: 1f);
+            // The plate lightens when the filter is on and the mark goes white with it. Revision
+            // four drew a dim grey mark on a dim grey plate, which at fifty-six pixels is a button
+            // you can see and a mark you cannot.
+            DrawRect(full, _active ? RailActive : _hover ? RailHover : Style.Slot);
+            DrawRect(full.Grow(-SlotView.Border / 2f), _active ? Style.SlotBorderHi : Style.SlotEmptyEdge,
+                filled: false, width: SlotView.Border);
+
+            var mark = _active ? Style.Text : RailMark;
 
             if (_glyph != null)
             {
-                // Square and centred, inset so the plate still reads as a button around it. Dim
-                // until the filter is on, which is the language the sort tabs already use.
+                // Square and centred, inset so the plate still reads as a button around it.
                 float side = Mathf.Round(Mathf.Min(Size.X, Size.Y) - 20f);
                 var box = new Rect2(
                     Mathf.Round((Size.X - side) / 2f), Mathf.Round((Size.Y - side) / 2f), side, side);
 
-                _glyph(this, box, _active ? Style.Text : Style.TextDim);
+                _glyph(this, box, mark);
                 return;
             }
 
             // No artwork: the all-items button. Three letters is what fits across this face.
             string text = _label.Length <= 3 ? _label : _label.Substring(0, 3).ToUpperInvariant();
 
-            float width = Style.Measure(text, Style.FontTag);
-            float baseline = Mathf.Round(
-                (Size.Y + Style.Pixel.GetAscent(Style.FontTag) - Style.Pixel.GetDescent(Style.FontTag)) / 2f);
+            float width = Style.Measure(text, Style.FontSmall, bold: true);
+            float baseline = Style.BaselineIn(Size.Y, Style.FontSmall);
 
-            this.DrawOutlined(
-                new Vector2(Mathf.Round((Size.X - width) / 2f), baseline), text, Style.FontTag,
-                _active ? Style.Text : Style.TextDim);
+            this.DrawText(
+                new Vector2(Mathf.Round((Size.X - width) / 2f), baseline), text, Style.FontSmall,
+                mark, bold: true);
         }
     }
 }

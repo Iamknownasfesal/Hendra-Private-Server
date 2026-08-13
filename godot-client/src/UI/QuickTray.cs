@@ -123,7 +123,7 @@ public partial class QuickTray : Control
             var plate = new Rect2(box.End.X - width, box.Position.Y - 2f, width, 12f);
 
             DrawRect(plate, Style.HpFill);
-            this.DrawOutlined(new Vector2(plate.Position.X + 2f, plate.End.Y - 3f), badge, Style.FontTag, Style.Text);
+            this.DrawToken(new Vector2(plate.Position.X + 2f, plate.End.Y - 3f), badge, Style.FontTag, Style.Text);
         }
     }
 }
@@ -223,11 +223,10 @@ public partial class SeasonPass : Control
         DrawRect(full, Style.Panel);
         DrawRect(full, Style.PanelEdge, filled: false, width: 1f);
 
-        float baseline = Mathf.Round(
-            (TitleHeight + Style.Pixel.GetAscent(Style.FontBody) - Style.Pixel.GetDescent(Style.FontBody)) / 2f);
+        float baseline = Style.BaselineIn(TitleHeight, Style.FontBody);
 
-        this.DrawOutlined(new Vector2(8f, baseline), _title, Style.FontBody, Style.Text);
-        this.DrawOutlined(
+        this.DrawText(new Vector2(8f, baseline), _title, Style.FontBody, Style.Text);
+        this.DrawText(
             new Vector2(Size.X - 8f - Style.Measure(_countdown, Style.FontSmall), baseline),
             _countdown, Style.FontSmall, Style.TextDim);
 
@@ -249,13 +248,13 @@ public partial class SeasonPass : Control
 
         DrawRect(bar, Style.BarEdge, filled: false, width: 1f);
 
-        this.DrawOutlined(
+        this.DrawText(
             new Vector2(bar.End.X + 6f, bar.End.Y - 4f), tier, Style.FontBody, Style.FameFill);
 
         float y = TitleHeight + BarHeight + 6f;
         for (int i = _scroll; i < _body.Count && i - _scroll < MostLines; i++)
         {
-            this.DrawOutlined(new Vector2(8f, y + LineHeight - 4f), _body[i], Style.FontSmall, Style.TextDim);
+            this.DrawText(new Vector2(8f, y + LineHeight - 4f), _body[i], Style.FontSmall, Style.TextDim);
             y += LineHeight;
         }
     }

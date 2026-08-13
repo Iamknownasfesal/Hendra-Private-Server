@@ -550,9 +550,9 @@ public partial class HudView : Control
 
             var at = new Vector2(
                 Mathf.Round(box.Position.X - LabelGap - width),
-                Mathf.Round((Size.Y + Style.Pixel.GetAscent(Style.FontName) - Style.Pixel.GetDescent(Style.FontName)) / 2f));
+                Style.BaselineIn(Size.Y, Style.FontName));
 
-            this.DrawOutlined(at, text, Style.FontName, Style.Text);
+            this.DrawOverWorld(at, text, Style.FontName, Style.Text);
 
             return at.X;
         }
@@ -722,7 +722,7 @@ public partial class HudView : Control
             AddChild(_portrait);
 
             _heading = new Label { Text = "QUEST", Position = new Vector2(PortraitSize + 8f, 2f) }
-                .Typeset(Style.FontTag, Style.StatLabel);
+                .Typeset(Style.FontSmall, Style.StatLabel);
             _heading.Size = new Vector2(200f, 14f);
             AddChild(_heading);
 
@@ -938,24 +938,36 @@ public partial class HudView : Control
             }
         }
 
+        /// <summary>
+        /// What colour a count of something you can run out of is written in.
+        /// </summary>
+        /// <remarks>
+        /// Green used to mean "this is a potion count" and was worn at nought out of six, which
+        /// reads as stocked at exactly the moment you are not. It means full now: amber under half,
+        /// red at empty. The same three steps the health bar already uses, for the same reason.
+        /// </remarks>
+        private static Color Supply(int held, int of) =>
+            held <= 0 ? Style.StatPenalty
+            : held * 2 < of ? Style.FameFill
+            : Style.PotionCount;
+
         public override void _Draw()
         {
             var full = new Rect2(Vector2.Zero, Size);
 
             DrawRect(full, _hovered ? Style.Slot.Lightened(0.12f) : Style.Slot);
-            DrawRect(full, _hovered ? Style.SlotBorderHi : Style.SlotBorder, filled: false, width: 1f);
+            DrawRect(full, _hovered ? Style.SlotBorderHi : Style.SlotBorder,
+                filled: false, width: SlotView.Border);
 
             var bottle = new Rect2(3f, 3f, 14f, Size.Y - 6f);
             HudIcons.Potion(this, bottle, _health ? Style.HpFill : Style.MpFill);
 
             string text = $"{_count}/{PotionStackMax}";
-            float baseline = Mathf.Round(
-                (Size.Y + Style.Pixel.GetAscent(Style.FontSmall) - Style.Pixel.GetDescent(Style.FontSmall)) / 2f);
+            float baseline = Style.BaselineIn(Size.Y, Style.FontSmall);
 
-            this.DrawOutlined(
+            this.DrawOverWorld(
                 new Vector2(Size.X - Style.Measure(text, Style.FontSmall) - 4f, baseline),
-                text, Style.FontSmall,
-                _count > 0 ? Style.PotionCount : Style.PotionCount.Darkened(0.5f));
+                text, Style.FontSmall, Supply(_count, PotionStackMax));
         }
     }
 
@@ -1010,7 +1022,7 @@ public partial class HudView : Control
                     Mathf.Round(Size.X * 0.52f), Mathf.Round(Size.Y * 0.48f)),
                 Style.TextDim);
 
-            this.DrawOutlined(
+            this.DrawText(
                 new Vector2(Size.X - Style.Measure(_key, Style.FontTag) - 3f, Style.FontTag + 4f),
                 _key, Style.FontTag, Style.TextDim);
         }
@@ -1278,7 +1290,11 @@ public partial class HudView : Control
     public void UseVault(World.VaultStore store)
     {
         if (_vaultView != null)
+        {
+            // The panel is kept; the store behind it is not. See VaultView.Use.
+            _vaultView.Use(store);
             return;
+        }
 
         _vaultView = new VaultView(store, _data, _textures);
         _vaultView.Dropped += (from, to) => SlotDropped?.Invoke(from, to);

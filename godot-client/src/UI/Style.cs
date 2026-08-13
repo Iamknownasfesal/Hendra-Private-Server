@@ -42,14 +42,34 @@ public static class Style
     /// <summary>The minimap, which is drawn on rather than filled.</summary>
     public static readonly Color PanelSolid = Colors.Black;
 
-    // Slots, which inverted in revision two: dark plates with a light border rather than the other
-    // way round.
+    // ─── the value ladder ─────────────────────────────────────────────────────────────────────
+    //
+    // Revision two had this backwards twice over: dark plates on a lighter board, every surface
+    // within a few points of every other. Desaturated, that grid had no structure at all -- one flat
+    // field with some texture in it. Revision five sets three plateaus instead, and the rule behind
+    // them matters more than the numbers: any two touching surfaces differ by at least twenty points
+    // of luminance. Near-black board, mid-grey plates, bright borders. If a later colour change
+    // closes one of those gaps, the grid stops carrying the layout and that is a bug, not a taste.
+
+    /// <summary>An empty slot's plate: the lighter of the two, because there is nothing on it.</summary>
+    public static readonly Color SlotEmpty = new("454545");
+
+    public static readonly Color SlotEmptyEdge = new("545454");
+
+    /// <summary>A slot with something in it, a step darker so the artwork is the bright thing.</summary>
     public static readonly Color Slot = new("3a3a3a");
 
-    public static readonly Color SlotBorder = new("9a9a9a");
+    /// <summary>Two pixels, and bright. This is what draws the grid.</summary>
+    public static readonly Color SlotBorder = new("8a8a8a");
 
     /// <summary>The border under the pointer, and for the hundred milliseconds after a key press.</summary>
     public static readonly Color SlotBorderHi = new("e2e2e2");
+
+    /// <summary>A row nobody has bought yet.</summary>
+    public static readonly Color SlotLocked = new("2a2a2a");
+
+    /// <summary>The padlock on it, which has to clear its own plate.</summary>
+    public static readonly Color SlotLockedIcon = new("6a6a6a");
 
     /// <summary>The large number an empty slot carries in the middle of itself.</summary>
     public static readonly Color SlotEmptyNumber = new("8f8f8f");
@@ -156,9 +176,17 @@ public static class Style
     public static readonly Color ModalFrame = new("b4913f");
 
     public static readonly Color ModalFrameDark = new("6b5423");
-    public static readonly Color ModalBody = new("262626");
-    public static readonly Color ModalHeader = new("1b1b1b");
-    public static readonly Color ModalBand = new("333333");
+
+    /// <summary>The board the plates sit on. Near-black, and the same colour as the gutters.</summary>
+    public static readonly Color ModalBody = new("1c1c1c");
+
+    public static readonly Color ModalHeader = new("141414");
+
+    /// <summary>A full-width band across the grid: the gift and locked dividers, and the sort bar.</summary>
+    public static readonly Color ModalBand = new("3a3a3a");
+
+    /// <summary>The trough a group of controls sits in, a step above the board and below a plate.</summary>
+    public static readonly Color ModalTrough = new("2a2a2a");
     public static readonly Color ModalStripe = new(1f, 1f, 1f, 0.04f);
 
     public static readonly Color StatLabel = new("c9b184");
@@ -172,77 +200,130 @@ public static class Style
     public static readonly Color StatNumber = new("5cd05c");
 
     /// <summary>
-    /// The outline under every piece of text.
+    /// Black, for the outline under a token and the edge around a sprite.
     /// </summary>
     /// <remarks>
-    /// A hard one-pixel outline on all four sides, not a soft shadow offset down and right. The
-    /// world under the overlay is any colour at all, and an outline is what keeps a pixel face
-    /// legible over a sunlit floor without softening its edges.
+    /// It is no longer under every string. See <see cref="DrawText"/> for why: an outline rescues
+    /// text from a background that moves, and most of this interface's text sits on an opaque plate
+    /// where the outline only closes up the counters and costs legibility.
     /// </remarks>
     public static readonly Color TextOutline = Colors.Black;
 
-    // The type scale, at one times. Everything is drawn at these sizes and the whole canvas is
-    // scaled by a whole or half step, so a glyph is never resampled.
+    /// <summary>The floor. Nothing in the interface renders below this, except a Tier 3 token.</summary>
+    public const int SmallestReadable = 12;
+
+    // ─── the type scale ───────────────────────────────────────────────────────────────────────
+    //
+    // At 1080p, before the canvas scale. Revision two set this against a pixel face and it was
+    // small: twelve for body, ten for a tag, sixteen for a name. Revision six raises the floor to
+    // twelve and puts body at fourteen, which is most of what the "I cannot read it" complaint
+    // actually was -- the typeface was the second cause, not the first.
+
+    /// <summary>A panel's own name, and the only place a display treatment is allowed.</summary>
+    public const int FontTitle = 20;
+
+    /// <summary>A heading inside a panel, and a player's name over the world.</summary>
     public const int FontName = 16;
-    public const int FontBody = 12;
+
+    public const int FontHeader = 14;
+
+    /// <summary>Reading text: stat rows, item names, chat, everything with words in it.</summary>
+    public const int FontBody = 14;
+
+    /// <summary>Secondary text, and the smallest size in the interface.</summary>
     public const int FontSmall = 12;
-    public const int FontTag = 10;
+
+    /// <summary>
+    /// Tier 3 tokens: tier tags, slot numbers, key hints.
+    /// </summary>
+    /// <remarks>
+    /// Below the floor on purpose, and the one exception to it. These are two to four characters
+    /// sitting directly on artwork -- <c>T12</c>, <c>UT</c>, <c>3</c> -- and they are matched by
+    /// shape rather than read, so the rule that produced the floor does not apply to them. Anything
+    /// with a word in it goes at <see cref="FontSmall"/> or above.
+    /// </remarks>
+    public const int FontTag = 11;
+
+    /// <summary>The number an empty slot carries in the middle of itself.</summary>
+    public const int FontEmptySlot = 24;
 
     /// <summary>Every cluster's margin from the edge of the viewport.</summary>
     public const int EdgeMargin = 20;
 
-    private static Font _pixel;
+    private static Font _sans;
+    private static Font _bold;
 
     /// <summary>
     /// The face the interface is set in.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The brief asks for a bitmap font. There is not one in the tree -- the extracted assets are
-    /// all world artwork, and the original's interface type is a system face -- so this is the
-    /// engine's fallback with everything that softens a glyph turned off: no antialiasing, no
-    /// subpixel positioning, hinting on. At the sizes above, on a canvas that only ever scales by a
-    /// whole or half step, that gives hard-edged text with no resampling in it.
+    /// Inter, at regular and semibold. Revisions two and five both asked for a bitmap face and both
+    /// were wrong about the reference: only a few short display strings in it are pixel lettering,
+    /// and everything with a sentence in it -- stat rows, item names, chat -- is a clean humanist
+    /// sans. The pixel character of that interface comes from the sprites and the chrome. A
+    /// pixel-art game does not need a pixel-art font, and at fourteen pixels it cannot afford one:
+    /// a face with no curves and a five-pixel x-height has nothing left to tell an <c>a</c> from an
+    /// <c>o</c> with.
     /// </para>
     /// <para>
-    /// Dropping a real pixel face in is one line: load it here and everything follows, because
-    /// nothing else in the interface names a font.
+    /// Antialiasing and hinting are on, which is the opposite of what revision two set. Turning
+    /// them off is right for a bitmap face and ruinous for a vector one -- it is the other half of
+    /// why the type looked crunchy. Subpixel positioning stays on so a string laid out at a
+    /// fractional x does not jitter its glyphs onto whole pixels.
+    /// </para>
+    /// <para>
+    /// Figures are tabular. Every number in here changes while you are looking at it -- health,
+    /// fame, a stat that just went up -- and proportional digits make the column twitch sideways
+    /// when <c>950/950</c> becomes <c>949/950</c>.
     /// </para>
     /// </remarks>
-    public static Font Pixel
+    public static Font Sans => _sans ??= Face("res://assets/fonts/Inter-Regular.ttf");
+
+    /// <summary>The same face at semibold: headers, values, and anything over the world.</summary>
+    public static Font Bold => _bold ??= Face("res://assets/fonts/Inter-SemiBold.ttf");
+
+    /// <summary>Whichever of the two a caller asked for.</summary>
+    public static Font Face(bool bold) => bold ? Bold : Sans;
+
+    private static Font Face(string path)
     {
-        get
+        if (ResourceLoader.Load(path) is not FontFile file)
+            return ThemeDB.FallbackFont;
+
+        file.Antialiasing = TextServer.FontAntialiasing.Gray;
+        file.SubpixelPositioning = TextServer.SubpixelPositioning.Auto;
+        file.Hinting = TextServer.Hinting.Normal;
+
+        // Tabular figures. The tag is the four characters packed big-endian, which is what
+        // TextServer.NameToTag would compute and is stable enough to write out.
+        return new FontVariation
         {
-            if (_pixel != null)
-                return _pixel;
-
-            _pixel = ThemeDB.FallbackFont;
-
-            if (ThemeDB.FallbackFont?.Duplicate() is FontFile crisp)
+            BaseFont = file,
+            OpentypeFeatures = new Godot.Collections.Dictionary
             {
-                crisp.Antialiasing = TextServer.FontAntialiasing.None;
-                crisp.SubpixelPositioning = TextServer.SubpixelPositioning.Disabled;
-                crisp.Hinting = TextServer.Hinting.Normal;
-                crisp.ForceAutohinter = true;
-                _pixel = crisp;
-            }
-
-            return _pixel;
-        }
+                { ('t' << 24) | ('n' << 16) | ('u' << 8) | 'm', 1 },
+            },
+        };
     }
 
-    /// <summary>Sets a label's face, size, colour and outline in one call.</summary>
-    public static T Typeset<T>(this T label, int size, Color colour)
+    /// <summary>
+    /// Tier 1: reading text, on an opaque plate. No outline, no shadow.
+    /// </summary>
+    /// <remarks>
+    /// The default, and by count almost everything. An outline exists to rescue a string from a
+    /// background that could be any colour; over a panel there is no such background, and all the
+    /// outline does at fourteen pixels is fill in the counters of <c>a</c>, <c>e</c> and <c>g</c>
+    /// with black.
+    /// </remarks>
+    public static T Typeset<T>(this T label, int size, Color colour, bool bold = false)
         where T : Label
     {
-        label.AddThemeFontOverride("font", Pixel);
+        label.AddThemeFontOverride("font", Face(bold));
         label.AddThemeFontSizeOverride("font_size", size);
         label.AddThemeColorOverride("font_color", colour);
 
-        // A real outline rather than a shadow. Two pixels of outline size is what Godot needs to
-        // put one solid pixel on each of the four sides.
-        label.AddThemeColorOverride("font_outline_color", TextOutline);
-        label.AddThemeConstantOverride("outline_size", 2);
+        label.AddThemeConstantOverride("outline_size", 0);
         label.AddThemeConstantOverride("shadow_offset_x", 0);
         label.AddThemeConstantOverride("shadow_offset_y", 0);
 
@@ -250,16 +331,129 @@ public static class Style
         return label;
     }
 
+    /// <summary>Tier 2 as a label: over the world, so one shadow down and right.</summary>
+    public static T TypesetOverWorld<T>(this T label, int size, Color colour)
+        where T : Label
+    {
+        label.Typeset(size, colour, bold: true);
+        label.AddThemeColorOverride("font_shadow_color", HudShadow);
+        label.AddThemeConstantOverride("shadow_offset_x", 1);
+        label.AddThemeConstantOverride("shadow_offset_y", 1);
+        return label;
+    }
+
+    /// <summary>The shadow under Tier 2 text: one pixel, down and right, not a stroke.</summary>
+    public static readonly Color HudShadow = new(0f, 0f, 0f, 0.9f);
+
     /// <summary>
-    /// Draws a string with the interface's outline, for the parts that draw rather than label.
+    /// Tier 1, drawn: reading text on an opaque plate.
     /// </summary>
     /// <param name="at">The text's baseline, at its left edge unless an alignment says otherwise.</param>
-    public static void DrawOutlined(
+    public static void DrawText(
+        this CanvasItem into, Vector2 at, string text, int size, Color colour, bool bold = false,
+        HorizontalAlignment alignment = HorizontalAlignment.Left, float width = -1f)
+    {
+        into.DrawString(Face(bold), at, text, alignment, width, size, colour);
+    }
+
+    /// <summary>
+    /// Tier 2, drawn: over the world, where the background is whatever the player walked onto.
+    /// </summary>
+    /// <remarks>
+    /// One shadow offset down and right rather than a stroke on four sides. A stroke doubles the
+    /// apparent weight of a semibold face and closes its apertures; a single offset copy separates
+    /// the glyph from what is behind it and leaves its shape alone.
+    /// </remarks>
+    public static void DrawOverWorld(
         this CanvasItem into, Vector2 at, string text, int size, Color colour,
         HorizontalAlignment alignment = HorizontalAlignment.Left, float width = -1f)
     {
-        into.DrawStringOutline(Pixel, at, text, alignment, width, size, 2, TextOutline);
-        into.DrawString(Pixel, at, text, alignment, width, size, colour);
+        into.DrawString(Bold, at + Vector2.One, text, alignment, width, size, HudShadow);
+        into.DrawString(Bold, at, text, alignment, width, size, colour);
+    }
+
+    /// <summary>
+    /// Tier 3, drawn: two to four characters sitting directly on a sprite.
+    /// </summary>
+    /// <remarks>
+    /// The one place a hard outline survives. A tier tag sits on artwork of no fixed colour, is too
+    /// short to be read as a word, and is looked up rather than read -- so the outline's cost is a
+    /// cost it does not pay.
+    /// </remarks>
+    public static void DrawToken(
+        this CanvasItem into, Vector2 at, string text, int size, Color colour,
+        HorizontalAlignment alignment = HorizontalAlignment.Left, float width = -1f)
+    {
+        into.DrawStringOutline(Bold, at, text, alignment, width, size, 1, TextOutline);
+        into.DrawString(Bold, at, text, alignment, width, size, colour);
+    }
+
+    /// <summary>
+    /// How thick a black edge to put around artwork drawn this big, in screen pixels.
+    /// </summary>
+    /// <remarks>
+    /// The world's outline is a fixed two screen pixels at any zoom -- see
+    /// <c>shaders/sprite.gdshader</c> -- and two is right for the hotbar, where the artwork is about
+    /// forty pixels across. The vault draws the same sprites at nearly twice that, and two pixels
+    /// there is a hairline you have to look for. So it grows with the artwork, and stops at three:
+    /// past that the edge starts closing up the gaps the art means to have in it, and a ring stops
+    /// being a ring.
+    /// </remarks>
+    public static float SpriteOutline(in Rect2 box) =>
+        Mathf.Clamp(Mathf.Round(Mathf.Min(box.Size.X, box.Size.Y) / 26f), 1f, 3f);
+
+    /// <summary>The eight directions an outline is dilated in, as unit offsets.</summary>
+    /// <remarks>
+    /// Eight rather than four for the same reason the shader samples eight: a diagonal edge
+    /// outlined from four sides comes out with a stair-step of bare pixels along it.
+    /// </remarks>
+    private static readonly Vector2[] Around =
+    {
+        new(-1f, 0f), new(1f, 0f), new(0f, -1f), new(0f, 1f),
+        new(-1f, -1f), new(1f, -1f), new(-1f, 1f), new(1f, 1f),
+    };
+
+    /// <summary>
+    /// Draws a sprite with a black edge around it, the way the world draws one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Item art is drawn in its own palette and nothing else, and a lot of it -- iron greys, dark
+    /// leathers, anything black-hafted -- is the colour of the plate it sits on. Without an edge
+    /// those items do not end; they merge into the square, and a bag of them reads as one texture
+    /// rather than as sixteen things.
+    /// </para>
+    /// <para>
+    /// Eight offset copies of the sprite in black under the sprite itself. The world does this in a
+    /// fragment shader because it has thousands of sprites a frame and can afford neither the draw
+    /// calls nor a material switch; the interface has a few dozen, redraws them only when their
+    /// contents change, and would have to give the whole canvas item a material to do it the other
+    /// way -- which would outline the plate and the text too.
+    /// </para>
+    /// <para>
+    /// The source rectangle never moves, only the destination, so a copy pushed a pixel left cannot
+    /// drag in whatever sits next to it on the sheet.
+    /// </para>
+    /// </remarks>
+    /// <param name="outline">
+    /// Thickness in pixels, or negative to take it from the size the artwork is drawn at.
+    /// </param>
+    public static void DrawSprite(
+        this CanvasItem into, in Assets.Sprite sprite, in Rect2 box, float outline = -1f)
+    {
+        if (!sprite.IsValid)
+            return;
+
+        if (outline < 0f)
+            outline = SpriteOutline(box);
+
+        if (outline > 0f)
+            foreach (var direction in Around)
+                into.DrawTextureRectRegion(
+                    sprite.Sheet, new Rect2(box.Position + direction * outline, box.Size),
+                    sprite.Region, TextOutline);
+
+        into.DrawTextureRectRegion(sprite.Sheet, box, sprite.Region);
     }
 
     /// <summary>How wide a string is in the interface's face, for laying text out by hand.</summary>
@@ -275,16 +469,16 @@ public static class Style
     /// texture, and it turns a per-frame cost that scales with what is on screen into one that
     /// scales with how many *different* things are on screen.
     /// </remarks>
-    public static float Measure(string text, int size)
+    public static float Measure(string text, int size, bool bold = false)
     {
         if (string.IsNullOrEmpty(text))
             return 0f;
 
-        var key = (text, size);
+        var key = (text, bold ? -size : size);
         if (_measured.TryGetValue(key, out float width))
             return width;
 
-        width = Pixel.GetStringSize(text, HorizontalAlignment.Left, -1, size).X;
+        width = Face(bold).GetStringSize(text, HorizontalAlignment.Left, -1, size).X;
 
         // Cleared wholesale rather than evicted one at a time: it only grows when the game starts
         // showing text it has never shown, which is not something that happens in a steady state.
@@ -293,6 +487,20 @@ public static class Style
 
         _measured[key] = width;
         return width;
+    }
+
+    /// <summary>
+    /// The baseline that centres a line of this size in a box of this height.
+    /// </summary>
+    /// <remarks>
+    /// Written out once because it was written out at nine call sites, each of them reaching into
+    /// the font for its ascent and descent, and each of them a place a font change had to be
+    /// followed to.
+    /// </remarks>
+    public static float BaselineIn(float height, int size, bool bold = false)
+    {
+        var face = Face(bold);
+        return Mathf.Round((height + face.GetAscent(size) - face.GetDescent(size)) / 2f);
     }
 
     private const int MostMeasured = 4096;
@@ -331,6 +539,7 @@ public static class Style
     {
         var theme = new Theme();
 
+        StyleFont(theme);
         StyleLineEdit(theme);
         StyleOptionButton(theme);
         StyleCheckBox(theme);
@@ -422,14 +631,24 @@ public static class Style
         theme.SetFontSize("font_size", "CheckBox", 14);
     }
 
+    /// <summary>
+    /// The engine's scrollbars, flattened to match the one the panels draw themselves.
+    /// </summary>
+    /// <remarks>
+    /// A flat track and a flat thumb: no gradient, no rounding, no drop shadow. What was here was
+    /// <see cref="Box"/>, which is the shape a dialog control wants and is exactly what makes a
+    /// scrollbar read as the editor's rather than as the game's.
+    /// </remarks>
     private static void StyleScrollbars(Theme theme)
     {
+        static StyleBoxFlat Flat(Color fill) => new() { BgColor = fill };
+
         foreach (string type in new[] { "VScrollBar", "HScrollBar" })
         {
-            theme.SetStylebox("scroll", type, Box(new Color("14131a"), new Color("14131a"), new Color(0, 0, 0, 0), 2, 0));
-            theme.SetStylebox("grabber", type, Box(ControlTop, ControlBottom, Edge, 2));
-            theme.SetStylebox("grabber_highlight", type, Box(ControlHoverTop, ControlHoverBottom, GoldDim, 2));
-            theme.SetStylebox("grabber_pressed", type, Box(GoldDim, GoldDim, Gold, 2));
+            theme.SetStylebox("scroll", type, Flat(PanelInset));
+            theme.SetStylebox("grabber", type, Flat(ButtonFace));
+            theme.SetStylebox("grabber_highlight", type, Flat(ButtonHover));
+            theme.SetStylebox("grabber_pressed", type, Flat(SlotBorderHi));
         }
     }
 
@@ -454,13 +673,20 @@ public static class Style
     private static void StyleLabels(Theme theme)
     {
         theme.SetColor("font_color", "Label", Text);
-        theme.SetFontSize("font_size", "Label", 14);
+        theme.SetFontSize("font_size", "Label", FontBody);
 
-        // A shadow under every label, so text stays readable over the world as well as over a panel.
-        theme.SetColor("font_shadow_color", "Label", new Color(0f, 0f, 0f, 0.7f));
-        theme.SetConstant("shadow_offset_x", "Label", 1);
-        theme.SetConstant("shadow_offset_y", "Label", 1);
-        theme.SetConstant("shadow_outline_size", "Label", 1);
+        // No shadow by default. It used to be under every label so that text over the world stayed
+        // legible, but almost no label is over the world -- they are on plates -- and the ones that
+        // are ask for it by name. See TypesetOverWorld.
+        theme.SetConstant("shadow_offset_x", "Label", 0);
+        theme.SetConstant("shadow_offset_y", "Label", 0);
+    }
+
+    /// <summary>Puts the interface's face on every control the port does not draw itself.</summary>
+    private static void StyleFont(Theme theme)
+    {
+        theme.DefaultFont = Sans;
+        theme.DefaultFontSize = FontBody;
     }
 
     private static void StyleSliders(Theme theme)

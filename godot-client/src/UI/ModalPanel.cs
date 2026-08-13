@@ -81,7 +81,7 @@ public partial class ModalPanel : Control
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
             Text = _title,
-        }.Typeset(20, Style.Text);
+        }.Typeset(Style.FontTitle, Style.Text, bold: true);
         AddChild(_heading);
 
         if (ShowClose)

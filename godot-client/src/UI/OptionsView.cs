@@ -219,17 +219,17 @@ public partial class OptionsView : Control
             DrawRect(full.Grow(-2f), Style.PanelSolid);
 
             // The title, and the small grey affordance beside it that puts the keys back.
-            this.DrawOutlined(new Vector2(16f, 38f), "Options", 28, Style.Text);
+            this.DrawText(new Vector2(16f, 38f), "Options", 28, Style.Text);
 
             var reset = ResetAt();
-            this.DrawOutlined(new Vector2(reset.Position.X + 4f, 28f), "reset to defaults",
+            this.DrawText(new Vector2(reset.Position.X + 4f, 28f), "reset to defaults",
                 Style.FontSmall, _overReset ? Style.Text : Style.TextDim);
 
             // Close, in the original's red.
             _close = new Rect2(Size.X - 116f, 12f, 100f, 26f);
             DrawRect(_close, _overClose ? new Color("e0453f") : new Color("c62f2a"));
             DrawRect(_close, Style.PanelEdge, filled: false, width: 1f);
-            this.DrawOutlined(
+            this.DrawText(
                 new Vector2(_close.Position.X + (_close.Size.X - Style.Measure("Close", Style.FontBody)) / 2f,
                     _close.Position.Y + 18f), "Close", Style.FontBody, Style.Text);
 
@@ -250,7 +250,7 @@ public partial class OptionsView : Control
                     DrawRect(new Rect2(box.Position.X + 1f, box.End.Y - 1f, box.Size.X - 2f, 2f), Style.ButtonFace);
 
                 float text = box.Position.X + (box.Size.X - Style.Measure(TabNames[i], Style.FontBody)) / 2f;
-                this.DrawOutlined(new Vector2(text, box.Position.Y + 20f), TabNames[i], Style.FontBody,
+                this.DrawText(new Vector2(text, box.Position.Y + 20f), TabNames[i], Style.FontBody,
                     active ? Style.Text : Style.TextDim);
             }
         }
@@ -734,7 +734,7 @@ public partial class OptionsView : Control
 
                 if (row.Kind == RowKind.Heading)
                 {
-                    this.DrawOutlined(new Vector2(4f, box.Position.Y + 24f), row.Label, 18, Style.Text);
+                    this.DrawText(new Vector2(4f, box.Position.Y + 24f), row.Label, 18, Style.Text);
                     continue;
                 }
 
@@ -745,7 +745,7 @@ public partial class OptionsView : Control
                 DrawRect(label, _hovered == i ? Style.Panel : Style.PanelInset);
                 DrawRect(control, _hovered == i ? Style.Panel : Style.PanelInset);
 
-                this.DrawOutlined(new Vector2(label.Position.X + 12f, label.Position.Y + 20f),
+                this.DrawText(new Vector2(label.Position.X + 12f, label.Position.Y + 20f),
                     row.Label, Style.FontBody, Style.TextDim);
 
                 switch (row.Kind)
@@ -770,14 +770,14 @@ public partial class OptionsView : Control
             DrawRect(pill, on ? new Color("4caf50") : new Color("c62f2a"));
             DrawRect(pill, Style.PanelEdge, filled: false, width: 1f);
 
-            this.DrawOutlined(
+            this.DrawText(
                 new Vector2(pill.Position.X + (pill.Size.X - Style.Measure(text, Style.FontTag)) / 2f,
                     pill.Position.Y + pill.Size.Y - 5f), text, Style.FontTag, Style.Text);
         }
 
         private void DrawChoice(Rect2 control, string value)
         {
-            this.DrawOutlined(new Vector2(control.Position.X + 12f, control.Position.Y + 20f),
+            this.DrawText(new Vector2(control.Position.X + 12f, control.Position.Y + 20f),
                 value, Style.FontBody, Style.Text);
 
             // The triangle at the right edge, which is what says the value can be changed.
@@ -801,7 +801,7 @@ public partial class OptionsView : Control
             DrawRect(handle, Style.PanelEdge, filled: false, width: 1f);
 
             string percent = $"{Mathf.RoundToInt(value * 100f)}%";
-            this.DrawOutlined(new Vector2(control.End.X - 8f - Style.Measure(percent, Style.FontSmall),
+            this.DrawText(new Vector2(control.End.X - 8f - Style.Measure(percent, Style.FontSmall),
                 control.Position.Y + 20f), percent, Style.FontSmall, Style.Text);
         }
 
@@ -815,7 +815,7 @@ public partial class OptionsView : Control
                 : KeyBindings.IsChanged(row.Action) ? Style.TierSpecial
                 : Style.Text;
 
-            this.DrawOutlined(
+            this.DrawText(
                 new Vector2(control.Position.X + (control.Size.X - Style.Measure(text, Style.FontBody)) / 2f,
                     control.Position.Y + 20f), text, Style.FontBody, colour);
         }
