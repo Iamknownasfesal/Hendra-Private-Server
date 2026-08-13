@@ -12,6 +12,35 @@ pub struct Account {
     /// `None` for an account that predates authentication, which cannot be logged into until it
     /// sets one.
     pub password_hash: Option<String>,
+
+    /// What the account can spend. Held here rather than on a character, because a purchase made
+    /// by one is paid for by all of them and a death does not take it away.
+    pub gold: i32,
+    pub fame: i32,
+    pub tokens: i32,
+}
+
+/// The things an account spends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Currency {
+    Gold,
+    Fame,
+    Tokens,
+}
+
+impl Currency {
+    /// The column this currency lives in.
+    pub(crate) fn column_name(self) -> &'static str {
+        self.column()
+    }
+
+    fn column(self) -> &'static str {
+        match self {
+            Currency::Gold => "gold",
+            Currency::Fame => "fame",
+            Currency::Tokens => "tokens",
+        }
+    }
 }
 
 /// A character, with everything needed to put it into a world.
@@ -52,22 +81,27 @@ pub struct CharacterSummary {
 impl Store {
     /// Creates an account, or reports that the name is taken.
     pub async fn create_account(&self, name: &str) -> Result<Account> {
-        let row = sqlx::query_as::<_, (i64, String, i16, bool, Option<String>)>(
+        let row = sqlx::query_as::<_, (i64, String, i16, bool, Option<String>, i32, i32, i32)>(
             "INSERT INTO account (name) VALUES ($1)
-             RETURNING id, name, vault_chests, banned, password_hash",
+             RETURNING id, name, vault_chests, banned, password_hash, gold, fame, tokens",
         )
         .bind(name)
         .fetch_one(self.pool())
         .await;
 
         match row {
-            Ok((id, name, vault_chests, banned, password_hash)) => Ok(Account {
-                id,
-                name,
-                vault_chests,
-                banned,
-                password_hash,
-            }),
+            Ok((id, name, vault_chests, banned, password_hash, gold, fame, tokens)) => {
+                Ok(Account {
+                    id,
+                    name,
+                    vault_chests,
+                    banned,
+                    password_hash,
+                    gold,
+                    fame,
+                    tokens,
+                })
+            }
             // The unique index is what decides this, not a prior lookup. A check-then-insert has a
             // window between the two in which someone else inserts the same name.
             Err(sqlx::Error::Database(err)) if err.is_unique_violation() => {
@@ -79,21 +113,26 @@ impl Store {
 
     /// Finds an account by name, ignoring case.
     pub async fn account_by_name(&self, name: &str) -> Result<Account> {
-        let row = sqlx::query_as::<_, (i64, String, i16, bool, Option<String>)>(
-            "SELECT id, name, vault_chests, banned, password_hash
+        let row = sqlx::query_as::<_, (i64, String, i16, bool, Option<String>, i32, i32, i32)>(
+            "SELECT id, name, vault_chests, banned, password_hash, gold, fame, tokens
              FROM account WHERE lower(name) = lower($1)",
         )
         .bind(name)
         .fetch_optional(self.pool())
         .await?;
 
-        row.map(|(id, name, vault_chests, banned, password_hash)| Account {
-            id,
-            name,
-            vault_chests,
-            banned,
-            password_hash,
-        })
+        row.map(
+            |(id, name, vault_chests, banned, password_hash, gold, fame, tokens)| Account {
+                id,
+                name,
+                vault_chests,
+                banned,
+                password_hash,
+                gold,
+                fame,
+                tokens,
+            },
+        )
         .ok_or_else(|| StoreError::NoSuchAccount(name.to_string()))
     }
 
@@ -111,20 +150,26 @@ impl Store {
 
     /// An account by id.
     pub async fn account(&self, id: i64) -> Result<Account> {
-        let row = sqlx::query_as::<_, (i64, String, i16, bool, Option<String>)>(
-            "SELECT id, name, vault_chests, banned, password_hash FROM account WHERE id = $1",
+        let row = sqlx::query_as::<_, (i64, String, i16, bool, Option<String>, i32, i32, i32)>(
+            "SELECT id, name, vault_chests, banned, password_hash, gold, fame, tokens
+             FROM account WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(self.pool())
         .await?;
 
-        row.map(|(id, name, vault_chests, banned, password_hash)| Account {
-            id,
-            name,
-            vault_chests,
-            banned,
-            password_hash,
-        })
+        row.map(
+            |(id, name, vault_chests, banned, password_hash, gold, fame, tokens)| Account {
+                id,
+                name,
+                vault_chests,
+                banned,
+                password_hash,
+                gold,
+                fame,
+                tokens,
+            },
+        )
         .ok_or_else(|| StoreError::NoSuchAccount(id.to_string()))
     }
 
@@ -432,6 +477,45 @@ impl Store {
         .execute(self.pool())
         .await?;
         Ok(())
+    }
+
+    /// Adds to what an account can spend.
+    pub async fn credit(&self, account_id: i64, currency: Currency, amount: i32) -> Result<()> {
+        if amount <= 0 {
+            return Ok(());
+        }
+
+        let column = currency.column();
+        sqlx::query(&format!(
+            "UPDATE account SET {column} = {column} + $2 WHERE id = $1"
+        ))
+        .bind(account_id)
+        .bind(amount)
+        .execute(self.pool())
+        .await?;
+
+        Ok(())
+    }
+
+    /// Takes from what an account can spend, refusing when there is not enough.
+    ///
+    /// The balance check is in the statement rather than read first, so two purchases arriving
+    /// together cannot both see the same coin.
+    pub async fn debit(&self, account_id: i64, currency: Currency, amount: i32) -> Result<bool> {
+        if amount <= 0 {
+            return Ok(true);
+        }
+
+        let column = currency.column();
+        let spent = sqlx::query(&format!(
+            "UPDATE account SET {column} = {column} - $2 WHERE id = $1 AND {column} >= $2"
+        ))
+        .bind(account_id)
+        .bind(amount)
+        .execute(self.pool())
+        .await?;
+
+        Ok(spent.rows_affected() > 0)
     }
 
     /// The most potions of one kind a character may carry.

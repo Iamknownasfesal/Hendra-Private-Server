@@ -108,6 +108,86 @@ impl Store {
 }
 
 impl Store {
+    /// Buys an item, paying for it and receiving it in one transaction.
+    ///
+    /// Both halves or neither. Paying outside the transaction that grants the item is how a player
+    /// loses the money and gets nothing, and granting outside it is how they get the item twice:
+    /// the balance check and the slot claim have to agree at the same instant.
+    pub async fn buy_item(
+        &self,
+        account_id: i64,
+        character_id: i64,
+        item: uuid::Uuid,
+        currency: crate::model::Currency,
+        price: i32,
+        first_slot: i16,
+        last_slot: i16,
+    ) -> Result<i16> {
+        let mut transaction = self.pool().begin().await?;
+
+        // Paid first. A purchase that fails for want of room should leave the money alone, and
+        // rolling back is what does that; the reverse order would need a refund path that can
+        // itself fail.
+        if price > 0 {
+            let column = currency.column_name();
+            let paid = sqlx::query(&format!(
+                "UPDATE account SET {column} = {column} - $2 WHERE id = $1 AND {column} >= $2"
+            ))
+            .bind(account_id)
+            .bind(price)
+            .execute(&mut *transaction)
+            .await?;
+
+            if paid.rows_affected() == 0 {
+                return Err(StoreError::Refused("you cannot afford that"));
+            }
+        }
+
+        // The same claim `give_item` makes, in the same transaction as the payment: lock every
+        // candidate that exists, find a free one, and insert conditionally so a slot taken between
+        // the scan and the write refuses rather than overwrites.
+        sqlx::query(
+            "SELECT slot FROM inventory_slot
+             WHERE character_id = $1 AND slot BETWEEN $2 AND $3
+             FOR UPDATE",
+        )
+        .bind(character_id)
+        .bind(first_slot)
+        .bind(last_slot)
+        .fetch_all(&mut *transaction)
+        .await?;
+
+        let taken = sqlx::query_as::<_, (i16,)>(
+            "SELECT slot FROM inventory_slot WHERE character_id = $1 AND slot BETWEEN $2 AND $3",
+        )
+        .bind(character_id)
+        .bind(first_slot)
+        .bind(last_slot)
+        .fetch_all(&mut *transaction)
+        .await?;
+
+        let free = (first_slot..=last_slot)
+            .find(|slot| !taken.iter().any(|(used,)| used == slot))
+            .ok_or(StoreError::Refused("there is no room for that"))?;
+
+        let written = sqlx::query(
+            "INSERT INTO inventory_slot (character_id, slot, item) VALUES ($1, $2, $3)
+             ON CONFLICT (character_id, slot) DO NOTHING",
+        )
+        .bind(character_id)
+        .bind(free)
+        .bind(item)
+        .execute(&mut *transaction)
+        .await?;
+
+        if written.rows_affected() == 0 {
+            return Err(StoreError::Refused("there is no room for that"));
+        }
+
+        transaction.commit().await?;
+        Ok(free)
+    }
+
     /// Puts an item into the first free slot of a character's inventory.
     ///
     /// The search and the write happen inside one transaction with the rows locked, so two

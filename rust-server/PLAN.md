@@ -6,7 +6,7 @@ deliberately excluded and left until last.
 Phases 0–5 are done: workspace, content, protocol, transport, simulation, behaviour language,
 persistence, authentication. What follows is phases 6–11.
 
-**Where we are:** ~65% of the old server by subsystem. 549 tests.
+**Where we are:** ~66% of the old server by subsystem. 553 tests.
 
 **Sizing** is relative, not calendar: **S** is an afternoon, **M** is a day or two, **L** is
 several days, **XL** is a week or more.
@@ -158,8 +158,8 @@ an ability, 1,942 activates across 43 kinds.
 
 ### 7.4 Vendors and gift chests — **M**
 
-- [ ] Currency on the account: gold, fame, tokens
-- [ ] A purchase path with the same row locking the item moves use
+- [x] Currency on the account: gold, fame, tokens, with the balance checked in the statement
+- [x] A purchase path that pays and delivers in one transaction, reusing the claim `give_item` proved
 - [ ] Merchant and gift chest entity kinds
 
 ---

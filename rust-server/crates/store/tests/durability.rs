@@ -7,7 +7,7 @@
 //! Set `HENDRA_TEST_DATABASE` to point at one. Without it the tests skip rather than fail, so a
 //! machine with no Postgres can still run the rest of the suite.
 
-use hendra_store::{Location, Offer, Store, StoreError};
+use hendra_store::{Currency, Location, Offer, Store, StoreError};
 
 /// A store with a schema of its own, or `None` when no database is configured.
 ///
@@ -875,4 +875,126 @@ async fn two_pickups_racing_for_the_last_place_in_a_stack_cannot_both_win() {
 
     let held = store.character(character.id).await.unwrap();
     assert_eq!(held.health_potions, Store::POTION_LIMIT);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn buying_something_pays_for_it_and_delivers_it() {
+    let Some(store) = store("t_buy").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    let character = store
+        .create_character(account.id, WIZARD, "Wizard", 800)
+        .await
+        .unwrap();
+
+    store.credit(account.id, Currency::Gold, 100).await.unwrap();
+    let slot = store
+        .buy_item(account.id, character.id, WAND, Currency::Gold, 40, 4, 11)
+        .await
+        .unwrap();
+
+    let held = store.character(character.id).await.unwrap();
+    assert!(held.inventory.contains(&(slot, WAND)));
+    assert_eq!(store.account(account.id).await.unwrap().gold, 60);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn buying_what_you_cannot_afford_costs_nothing_and_delivers_nothing() {
+    let Some(store) = store("t_buy_poor").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    let character = store
+        .create_character(account.id, WIZARD, "Wizard", 800)
+        .await
+        .unwrap();
+
+    store.credit(account.id, Currency::Gold, 10).await.unwrap();
+    assert!(
+        store
+            .buy_item(account.id, character.id, WAND, Currency::Gold, 40, 4, 11)
+            .await
+            .is_err()
+    );
+
+    assert_eq!(store.account(account.id).await.unwrap().gold, 10);
+    assert!(
+        store
+            .character(character.id)
+            .await
+            .unwrap()
+            .inventory
+            .is_empty()
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_purchase_with_nowhere_to_put_it_leaves_the_money_alone() {
+    // Paying and receiving are one transaction, so a failure at either end undoes both. Otherwise
+    // a full inventory is a way to lose money and get nothing.
+    let Some(store) = store("t_buy_full").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    let character = store
+        .create_character(account.id, WIZARD, "Wizard", 800)
+        .await
+        .unwrap();
+
+    let full: Vec<(i16, uuid::Uuid)> = (4..=11).map(|slot| (slot, ROBE)).collect();
+    store.set_inventory(character.id, &full).await.unwrap();
+    store.credit(account.id, Currency::Gold, 100).await.unwrap();
+
+    assert!(
+        store
+            .buy_item(account.id, character.id, WAND, Currency::Gold, 40, 4, 11)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        store.account(account.id).await.unwrap().gold,
+        100,
+        "the money must still be there"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn two_purchases_racing_for_the_last_coin_cannot_both_win() {
+    let Some(store) = store("t_buy_race").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    let character = store
+        .create_character(account.id, WIZARD, "Wizard", 800)
+        .await
+        .unwrap();
+
+    store.credit(account.id, Currency::Gold, 40).await.unwrap();
+
+    let (first, second) = tokio::join!(
+        store.buy_item(account.id, character.id, WAND, Currency::Gold, 40, 4, 11),
+        store.buy_item(account.id, character.id, ROBE, Currency::Gold, 40, 4, 11)
+    );
+
+    let winners = [first.is_ok(), second.is_ok()]
+        .iter()
+        .filter(|ok| **ok)
+        .count();
+    assert_eq!(winners, 1, "forty gold buys one of two forty-gold items");
+
+    assert_eq!(store.account(account.id).await.unwrap().gold, 0);
+    assert_eq!(
+        store.character(character.id).await.unwrap().inventory.len(),
+        1,
+        "and exactly one item arrived"
+    );
 }

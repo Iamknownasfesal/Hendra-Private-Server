@@ -16,7 +16,7 @@ mod model;
 mod moves;
 mod trade;
 
-pub use model::{Account, Character, CharacterSummary};
+pub use model::{Account, Character, CharacterSummary, Currency};
 pub use moves::{Location, MoveOutcome, Placed};
 pub use trade::{Offer, TradeOutcome};
 
