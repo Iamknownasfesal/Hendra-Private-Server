@@ -285,6 +285,40 @@ public sealed class VaultStore
         });
     }
 
+    /// <summary>
+    /// Sends a potion from the vault straight into one of the two stacks.
+    /// </summary>
+    /// <remarks>
+    /// Its own move rather than the ordinary one, because a stack is not a slot: there is nothing
+    /// at the far end to send back, and the vault's swap is a swap all the way down. The
+    /// alternative was making the player drag the potion out to a bag first and then onto the
+    /// counter, which is two drags for one intention.
+    /// </remarks>
+    public void Stack(SlotAddress from, bool health)
+    {
+        short chest, slot;
+        if (from.Owner != SlotOwner.Vault || !Address(from, out chest, out slot))
+            return;
+
+        // Drawn straight away on the vault's side. The count itself is a stat and arrives when the
+        // server says so; this is only the square the potion left.
+        if (from.Index >= 0 && from.Index < _slots.Length)
+        {
+            _slots[from.Index] = NoItem;
+            _storageRevision++;
+            Changed?.Invoke();
+        }
+
+        _session?.Send(new VaultMovePacket
+        {
+            Version = Version,
+            FromChest = chest,
+            FromSlot = slot,
+            ToChest = VaultMovePacket.PotionStacks,
+            ToSlot = (short)(health ? 0 : 1),
+        });
+    }
+
     public void Buy()
     {
         if (!Known || AtCapacity)

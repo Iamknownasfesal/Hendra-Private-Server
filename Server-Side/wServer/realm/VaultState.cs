@@ -247,6 +247,11 @@ namespace wServer.realm
                     return false;
                 }
 
+                // A potion stack is a destination and not a container: nothing comes back the
+                // other way, so it cannot go through the swap below.
+                if (move.ToChest == VaultMove.Stacks)
+                    return TryStack(player, move, out refusal);
+
                 IContainer from, to;
                 if (!Resolve(player, move.FromChest, move.FromSlot, out from) ||
                     !Resolve(player, move.ToChest, move.ToSlot, out to))
@@ -292,6 +297,79 @@ namespace wServer.realm
                 Version++;
                 return true;
             }
+        }
+
+        /// <summary>
+        /// Puts a potion straight from the vault into one of the character's stacks.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The stacks are what the counters beside the health and magic bars show, and they are the
+        /// one destination in this game that is not a slot -- an item put there stops being an item
+        /// and becomes a number. So this cannot be the swap the rest of the vault is built on, and
+        /// it is the one move here that takes from one place and gives to another as two steps.
+        /// </para>
+        /// <para>
+        /// It takes first. If the second step somehow refuses, the item goes back where it came
+        /// from; that ordering is the difference between briefly losing sight of a potion and
+        /// briefly having two of it.
+        /// </para>
+        /// </remarks>
+        private bool TryStack(Player player, VaultMove move, out string refusal)
+        {
+            refusal = null;
+
+            var stacks = player.Stacks;
+            if (stacks == null || move.ToSlot < 0 || move.ToSlot >= stacks.Length)
+            {
+                refusal = "no such stack";
+                return false;
+            }
+
+            IContainer from;
+            if (!Resolve(player, move.FromChest, move.FromSlot, out from))
+            {
+                refusal = "out of range";
+                return false;
+            }
+
+            var stack = stacks[move.ToSlot];
+            var item = from.Inventory[move.FromSlot];
+
+            if (item == null || item != stack.Item)
+            {
+                refusal = "wrong potion";
+                return false;
+            }
+
+            if (stack.Count >= stack.MaxCount)
+            {
+                refusal = "stack full";
+                return false;
+            }
+
+            var take = from.Inventory.CreateTransaction();
+            take[move.FromSlot] = null;
+
+            if (!Inventory.Execute(take))
+            {
+                refusal = "contention";
+                return false;
+            }
+
+            if (stack.Put(item) != null)
+            {
+                // It said yes a moment ago. Hand it back rather than let it fall between the two.
+                var undo = from.Inventory.CreateTransaction();
+                undo[move.FromSlot] = item;
+                Inventory.Execute(undo);
+
+                refusal = "stack full";
+                return false;
+            }
+
+            Version++;
+            return true;
         }
 
         /// <summary>

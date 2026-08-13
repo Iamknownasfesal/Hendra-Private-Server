@@ -220,6 +220,14 @@ public partial class WorldController : Node
             _hud.PotionAccepted += (from, health) => CanStack(from, health);
             _hud.PotionStacked += (from, health) =>
             {
+                // The vault speaks its own protocol for the same reason it always has: an InvSwap
+                // names its slots by the object that owns them, and a vault chest is not an object.
+                if (from.Owner == SlotOwner.Vault)
+                {
+                    _vault.Stack(from, health);
+                    return;
+                }
+
                 _inventory.OpenContainer = OpenContainer;
                 _inventory.Stack(from, health);
             };
@@ -1404,14 +1412,23 @@ public partial class WorldController : Node
     /// </remarks>
     private bool CanStack(SlotAddress from, bool health)
     {
-        if (from.Owner is SlotOwner.Vault or SlotOwner.VaultGift)
+        int wanted = _inventory.PotionType(health);
+        if (wanted == Inventory.NoItem)
             return false;
+
+        // A gift is claimed and not moved -- it has no slot the server can take from -- so it goes
+        // to a bag first like everything else that comes out of one.
+        if (from.Owner == SlotOwner.VaultGift)
+            return false;
+
+        if (from.Owner == SlotOwner.Vault)
+            return _vault.ItemAt(from.Index) == wanted;
 
         var source = from.Owner == SlotOwner.Player ? _map?.Player : OpenContainer;
         if (source?.Equipment == null || from.Index < 0 || from.Index >= source.Equipment.Length)
             return false;
 
-        return source.Equipment[from.Index] == _inventory.PotionType(health);
+        return source.Equipment[from.Index] == wanted;
     }
 
     private void OnSlotDropped(SlotAddress from, SlotAddress to)

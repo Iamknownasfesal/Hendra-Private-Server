@@ -35,6 +35,18 @@ namespace wServer.networking.packets.incoming
 
         public int Version { get; set; }
 
+        /// <summary>
+        /// A destination chest of this means one of the character's potion stacks, and
+        /// <see cref="ToSlot"/> chooses which.
+        /// </summary>
+        /// <remarks>
+        /// A stack is not a container and cannot be named by a chest and a slot, but it is a place
+        /// an item can go, and the alternative for the player is dragging a potion out to the bag
+        /// and then onto the counter. It is a destination only: nothing comes back out of a stack
+        /// except by drinking it.
+        /// </remarks>
+        public const short Stacks = -3;
+
         public short FromChest { get; set; }
         public short FromSlot { get; set; }
         public short ToChest { get; set; }

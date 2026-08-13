@@ -32,6 +32,16 @@ public sealed class VaultMovePacket : ClientPacket
     public override PacketId Id => PacketId.VaultMove;
 
     public int Version;
+    /// <summary>
+    /// A destination chest of this means a potion stack, with <c>ToSlot</c> choosing which: nought
+    /// for health, one for magic.
+    /// </summary>
+    /// <remarks>
+    /// A destination only. Nothing comes back out of a stack except by drinking it, so this can
+    /// never appear as a source.
+    /// </remarks>
+    public const short PotionStacks = -3;
+
     public short FromChest;
     public short FromSlot;
     public short ToChest;
