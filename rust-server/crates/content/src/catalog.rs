@@ -114,6 +114,38 @@ impl Catalog {
         Ok(Catalog::load_files(&paths))
     }
 
+    /// Loads content already in memory.
+    ///
+    /// Useful wherever the source is not a file on disk: a baked artifact, content embedded in the
+    /// binary, or a test that wants a catalog without touching the filesystem — which also removes
+    /// the temptation to have several tests share a fixture file and race each other over it.
+    pub fn load_str(sources: &[&str]) -> (Catalog, LoadReport) {
+        let mut catalog = Catalog::default();
+        let mut problems = Vec::new();
+
+        for text in sources {
+            match Node::parse(text) {
+                Ok(root) => catalog.absorb(&root, &mut problems),
+                Err(source) => problems.push(LoadProblem::File(XmlError::Parse {
+                    path: "<memory>".into(),
+                    source,
+                })),
+            }
+        }
+
+        catalog.resolve(&mut problems);
+
+        let report = LoadReport {
+            files_read: sources.len(),
+            objects: catalog.object_count(),
+            tiles: catalog.tile_count(),
+            items: catalog.items.len(),
+            problems,
+        };
+
+        (catalog, report)
+    }
+
     /// Loads a specific list of files.
     pub fn load_files(paths: &[PathBuf]) -> (Catalog, LoadReport) {
         let mut catalog = Catalog::default();

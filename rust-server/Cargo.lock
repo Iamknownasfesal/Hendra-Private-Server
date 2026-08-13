@@ -365,6 +365,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "hendra-sim"
+version = "0.1.0"
+dependencies = [
+ "hendra-content",
+ "hendra-net",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
 name = "hendra-transport"
 version = "0.1.0"
 dependencies = [
