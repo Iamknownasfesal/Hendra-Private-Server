@@ -117,6 +117,16 @@ struct WorldView {
 }
 
 impl WorldView {
+    /// Empties the view, for a player who has left the world it described.
+    fn clear(&mut self) {
+        self.ids.clear();
+        self.types.clear();
+        self.positions.clear();
+        self.hp.clear();
+        self.max_hp.clear();
+        self.revision += 1;
+    }
+
     fn replace_with(&mut self, world: &WorldSnapshot) {
         self.ids.clear();
         self.types.clear();
@@ -689,11 +699,24 @@ fn apply(
             player,
             tick,
             world,
-        } => shared.push(Event::Welcome {
-            player: player.0,
-            tick: tick.0,
-            world: world.to_owned(),
-        }),
+        } => {
+            // A second welcome means a different world, and a different world means everything
+            // held about the last one is void. Its snapshots were measured against a history that
+            // no longer applies, and its ticks started again from zero — so without this every
+            // snapshot from the new world reads as older than what is already held and is
+            // discarded. The symptom is a player who arrives somewhere and never appears.
+            history.clear();
+            *newest = None;
+            if let Ok(mut view) = shared.world.lock() {
+                view.clear();
+            }
+
+            shared.push(Event::Welcome {
+                player: player.0,
+                tick: tick.0,
+                world: world.to_owned(),
+            });
+        }
 
         ServerMessage::Rejected { reason } => shared.push(Event::Rejected(reason)),
 

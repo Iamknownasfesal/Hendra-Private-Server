@@ -127,7 +127,16 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
             }
 
             Outcome::Travel(portal_type) => {
-                match travel(&mut link, &placement, &name, portal_type, &context.worlds).await {
+                match travel(
+                    &mut link,
+                    &placement,
+                    &name,
+                    player.account.id,
+                    portal_type,
+                    &context.worlds,
+                )
+                .await
+                {
                     Some(next) => {
                         tracing::info!(
                             %name,
@@ -136,6 +145,11 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
                             "travelled"
                         );
                         placement = next;
+
+                        // Arriving in the vault means arriving at your own chests.
+                        if placement.world.name.as_ref() == "Vault" {
+                            place_chests(&context, &player, &placement).await;
+                        }
                     }
                     // Staying put is the right answer when a destination cannot be opened: the
                     // player keeps playing where they are rather than being disconnected over a
@@ -331,6 +345,16 @@ async fn move_item(
         _ => {}
     }
 
+    // The vault is a place. Reaching into it from a dungeon would make the room decoration, and
+    // the check belongs here rather than in the client, which is not in a position to be trusted
+    // about where it is standing.
+    let touches_vault = matches!(from, SlotLocation::Vault { .. })
+        || matches!(to, SlotLocation::Vault { .. });
+    if touches_vault && placement.world.name.as_ref() != "Vault" {
+        say(link, "you are not at your vault").await;
+        return;
+    }
+
     let (Some(source), Some(destination)) = (
         locate(from, character_id, account_id),
         locate(to, character_id, account_id),
@@ -354,7 +378,12 @@ async fn move_item(
         .move_item(source, destination, expected)
         .await
     {
-        Ok(_) => send_containers(link, &context.store, player).await,
+        Ok(_) => {
+            send_containers(link, &context.store, player).await;
+            if touches_vault {
+                place_chests(context, player, placement).await;
+            }
+        }
         Err(hendra_store::StoreError::Refused(reason)) => {
             say(link, reason).await;
             // Re-read rather than assume: the client's picture is now known to be wrong.
@@ -364,6 +393,32 @@ async fn move_item(
             tracing::warn!(%err, "a move failed");
             say(link, "that could not be done").await;
         }
+    }
+}
+
+/// Puts the account's vault chests into the room it has just entered.
+async fn place_chests(context: &Context, player: &crate::accounts::Session, placement: &Placement) {
+    let slots: Vec<(u16, u16)> = context
+        .store
+        .vault(player.account.id)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(slot, item)| (slot as u16, item as u16))
+        .collect();
+
+    let (reply, answer) = tokio::sync::oneshot::channel();
+    if placement
+        .world
+        .send(ToWorld::PlaceVaultChests {
+            slots,
+            unlocked: player.account.vault_chests.max(0) as u16,
+            reply,
+        })
+        .await
+    {
+        let placed = answer.await.unwrap_or(0);
+        tracing::debug!(placed, account = player.account.id, "placed vault chests");
     }
 }
 
@@ -566,6 +621,7 @@ async fn travel(
     link: &mut Link,
     from: &Placement,
     name: &str,
+    account_id: i64,
     portal_type: u16,
     worlds: &Worlds,
 ) -> Option<Placement> {
@@ -577,7 +633,9 @@ async fn travel(
         return None;
     }
 
-    let world = worlds.get_or_start(&destination)?;
+    // A personal world gets one instance per account, so two players in the vault are in two
+    // rooms rather than looking at each other's chests.
+    let world = worlds.get_or_start_for(&destination, account_id)?;
     let handle = join(link, &world, name).await?;
 
     from.world

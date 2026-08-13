@@ -5,6 +5,14 @@
 //! other forty-one. A world that has been started stays running, because the cost of keeping an
 //! idle world is one task doing nothing twenty times a second.
 //!
+//! # Personal worlds
+//!
+//! A world marked `isLimbo` is a place rather than a destination — the vault, the shop — and each
+//! account gets its own. Sharing one would mean everybody's vault chests standing in the same room,
+//! which is both wrong and a way to show one player another's belongings.
+//!
+//! Everywhere else is shared, so a nexus is a nexus.
+//!
 //! # Where a portal leads
 //!
 //! The mapping is inverted from what it looks like. A portal object does not name its destination —
@@ -101,19 +109,38 @@ impl Worlds {
         self.definitions.len()
     }
 
+    /// Whether a world gets one instance per account.
+    pub fn is_personal(&self, name: &str) -> bool {
+        self.definitions
+            .get(name)
+            .is_some_and(|(definition, _)| definition.is_limbo)
+    }
+
     /// A handle to a world, starting it if it is not already running.
-    pub fn get_or_start(&self, name: &str) -> Option<WorldHandle> {
+    ///
+    /// `account_id` only matters for a personal world, where it selects which instance.
+    pub fn get_or_start_for(&self, name: &str, account_id: i64) -> Option<WorldHandle> {
+        if self.is_personal(name) {
+            // The instance key includes the account, so two players asking for the vault get two
+            // rooms. The world's own name stays as it was, so the client is told "Vault".
+            self.start(name, &format!("{name}#{account_id}"))
+        } else {
+            self.start(name, name)
+        }
+    }
+
+    fn start(&self, name: &str, key: &str) -> Option<WorldHandle> {
         // Held across the build deliberately: two players stepping into the same unopened dungeon
         // in the same tick must get the same world, not two of them.
         let mut running = self.running.lock().ok()?;
 
-        if let Some(handle) = running.get(name) {
+        if let Some(handle) = running.get(key) {
             // A world whose task has ended leaves a closed channel behind; replace it rather than
             // hand out something nothing is listening to.
             if !handle.inbox.is_closed() {
                 return Some(handle.clone());
             }
-            running.remove(name);
+            running.remove(key);
         }
 
         let (definition, stem) = self.definitions.get(name)?;
@@ -132,7 +159,7 @@ impl Worlds {
         report_portals(&world, self);
         let handle = world_task::spawn(world, Arc::clone(&self.catalog), self.loadout);
 
-        running.insert(name.to_string(), handle.clone());
+        running.insert(key.to_string(), handle.clone());
         tracing::info!(running = running.len(), "worlds now ticking");
         Some(handle)
     }

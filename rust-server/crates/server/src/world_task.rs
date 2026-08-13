@@ -63,6 +63,19 @@ pub enum ToWorld {
         reply: tokio::sync::oneshot::Sender<Option<u16>>,
     },
 
+    /// Places the account's vault chests, one per `Vault` region the map marks.
+    ///
+    /// The world does not know about accounts, so the contents arrive with the request. Chests are
+    /// rebuilt rather than updated: a vault changes when a player moves something, and rebuilding
+    /// removes any question of the two drifting apart.
+    PlaceVaultChests {
+        /// Slot index to item type, for occupied slots only.
+        slots: Vec<(u16, u16)>,
+        /// How many chests the account has unlocked.
+        unlocked: u16,
+        reply: tokio::sync::oneshot::Sender<usize>,
+    },
+
     /// Takes an item out of a bag, if it is still there and the player can reach it.
     ///
     /// The world answers with what it removed. Removing before the durable write is deliberate —
@@ -298,6 +311,14 @@ fn handle(
             let _ = reply.send(resolve_portal(world, handle, portal));
         }
 
+        ToWorld::PlaceVaultChests {
+            slots,
+            unlocked,
+            reply,
+        } => {
+            let _ = reply.send(place_vault_chests(world, catalog, &slots, unlocked));
+        }
+
         ToWorld::TakeFromBag {
             player,
             bag,
@@ -322,6 +343,88 @@ fn handle(
             tracing::info!(world = %world.name, ?handle, "player left");
         }
     }
+}
+
+/// How many slots one vault chest holds.
+pub const CHEST_SLOTS: u16 = 8;
+
+/// Rebuilds the vault chests from an account's stored items.
+///
+/// The map marks where chests stand, and the vault map marks exactly one square. So one chest holds
+/// the whole vault rather than eight slots of it — which is also how the vault reads to a player:
+/// one place you go, with everything in it. When a map marks several the vault is split across them
+/// in order, so a map that wants a row of chests gets one.
+///
+/// Returns how many chests were placed.
+fn place_vault_chests(
+    world: &mut World,
+    catalog: &Catalog,
+    slots: &[(u16, u16)],
+    unlocked: u16,
+) -> usize {
+    // Anything left from a previous visit goes, so nothing survives that the vault no longer says.
+    let existing: Vec<Handle> = world
+        .iter()
+        .filter(|(_, entity)| entity.kind == hendra_sim::Kind::Container)
+        .map(|(handle, _)| handle)
+        .collect();
+    for handle in existing {
+        world.despawn(handle);
+    }
+
+    let chest_type = catalog
+        .type_of("Vault Chest")
+        .unwrap_or(hendra_content::ObjectType(0x0504));
+
+    // Where the map says a chest stands. Sorted so the same square is always the same chest number,
+    // which is what makes "my third chest" mean anything between visits.
+    let mut places: Vec<(u32, u32)> = world
+        .terrain()
+        .map()
+        .regions()
+        .filter(|(_, _, region)| *region == hendra_content::Region::Vault)
+        .map(|(x, y, _)| (x, y))
+        .collect();
+    places.sort();
+
+    if places.is_empty() {
+        tracing::warn!("this map marks no vault squares, so there is nowhere to put a chest");
+        return 0;
+    }
+
+    // Every slot the account has paid for, shared out across however many squares the map offers.
+    let total = (unlocked as usize) * (CHEST_SLOTS as usize);
+    let per_chest = total.div_ceil(places.len()).max(CHEST_SLOTS as usize);
+
+    let mut placed = 0usize;
+    for (index, (x, y)) in places.iter().enumerate() {
+        let first = (index * per_chest) as u16;
+        let capacity = per_chest.min(total.saturating_sub(index * per_chest));
+        if capacity == 0 {
+            break;
+        }
+
+        let mut container = hendra_sim::Container::new(hendra_sim::ContainerKind::Vault, capacity);
+        for (slot, item) in slots {
+            if *slot >= first && (*slot as usize) < first as usize + capacity {
+                container.set((slot - first) as usize, hendra_content::ObjectType(*item));
+            }
+        }
+
+        let mut chest = hendra_sim::world::Entity::fixture(
+            chest_type,
+            *x as f32 + 0.5,
+            *y as f32 + 0.5,
+        );
+        chest.kind = hendra_sim::Kind::Container;
+        chest.container = Some(Box::new(container));
+
+        if world.spawn(chest).is_some() {
+            placed += 1;
+        }
+    }
+
+    placed
 }
 
 /// Removes an item from a bag the player can reach.
