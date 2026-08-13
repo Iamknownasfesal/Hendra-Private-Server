@@ -235,6 +235,3 @@ _Pvt_Extensions
 
 # Telerik Just Trace config files
 *.jtconfig
-
-# Behaviors
-wServer/logic/db/*.cs
