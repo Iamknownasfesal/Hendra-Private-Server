@@ -28,8 +28,22 @@ public enum SlotHighlight
 
 public static class SlotHighlights
 {
-    public static readonly Color RedFill = new("4a1414");
-    public static readonly Color RedEdge = new("c02020");
+    /// <summary>
+    /// The plate under an item this character cannot use.
+    /// </summary>
+    /// <remarks>
+    /// The tile is the signal, not a ring around it. The first pass put a near-black red under a
+    /// bright red border, so what you saw was the border -- one loud outline per unusable item,
+    /// and a bag with twenty of them in it was a screen of red rings. Lifting the fill until it is
+    /// plainly red and calming the border down puts the meaning on the whole square, which is
+    /// where it belongs: the item is the thing that is wrong, not its edge.
+    ///
+    /// Still twenty-one points of luminance clear of the board it sits on, which is the ladder's
+    /// rule and the reason this is not darker still.
+    /// </remarks>
+    public static readonly Color RedFill = new("5f1e1e");
+
+    public static readonly Color RedEdge = new("8f2222");
 
     /// <summary>
     /// The fill and border a highlight asks for, or the neutral pair for none.

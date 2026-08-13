@@ -473,83 +473,123 @@ public static class HudIcons
     // read at a glance and out of the corner of the eye, and a shape with two tones and a highlight
     // on it stops being legible at fifty-six pixels next to seven of its neighbours.
 
-    /// <summary>Weapons: a blade on the diagonal, with a guard and a pommel.</summary>
+    /// <summary>Weapons: a blade on the diagonal, and nothing else.</summary>
+    /// <remarks>
+    /// No guard and no grip. They were there in the first pass and they are what made this read as
+    /// a small picture of a sword rather than as a mark: three shapes inside a forty-pixel square,
+    /// none of them legible on their own. One tapered stroke is a weapon at any size.
+    /// </remarks>
     public static void Sword(CanvasItem into, Rect2 box, Color colour)
     {
-        float thick = Mathf.Max(2f, Span(box) * 0.10f);
-
-        // Blade, tip at the top right. Drawn as a quad so the point is a point rather than a
-        // rounded line cap.
         into.DrawColoredPolygon(Map(box,
-            0.86f, 0.14f,
-            0.72f, 0.16f,
-            0.34f, 0.54f,
-            0.44f, 0.64f), colour);
-
-        // Guard across it, and a short grip below.
-        into.DrawLine(At(box, 0.20f, 0.56f), At(box, 0.46f, 0.82f), colour, thick);
-        into.DrawLine(At(box, 0.24f, 0.74f), At(box, 0.16f, 0.86f), colour, thick);
+            0.88f, 0.10f,
+            0.86f, 0.26f,
+            0.20f, 0.90f,
+            0.10f, 0.88f,
+            0.12f, 0.74f,
+            0.74f, 0.12f), colour);
     }
 
-    /// <summary>Light armour: a robe, narrow at the shoulders and flared below.</summary>
+    /// <summary>Light armour: a tabard, square across the shoulders and pointed below.</summary>
     public static void Robe(CanvasItem into, Rect2 box, Color colour)
     {
+        // A neck notch, and sides that taper the whole way down rather than stepping in. Stepped,
+        // this was a wide head on a narrow shank and it read as a nail.
         into.DrawColoredPolygon(Map(box,
-            0.34f, 0.16f,
-            0.66f, 0.16f,
-            0.74f, 0.34f,
-            0.66f, 0.40f,
-            0.78f, 0.84f,
-            0.22f, 0.84f,
-            0.34f, 0.40f,
-            0.26f, 0.34f), colour);
+            0.24f, 0.14f,
+            0.43f, 0.14f,
+            0.50f, 0.26f,
+            0.57f, 0.14f,
+            0.76f, 0.14f,
+            0.70f, 0.42f,
+            0.64f, 0.76f,
+            0.50f, 0.90f,
+            0.36f, 0.76f,
+            0.30f, 0.42f), colour);
     }
 
     /// <summary>Heavy armour: a shield, because a heavier robe is not a distinguishable shape.</summary>
     public static void Shield(CanvasItem into, Rect2 box, Color colour)
     {
         into.DrawColoredPolygon(Map(box,
-            0.50f, 0.12f,
-            0.84f, 0.26f,
-            0.84f, 0.54f,
-            0.50f, 0.88f,
-            0.16f, 0.54f,
-            0.16f, 0.26f), colour);
+            0.50f, 0.10f,
+            0.86f, 0.24f,
+            0.86f, 0.50f,
+            0.50f, 0.90f,
+            0.14f, 0.50f,
+            0.14f, 0.24f), colour);
     }
 
-    /// <summary>Rings: a band, and a stone set into the top of it.</summary>
+    /// <summary>Rings: a band, and nothing set into it.</summary>
+    /// <remarks>
+    /// The stone is gone. At this size it welded itself to the top of the band and the whole mark
+    /// became a keyhole; a plain circle is the only ring shape that survives being small.
+    /// </remarks>
     public static void Ring(CanvasItem into, Rect2 box, Color colour)
     {
-        float radius = Span(box) * 0.26f;
-        into.DrawArc(At(box, 0.5f, 0.58f), radius, 0f, Mathf.Tau, 32, colour,
-            Mathf.Max(2f, Span(box) * 0.11f));
-
-        into.DrawColoredPolygon(Map(box,
-            0.50f, 0.10f,
-            0.64f, 0.24f,
-            0.50f, 0.38f,
-            0.36f, 0.24f), colour);
+        into.DrawArc(At(box, 0.5f, 0.5f), Span(box) * 0.32f, 0f, Mathf.Tau, 40, colour,
+            Mathf.Max(2f, Span(box) * 0.12f));
     }
 
-    /// <summary>Abilities: an orb, with the bite out of it that says it is being cast.</summary>
+    /// <summary>Abilities: a filled orb inside its own ring.</summary>
     public static void Orb(CanvasItem into, Rect2 box, Color colour)
     {
-        into.DrawArc(At(box, 0.5f, 0.5f), Span(box) * 0.30f, 0f, Mathf.Tau, 32, colour,
-            Mathf.Max(2f, Span(box) * 0.11f));
-        into.DrawCircle(At(box, 0.5f, 0.5f), Span(box) * 0.12f, colour);
+        into.DrawArc(At(box, 0.5f, 0.5f), Span(box) * 0.36f, 0f, Mathf.Tau, 40, colour,
+            Mathf.Max(2f, Span(box) * 0.09f));
+        into.DrawCircle(At(box, 0.5f, 0.5f), Span(box) * 0.18f, colour);
     }
 
-    /// <summary>Everything else: a spark, for the things that are one of a kind.</summary>
+    /// <summary>
+    /// Pets: a cat's head.
+    /// </summary>
+    /// <remarks>
+    /// A paw was the first pass and it is the wrong mark. Four toes and a pad is five shapes that
+    /// have to stay apart from each other, and at forty pixels they close up into a cloud. A head
+    /// with two ears is one outline and reads instantly.
+    /// </remarks>
+    public static void Cat(CanvasItem into, Rect2 box, Color colour)
+    {
+        // Two ears standing clear above a wide head. The ears have to come to a point and start
+        // outside the skull, or the whole thing reads as a shield.
+        into.DrawColoredPolygon(Map(box, 0.14f, 0.08f, 0.34f, 0.20f, 0.30f, 0.44f), colour);
+        into.DrawColoredPolygon(Map(box, 0.86f, 0.08f, 0.66f, 0.20f, 0.70f, 0.44f), colour);
+
+        into.DrawColoredPolygon(Map(box,
+            0.22f, 0.30f,
+            0.34f, 0.22f,
+            0.66f, 0.22f,
+            0.78f, 0.30f,
+            0.80f, 0.58f,
+            0.62f, 0.82f,
+            0.38f, 0.82f,
+            0.20f, 0.58f), colour);
+    }
+
+    /// <summary>Everything else: a sparkle, for the things that are one of a kind.</summary>
+    /// <remarks>
+    /// Four points rather than eight, and a smaller one beside it. An eight-pointed star at this
+    /// size is a blot; two four-pointed ones of different sizes read as a sparkle even when the
+    /// larger is only a dozen pixels across.
+    /// </remarks>
     public static void Spark(CanvasItem into, Rect2 box, Color colour)
     {
+        Star(into, box, colour, 0.42f, 0.44f, 0.34f);
+        Star(into, box, colour, 0.76f, 0.20f, 0.17f);
+    }
+
+    /// <summary>One four-pointed star with concave sides, centred where it is asked for.</summary>
+    private static void Star(CanvasItem into, in Rect2 box, in Color colour, float cx, float cy, float arm)
+    {
+        float waist = arm * 0.26f;
+
         into.DrawColoredPolygon(Map(box,
-            0.50f, 0.08f,
-            0.60f, 0.40f,
-            0.92f, 0.50f,
-            0.60f, 0.60f,
-            0.50f, 0.92f,
-            0.40f, 0.60f,
-            0.08f, 0.50f,
-            0.40f, 0.40f), colour);
+            cx, cy - arm,
+            cx + waist, cy - waist,
+            cx + arm, cy,
+            cx + waist, cy + waist,
+            cx, cy + arm,
+            cx - waist, cy + waist,
+            cx - arm, cy,
+            cx - waist, cy - waist), colour);
     }
 }

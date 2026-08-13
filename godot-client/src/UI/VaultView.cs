@@ -361,7 +361,7 @@ public sealed partial class VaultView : ModalPanel
         "Ring" => HudIcons.Ring,
         "Ability" => HudIcons.Orb,
         "Consumable" => HudIcons.Flask,
-        "Pet" => HudIcons.Paw,
+        "Pet" => HudIcons.Cat,
         _ => HudIcons.Spark,
     };
 
