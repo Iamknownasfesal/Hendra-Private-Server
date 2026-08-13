@@ -1,0 +1,70 @@
+name: rust
+
+# The whole check, in the order that fails fastest: formatting before compiling, compiling before
+# testing. A run that is going to fail on a missing space should not spend four minutes first.
+on:
+  push:
+    branches: [master, rust-server]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+  # A test that races is a test that will race in CI eventually. Failing on the first one rather
+  # than reporting a percentage is what keeps that from becoming background noise.
+  RUST_BACKTRACE: 1
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust-server
+
+    services:
+      # The store tests need a real Postgres, because what they check is what Postgres does: row
+      # locking, transaction isolation, and what two connections racing each other actually do. A
+      # mock would test that the mock agrees with itself.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: hendra_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust-server
+
+      - name: Formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Tests
+        env:
+          HENDRA_TEST_DATABASE: postgres://postgres:postgres@localhost/hendra_test
+        run: cargo test --workspace --all-targets
+
+      - name: Content still converts
+        run: |
+          cargo run --release -p hendra-behavior --example gaps
+          cargo run --release -p hendra-content --example activates
+          cargo run --release -p hendra-app --example endpoints
+
+      - name: Tick budget
+        run: cargo run --release -p hendra-sim --example tick_budget
