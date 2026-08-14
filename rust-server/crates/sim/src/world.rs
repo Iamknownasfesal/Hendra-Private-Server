@@ -138,6 +138,13 @@ pub struct Entity {
     /// hurt. Cleared once read, so a hit counts toward exactly one tick.
     pub damage_since_tick: i32,
 
+    /// What this character has done, which is what its death is worth.
+    ///
+    /// On the entity because that is where the events are: a shot is counted where it is fired and
+    /// a kill where the enemy dies, and nothing is taken from a client, since a client that reports
+    /// its own accuracy will report whatever earns the most.
+    pub tally: crate::fame::Tally,
+
     /// What last took health off this, which is what a death is named after.
     pub last_hurt_by: Option<Handle>,
 
@@ -232,6 +239,7 @@ impl Entity {
             damage_since_tick: 0,
             damage_by: Vec::new(),
             last_hurt_by: None,
+            tally: crate::fame::Tally::default(),
             texture: 0,
             resizing: None,
             no_experience: false,
@@ -277,6 +285,7 @@ impl Entity {
             damage_since_tick: 0,
             damage_by: Vec::new(),
             last_hurt_by: None,
+            tally: crate::fame::Tally::default(),
             texture: 0,
             resizing: None,
             no_experience: false,
@@ -1966,6 +1975,12 @@ impl World {
             );
             self.projectiles.fire(projectile);
         }
+
+        if let Some(shooter) = self.entities.get_mut(handle)
+            && shooter.kind == Kind::Player
+        {
+            shooter.tally.shots += 1;
+        }
     }
 
     fn cool_weapons(&mut self, elapsed_ms: u32) {
@@ -1998,6 +2013,8 @@ impl World {
                 .get(hit.owner)
                 .is_some_and(|owner| owner.kind == Kind::Player);
 
+            let mut landed_on_enemy = false;
+
             if let Some(target) = self.entities.get_mut(hit.target) {
                 target.hp -= hit.damage;
                 if target.hp <= 0 {
@@ -2005,6 +2022,7 @@ impl World {
                 }
 
                 target.last_hurt_by = Some(hit.owner);
+                landed_on_enemy = target.kind == Kind::Enemy;
 
                 // Remembered only for enemies hurt by players, which is the only case anybody asks
                 // about: it decides who earned the loot that belongs to whoever earned it.
@@ -2023,6 +2041,15 @@ impl World {
                         }
                     }
                 }
+            }
+
+            // Counted where it lands rather than where it was fired, since only the landing knows
+            // whether it hit anything. The accuracy bonuses are the ratio of the two.
+            if landed_on_enemy
+                && let Some(shooter) = self.entities.get_mut(hit.owner)
+                && shooter.kind == Kind::Player
+            {
+                shooter.tally.shots_that_hit += 1;
             }
         }
 
@@ -2413,9 +2440,19 @@ impl World {
             ran.push(hendra_content::Effect::of(activate));
         }
 
+        // A potion and an ability are told apart by what the content calls the item, since both go
+        // through the same door: an ability spends magic and a potion is drunk.
+        let is_potion = desc.potion;
+
         if let Some(entity) = self.entities.get_mut(handle) {
             entity.mp = (entity.mp - cost).max(0);
             entity.ability_cooldown_ms = cooldown;
+
+            if is_potion {
+                entity.tally.potions_drunk += 1;
+            } else {
+                entity.tally.abilities_used += 1;
+            }
         }
 
         let effects = std::mem::take(&mut ran);
@@ -2896,6 +2933,7 @@ impl World {
             mover.x = x;
             mover.y = y;
             mover.teleport_cooldown_ms = TELEPORT_COOLDOWN_MS;
+            mover.tally.teleports += 1;
 
             // The jump arrives at the mover's own client as a position it did not ask for, and at
             // everyone else's as a move no speed explains. The grace is what stops the server's own
@@ -3576,10 +3614,33 @@ impl World {
                 continue;
             };
             let (x, y, max_hp) = (entity.x, entity.y, entity.max_hp);
-            let multiplier = catalog
-                .object(entity.object_type)
-                .and_then(|desc| desc.exp_multiplier)
-                .unwrap_or(1.0);
+            let desc = catalog.object(entity.object_type);
+            let multiplier = desc.and_then(|desc| desc.exp_multiplier).unwrap_or(1.0);
+
+            // What kind of thing it was, for the counters that ask. A cube is named rather than
+            // flagged, because the content has no flag for one and the bonus is about the cubes.
+            let was_god = desc.is_some_and(|desc| desc.god);
+            let was_cube = desc.is_some_and(|desc| desc.id.contains("Gelatinous Cube"));
+            let was_oryx = desc.is_some_and(|desc| desc.id.starts_with("Oryx"));
+
+            // Whoever struck last is the one credited with the kill, as the original credits its
+            // last hitter. Everybody nearby still shares the experience.
+            if let Some(killer) = entity.last_hurt_by
+                && let Some(player) = self.entities.get_mut(killer)
+                && player.kind == Kind::Player
+            {
+                if was_god {
+                    player.tally.god_kills += 1;
+                } else {
+                    player.tally.monster_kills += 1;
+                }
+                if was_cube {
+                    player.tally.cube_kills += 1;
+                }
+                if was_oryx {
+                    player.tally.oryx_kills += 1;
+                }
+            }
 
             self.grid
                 .within(x, y, crate::leveling::SHARE_RADIUS, &mut self.nearby);

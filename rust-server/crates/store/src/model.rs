@@ -480,6 +480,110 @@ impl Store {
         Ok(())
     }
 
+    /// Adds to what a character has done.
+    ///
+    /// Added rather than set, so a session that ends without saving loses what it did and not what
+    /// every earlier session did. Written when a character leaves a world, which is the same moment
+    /// its health and experience are.
+    pub async fn add_tally(&self, character_id: i64, tally: &TallyRow) -> Result<()> {
+        sqlx::query(
+            "UPDATE character SET
+                 shots = shots + $2,
+                 shots_that_hit = shots_that_hit + $3,
+                 abilities_used = abilities_used + $4,
+                 tiles_seen = tiles_seen + $5,
+                 teleports = teleports + $6,
+                 potions_drunk = potions_drunk + $7,
+                 monster_kills = monster_kills + $8,
+                 god_kills = god_kills + $9,
+                 cube_kills = cube_kills + $10,
+                 oryx_kills = oryx_kills + $11,
+                 quests_completed = quests_completed + $12,
+                 level_up_assists = level_up_assists + $13,
+                 dungeons_completed = dungeons_completed | $14
+             WHERE id = $1",
+        )
+        .bind(character_id)
+        .bind(tally.shots)
+        .bind(tally.shots_that_hit)
+        .bind(tally.abilities_used)
+        .bind(tally.tiles_seen)
+        .bind(tally.teleports)
+        .bind(tally.potions_drunk)
+        .bind(tally.monster_kills)
+        .bind(tally.god_kills)
+        .bind(tally.cube_kills)
+        .bind(tally.oryx_kills)
+        .bind(tally.quests_completed)
+        .bind(tally.level_up_assists)
+        .bind(tally.dungeons_completed)
+        .execute(self.pool())
+        .await?;
+
+        Ok(())
+    }
+
+    /// Everything a character has done.
+    pub async fn tally(&self, character_id: i64) -> Result<TallyRow> {
+        let row = sqlx::query_as::<
+            _,
+            (
+                i32,
+                i32,
+                i32,
+                i32,
+                i32,
+                i32,
+                i32,
+                i32,
+                i32,
+                i32,
+                i32,
+                i32,
+                i64,
+            ),
+        >(
+            "SELECT shots, shots_that_hit, abilities_used, tiles_seen, teleports, potions_drunk,
+                    monster_kills, god_kills, cube_kills, oryx_kills, quests_completed,
+                    level_up_assists, dungeons_completed
+             FROM character WHERE id = $1",
+        )
+        .bind(character_id)
+        .fetch_optional(self.pool())
+        .await?
+        .ok_or(StoreError::NoSuchCharacter(character_id))?;
+
+        Ok(TallyRow {
+            shots: row.0,
+            shots_that_hit: row.1,
+            abilities_used: row.2,
+            tiles_seen: row.3,
+            teleports: row.4,
+            potions_drunk: row.5,
+            monster_kills: row.6,
+            god_kills: row.7,
+            cube_kills: row.8,
+            oryx_kills: row.9,
+            quests_completed: row.10,
+            level_up_assists: row.11,
+            dungeons_completed: row.12,
+        })
+    }
+
+    /// The most fame any of an account's characters has ever finished with.
+    ///
+    /// What the first-born bonus is measured against: beating every character the account has had.
+    pub async fn best_final_fame(&self, account_id: i64) -> Result<i32> {
+        let best = sqlx::query_as::<_, (Option<i32>,)>(
+            "SELECT max(final_fame) FROM death WHERE account_id = $1",
+        )
+        .bind(account_id)
+        .fetch_one(self.pool())
+        .await?;
+
+        Ok(best.0.unwrap_or(0))
+    }
+
     /// Records a death, and marks the character dead, in one transaction.
     ///
     /// Both or neither. A character marked dead with no death recorded loses the only account of
@@ -496,6 +600,7 @@ impl Store {
             killed_by,
             final_fame,
             first_born,
+            bonuses,
         } = death;
 
         let mut transaction = self.pool().begin().await?;
@@ -529,8 +634,9 @@ impl Store {
 
         let (id,): (i64,) = sqlx::query_as(
             "INSERT INTO death
-                 (account_id, character_id, name, class, level, final_fame, killed_by, first_born)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                 (account_id, character_id, name, class, level, final_fame, killed_by, first_born,
+                  bonuses)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
              RETURNING id",
         )
         .bind(account_id)
@@ -541,6 +647,7 @@ impl Store {
         .bind(final_fame)
         .bind(&killed_by)
         .bind(first_born)
+        .bind(bonuses.join("\n"))
         .fetch_one(&mut *transaction)
         .await?;
 
@@ -1020,6 +1127,27 @@ impl Store {
     }
 }
 
+/// What a character has done, as the database holds it.
+///
+/// The simulation's own tally is a different type on purpose: this one crosses a database and is
+/// all i32 and a bitset, and that crate has no business knowing either.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TallyRow {
+    pub shots: i32,
+    pub shots_that_hit: i32,
+    pub abilities_used: i32,
+    pub tiles_seen: i32,
+    pub teleports: i32,
+    pub potions_drunk: i32,
+    pub monster_kills: i32,
+    pub god_kills: i32,
+    pub cube_kills: i32,
+    pub oryx_kills: i32,
+    pub quests_completed: i32,
+    pub level_up_assists: i32,
+    pub dungeons_completed: i64,
+}
+
 /// One graveyard row as the database hands it over.
 type DeathRow = (
     i64,
@@ -1061,6 +1189,10 @@ pub struct Death {
 
     /// Whether this is the first character on the account ever to die.
     pub first_born: bool,
+
+    /// The bonuses it earned, as one line each, kept so a graveyard can say why a number is what
+    /// it is.
+    pub bonuses: Vec<String>,
 }
 
 /// One row of a graveyard.

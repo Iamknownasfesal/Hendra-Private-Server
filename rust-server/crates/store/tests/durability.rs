@@ -2343,6 +2343,7 @@ async fn a_death_is_recorded_and_the_character_is_marked_dead_together() {
             killed_by: "Slime".to_string(),
             final_fame: 250,
             first_born: true,
+            bonuses: Vec::new(),
         })
         .await
         .unwrap();
@@ -2381,6 +2382,7 @@ async fn a_character_cannot_die_twice() {
         killed_by: "Slime".to_string(),
         final_fame: 100,
         first_born: false,
+        bonuses: Vec::new(),
     };
 
     store.record_death(death.clone()).await.unwrap();
@@ -2412,6 +2414,7 @@ async fn two_deaths_racing_on_one_character_resolve_to_one() {
                 killed_by: "Slime".to_string(),
                 final_fame: 50,
                 first_born: false,
+                bonuses: Vec::new(),
             };
             tokio::spawn(async move { store.record_death(death).await })
         })
@@ -2454,6 +2457,7 @@ async fn a_death_outlives_the_character_it_happened_to() {
             killed_by: "Slime".to_string(),
             final_fame: 10,
             first_born: false,
+            bonuses: Vec::new(),
         })
         .await
         .unwrap();
@@ -2489,9 +2493,108 @@ async fn a_guild_keeps_what_its_members_finished_with() {
             killed_by: "Slime".to_string(),
             final_fame: 300,
             first_born: false,
+            bonuses: Vec::new(),
         })
         .await
         .unwrap();
 
     assert_eq!(store.guild(guild.id).await.unwrap().fame, 300);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn what_a_character_did_adds_up_across_sessions() {
+    // Added rather than set, so a session that ends without saving loses what it did and not what
+    // every earlier session did.
+    let Some(store) = store("t_tally_adds").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    let character = store
+        .create_character(account.id, uuid::Uuid::nil(), "Fesal", 100)
+        .await
+        .unwrap();
+
+    let session = hendra_store::TallyRow {
+        shots: 100,
+        shots_that_hit: 40,
+        god_kills: 2,
+        dungeons_completed: 0b0000_0011,
+        ..Default::default()
+    };
+
+    store.add_tally(character.id, &session).await.unwrap();
+    store.add_tally(character.id, &session).await.unwrap();
+
+    let held = store.tally(character.id).await.unwrap();
+    assert_eq!(held.shots, 200);
+    assert_eq!(held.shots_that_hit, 80);
+    assert_eq!(held.god_kills, 4);
+
+    // Dungeons are a set rather than a count: finishing the same two twice is still two kinds.
+    assert_eq!(held.dungeons_completed, 0b0000_0011);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_death_keeps_the_bonuses_that_explain_its_number() {
+    let Some(store) = store("t_death_bonuses").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    let character = store
+        .create_character(account.id, uuid::Uuid::nil(), "Fesal", 100)
+        .await
+        .unwrap();
+
+    store
+        .record_death(Death {
+            account_id: account.id,
+            character_id: character.id,
+            killed_by: "Oryx".to_string(),
+            final_fame: 421,
+            first_born: true,
+            bonuses: vec!["Ancestor: 10".to_string(), "Sniper: 31".to_string()],
+        })
+        .await
+        .unwrap();
+
+    // The best a character has ever finished with, which is what first born is measured against.
+    assert_eq!(store.best_final_fame(account.id).await.unwrap(), 421);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_best_death_is_what_first_born_is_measured_against() {
+    // Against the graveyard rather than anything living: a character still alive has not finished,
+    // and a number that could still go up is not a record.
+    let Some(store) = store("t_first_born").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    assert_eq!(store.best_final_fame(account.id).await.unwrap(), 0);
+
+    for fame in [100, 500, 200] {
+        let character = store
+            .create_character(account.id, uuid::Uuid::nil(), "Fesal", 100)
+            .await
+            .unwrap();
+
+        store
+            .record_death(Death {
+                account_id: account.id,
+                character_id: character.id,
+                killed_by: "Slime".to_string(),
+                final_fame: fame,
+                first_born: false,
+                bonuses: Vec::new(),
+            })
+            .await
+            .unwrap();
+    }
+
+    assert_eq!(store.best_final_fame(account.id).await.unwrap(), 500);
 }

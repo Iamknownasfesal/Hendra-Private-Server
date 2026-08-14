@@ -1104,6 +1104,16 @@ async fn save_progress(
         )
         .await?;
 
+    // What the character did while it was here, added to what it had done before. A session that
+    // ends without saving loses this session's counting rather than every session's.
+    if let Err(err) = context
+        .store
+        .add_tally(player.character.id, &vitals.tally)
+        .await
+    {
+        tracing::warn!(%err, character = player.character.id, "could not save what a character did");
+    }
+
     // What the account has now taken this class to, which is what opens the next one. Recorded
     // here rather than only at death, because an account whose best warrior is still alive has
     // still levelled a warrior.
@@ -3619,11 +3629,48 @@ async fn die(
 
     // Only once per account, ever, which is why it is asked of the graveyard rather than worked out
     // from anything that could change.
-    let first_born = !context
+    let ancestor = !context
         .store
         .has_died_before(player.account.id)
         .await
         .unwrap_or(true);
+
+    // What the character did, which is what its death is worth beyond the fame it had. Read from
+    // the database rather than from the world, because the world holds only this session's counting
+    // and a character's life is longer than one session.
+    let tally = context
+        .store
+        .tally(player.character.id)
+        .await
+        .unwrap_or_default();
+
+    let (final_fame, earned) = hendra_sim::fame::bonuses(
+        &remembered(&tally),
+        hendra_sim::fame::Finished {
+            level: player.character.level,
+            fame,
+            first_death: ancestor,
+            equipment_bonus: worn_fame_bonus(context, player).await,
+
+            // Beating every character the account has had, which is what first born is. Compared
+            // against the graveyard rather than against anything living: a character still alive
+            // has not finished, and a number that could still go up is not a record.
+            best_yet: fame
+                > context
+                    .store
+                    .best_final_fame(player.account.id)
+                    .await
+                    .unwrap_or(0),
+        },
+    );
+
+    for bonus in &earned {
+        say(
+            link,
+            &format!("{}: {} fame, {}", bonus.name, bonus.fame, bonus.why),
+        )
+        .await;
+    }
 
     if let Err(err) = context
         .store
@@ -3631,8 +3678,12 @@ async fn die(
             account_id: player.account.id,
             character_id: player.character.id,
             killed_by: departed.killer.clone(),
-            final_fame: fame,
-            first_born,
+            final_fame,
+            first_born: ancestor,
+            bonuses: earned
+                .iter()
+                .map(|bonus| format!("{}: {}", bonus.name, bonus.fame))
+                .collect(),
         })
         .await
     {
@@ -3662,9 +3713,9 @@ async fn die(
 
     // Said everywhere for a death worth hearing about, and to the room otherwise. A death nobody
     // was near is still a death, and the original draws the line at six-of-eight or a thousand fame.
-    let notable = maxed >= 6 || fame >= NOTABLE_FAME;
+    let notable = maxed >= 6 || final_fame >= NOTABLE_FAME;
     let line = format!(
-        "{} died to {} ({maxed}/8, {fame} fame)",
+        "{} died to {} ({maxed}/8, {final_fame} fame)",
         player.character.name, departed.killer
     );
 
@@ -3684,7 +3735,7 @@ async fn die(
     ServerMessage::Died {
         character: player.character.id.max(0) as u32,
         killed_by: departed.killer,
-        fame,
+        fame: final_fame,
     }
     .encode(&mut Writer::new(&mut buffer));
     let _ = link.send(Delivery::Stream, &buffer).await;
@@ -3743,4 +3794,47 @@ async fn maxed_stats(context: &Context, player: &crate::accounts::Session) -> us
         maxed += 1;
     }
     maxed
+}
+
+/// What a character has done, as the bonuses need it.
+fn remembered(tally: &hendra_store::TallyRow) -> hendra_sim::fame::Tally {
+    hendra_sim::fame::Tally {
+        shots: tally.shots,
+        shots_that_hit: tally.shots_that_hit,
+        abilities_used: tally.abilities_used,
+        tiles_seen: tally.tiles_seen,
+        teleports: tally.teleports,
+        potions_drunk: tally.potions_drunk,
+        monster_kills: tally.monster_kills,
+        god_kills: tally.god_kills,
+        cube_kills: tally.cube_kills,
+        oryx_kills: tally.oryx_kills,
+        quests_completed: tally.quests_completed,
+        level_up_assists: tally.level_up_assists,
+        dungeons_completed: tally.dungeons_completed.max(0) as u32,
+    }
+}
+
+/// What the four worn items add to a death, as a percentage.
+///
+/// `FameBonus` in the content, which a handful of items carry. Only the worn slots count: what is
+/// in the pack was not being used.
+async fn worn_fame_bonus(context: &Context, player: &crate::accounts::Session) -> i32 {
+    let Ok(character) = context.store.character(player.character.id).await else {
+        return 0;
+    };
+
+    character
+        .inventory
+        .iter()
+        .filter(|(slot, _)| *slot < EQUIPPED_SLOTS as i16)
+        .filter_map(|(_, item)| {
+            context
+                .catalog
+                .type_of_uuid(*item)
+                .and_then(|kind| context.catalog.object(kind))
+        })
+        .filter_map(|desc| desc.item.as_ref())
+        .map(|item| item.fame_bonus)
+        .sum()
 }

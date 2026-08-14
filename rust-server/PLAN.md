@@ -639,8 +639,24 @@ category by category. It found thirteen things, one of them a mechanic that sile
 
 ### 18.2 Fame — **L**
 
-- [ ] `FameCounter` and the twenty bonuses in `common/FameStats.cs`. Nothing tracks shots, hits,
+- [x] `FameCounter` and the twenty bonuses in `common/FameStats.cs`. Nothing tracks shots, hits,
       dungeons, assists, tiles seen, teleports, abilities or potions, so no bonus can be awarded
+
+  `crates/sim/src/fame.rs` holds all twenty. They compound: each is a share of the fame including
+  the bonuses before it, which is what the original does by threading a running total through its
+  loop, so the order they are declared in is part of the arithmetic rather than a matter of taste.
+
+  Counted by the server from things it already decides: a shot where it is fired, a hit where it
+  lands, a kill where the enemy dies. Nothing is taken from a client, because a client that reports
+  its own accuracy reports whatever earns the most.
+
+  The counters live on the character and are added to rather than set, so a session that ends
+  without saving loses that session's counting and not every session's. A death reads them from the
+  database rather than from the world, since a character's life is longer than one session.
+
+  Still uncounted, and each needs something that does not exist yet: tiles seen (no fog of war),
+  level-up assists (no party), and quests completed (no quest completion). Their bonuses are in the
+  table and will start paying the moment the counters are fed.
 
 ### 18.3 Equipment sets — **M**
 

@@ -269,6 +269,28 @@ pub enum ToWorld {
 /// Where a closed realm sends everybody still in it.
 pub const CASTLE: &str = "Castle";
 
+/// The simulation's tally as the database holds it.
+///
+/// Two types on purpose: one crosses a database and is all i32 and a bitset, and the simulation has
+/// no business knowing either.
+fn counted(tally: &hendra_sim::fame::Tally) -> hendra_store::TallyRow {
+    hendra_store::TallyRow {
+        shots: tally.shots,
+        shots_that_hit: tally.shots_that_hit,
+        abilities_used: tally.abilities_used,
+        tiles_seen: tally.tiles_seen,
+        teleports: tally.teleports,
+        potions_drunk: tally.potions_drunk,
+        monster_kills: tally.monster_kills,
+        god_kills: tally.god_kills,
+        cube_kills: tally.cube_kills,
+        oryx_kills: tally.oryx_kills,
+        quests_completed: tally.quests_completed,
+        level_up_assists: tally.level_up_assists,
+        dungeons_completed: tally.dungeons_completed as i64,
+    }
+}
+
 /// A character that has died, as the session needs it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Departed {
@@ -408,6 +430,10 @@ pub struct Vitals {
     pub level: i16,
     pub experience: i32,
     pub fame: i32,
+
+    /// What the character did while it was here, which is added to what it had done before. Sent
+    /// with the rest because it is written at the same moment and for the same reason.
+    pub tally: hendra_store::TallyRow,
 }
 
 /// How close a player must be to reach into a bag, in tiles.
@@ -1147,6 +1173,7 @@ fn handle(
                 level: entity.progress.level,
                 experience: entity.progress.experience,
                 fame: entity.progress.fame,
+                tally: counted(&entity.tally),
             });
             let _ = reply.send(vitals);
         }

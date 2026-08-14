@@ -5,6 +5,7 @@
 //! inside them.
 
 pub mod effects;
+pub mod fame;
 pub mod grid;
 pub mod inventory;
 pub mod leveling;
