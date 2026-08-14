@@ -91,6 +91,12 @@ enum Event {
     /// Something the world wants shown rather than said.
     Notice(String),
 
+    /// How many of each stacking potion the character holds.
+    Stacks {
+        health: u16,
+        magic: u16,
+    },
+
     /// This character has died, and the session is over.
     Died {
         character: u32,
@@ -408,6 +414,11 @@ impl HendraConnection {
 
                     let row: Vec<i32> = tiles.iter().map(|tile| *tile as i32).collect();
                     entry.set("tiles", &PackedInt32Array::from(row.as_slice()));
+                }
+                Event::Stacks { health, magic } => {
+                    entry.set("kind", "stacks");
+                    entry.set("health", health as i64);
+                    entry.set("magic", magic as i64);
                 }
                 Event::Died {
                     character,
@@ -871,6 +882,7 @@ fn apply(
 
         ServerMessage::Scenery { y, objects } => shared.push(Event::Scenery { y, objects }),
 
+        ServerMessage::Stacks { health, magic } => shared.push(Event::Stacks { health, magic }),
         ServerMessage::Notice { text } => shared.push(Event::Notice(text)),
         ServerMessage::Died {
             character,

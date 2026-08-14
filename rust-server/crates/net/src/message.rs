@@ -82,6 +82,7 @@ pub mod server_id {
     pub const TRADE_DONE: u16 = 0x8010;
     pub const NOTICE: u16 = 0x8011;
     pub const DIED: u16 = 0x8012;
+    pub const STACKS: u16 = 0x8013;
 }
 
 /// Why a connection was refused.
@@ -908,6 +909,16 @@ pub enum ServerMessage<'a> {
         message: String,
     },
 
+    /// How many of each stacking potion the character holds.
+    ///
+    /// Its own message rather than a container, because a stack is one kind of thing many times
+    /// over and a container says what is in a slot rather than how much of it. Squeezing a count
+    /// into a slot number would be a number nobody reading the protocol could explain.
+    Stacks {
+        health: u16,
+        magic: u16,
+    },
+
     /// This character has died.
     ///
     /// Its own message rather than a notice, because it is the end of the session: what follows is
@@ -963,6 +974,7 @@ impl ServerMessage<'_> {
             ServerMessage::TradeDone { .. } => server_id::TRADE_DONE,
             ServerMessage::Notice { .. } => server_id::NOTICE,
             ServerMessage::Died { .. } => server_id::DIED,
+            ServerMessage::Stacks { .. } => server_id::STACKS,
         }
     }
 
@@ -985,6 +997,10 @@ impl ServerMessage<'_> {
             ServerMessage::Chat { from, text } => {
                 w.string(from);
                 w.string(text);
+            }
+            ServerMessage::Stacks { health, magic } => {
+                w.varint(*health as u64);
+                w.varint(*magic as u64);
             }
             ServerMessage::Notice { text } => w.string(text),
             ServerMessage::Died {
@@ -1139,6 +1155,10 @@ impl ServerMessage<'_> {
                 }
                 ServerMessage::Terrain { x, y, runs }
             }
+            server_id::STACKS => ServerMessage::Stacks {
+                health: r.varint_u32()? as u16,
+                magic: r.varint_u32()? as u16,
+            },
             server_id::DIED => ServerMessage::Died {
                 character: r.varint_u32()?,
                 killed_by: r.string()?.to_string(),
@@ -1319,6 +1339,18 @@ mod tests {
         round_trip_server(ServerMessage::TradeAccepted {
             mine: vec![true],
             theirs: vec![false, true],
+        });
+        round_trip_server(ServerMessage::Stacks {
+            health: 6,
+            magic: 0,
+        });
+        round_trip_server(ServerMessage::Died {
+            character: 7,
+            killed_by: "Slime".to_string(),
+            fame: 421,
+        });
+        round_trip_server(ServerMessage::Notice {
+            text: "Purple Key has been found.".to_string(),
         });
         round_trip_server(ServerMessage::TradeDone {
             code: 0,

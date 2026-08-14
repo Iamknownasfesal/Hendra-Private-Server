@@ -692,7 +692,18 @@ category by category. It found thirteen things, one of them a mechanic that sile
 
 ### 18.5 Potion stacking — **S**
 
-- [ ] `ItemStacker`: potions stack in their own slots with a ceiling
+- [x] `ItemStacker`: potions stack in their own slots with a ceiling
+
+  The store already had the stacks, dupe-proof, with the same ceiling of six the original's
+  `init.xml` sets. Nothing called them, which is the pattern that keeps biting: built, tested and
+  unreachable. Picking up a health or magic potion now goes to its stack rather than into the pack,
+  drinking is addressed at slots 254 and 255 as the original addresses them, and the potion is taken
+  durably before it heals, since one that heals and is still in the stack heals forever.
+
+  The counts reach the client as their own message rather than as a container, because a stack is
+  one kind of thing many times over and a container says what is in a slot rather than how much of
+  it. The first attempt packed the count into the slot number's high byte, which nobody reading the
+  protocol could have explained.
 
 ### 18.6 One session per account — **S**
 

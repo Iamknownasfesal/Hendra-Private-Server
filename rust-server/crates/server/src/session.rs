@@ -644,6 +644,22 @@ async fn send_containers(
         ServerMessage::Container { container, slots }.encode(&mut Writer::new(&mut buf));
         let _ = link.send(Delivery::Stream, &buf).await;
     }
+
+    // And the two stacks, which live outside the pack. A player who cannot see how many potions
+    // they hold cannot decide whether to drink one.
+    let held = store
+        .character(player.character.id)
+        .await
+        .map(|character| (character.health_potions, character.magic_potions))
+        .unwrap_or((0, 0));
+
+    let mut buf = Vec::new();
+    ServerMessage::Stacks {
+        health: held.0.clamp(0, u16::MAX as i32) as u16,
+        magic: held.1.clamp(0, u16::MAX as i32) as u16,
+    }
+    .encode(&mut Writer::new(&mut buf));
+    let _ = link.send(Delivery::Stream, &buf).await;
 }
 
 /// Carries out a move, or explains why not.
@@ -833,6 +849,18 @@ async fn take_from_bag(
         return;
     };
 
+    // A stacking potion goes to its own place rather than into the pack, which is what gives it a
+    // ceiling of six and keeps it out of the eight slots everything else competes for.
+    if let Some(magic) = stacks_as(&context.catalog, ObjectType(item)) {
+        return match context.store.add_potion(player.character.id, magic).await {
+            Ok(true) => {
+                send_containers(link, &context.catalog, &context.store, player).await;
+            }
+            Ok(false) => say(link, "you cannot carry any more of those").await,
+            Err(_) => say(link, "try again shortly").await,
+        };
+    }
+
     let outcome = match locate(destination, player.character.id, player.account.id) {
         // A named durable slot: it has to be free, because there is nothing to swap with.
         Some(Location::Inventory { character_id, slot }) => context
@@ -933,6 +961,33 @@ async fn put_in_bag(
     }
 
     send_containers(link, &context.catalog, &context.store, player).await;
+}
+
+/// The two potions that stack rather than taking a slot.
+///
+/// `HealthPots` and `MagicPots` in the original, which gives each its own place outside the pack and
+/// a ceiling of six. Named rather than numbered, since a runtime number means nothing once the
+/// content is reordered.
+pub const HEALTH_POTION: &str = "Health Potion";
+pub const MAGIC_POTION: &str = "Magic Potion";
+
+/// Where the two stacks are addressed from.
+///
+/// The original's slots 254 and 255, kept because they are already what a client names when it
+/// drinks from a stack: they are outside the eight the pack has, which is what makes them a place
+/// of their own rather than two more slots to compete for.
+pub const HEALTH_STACK_SLOT: u16 = 254;
+pub const MAGIC_STACK_SLOT: u16 = 255;
+
+/// Which stack an item belongs in, if either.
+fn stacks_as(catalog: &hendra_content::Catalog, item: ObjectType) -> Option<bool> {
+    let id = catalog.object(item)?.id.as_str();
+
+    match id {
+        HEALTH_POTION => Some(false),
+        MAGIC_POTION => Some(true),
+        _ => None,
+    }
 }
 
 /// The highest carried slot a player has.
@@ -1681,6 +1736,38 @@ async fn use_item(
     slot: u16,
     aim: (f32, f32),
 ) {
+    // Drinking from a stack rather than from the pack. Taken durably first: a potion that heals and
+    // is still in the stack is a potion that heals forever.
+    if slot == HEALTH_STACK_SLOT || slot == MAGIC_STACK_SLOT {
+        let magic = slot == MAGIC_STACK_SLOT;
+
+        match context.store.take_potion(player.character.id, magic).await {
+            Ok(true) => {}
+            Ok(false) => return say(link, "you have none of those").await,
+            Err(_) => return say(link, "try again shortly").await,
+        }
+
+        let name = if magic { MAGIC_POTION } else { HEALTH_POTION };
+        let Some(kind) = context.catalog.type_of(name) else {
+            return;
+        };
+
+        let (reply, answer) = tokio::sync::oneshot::channel();
+        placement
+            .world
+            .send(ToWorld::UseItem {
+                handle: placement.handle,
+                item: kind,
+                aim,
+                reply,
+            })
+            .await;
+
+        let _ = answer.await;
+        send_containers(link, &context.catalog, &context.store, player).await;
+        return;
+    }
+
     let Some(identity) = read_slot(
         &context.store,
         Location::Inventory {

@@ -2598,3 +2598,36 @@ async fn the_best_death_is_what_first_born_is_measured_against() {
 
     assert_eq!(store.best_final_fame(account.id).await.unwrap(), 500);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_potion_cannot_be_drunk_twice() {
+    // Taken durably before it heals, or a potion that heals and is still in the stack heals forever.
+    let Some(store) = store("t_potion_drink").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    let character = store
+        .create_character(account.id, uuid::Uuid::nil(), "Fesal", 100)
+        .await
+        .unwrap();
+
+    store.add_potion(character.id, false).await.unwrap();
+
+    let attempts: Vec<_> = (0..8)
+        .map(|_| {
+            let store = store.clone();
+            tokio::spawn(async move { store.take_potion(character.id, false).await })
+        })
+        .collect();
+
+    let mut drunk = 0;
+    for attempt in attempts {
+        if attempt.await.unwrap().unwrap() {
+            drunk += 1;
+        }
+    }
+
+    assert_eq!(drunk, 1, "{drunk} of one potion were drunk");
+}
