@@ -63,7 +63,7 @@ inside the game: a different data structure, a different loop, a different order
 | [40-packets.md](40-packets.md) | Registration, framing, and every wire shape | 105 of 105 |
 | [41-the-account-server.md](41-the-account-server.md) | 37 routes, the auth model, and the leaderboard that returns nothing | 48 of 48 |
 | [42-between-servers.md](42-between-servers.md) | The Redis bus, configuration defaults, byte order, locking | rest of `common/` |
-| [43-the-behaviour-scripts.md](43-the-behaviour-scripts.md) | What the content actually uses, and the 28 constructs it never does | 33 of 61 read in full, all 61 censused |
+| [43-the-behaviour-scripts.md](43-the-behaviour-scripts.md) | What the content actually uses, and the 28 constructs it never does | 46 of 61 read in full, all 61 censused |
 
 Page 25 lists exactly what was read and states the case for the groups assessed by census rather
 than file by file. See "How much of this is actually read" below before trusting any of it.
@@ -80,7 +80,7 @@ bonus in the game. See [the stats page](08-stats.md).
 
 ## How much of this is actually read
 
-The C# server is **547 files**. About **505** were opened and read, including every behaviour, every
+The C# server is **547 files**. About **518** were opened and read, including every behaviour, every
 transition, every command, every world subclass, every setpiece, every handler and every packet. The rest was assessed by census,
 by signature, or by call site, which is weaker evidence and is how the first two passes of this audit
 reached wrong conclusions twice.
