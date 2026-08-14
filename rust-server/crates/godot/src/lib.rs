@@ -178,6 +178,27 @@ struct WorldView {
     positions: Vec<f32>,
     hp: Vec<i32>,
     max_hp: Vec<i32>,
+    mp: Vec<i32>,
+    max_mp: Vec<i32>,
+
+    /// Condition masks, split because the engine has no 128-bit integer: low 64 bits then high.
+    conditions_low: Vec<i64>,
+    conditions_high: Vec<i64>,
+
+    /// Rendered size in percent, and which sprite to draw for something that changes appearance
+    /// without changing type.
+    sizes: Vec<i32>,
+    textures: Vec<i32>,
+
+    /// Names, in entity order, empty where there is none.
+    names: Vec<GString>,
+
+    /// The eight stats per entity, laid end to end: entity `n` occupies `n * 8 .. n * 8 + 8`.
+    /// Meaningful only for the player's own entity, and zeroes everywhere else.
+    stats: Vec<i32>,
+
+    stars: Vec<i32>,
+    oxygen: Vec<i32>,
 
     /// Bumped whenever the contents change, so the client can skip rebuilding when nothing has.
     revision: u64,
@@ -186,20 +207,30 @@ struct WorldView {
 impl WorldView {
     /// Empties the view, for a player who has left the world it described.
     fn clear(&mut self) {
-        self.ids.clear();
-        self.types.clear();
-        self.positions.clear();
-        self.hp.clear();
-        self.max_hp.clear();
+        self.empty();
         self.revision += 1;
     }
 
-    fn replace_with(&mut self, world: &WorldSnapshot) {
+    fn empty(&mut self) {
         self.ids.clear();
         self.types.clear();
         self.positions.clear();
         self.hp.clear();
         self.max_hp.clear();
+        self.mp.clear();
+        self.max_mp.clear();
+        self.conditions_low.clear();
+        self.conditions_high.clear();
+        self.sizes.clear();
+        self.textures.clear();
+        self.names.clear();
+        self.stats.clear();
+        self.stars.clear();
+        self.oxygen.clear();
+    }
+
+    fn replace_with(&mut self, world: &WorldSnapshot) {
+        self.empty();
 
         for (id, state) in world.iter() {
             self.ids.push(id.0 as i32);
@@ -208,6 +239,21 @@ impl WorldView {
             self.positions.push(state.y);
             self.hp.push(state.hp);
             self.max_hp.push(state.max_hp);
+            self.mp.push(state.mp);
+            self.max_mp.push(state.max_mp);
+
+            // Split rather than truncated: the effects above bit 63 are real ones, and an engine
+            // that cannot hold a 128-bit integer must still be told about them.
+            self.conditions_low.push(state.conditions as u64 as i64);
+            self.conditions_high.push((state.conditions >> 64) as u64 as i64);
+
+            self.sizes.push(state.size as i32);
+            self.textures.push(state.texture as i32);
+            self.names
+                .push(state.name.as_deref().map(GString::from).unwrap_or_default());
+            self.stats.extend_from_slice(&state.stats);
+            self.stars.push(state.stars as i32);
+            self.oxygen.push(state.oxygen as i32);
         }
         self.revision += 1;
     }
@@ -585,6 +631,73 @@ impl HendraConnection {
     #[func]
     fn entity_max_hp(&self) -> PackedInt32Array {
         self.with_world(|world| PackedInt32Array::from(world.max_hp.as_slice()))
+    }
+
+    #[func]
+    fn entity_mp(&self) -> PackedInt32Array {
+        self.with_world(|world| PackedInt32Array::from(world.mp.as_slice()))
+    }
+
+    #[func]
+    fn entity_max_mp(&self) -> PackedInt32Array {
+        self.with_world(|world| PackedInt32Array::from(world.max_mp.as_slice()))
+    }
+
+    /// The low 64 bits of each entity's condition mask.
+    ///
+    /// Two arrays because the engine has no 128-bit integer and the game uses 51 effects today with
+    /// room reserved above them. Truncating to 64 would work until it silently did not.
+    #[func]
+    fn entity_conditions_low(&self) -> PackedInt64Array {
+        self.with_world(|world| PackedInt64Array::from(world.conditions_low.as_slice()))
+    }
+
+    #[func]
+    fn entity_conditions_high(&self) -> PackedInt64Array {
+        self.with_world(|world| PackedInt64Array::from(world.conditions_high.as_slice()))
+    }
+
+    /// Rendered size in percent, where 100 is the object's natural size.
+    #[func]
+    fn entity_sizes(&self) -> PackedInt32Array {
+        self.with_world(|world| PackedInt32Array::from(world.sizes.as_slice()))
+    }
+
+    /// Which sprite to draw, for entities that change appearance without changing type.
+    #[func]
+    fn entity_textures(&self) -> PackedInt32Array {
+        self.with_world(|world| PackedInt32Array::from(world.textures.as_slice()))
+    }
+
+    /// Names in entity order, empty where an entity has none.
+    #[func]
+    fn entity_names(&self) -> PackedStringArray {
+        self.with_world(|world| {
+            let mut names = PackedStringArray::new();
+            for name in &world.names {
+                names.push(name);
+            }
+            names
+        })
+    }
+
+    /// The eight stats per entity, laid end to end: entity `n` occupies `n * 8 .. n * 8 + 8`.
+    ///
+    /// Only the player's own entity carries meaningful values; everything else is zeroes.
+    #[func]
+    fn entity_stats(&self) -> PackedInt32Array {
+        self.with_world(|world| PackedInt32Array::from(world.stats.as_slice()))
+    }
+
+    #[func]
+    fn entity_stars(&self) -> PackedInt32Array {
+        self.with_world(|world| PackedInt32Array::from(world.stars.as_slice()))
+    }
+
+    /// Air remaining, from 100 down to 0. Full everywhere but a drowning world.
+    #[func]
+    fn entity_oxygen(&self) -> PackedInt32Array {
+        self.with_world(|world| PackedInt32Array::from(world.oxygen.as_slice()))
     }
 
     /// Reports where the player believes it is, and acknowledges the newest snapshot held.

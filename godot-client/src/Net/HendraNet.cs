@@ -47,19 +47,88 @@ public readonly struct WorldView
 
     public readonly int[] Hp;
     public readonly int[] MaxHp;
+    public readonly int[] Mp;
+    public readonly int[] MaxMp;
 
-    public WorldView(int[] ids, int[] types, float[] positions, int[] hp, int[] maxHp)
+    /// <summary>
+    /// Condition masks, split into halves.
+    /// </summary>
+    /// <remarks>
+    /// The mask is 128 bits wide and the engine's integer is 64, so it crosses as two arrays.
+    /// The game uses 51 effects today; the room above them is what a truncating read would lose
+    /// later without anything failing at the time.
+    /// </remarks>
+    public readonly long[] ConditionsLow;
+    public readonly long[] ConditionsHigh;
+
+    /// <summary>Rendered size in percent, where 100 is the object's natural size.</summary>
+    public readonly int[] Sizes;
+
+    /// <summary>Which sprite to draw, for things that change appearance without changing type.</summary>
+    public readonly int[] Textures;
+
+    /// <summary>Names in entity order, empty where an entity has none.</summary>
+    public readonly string[] Names;
+
+    /// <summary>
+    /// The eight stats per entity, laid end to end: entity <c>n</c> occupies <c>n * 8</c> onward.
+    /// Meaningful only for the player's own entity.
+    /// </summary>
+    public readonly int[] Stats;
+
+    public readonly int[] Stars;
+
+    /// <summary>Air remaining, from 100 down to 0. Full everywhere but a drowning world.</summary>
+    public readonly int[] Oxygen;
+
+    public WorldView(
+        int[] ids, int[] types, float[] positions, int[] hp, int[] maxHp,
+        int[] mp, int[] maxMp, long[] conditionsLow, long[] conditionsHigh,
+        int[] sizes, int[] textures, string[] names, int[] stats, int[] stars, int[] oxygen)
     {
         Ids = ids;
         Types = types;
         Positions = positions;
         Hp = hp;
         MaxHp = maxHp;
+        Mp = mp;
+        MaxMp = maxMp;
+        ConditionsLow = conditionsLow;
+        ConditionsHigh = conditionsHigh;
+        Sizes = sizes;
+        Textures = textures;
+        Names = names;
+        Stats = stats;
+        Stars = stars;
+        Oxygen = oxygen;
     }
+
+    public static WorldView Empty => new(
+        Array.Empty<int>(), Array.Empty<int>(), Array.Empty<float>(), Array.Empty<int>(),
+        Array.Empty<int>(), Array.Empty<int>(), Array.Empty<int>(), Array.Empty<long>(),
+        Array.Empty<long>(), Array.Empty<int>(), Array.Empty<int>(), Array.Empty<string>(),
+        Array.Empty<int>(), Array.Empty<int>(), Array.Empty<int>());
 
     public int Count => Ids?.Length ?? 0;
 
     public Vector2 PositionOf(int index) => new(Positions[index * 2], Positions[index * 2 + 1]);
+
+    /// <summary>The eight stats belonging to one entity.</summary>
+    public ReadOnlySpan<int> StatsOf(int index) =>
+        Stats is null || Stats.Length < (index + 1) * 8
+            ? ReadOnlySpan<int>.Empty
+            : Stats.AsSpan(index * 8, 8);
+
+    /// <summary>Whether an entity carries a condition, by its wire index.</summary>
+    public bool HasCondition(int index, int effect)
+    {
+        if (ConditionsLow is null || index >= ConditionsLow.Length)
+            return false;
+
+        return effect < 64
+            ? (ConditionsLow[index] & (1L << effect)) != 0
+            : (ConditionsHigh[index] & (1L << (effect - 64))) != 0;
+    }
 }
 
 /// <summary>
@@ -245,17 +314,24 @@ public sealed partial class HendraNet : Node
     public WorldView ReadWorld()
     {
         if (_native is null)
-        {
-            return new WorldView(Array.Empty<int>(), Array.Empty<int>(), Array.Empty<float>(),
-                Array.Empty<int>(), Array.Empty<int>());
-        }
+            return WorldView.Empty;
 
         return new WorldView(
             _native.Call("entity_ids").AsInt32Array(),
             _native.Call("entity_types").AsInt32Array(),
             _native.Call("entity_positions").AsFloat32Array(),
             _native.Call("entity_hp").AsInt32Array(),
-            _native.Call("entity_max_hp").AsInt32Array()
+            _native.Call("entity_max_hp").AsInt32Array(),
+            _native.Call("entity_mp").AsInt32Array(),
+            _native.Call("entity_max_mp").AsInt32Array(),
+            _native.Call("entity_conditions_low").AsInt64Array(),
+            _native.Call("entity_conditions_high").AsInt64Array(),
+            _native.Call("entity_sizes").AsInt32Array(),
+            _native.Call("entity_textures").AsInt32Array(),
+            _native.Call("entity_names").AsStringArray(),
+            _native.Call("entity_stats").AsInt32Array(),
+            _native.Call("entity_stars").AsInt32Array(),
+            _native.Call("entity_oxygen").AsInt32Array()
         );
     }
 
