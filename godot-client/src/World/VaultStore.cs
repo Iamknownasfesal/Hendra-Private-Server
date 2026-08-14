@@ -48,7 +48,7 @@ public sealed class VaultStore
     /// <summary>Empty slot. The wire says 0xffff; nothing else in the client uses that.</summary>
     public const int NoItem = -1;
 
-    private readonly GameSession _session;
+    private readonly RustSession _session;
     private readonly GameData _data;
 
     private int[] _slots = Array.Empty<int>();
@@ -68,7 +68,7 @@ public sealed class VaultStore
     private string _filter;
     private string _query = string.Empty;
 
-    public VaultStore(GameSession session, GameData data)
+    public VaultStore(RustSession session, GameData data)
     {
         _session = session;
         _data = data;

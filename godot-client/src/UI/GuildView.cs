@@ -39,7 +39,7 @@ public partial class GuildView : Control
     private Button _inviteButton;
     private Button _createButton;
 
-    private GameSession _session;
+    private RustSession _session;
     private string _appServerUrl = string.Empty;
     private string _guid = string.Empty;
     private string _password = string.Empty;
@@ -50,7 +50,7 @@ public partial class GuildView : Control
 
     public bool IsOpen => _panel is { Visible: true };
 
-    public void Configure(GameSession session, string appServerUrl, string guid, string password)
+    public void Configure(RustSession session, string appServerUrl, string guid, string password)
     {
         _session = session;
         _appServerUrl = appServerUrl;

@@ -16,7 +16,7 @@ namespace Hendra.UI;
 /// </para>
 /// <para>
 /// Every figure here is measured rather than estimated, with one exception that says so on the
-/// line: see <c>GameSession.PingDelayMs</c> for why this protocol cannot show an absolute ping.
+/// line: see <c>RustSession.PingDelayMs</c> for why this protocol cannot show an absolute ping.
 /// </para>
 /// </remarks>
 public partial class DebugOverlay : Control
@@ -38,7 +38,7 @@ public partial class DebugOverlay : Control
     private string _cpu;
 
     /// <summary>Where the numbers come from. Set by the world once a session exists.</summary>
-    public Func<Net.GameSession> Session { get; set; }
+    public Func<Net.RustSession> Session { get; set; }
 
     public Func<int> EntityCount { get; set; }
 

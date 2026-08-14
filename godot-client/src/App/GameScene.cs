@@ -43,7 +43,7 @@ public partial class GameScene : Node
     private CanvasLayer _loadingLayer;
     private MapLoadingView _loading;
     private WorldController _controller;
-    private GameSession _session;
+    private RustSession _session;
 
     private string _host;
     private int _port;
@@ -272,7 +272,7 @@ public partial class GameScene : Node
             _chat.Visible = !ServiceLocator.Settings.HideChat;
     }
 
-    private async void StartSession(Func<GameSession, System.Threading.Tasks.Task> connect)
+    private async void StartSession(Func<RustSession, System.Threading.Tasks.Task> connect)
     {
         _session = ServiceLocator.BeginSession();
         Subscribe(_session);
@@ -347,14 +347,14 @@ public partial class GameScene : Node
         }
     }
 
-    private void Subscribe(GameSession session)
+    private void Subscribe(RustSession session)
     {
         session.Disconnected += OnDisconnected;
         session.Failed += OnFailed;
         session.ReconnectRequested += OnReconnectRequested;
     }
 
-    private void Unsubscribe(GameSession session)
+    private void Unsubscribe(RustSession session)
     {
         if (session == null)
             return;

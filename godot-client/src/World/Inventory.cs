@@ -40,13 +40,13 @@ public sealed class Inventory
 
     private readonly GameMap _map;
     private readonly GameData _data;
-    private readonly GameSession _session;
+    private readonly RustSession _session;
     private readonly GameClock _clock;
 
     /// <summary>Set after construction; abilities that shoot fire through it.</summary>
     private Combat _shoot;
 
-    public Inventory(GameMap map, GameData data, GameSession session, GameClock clock)
+    public Inventory(GameMap map, GameData data, RustSession session, GameClock clock)
     {
         _map = map;
         _data = data;

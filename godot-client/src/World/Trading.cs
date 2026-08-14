@@ -20,9 +20,9 @@ public sealed class Trading
     /// </remarks>
     public const int FirstTradeableSlot = 4;
 
-    private readonly GameSession _session;
+    private readonly RustSession _session;
 
-    public Trading(GameSession session)
+    public Trading(RustSession session)
     {
         _session = session;
     }

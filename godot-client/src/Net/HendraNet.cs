@@ -169,6 +169,36 @@ public sealed partial class HendraNet : Node
     /// <summary>Raised when the world changed, at most once per frame.</summary>
     public event Action<WorldView> WorldChanged;
 
+    /// <summary>One row of the map: the row, where it starts, and the tiles along it.</summary>
+    public event Action<int, int, int[]> TerrainRow;
+
+    /// <summary>Scenery in one row: the row, and the x, object and size of each piece.</summary>
+    public event Action<int, int[], int[], int[]> SceneryRow;
+
+    /// <summary>Squares whose ground changed, as parallel x, y and tile arrays.</summary>
+    public event Action<int[], int[], int[]> GroundChanged;
+
+    /// <summary>The whole contents of one container: which, then slot and item pairs.</summary>
+    public event Action<int, int[]> ContainerFilled;
+
+    /// <summary>Something the player asked for was refused, with a line to show them.</summary>
+    public event Action<string> Refused;
+
+    /// <summary>Something the world wants shown rather than said.</summary>
+    public event Action<string> Notice;
+
+    /// <summary>The server is full: where we stand in the line, and how many are waiting.</summary>
+    public event Action<int, int> Queued;
+
+    /// <summary>How many of each stacking potion the character holds.</summary>
+    public event Action<int, int> Stacks;
+
+    /// <summary>This character died: which, what killed it, and the fame it earned.</summary>
+    public event Action<int, string, int> Died;
+
+    /// <summary>A projectile was fired; its whole flight follows from these.</summary>
+    public event Action<int, int, int, float, float, float, float, int> Shot;
+
     /// <summary>Whether the native library loaded at all.</summary>
     /// <remarks>
     /// Worth checking before anything else: a missing or mismatched extension shows up here as a
@@ -302,6 +332,75 @@ public sealed partial class HendraNet : Node
                 Disconnected?.Invoke(entry["reason"].AsString());
                 break;
 
+            case "terrain":
+                TerrainRow?.Invoke(
+                    entry["y"].AsInt32(),
+                    entry["x"].AsInt32(),
+                    entry["tiles"].AsInt32Array()
+                );
+                break;
+
+            case "scenery":
+                SceneryRow?.Invoke(
+                    entry["y"].AsInt32(),
+                    entry["x"].AsInt32Array(),
+                    entry["objects"].AsInt32Array(),
+                    entry["sizes"].AsInt32Array()
+                );
+                break;
+
+            case "ground":
+                GroundChanged?.Invoke(
+                    entry["x"].AsInt32Array(),
+                    entry["y"].AsInt32Array(),
+                    entry["tiles"].AsInt32Array()
+                );
+                break;
+
+            case "container":
+                ContainerFilled?.Invoke(
+                    entry["container"].AsInt32(),
+                    entry["slots"].AsInt32Array()
+                );
+                break;
+
+            case "refused":
+                Refused?.Invoke(entry["text"].AsString());
+                break;
+
+            case "notice":
+                Notice?.Invoke(entry["text"].AsString());
+                break;
+
+            case "queued":
+                Queued?.Invoke(entry["place"].AsInt32(), entry["waiting"].AsInt32());
+                break;
+
+            case "stacks":
+                Stacks?.Invoke(entry["health"].AsInt32(), entry["magic"].AsInt32());
+                break;
+
+            case "died":
+                Died?.Invoke(
+                    entry["character"].AsInt32(),
+                    entry["killed_by"].AsString(),
+                    entry["fame"].AsInt32()
+                );
+                break;
+
+            case "shot":
+                Shot?.Invoke(
+                    entry["projectile"].AsInt32(),
+                    entry["owner"].AsInt32(),
+                    entry["object_type"].AsInt32(),
+                    (float)entry["x"].AsDouble(),
+                    (float)entry["y"].AsDouble(),
+                    (float)entry["angle"].AsDouble(),
+                    (float)entry["speed"].AsDouble(),
+                    entry["lifetime_ms"].AsInt32()
+                );
+                break;
+
             default:
                 // An extension newer than this client can send a kind we do not know. Ignoring it
                 // is correct; crashing on it is not.
@@ -349,6 +448,25 @@ public sealed partial class HendraNet : Node
     public void SendChat(string text) => _native?.Call("send_chat", text);
 
     public void UsePortal(int entityId) => _native?.Call("use_portal", entityId);
+
+    /// <summary>Fires in the given direction, in radians. Only the aim is sent.</summary>
+    public void Shoot(float angle) => _native?.Call("shoot", angle);
+
+    /// <summary>
+    /// Asks to move an item between two slots.
+    /// </summary>
+    /// <remarks>
+    /// Containers are named by tag rather than by entity, so a client cannot address somebody
+    /// else's inventory: 0 is what you carry, 1 what you wear, 2 the vault.
+    /// </remarks>
+    public void MoveItem(long fromContainer, int fromSlot, long toContainer, int toSlot) =>
+        _native?.Call("move_item", fromContainer, fromSlot, toContainer, toSlot);
+
+    /// <summary>Takes an item out of a bag on the ground.</summary>
+    public void PickUp(int bag, int slot) => _native?.Call("pick_up", bag, slot);
+
+    /// <summary>Drops a carried item at the player's feet.</summary>
+    public void DropItem(int slot) => _native?.Call("drop_item", slot);
 
     public override void _ExitTree()
     {

@@ -76,7 +76,7 @@ public sealed class Combat
 
     private readonly GameMap _map;
     private readonly GameData _data;
-    private readonly GameSession _session;
+    private readonly RustSession _session;
     private readonly GameClock _clock;
 
     private readonly List<Projectile> _projectiles = new();
@@ -85,7 +85,7 @@ public sealed class Combat
     private byte _nextBulletId;
     private int _nextAttackAllowedMs;
 
-    public Combat(GameMap map, GameData data, GameSession session, GameClock clock)
+    public Combat(GameMap map, GameData data, RustSession session, GameClock clock)
     {
         _map = map;
         _data = data;

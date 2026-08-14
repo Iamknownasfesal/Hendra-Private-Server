@@ -31,7 +31,7 @@ namespace Hendra.World;
 /// </remarks>
 public partial class WorldController : Node
 {
-    private GameSession _session;
+    private RustSession _session;
     private GameMap _map;
     private GameData _data;
     private AssetLibrary _assets;
@@ -152,7 +152,7 @@ public partial class WorldController : Node
     public UI.ChatView Chat => _chat;
 
     public void Begin(
-        GameSession session,
+        RustSession session,
         GameData data,
         AssetLibrary assets,
         WorldRoot world,

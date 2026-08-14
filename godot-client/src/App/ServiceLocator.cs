@@ -24,7 +24,7 @@ public partial class ServiceLocator : Node
     private static ServiceLocator _instance;
 
     private readonly GameClock _clock = new();
-    private GameSession _session;
+    private RustSession _session;
     private Audio.AudioLibrary _audio;
     private Settings _settings;
 
@@ -44,7 +44,7 @@ public partial class ServiceLocator : Node
     public static StringMap Strings { get; } = new();
 
     /// <summary>The current session, or null when not in a game.</summary>
-    public static GameSession Session => _instance?._session;
+    public static RustSession Session => _instance?._session;
 
     /// <summary>
     /// Sound effects and music.
@@ -240,10 +240,10 @@ public partial class ServiceLocator : Node
     }
 
     /// <summary>Creates a fresh session, discarding any previous one.</summary>
-    public static GameSession BeginSession()
+    public static RustSession BeginSession()
     {
         EndSession("Starting a new session.");
-        _instance._session = new GameSession(_instance._clock);
+        _instance._session = new RustSession(_instance._clock);
         return _instance._session;
     }
 
