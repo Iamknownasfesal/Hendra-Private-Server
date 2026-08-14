@@ -26,7 +26,7 @@ enemy "Arachna the Spider Queen" {
         item("Golden Dagger", 0.2)
         item("Spider's Eye Ring", 0.2)
         item("Poison Fang Dagger", 0.2)
-        threshold
+        threshold(0.32) { item("Healing Ichor", 1) }
     }
 }
 

@@ -1515,8 +1515,8 @@ enemy "shtrs Defense System" {
         }
     }
     loot {
-        threshold
-        threshold
+        threshold(0.05) {  }
+        threshold(0.05) { tier(10, weapon, 0.07) tier(11, weapon, 0.06) tier(12, weapon, 0.05) tier(5, ability, 0.03) tier(6, ability, 0.02) tier(11, armor, 0.07) tier(12, armor, 0.06) tier(13, armor, 0.03) tier(5, ring, 0.05) item("Staff of the Great Climbing", 0.001) item("AvatarRobe", 0.001) item("AvatarRing", 0.001) item("Tablet of the King's Avatar", 0.01) item("Blade of Offerings", 0.01) item("Cultist Armor", 0.02) item("Mysterious Stone", 0.02) item("Shield of the Phantom", 0.02) }
     }
 }
 

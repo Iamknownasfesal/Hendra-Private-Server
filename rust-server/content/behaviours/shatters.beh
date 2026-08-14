@@ -627,7 +627,7 @@ enemy "shtrs Loot Balloon Bridge" {
     state Bridge {
     }
     loot {
-        threshold
+        threshold(0.1) { tier(11, weapon, 1) tier(12, weapon, 1) tier(6, ability, 1) tier(12, armor, 1) tier(13, armor, 1) tier(6, ring, 1) item("Potion of Attack", 1) item("Potion of Defense", 1) item("Bracer of the Guardian", 0.01) }
     }
 }
 
@@ -639,7 +639,7 @@ enemy "shtrs Loot Balloon Mage" {
     state Mage {
     }
     loot {
-        threshold
+        threshold(0.1) { tier(11, weapon, 1) tier(12, weapon, 1) tier(6, ability, 1) tier(12, armor, 1) tier(13, armor, 1) tier(6, ring, 1) item("Potion of Mana", 1) item("The Twilight Gemstone", 0.01) }
     }
 }
 
@@ -2335,7 +2335,7 @@ enemy "shtrs Loot Balloon King" {
     state Crown {
     }
     loot {
-        threshold
+        threshold(0.1) { tier(11, weapon, 1) tier(12, weapon, 1) tier(6, ability, 1) tier(12, armor, 1) tier(13, armor, 1) tier(6, ring, 1) item("Potion of Life", 1) item("The Forgotten Crown", 0.01) }
     }
 }
 

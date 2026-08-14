@@ -1628,6 +1628,13 @@ fn take_from_bag(
         return None;
     }
 
+    // A bag that belongs to somebody belongs to them. Enforced here rather than only drawn
+    // differently, because a bag anybody could take from would make the damage threshold decide who
+    // the loot was rolled for and nothing at all about who ends up with it.
+    if entity.belongs_to.is_some_and(|owner| owner != player) {
+        return None;
+    }
+
     let container = entity.container.as_mut()?;
     let item = container.item(slot as usize);
     if item.is_none() {
@@ -1663,6 +1670,9 @@ fn put_in_bag(
         let Some(entity) = world.get_mut(handle) else {
             return false;
         };
+        if entity.belongs_to.is_some_and(|owner| owner != player) {
+            return false;
+        }
         if entity.kind != hendra_sim::Kind::Container {
             return false;
         }

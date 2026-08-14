@@ -251,7 +251,7 @@ enemy "Stheno the Snake Queen" {
         }
     }
     loot {
-        threshold
+        threshold(0.1) { item("Potion of Speed", 1) item("Wand of the Bulwark", 0.005) item("Snake Skin Armor", 0.1) item("Snake Skin Shield", 0.1) item("Snake Eye Ring", 0.1) item("Wine Cellar Incantation", 0.05) tier(9, weapon, 0.2) tier(10, weapon, 0.1) tier(8, armor, 0.3) tier(9, armor, 0.2) tier(10, armor, 0.1) }
     }
 }
 
@@ -361,7 +361,7 @@ enemy "Greater Pit Viper" {
     shoot(15, cooldown: 300)
     loot {
         item("Snake Oil", 0.1)
-        threshold
+        threshold(0.1) { item("Ring of Greater Attack", 0.1) item("Ring of Greater Health", 0.1) }
     }
 }
 
@@ -384,8 +384,8 @@ enemy "Snakepit Guard" {
         shoot(15, count: 3, projectile: 2, cooldown: 2000)
     }
     loot {
-        threshold
-        threshold
+        threshold(0.32) { item("Potion of Speed", 1) }
+        threshold(0.1) { item("Wand of the Bulwark", 0.005) item("Snake Skin Armor", 0.1) item("Snake Skin Shield", 0.1) item("Snake Eye Ring", 0.1) item("Wine Cellar Incantation", 0.05) tier(9, weapon, 0.2) tier(10, weapon, 0.1) tier(8, armor, 0.3) tier(9, armor, 0.2) tier(10, armor, 0.1) }
     }
 }
 

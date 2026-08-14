@@ -12,7 +12,7 @@ enemy "Coral Gift" {
         on timed(500) -> Texture1
     }
     loot {
-        threshold
+        threshold(0.01) { item("Coral Juice", 0.3) item("Sea Slurp Egg", 0.25) item("Potion of Mana", 0.04) item("Coral Bow", 0.01) item("Coral Venom Trap", 0.03) item("Wine Cellar Incantation", 0.02) item("Coral Silk Armor", 0.04) item("Coral Ring", 0.04) }
     }
 }
 
@@ -217,8 +217,8 @@ enemy "Thessal the Mermaid Goddess" {
         on timed(500, "Spawning Bomb", randomized: true) -> Spawning_Bomb
     }
     loot {
-        threshold
-        threshold
+        threshold(0.32) { item("Potion of Mana", 1) }
+        threshold(0.1) { item("Coral Juice", 0.3) item("Sea Slurp Egg", 0.25) item("Coral Bow", 0.01) item("Coral Venom Trap", 0.03) item("Wine Cellar Incantation", 0.02) item("Coral Silk Armor", 0.04) item("Coral Ring", 0.04) }
     }
 }
 

@@ -36,12 +36,12 @@ enemy "Oryx the Mad God 2" {
         taunt(1, 6000, "Puny mortals! My {HP} HP will annihilate you!")
     }
     loot {
-        threshold
-        threshold
-        threshold
-        threshold
-        threshold
-        threshold
+        threshold(0.05) {  }
+        threshold(0.05) {  }
+        threshold(0.29) { item("Potion of Vitality", 1) }
+        threshold(0.05) { item("Potion of Attack", 0.3) item("Potion of Defense", 0.3) item("Potion of Wisdom", 0.3) }
+        threshold(0.2) { item("Oryx's Arena Key", 0.01) }
+        threshold(0.1) { tier(10, weapon, 0.07) tier(11, weapon, 0.06) tier(12, weapon, 0.05) tier(5, ability, 0.07) tier(6, ability, 0.05) tier(11, armor, 0.07) tier(12, armor, 0.06) tier(13, armor, 0.05) tier(5, ring, 0.06) }
     }
 }
 
@@ -83,10 +83,10 @@ enemy "Oryx the Mad God 2OA" {
         taunt(1, 6000, "Puny mortals! My {HP} HP will annihilate you!")
     }
     loot {
-        threshold
-        threshold
-        threshold
-        threshold
+        threshold(0.05) {  }
+        threshold(0.29) { item("Potion of Vitality", 1) }
+        threshold(0.05) { item("Potion of Attack", 0.3) item("Potion of Defense", 0.3) item("Potion of Wisdom", 0.3) }
+        threshold(0.1) { tier(10, weapon, 0.07) tier(11, weapon, 0.06) tier(12, weapon, 0.05) tier(5, ability, 0.07) tier(6, ability, 0.05) tier(11, armor, 0.07) tier(12, armor, 0.06) tier(13, armor, 0.05) tier(5, ring, 0.06) }
     }
 }
 
@@ -195,10 +195,10 @@ enemy "Oryx the Mad God 1" {
         flash(268369920, 0.5, 9000001)
     }
     loot {
-        threshold
-        threshold
-        threshold
-        threshold
+        threshold(0.05) {  }
+        threshold(0.2) { item("Oryx's Arena Key", 0.005) }
+        threshold(0.05) { item("Potion of Attack", 0.3) item("Potion of Defense", 0.3) item("The Zol Awakening (Token)", 0.001) item("Calling of the Titan (Token)", 0.001) }
+        threshold(0.1) { tier(10, weapon, 0.07) tier(11, weapon, 0.06) tier(5, ability, 0.07) tier(11, armor, 0.07) tier(5, ring, 0.06) }
     }
 }
 

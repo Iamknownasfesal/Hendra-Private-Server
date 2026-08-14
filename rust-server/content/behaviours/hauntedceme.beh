@@ -7,7 +7,7 @@ enemy "Arena Skeleton" {
     shoot(10, count: 1, projectile: 0, cooldown: 900)
     loot {
         item("Spirit Salve Tome", 0.02)
-        threshold
+        threshold(0.5) { item("Golden Sword", 0.01) item("Ring of Greater Dexterity", 0.01) item("Magesteel Quiver", 0.01) }
     }
 }
 
@@ -16,7 +16,7 @@ enemy "Troll 1" {
     shoot(10, count: 1, projectile: 0, cooldown: 850)
     loot {
         item("Tome of Renewing", 0.02)
-        threshold
+        threshold(0.5) { item("Golden Sword", 0.01) item("Ring of Greater Defense", 0.01) item("Magesteel Quiver", 0.01) }
     }
 }
 
@@ -26,7 +26,7 @@ enemy "Troll 2" {
     grenade(3.5, 80, 8, cooldown: 2750)
     loot {
         item("Ravenheart Sword", 0.02)
-        threshold
+        threshold(0.5) { item("Wand of Death", 0.01) item("Ring of Greater Health", 0.01) item("Steel Shield", 0.01) }
     }
 }
 
@@ -84,7 +84,7 @@ enemy "Troll 3" {
         on entities_not_exists(9999, "Arena Skeleton") -> trolled
     }
     loot {
-        threshold
+        threshold(0.025) { tier(8, weapon, 0.1) tier(5, ability, 0.1) tier(9, armor, 0.1) tier(3, ring, 0.05) tier(10, armor, 0.05) tier(10, weapon, 0.05) tier(4, ring, 0.025) item("Potion of Speed", 1) item("Potion of Wisdom", 0.5) }
     }
 }
 
@@ -96,7 +96,7 @@ enemy "Arena Possessed Girl" {
     shoot(10, count: 8, projectile: 0, cooldown: 1250)
     loot {
         item("Avenger Staff", 0.02)
-        threshold
+        threshold(0.5) { item("Golden Sword", 0.01) item("Ring of Superior Magic", 0.01) item("Magesteel Quiver", 0.01) }
     }
 }
 
@@ -106,7 +106,7 @@ enemy "Arena Ghost 1" {
     shoot(10, count: 1, projectile: 0, cooldown: 900)
     loot {
         item("Avenger Staff", 0.02)
-        threshold
+        threshold(0.5) { item("Golden Sword", 0.01) item("Mithril Chainmail", 0.01) item("Magesteel Quiver", 0.01) }
     }
 }
 
@@ -199,7 +199,7 @@ enemy "Arena Ghost Bride" {
         shoot(10, count: 2, shoot_angle: 5, projectile: 1, cooldown: 1000)
     }
     loot {
-        threshold
+        threshold(0.025) { tier(8, weapon, 0.1) tier(5, ability, 0.1) tier(9, armor, 0.1) tier(3, ring, 0.05) tier(10, armor, 0.05) tier(10, weapon, 0.05) tier(4, ring, 0.025) item("Potion of Speed", 1) item("Amulet of Resurrection", 0.0002) item("Potion of Wisdom", 0.5) }
     }
 }
 
@@ -209,7 +209,7 @@ enemy "Arena Risen Archer" {
     shoot(10, count: 8, projectile: 1, cooldown: 1450)
     loot {
         item("Spirit Salve Tome", 0.02)
-        threshold
+        threshold(0.5) { item("Golden Sword", 0.01) item("Ring of Greater Dexterity", 0.01) item("Magesteel Quiver", 0.01) }
     }
 }
 
@@ -218,7 +218,7 @@ enemy "Arena Risen Brawler" {
     shoot(10, count: 5, projectile: 0, shoot_angle: 5, predictive: 0.5, cooldown: 1200)
     loot {
         item("Spirit Salve Tome", 0.02)
-        threshold
+        threshold(0.5) { item("Golden Sword", 0.01) item("Ring of Greater Dexterity", 0.01) item("Magesteel Quiver", 0.01) }
     }
 }
 
@@ -227,7 +227,7 @@ enemy "Arena Risen Mummy" {
     shoot(10, count: 8, projectile: 0, shoot_angle: 14, predictive: 5, cooldown: 3750)
     loot {
         item("Spirit Salve Tome", 0.02)
-        threshold
+        threshold(0.5) { item("Golden Sword", 0.01) item("Ring of Superior Dexterity", 0.01) item("Magesteel Quiver", 0.01) }
     }
 }
 
@@ -237,7 +237,7 @@ enemy "Arena Risen Mage" {
     heal_group(10, "Hallowrena", cooldown: 5000)
     loot {
         item("Magesteel Quiver", 0.02)
-        threshold
+        threshold(0.5) { item("Golden Sword", 0.01) item("Ring of Greater Dexterity", 0.01) item("Verdant Bow", 0.01) }
     }
 }
 
@@ -246,7 +246,7 @@ enemy "Arena Risen Warrior" {
     shoot(10, count: 1, projectile: 0, cooldown: 10)
     loot {
         item("DDOS Sword", 0.02)
-        threshold
+        threshold(0.5) { item("Golden Sword", 0.01) }
     }
 }
 
@@ -277,7 +277,7 @@ enemy "Arena Grave Caretaker" {
         spawn("Arena Blue Flame", initial_spawn: 1, max_children: 1, cooldown: 3750)
     }
     loot {
-        threshold
+        threshold(0.025) { tier(10, weapon, 0.1) tier(4, ability, 0.1) tier(9, armor, 0.1) tier(4, ring, 0.05) tier(11, armor, 0.05) tier(11, weapon, 0.05) tier(4, ring, 0.025) item("Potion of Speed", 1) item("Potion of Wisdom", 0.5) }
     }
 }
 
@@ -286,7 +286,7 @@ enemy "Classic Ghost" {
     shoot(10, count: 3, projectile: 0, shoot_angle: 3, predictive: 1, cooldown: 1200)
     loot {
         item("Timelock Orb", 0.02)
-        threshold
+        threshold(0.5) { item("Golden Sword", 0.01) item("Ring of Greater Attack", 0.01) item("Steel Shield", 0.01) }
     }
 }
 
@@ -295,7 +295,7 @@ enemy "Mini Werewolf" {
     shoot(10, count: 3, projectile: 0, cooldown: 1200)
     loot {
         item("Magic Potion", 0.02)
-        threshold
+        threshold(0.5) { item("Golden Sword", 0.01) item("Ring of Greater Attack", 0.01) item("Steel Shield", 0.01) }
     }
 }
 
@@ -308,7 +308,7 @@ enemy "Zombie Hulk" {
     shoot(10, count: 1, projectile: 1, cooldown: 2000)
     loot {
         item("Health Potion", 0.02)
-        threshold
+        threshold(0.5) { item("Golden Sword", 0.01) item("Ring of Greater Dexterity", 0.01) item("Magesteel Quiver", 0.01) }
     }
 }
 
@@ -318,7 +318,7 @@ enemy "Werewolf" {
     spawn("Mini Werewolf", initial_spawn: 1, max_children: 3, cooldown: 7000)
     loot {
         item("Health Potion", 0.02)
-        threshold
+        threshold(0.5) { item("Golden Sword", 0.01) item("Ring of Greater Dexterity", 0.01) item("Magesteel Quiver", 0.01) }
     }
 }
 
@@ -526,8 +526,8 @@ enemy "Ghost of Skuld" {
         suicide()
     }
     loot {
-        threshold
-        threshold
+        threshold(0.05) {  }
+        threshold(0.025) { tier(11, weapon, 0.1) tier(4, ability, 0.1) tier(11, armor, 0.1) tier(5, ring, 0.05) tier(11, armor, 0.05) tier(11, weapon, 0.05) tier(4, ring, 0.025) item("Potion of Vitality", 1) item("Potion of Wisdom", 0.5) item("Resurrected Warrior's Armor", 0.04) item("Plague Poison", 0.04) item("Etherite Dagger", 0.02) item("Ghastly Drape", 0.02) item("Mantle of Skuld", 0.02) item("Spectral Ring of Horrors", 0.02) }
     }
 }
 

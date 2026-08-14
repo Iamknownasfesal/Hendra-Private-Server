@@ -7,7 +7,7 @@ enemy "Puppet Knight" {
     shoot(8, count: 1, projectile: 1, cooldown: 2000)
     loot {
         item("Magic Potion", 0.1)
-        threshold
+        threshold(0.1) { item("Obsidian Dagger", 0.02) item("Steel Helm", 0.02) }
     }
 }
 
@@ -17,7 +17,7 @@ enemy "Archer Puppet" {
     shoot(8, count: 1, projectile: 1, cooldown: 2700)
     loot {
         item("Magic Potion", 0.1)
-        threshold
+        threshold(0.1) { item("Obsidian Dagger", 0.02) item("Steel Helm", 0.02) }
     }
 }
 
@@ -30,7 +30,7 @@ enemy "Paladin Puppet" {
     shoot(8.4, count: 1, projectile: 0, cooldown: 1000)
     loot {
         item("Health Potion", 0.1)
-        threshold
+        threshold(0.1) { item("Mithril Dagger", 0.02) item("Mithril Chainmail", 0.02) }
     }
 }
 
@@ -43,7 +43,7 @@ enemy "Assassin Puppet" {
     shoot(8.4, count: 1, projectile: 0, cooldown: 1500)
     loot {
         item("Health Potion", 0.1)
-        threshold
+        threshold(0.1) { item("Mithril Dagger", 0.02) item("Mithril Chainmail", 0.02) }
     }
 }
 
@@ -93,7 +93,7 @@ enemy "Trickster Decoys" {
     shoot(8.4, count: 1, projectile: 0, cooldown: 1400)
     loot {
         item("Health Potion", 0.1)
-        threshold
+        threshold(0.1) { item("Mithril Dagger", 0.02) item("Mithril Chainmail", 0.02) }
     }
 }
 
@@ -103,7 +103,7 @@ enemy "Mystic Puppet" {
     shoot(8.4, count: 1, projectile: 1, cooldown: 1950)
     loot {
         item("Health Potion", 0.1)
-        threshold
+        threshold(0.1) { item("Mithril Dagger", 0.02) item("Mithril Chainmail", 0.02) }
     }
 }
 
@@ -115,7 +115,7 @@ enemy "Puppet Wizard" {
     shoot(8.4, count: 10, projectile: 0, cooldown: 2650)
     loot {
         item("Health Potion", 0.1)
-        threshold
+        threshold(0.1) { item("Golden Bow", 0.02) item("Demon Edge", 0.02) }
     }
 }
 
@@ -124,7 +124,7 @@ enemy "Puppet Priest" {
     heal_group(8, "Master", cooldown: 4500, heal_amount: 75)
     loot {
         item("Health Potion", 0.1)
-        threshold
+        threshold(0.1) { item("Golden Bow", 0.02) item("Demon Edge", 0.02) }
     }
 }
 
@@ -134,7 +134,7 @@ enemy "Healer Puppet" {
     heal_group(10, "Healers", cooldown: 3000)
     loot {
         item("Health Potion", 0.1)
-        threshold
+        threshold(0.1) { item("Golden Bow", 0.02) item("Demon Edge", 0.02) }
     }
 }
 
@@ -224,8 +224,8 @@ enemy "Puppet Loot Chest" {
     state UnsetEffect {
     }
     loot {
-        threshold
-        threshold
+        threshold(0.05) {  }
+        threshold(0.15) { tier(10, weapon, 0.045) tier(10, weapon, 0.05) tier(5, ability, 0.045) tier(11, armor, 0.05) item("Potion of Attack", 1) item("Potion of Might", 0.33) item("Harlequin Armor", 0.04) item("Lucky Sword", 0.03) item("Lucky Armor", 0.03) item("Lucky Seal", 0.03) item("Lucky Ring", 0.03) item("Funnystone", 0.055) item("Prism of Dancing Swords", 0.04) item("Puppet Master Skin", 0.02) item("Jester Skin", 0.02) item("Large Jester Argyle Cloth", 0.05) item("Small Jester Argyle Cloth", 0.05) item("The Fool Tarot Card", 0.045) }
     }
 }
 

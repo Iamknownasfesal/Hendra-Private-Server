@@ -59,7 +59,7 @@ enemy "Masked Party God" {
         on timed(500, "1") -> s1
     }
     loot {
-        threshold
+        threshold(0.1) { item("Blue Paradise", 0.2) item("Pink Passion Breeze", 0.2) item("Bahama Sunrise", 0.2) item("Lime Jungle Bay", 0.2) }
     }
 }
 

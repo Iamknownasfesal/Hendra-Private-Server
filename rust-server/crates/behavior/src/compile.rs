@@ -245,11 +245,7 @@ fn compile_enemy(enemy: &ast::Enemy, diagnostics: &mut Vec<Diagnostic>) -> Progr
         kinds: vec![None; interner.entries.len()],
         names: interner.entries,
         states,
-        loot: enemy
-            .loot
-            .iter()
-            .filter_map(|entry| loot(&entry.call))
-            .collect(),
+        loot: enemy.loot.iter().filter_map(loot).collect(),
     }
 }
 
@@ -965,7 +961,9 @@ fn condition(call: &Call, names: &mut Names, diagnostics: &mut Vec<Diagnostic>) 
     }
 }
 
-fn loot(call: &Call) -> Option<LootEntry> {
+fn loot(entry: &crate::ast::Loot) -> Option<LootEntry> {
+    let call = &entry.call;
+
     match call.name.as_str() {
         "item" => Some(LootEntry::Item {
             name: call
@@ -983,6 +981,15 @@ fn loot(call: &Call) -> Option<LootEntry> {
                 .to_string(),
             chance: number(call, "chance", 2, 0.0) as f32,
         }),
+        // `Threshold(share, children...)`: everything inside belongs to whoever earned it.
+        //
+        // Silently dropped before this existed, which is two hundred uses of the content's own
+        // soulbound loot going nowhere and nothing saying so.
+        "threshold" => Some(LootEntry::Threshold {
+            share: number(call, "threshold", 0, 0.0) as f32,
+            children: entry.children.iter().filter_map(loot).collect(),
+        }),
+
         _ => None,
     }
 }

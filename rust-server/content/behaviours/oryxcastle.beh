@@ -135,7 +135,7 @@ enemy "Oryx Stone Guardian Right" {
     state Forever_Alone {
     }
     loot {
-        threshold
+        threshold(0.1) { item("Ancient Stone Sword", 0.02) item("Potion of Defense", 1) item("Gauntlet Chaos", 0.001) tier(8, weapon, 0.1) tier(7, armor, 0.1) tier(3, ring, 0.1) }
     }
 }
 
@@ -276,7 +276,7 @@ enemy "Oryx Stone Guardian Left" {
     state Forever_Alone {
     }
     loot {
-        threshold
+        threshold(0.1) { item("Ancient Stone Sword", 0.02) item("Gauntlet Mayhem", 0.001) item("Potion of Defense", 1) tier(8, weapon, 0.1) tier(7, armor, 0.1) tier(3, ring, 0.1) }
     }
 }
 

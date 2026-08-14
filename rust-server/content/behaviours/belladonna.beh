@@ -313,7 +313,7 @@ enemy "vlntns Loot Balloon Bella" {
     state UnsetEffect {
     }
     loot {
-        threshold
+        threshold(0.1) { item("Diamond Bladed Katana", 0.1) item("Cupid's Bow", 0.1) item("Staff of Adoration", 0.1) item("Wand of Budding Romance", 0.1) item("Heartfind Dagger", 0.1) item("Vinesword", 0.1) }
     }
 }
 

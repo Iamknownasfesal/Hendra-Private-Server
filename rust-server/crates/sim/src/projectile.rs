@@ -121,6 +121,10 @@ impl Projectile {
 pub struct Hit {
     pub projectile: Handle,
     pub target: Handle,
+
+    /// Who fired it, which is who earned whatever this kill drops.
+    pub owner: Handle,
+
     pub damage: i32,
 
     /// Whether this killed the target.
@@ -308,6 +312,7 @@ impl Projectiles {
             hits.push(Hit {
                 projectile: handle,
                 target: *target,
+                owner: projectile.owner,
                 damage,
                 fatal: entity.hp - damage <= 0,
             });
@@ -400,6 +405,8 @@ mod tests {
             terrain: hendra_content::Terrain::None,
             selling: None,
             glow: 0,
+            belongs_to: None,
+            damage_by: Vec::new(),
             teleport_cooldown_ms: 0,
             move_grace_ms: 0,
             x,

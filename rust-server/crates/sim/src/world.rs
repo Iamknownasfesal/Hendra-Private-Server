@@ -69,6 +69,11 @@ pub struct Entity {
     pub object_type: ObjectType,
     pub kind: Kind,
 
+    /// Who may open this, for a bag that belongs to whoever earned it.
+    ///
+    /// `None` is everything else, which anybody may open.
+    pub belongs_to: Option<Handle>,
+
     /// What colour this glows, for an administrator who wants to be seen.
     ///
     /// Zero is no glow, which is everybody.
@@ -133,6 +138,12 @@ pub struct Entity {
     /// hurt. Cleared once read, so a hit counts toward exactly one tick.
     pub damage_since_tick: i32,
 
+    /// Who has damaged this, and how much.
+    ///
+    /// Kept per enemy rather than globally, because it is a fact about this fight: it decides who
+    /// earned the loot that belongs to whoever earned it, and it dies with the enemy.
+    pub damage_by: Vec<(Handle, i32)>,
+
     /// Which sprite to draw, for bosses that visibly change phase.
     pub texture: u8,
 
@@ -195,6 +206,7 @@ impl Entity {
             terrain: hendra_content::Terrain::None,
             selling: None,
             glow: 0,
+            belongs_to: None,
             kind: Kind::Fixture,
             x,
             y,
@@ -215,6 +227,7 @@ impl Entity {
             expires_in_ms: None,
             dead: false,
             damage_since_tick: 0,
+            damage_by: Vec::new(),
             texture: 0,
             resizing: None,
             no_experience: false,
@@ -237,6 +250,7 @@ impl Entity {
             terrain: hendra_content::Terrain::None,
             selling: None,
             glow: 0,
+            belongs_to: None,
             kind: Kind::Player,
             x,
             y,
@@ -257,6 +271,7 @@ impl Entity {
             expires_in_ms: None,
             dead: false,
             damage_since_tick: 0,
+            damage_by: Vec::new(),
             texture: 0,
             resizing: None,
             no_experience: false,
@@ -996,6 +1011,12 @@ pub const TELEPORT_COOLDOWN_MS: u32 = 10_000;
 /// A teleport moves somebody further in one tick than walking ever could, and the movement check
 /// cannot tell that from a client claiming to be somewhere it is not.
 pub const MOVE_GRACE_MS: u32 = 1_000;
+
+/// How many players one enemy remembers being hurt by.
+///
+/// Generous enough for anything that is really a fight, and bounded because the list lives on every
+/// enemy and a realm holds thousands of them.
+const MOST_REMEMBERED_DAMAGERS: usize = 64;
 
 /// The chest a setpiece leaves its reward in.
 const SETPIECE_CHEST: &str = "Treasure Chest";
@@ -1943,10 +1964,33 @@ impl World {
         );
 
         for hit in hits.iter() {
+            let by_player = self
+                .entities
+                .get(hit.owner)
+                .is_some_and(|owner| owner.kind == Kind::Player);
+
             if let Some(target) = self.entities.get_mut(hit.target) {
                 target.hp -= hit.damage;
                 if target.hp <= 0 {
                     target.dead = true;
+                }
+
+                // Remembered only for enemies hurt by players, which is the only case anybody asks
+                // about: it decides who earned the loot that belongs to whoever earned it.
+                if by_player && target.kind == Kind::Enemy {
+                    let held = target
+                        .damage_by
+                        .iter_mut()
+                        .find(|(who, _)| *who == hit.owner);
+
+                    match held {
+                        Some((_, total)) => *total += hit.damage,
+                        None => {
+                            if target.damage_by.len() < MOST_REMEMBERED_DAMAGERS {
+                                target.damage_by.push((hit.owner, hit.damage));
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -2108,10 +2152,51 @@ impl World {
                 continue;
             };
 
+            let table = program.loot.clone();
+
+            // Everything that belongs to whoever reaches it first.
             let mut dropped = Vec::new();
-            for entry in program.loot.clone() {
-                if let Some(item) = self.roll_loot(&entry, catalog) {
+            for entry in table.iter().filter(|entry| entry.share() <= 0.0) {
+                if let Some(item) = self.roll_loot(entry, catalog) {
                     dropped.push(item);
+                }
+            }
+
+            // And everything that belongs to whoever earned it. Rolled once per player who took
+            // enough off this enemy, into a bag only they can open, which is what makes a boss's
+            // drops worth fighting for rather than worth standing near.
+            let earned = self.entities.get(handle).map(|entity| {
+                (
+                    entity.damage_by.clone(),
+                    // Against what the enemy started with rather than what it has now, which is
+                    // zero: a share of nothing is a threshold nobody can meet.
+                    entity.base_max_hp.unwrap_or(entity.max_hp).max(1),
+                )
+            });
+
+            if let Some((damagers, total)) = earned {
+                for entry in table.iter() {
+                    let hendra_behavior::program::LootEntry::Threshold { share, children } = entry
+                    else {
+                        continue;
+                    };
+
+                    for (who, damage) in &damagers {
+                        if (*damage as f32) < *share * total as f32 {
+                            continue;
+                        }
+
+                        let mut theirs = Vec::new();
+                        for child in children {
+                            if let Some(item) = self.roll_loot(child, catalog) {
+                                theirs.push(item);
+                            }
+                        }
+
+                        if !theirs.is_empty() {
+                            self.drop_owned_bag(catalog, *who, theirs, x, y);
+                        }
+                    }
                 }
             }
 
@@ -2155,6 +2240,42 @@ impl World {
         }
     }
 
+    /// Drops a bag only one player can open.
+    ///
+    /// The whole point of loot that belongs to whoever earned it: a bag anybody could take from
+    /// would make the threshold decide who it is rolled for and nothing about who gets it.
+    fn drop_owned_bag(
+        &mut self,
+        catalog: &Catalog,
+        owner: Handle,
+        items: Vec<ObjectType>,
+        x: f32,
+        y: f32,
+    ) {
+        let colour = items
+            .iter()
+            .filter_map(|item| catalog.object(*item))
+            .filter_map(|desc| desc.item.as_ref())
+            .map(|item| item.bag_type)
+            .max()
+            .unwrap_or(0);
+
+        let mut container = Container::new(ContainerKind::Bag, 8);
+        for item in items {
+            container.insert(item, catalog);
+        }
+
+        // Scattered a little, so several players' bags from one kill are not one pile.
+        let spread = self.roll() * 2.0 - 1.0;
+
+        let mut bag = Entity::fixture(self.bag_kind(colour), x + spread, y + spread);
+        bag.kind = Kind::Container;
+        bag.container = Some(Box::new(container));
+        bag.belongs_to = Some(owner);
+        bag.expires_in_ms = Some(60_000);
+        self.spawn(bag);
+    }
+
     /// Which bag a loot colour is dropped in.
     ///
     /// The content numbers these from zero upward and the world is told the object for each. A
@@ -2187,6 +2308,10 @@ impl World {
                 }
                 catalog.type_of(name)
             }
+
+            // A threshold is a rule about who may have what is inside it, not a drop of its own.
+            // `drop_loot` walks into it; reaching here means somebody asked it to roll directly.
+            LootEntry::Threshold { .. } => None,
 
             LootEntry::Tier { tier, kind, chance } => {
                 if self.roll() > *chance {
@@ -5845,6 +5970,106 @@ mod tests {
         assert_eq!(world.player_named("fesal"), Some(handle));
         assert_eq!(world.player_named("FESAL"), Some(handle));
         assert_eq!(world.player_named("Nobody"), None);
+    }
+
+    #[test]
+    fn loot_that_belongs_to_somebody_goes_in_a_bag_only_they_can_open() {
+        // The whole point of a threshold: a bag anybody could take from would make it decide who
+        // the loot was rolled for and nothing about who ends up with it.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let earner = world
+            .spawn(Entity::player(ObjectType(0x600), 5.0, 5.0, 500))
+            .unwrap();
+
+        world.drop_owned_bag(&catalog, earner, vec![ObjectType(0x904)], 5.0, 5.0);
+        world.reindex();
+
+        let bag = world
+            .iter()
+            .find(|(_, entity)| entity.kind == Kind::Container)
+            .map(|(handle, entity)| (handle, entity.belongs_to))
+            .expect("a bag");
+
+        assert_eq!(bag.1, Some(earner), "the bag belongs to nobody");
+    }
+
+    #[test]
+    fn a_threshold_is_measured_against_what_the_enemy_started_with() {
+        // Against what it has now would be a share of nothing, which nobody can meet.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        // Through the world rather than by hand, so it has the health its description gives it.
+        let behaviours = std::mem::take(&mut world.behaviours);
+        let slime = world
+            .spawn_child(
+                &catalog,
+                &behaviours,
+                ObjectType(0x502),
+                8.0,
+                8.0,
+                None,
+                None,
+            )
+            .unwrap();
+        world.behaviours = behaviours;
+
+        let started = world.get(slime).unwrap().max_hp;
+        assert!(started > 0, "the slime has no health to take a share of");
+
+        if let Some(entity) = world.get_mut(slime) {
+            entity.base_max_hp = Some(started);
+            entity.hp = 0;
+            entity.dead = true;
+        }
+
+        // A tenth of what it started with is a real bar; a tenth of nothing is not.
+        assert_eq!(
+            world.get(slime).unwrap().base_max_hp,
+            Some(started),
+            "the enemy forgot what it started with"
+        );
+    }
+
+    #[test]
+    fn damage_is_remembered_per_player_and_bounded() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let slime = world
+            .spawn(Entity::fixture(ObjectType(0x502), 8.0, 8.0))
+            .unwrap();
+
+        // More damagers than one enemy remembers, so the list cannot grow without limit.
+        for index in 0..(MOST_REMEMBERED_DAMAGERS + 20) {
+            let who = world
+                .spawn(Entity::player(
+                    ObjectType(0x600),
+                    index as f32 % 30.0,
+                    1.0,
+                    500,
+                ))
+                .unwrap();
+
+            if let Some(entity) = world.get_mut(slime) {
+                let held = entity.damage_by.iter_mut().find(|(held, _)| *held == who);
+                match held {
+                    Some((_, total)) => *total += 1,
+                    None => {
+                        if entity.damage_by.len() < MOST_REMEMBERED_DAMAGERS {
+                            entity.damage_by.push((who, 1));
+                        }
+                    }
+                }
+            }
+        }
+
+        assert_eq!(
+            world.get(slime).unwrap().damage_by.len(),
+            MOST_REMEMBERED_DAMAGERS
+        );
     }
 
     #[test]

@@ -14,8 +14,8 @@ enemy "Beer God" {
         shoot(8.4, count: 1, projectile: 0)
     }
     loot {
-        threshold
-        threshold
+        threshold(0.05) {  }
+        threshold(0.01) { item("Mad God Ale", 1) item("Oryx Stout", 1) item("Realm-wheat Hefeweizen", 1) }
     }
 }
 

@@ -43,8 +43,8 @@ enemy "White Demon" {
     shoot(10, count: 3, shoot_angle: 20, predictive: 1, cooldown: 500)
     reproduce(density_max: 3)
     loot {
-        threshold
-        threshold
+        threshold(0.01) { tier(6, weapon, 0.04) tier(7, weapon, 0.02) tier(8, weapon, 0.01) tier(7, armor, 0.04) tier(8, armor, 0.02) tier(9, armor, 0.01) tier(3, ring, 0.015) tier(4, ring, 0.005) }
+        threshold(0.07) { item("Potion of Attack", 0.07) }
     }
 }
 
@@ -58,8 +58,8 @@ enemy "Sprite God" {
     reproduce(density_max: 3)
     reproduce_children(5, 0.5, 5000, "Sprite Child")
     loot {
-        threshold
-        threshold
+        threshold(0.01) { tier(6, weapon, 0.04) tier(7, weapon, 0.02) tier(8, weapon, 0.01) tier(7, armor, 0.04) tier(8, armor, 0.02) tier(9, armor, 0.01) tier(4, ring, 0.02) tier(4, ability, 0.02) }
+        threshold(0.07) { item("Potion of Attack", 0.07) }
     }
 }
 
@@ -83,8 +83,8 @@ enemy "Medusa" {
     grenade(4, 150, range: 8, cooldown: 3000)
     reproduce(density_max: 3)
     loot {
-        threshold
-        threshold
+        threshold(0.01) { tier(6, weapon, 0.04) tier(7, weapon, 0.02) tier(8, weapon, 0.01) tier(7, armor, 0.04) tier(8, armor, 0.02) tier(9, armor, 0.01) tier(3, ring, 0.015) tier(4, ring, 0.005) tier(4, ability, 0.02) }
+        threshold(0.07) { item("Potion of Speed", 0.07) }
     }
 }
 
@@ -97,8 +97,8 @@ enemy "Ent God" {
     shoot(12, count: 5, shoot_angle: 10, predictive: 1, cooldown: 1250)
     reproduce(density_max: 3)
     loot {
-        threshold
-        threshold
+        threshold(0.01) { tier(6, weapon, 0.04) tier(7, weapon, 0.02) tier(8, weapon, 0.01) tier(7, armor, 0.04) tier(8, armor, 0.02) tier(9, armor, 0.01) tier(4, ability, 0.02) }
+        threshold(0.07) { item("Potion of Defense", 0.07) }
     }
 }
 
@@ -112,8 +112,8 @@ enemy "Beholder" {
     shoot(10, projectile: 1, predictive: 1)
     reproduce(density_max: 3)
     loot {
-        threshold
-        threshold
+        threshold(0.01) { tier(6, weapon, 0.04) tier(7, weapon, 0.02) tier(8, weapon, 0.01) tier(7, armor, 0.04) tier(8, armor, 0.02) tier(9, armor, 0.01) tier(3, ring, 0.015) tier(4, ring, 0.005) }
+        threshold(0.07) { item("Potion of Defense", 0.07) }
     }
 }
 
@@ -127,8 +127,8 @@ enemy "Flying Brain" {
     reproduce(density_max: 3)
     drop_portal_on_death("Mad Lab Portal", 0.17)
     loot {
-        threshold
-        threshold
+        threshold(0.01) { tier(6, weapon, 0.04) tier(7, weapon, 0.02) tier(7, armor, 0.04) tier(8, armor, 0.02) tier(3, ring, 0.015) tier(4, ring, 0.005) tier(4, ability, 0.02) }
+        threshold(0.07) { item("Potion of Attack", 0.07) }
     }
 }
 
@@ -142,8 +142,8 @@ enemy "Slime God" {
     shoot(10, projectile: 1, predictive: 1, cooldown: 650)
     reproduce(density_max: 2)
     loot {
-        threshold
-        threshold
+        threshold(0.01) { tier(6, weapon, 0.04) tier(7, weapon, 0.02) tier(8, weapon, 0.01) tier(7, armor, 0.04) tier(8, armor, 0.02) tier(9, armor, 0.01) tier(4, ability, 0.02) }
+        threshold(0.07) { item("Potion of Defense", 0.07) }
     }
 }
 
@@ -157,8 +157,8 @@ enemy "Ghost God" {
     reproduce(density_max: 3)
     drop_portal_on_death("Undead Lair Portal", 0.17)
     loot {
-        threshold
-        threshold
+        threshold(0.01) { tier(6, weapon, 0.04) tier(7, weapon, 0.02) tier(7, armor, 0.04) tier(8, armor, 0.02) tier(3, ring, 0.015) tier(4, ring, 0.005) tier(4, ability, 0.02) }
+        threshold(0.07) { item("Potion of Speed", 0.07) }
     }
 }
 
@@ -176,8 +176,8 @@ enemy "Rock Bot" {
         on timed(10000) -> Waiting
     }
     loot {
-        threshold
-        threshold
+        threshold(0.01) { tier(5, weapon, 0.16) tier(6, weapon, 0.08) tier(7, weapon, 0.04) tier(5, armor, 0.16) tier(6, armor, 0.08) tier(7, armor, 0.04) tier(3, ring, 0.05) tier(3, ability, 0.1) item("Purple Drake Egg", 0.01) }
+        threshold(0.04) { item("Potion of Attack", 0.03) }
     }
 }
 
@@ -201,8 +201,8 @@ enemy "Paper Bot" {
         decay(0)
     }
     loot {
-        threshold
-        threshold
+        threshold(0.01) { tier(6, weapon, 0.01) item("Health Potion", 0.04) item("Magic Potion", 0.01) item("Tincture of Life", 0.01) }
+        threshold(0.04) { item("Potion of Attack", 0.03) }
     }
 }
 
@@ -226,8 +226,8 @@ enemy "Steel Bot" {
         decay(0)
     }
     loot {
-        threshold
-        threshold
+        threshold(0.01) { tier(6, weapon, 0.01) item("Health Potion", 0.04) item("Magic Potion", 0.01) }
+        threshold(0.04) { item("Potion of Attack", 0.03) }
     }
 }
 
@@ -286,8 +286,8 @@ enemy "Djinn" {
         suicide()
     }
     loot {
-        threshold
-        threshold
+        threshold(0.01) { tier(6, weapon, 0.04) tier(7, weapon, 0.02) tier(7, armor, 0.04) tier(8, armor, 0.02) tier(3, ring, 0.015) tier(4, ring, 0.005) tier(4, ability, 0.02) }
+        threshold(0.07) { item("Potion of Speed", 0.07) }
     }
 }
 
@@ -324,7 +324,7 @@ enemy "Leviathan" {
         }
     }
     loot {
-        threshold
+        threshold(0.01) { item("Potion of Defense", 0.07) tier(6, weapon, 0.01) item("Health Potion", 0.04) item("Magic Potion", 0.01) }
     }
 }
 

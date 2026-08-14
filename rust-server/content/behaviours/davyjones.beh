@@ -26,8 +26,8 @@ enemy "Davy Jones" {
         on entity_not_exists("Ghost Lanturn On", 10) -> Floating
     }
     loot {
-        threshold
-        threshold
+        threshold(0.05) {  }
+        threshold(0.15) { tier(3, ring, 0.2) tier(7, armor, 0.2) tier(8, weapon, 0.2) tier(4, ability, 0.1) tier(8, armor, 0.1) tier(4, ring, 0.05) tier(9, armor, 0.03) tier(5, ability, 0.03) tier(9, weapon, 0.03) tier(10, armor, 0.02) tier(10, weapon, 0.02) tier(11, armor, 0.01) tier(11, weapon, 0.01) tier(5, ring, 0.01) item("Spirit Dagger", 0.015) item("ZSaber", 0.005) item("Spectral Cloth Armor", 0.013) item("Ghostly Prism", 0.01) item("Captain's Ring", 0.03) item("Potion of Wisdom", 1) item("Potion of Attack", 0.5) item("Ruby Gemstone", 0.02) item("Golden Chalice", 0.025) item("Pearl Necklace", 0.035) }
     }
 }
 

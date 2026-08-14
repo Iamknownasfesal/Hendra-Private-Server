@@ -271,7 +271,7 @@ enemy "md Janus the Doorwarden" {
         }
     }
     loot {
-        threshold
+        threshold(0.02) { item("Potion of Speed", 1) item("Potion of Vitality", 1) item("Potion of Might", 1) tier(9, weapon, 0.1) tier(5, ability, 0.1) tier(9, armor, 0.1) tier(7, armor, 0.05) tier(10, weapon, 0.05) tier(5, ring, 0.025) item("Bow of Janus rage", 0.03) item("Eye of Janus", 0.03) item("Key of Janus", 0.03) item("Warden Armor", 0.03) }
     }
 }
 

@@ -543,3 +543,42 @@ surface nobody had counted: what a player can type. The original has 95 across
 
 `cargo run -p hendra-server --example worlds` counts the worlds with their own logic.
 `cargo run -p hendra-server --example commands` counts the commands against the original's own list.
+
+## Phase 16 — Loot, which nothing counted
+
+Asked a sixth time whether the server was complete. Every counter read full, so rather than answer,
+counted the one category that had never had a counter: the kinds of loot the content's tables use.
+
+The original uses three: `ItemLoot` 858 times, `TierLoot` 767, and `Threshold` 204. This server
+rolled two.
+
+- [x] `threshold`, which was dropped twice over in silence
+
+  The converter emitted a bare `threshold` with the share and the nested items both gone, and the
+  compiler then dropped what was left because it matched no kind it knew. Two hundred and four of
+  the content's soulbound drops went nowhere and nothing said so. The converter emits
+  `threshold(share) { ... }` now, the grammar nests, and all 204 carry their children.
+
+- [x] Loot that belongs to whoever earned it
+
+  Everything under a threshold is rolled once per player who took that share of the enemy's health
+  off it, into a bag only they can open. Enforced at the pickup rather than drawn differently, since
+  a bag anybody could take from would make the threshold decide who the loot was rolled for and
+  nothing at all about who ends up with it.
+
+- [x] Enemies remember who hurt them
+
+  Per enemy rather than globally, because it is a fact about that fight, and bounded at sixty-four
+  because the list lives on every enemy and a realm holds thousands.
+
+- [x] The share is measured against what the enemy started with
+
+  Against what it has when it dies would be a share of nothing, which nobody can meet.
+
+  The original compares its threshold against raw damage rather than a share, so `0.05 <= 3000` is
+  true for anybody who landed a hit at all. That is a type confusion rather than an intention: the
+  value is named a threshold, written as a fraction, and every table uses it as one. This reads it
+  as the share it is spelled as, which is the mechanic the content describes.
+
+`cargo run -p hendra-behavior --example gaps` counts loot kinds alongside behaviours and conditions,
+and carries a test that walks a threshold from C# through the converter and the compiler.

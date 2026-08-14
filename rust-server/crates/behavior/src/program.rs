@@ -733,6 +733,28 @@ pub enum LootEntry {
 
     /// Anything of a tier and kind.
     Tier { tier: u8, kind: String, chance: f32 },
+
+    /// Loot that belongs to whoever earned it, rather than to whoever reaches the bag first.
+    ///
+    /// `share` is how much of the enemy's health somebody has to have taken off before they are
+    /// eligible. Everything inside is then rolled once per eligible player into a bag only they can
+    /// open, which is what makes a boss's drops worth fighting for rather than worth standing near.
+    Threshold {
+        share: f32,
+        children: Vec<LootEntry>,
+    },
+}
+
+impl LootEntry {
+    /// What share of an enemy somebody must have damaged to be eligible for this.
+    ///
+    /// Zero for anything that drops into the bag everybody can reach.
+    pub fn share(&self) -> f32 {
+        match self {
+            LootEntry::Threshold { share, .. } => *share,
+            _ => 0.0,
+        }
+    }
 }
 
 impl Program {

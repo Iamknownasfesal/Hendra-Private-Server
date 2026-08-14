@@ -136,8 +136,8 @@ enemy "Jon Bilgewater the Pirate King" {
         on timed(6000) -> blastcannonballs
     }
     loot {
-        threshold
-        threshold
+        threshold(0.05) {  }
+        threshold(0.025) { item("Potion of Speed", 1) item("Potion of Dexterity", 1) tier(12, weapon, 0.1) tier(5, ability, 0.1) tier(11, armor, 0.05) tier(11, weapon, 0.05) tier(4, ring, 0.025) item("Pirate King's Cutlass", 0.03) }
     }
 }
 

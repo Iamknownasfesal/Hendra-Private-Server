@@ -82,8 +82,8 @@ enemy "Corrupted Flames of Fate" {
         on timed(6000) -> basic
     }
     loot {
-        threshold
-        threshold
+        threshold(0.05) {  }
+        threshold(0.025) { item("Potion of Defense", 1) item("Potion of Dexterity", 1) item("Potion of Might", 1) tier(10, weapon, 0.07) tier(11, weapon, 0.06) tier(12, weapon, 0.05) tier(5, ability, 0.07) tier(6, ability, 0.05) tier(11, armor, 0.07) tier(12, armor, 0.06) tier(13, armor, 0.05) tier(5, ring, 0.06) item("Forsaken Shield", 0.004) item("Sword of Dark Necromancy", 0.005) item("Ring of Undeadly Conjury", 0.002) item("Gold Cache", 0.8) }
     }
 }
 
@@ -230,7 +230,7 @@ enemy "Treasure Statue of the Catacombs" {
         taunt(0.99, "Gain my wonderful treasures and destroy me!")
     }
     loot {
-        threshold
+        threshold(0.01) { item("Onrane", 0.4) item("Potion of Mana", 0.3) item("Potion of Vitality", 0.3) item("Potion of Might", 0.3) item("Gold Cache", 0.4) tier(10, armor, 0.08) tier(10, weapon, 0.08) tier(11, armor, 0.06) tier(11, weapon, 0.06) tier(4, ring, 0.08) }
     }
 }
 
@@ -288,8 +288,8 @@ enemy "Doomages" {
         on timed(3000) -> Blargh1
     }
     loot {
-        threshold
-        threshold
+        threshold(0.05) {  }
+        threshold(0.025) { item("Onrane", 0.3) item("Potion of Might", 1) item("Potion of Life", 1) item("Potion of Wisdom", 1) tier(9, weapon, 0.07) tier(10, weapon, 0.06) tier(11, weapon, 0.05) tier(4, ability, 0.07) tier(6, ability, 0.05) tier(9, armor, 0.07) tier(10, armor, 0.06) tier(11, armor, 0.05) tier(4, ring, 0.06) item("Sword of Dark Necromancy", 0.005) item("Olden Necromancy Cloth", 0.002) }
     }
 }
 
@@ -456,8 +456,8 @@ enemy "Tridorno" {
         suicide()
     }
     loot {
-        threshold
-        threshold
+        threshold(0.05) {  }
+        threshold(0.025) { item("Gold Cache", 1) item("Onrane", 1) item("Potion of Might", 1) item("Potion of Life", 0.8) item("Potion of Mana", 0.8) item("Potion of Dexterity", 0.6) item("Potion of Vitality", 0.6) item("Potion of Defense", 0.6) item("Potion of Speed", 0.4) tier(10, weapon, 0.092) tier(11, weapon, 0.085) tier(12, weapon, 0.082) tier(5, ability, 0.082) tier(6, ability, 0.072) tier(11, armor, 0.092) tier(12, armor, 0.085) tier(13, armor, 0.072) tier(6, ring, 0.075) item("Forsaken Shield", 0.05) item("Sword of Dark Necromancy", 0.025) item("Staff of the Withering", 0.002) item("Gold Cache", 0.8) item("Daring Windrage Robe", 0.002) item("Necromantic Charm", 0.002) item("Skull of Glowing Plagues", 0.002) item("Ring of Pestilence", 0.002) }
     }
 }
 

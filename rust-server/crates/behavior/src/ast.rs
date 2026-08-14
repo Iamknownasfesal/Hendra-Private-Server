@@ -186,6 +186,10 @@ impl State {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Loot {
     pub call: Call,
+
+    /// Entries nested inside this one, for `threshold`, which is a rule about who may have what is
+    /// inside it rather than a drop of its own.
+    pub children: Vec<Loot>,
 }
 
 /// One enemy's behaviour.

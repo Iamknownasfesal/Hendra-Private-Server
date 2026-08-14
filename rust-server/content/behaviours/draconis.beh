@@ -172,8 +172,8 @@ enemy "lod Blue Loot Balloon" {
     state UnsetEffect {
     }
     loot {
-        threshold
-        threshold
+        threshold(0.05) {  }
+        threshold(0.15) { tier(12, weapon, 0.045) tier(12, weapon, 0.05) tier(6, ability, 0.045) tier(13, armor, 0.05) item("Ivory Ring", 0.05) item("Potion of Mana", 0.8) item("Water Dragon Silk Robe", 0.05) item("Large Blue Dragon Scale Cloth", 0.045) item("Small Blue Dragon Scale Cloth", 0.045) item("The World Tarot Card", 0.05) item("Dragon Pearl", 0.08) }
     }
 }
 
@@ -185,8 +185,8 @@ enemy "lod Green Loot Balloon" {
     state UnsetEffect {
     }
     loot {
-        threshold
-        threshold
+        threshold(0.05) {  }
+        threshold(0.15) { tier(12, weapon, 0.045) tier(12, weapon, 0.05) tier(6, ability, 0.045) tier(4, ability, 0.065) tier(13, armor, 0.05) item("Ivory Ring", 0.05) item("Leaf Dragon Hide Armor", 0.05) item("Large Green Dragon Scale Cloth", 0.045) item("Small Green Dragon Scale Cloth", 0.045) item("The World Tarot Card", 0.03) item("Dragon Pearl", 0.08) }
     }
 }
 
@@ -198,8 +198,8 @@ enemy "lod Black Loot Balloon" {
     state UnsetEffect {
     }
     loot {
-        threshold
-        threshold
+        threshold(0.05) {  }
+        threshold(0.15) { tier(12, weapon, 0.045) tier(12, weapon, 0.05) tier(6, ability, 0.045) tier(4, ability, 0.065) tier(13, armor, 0.05) item("Ivory Ring", 0.05) item("Celestial Blade", 0.05) item("Large Midnight Dragon Scale Cloth", 0.045) item("Small Midnight Dragon Scale Cloth", 0.045) item("The World Tarot Card", 0.03) item("Dragon Pearl", 0.08) }
     }
 }
 
@@ -211,8 +211,8 @@ enemy "lod Red Loot Balloon" {
     state UnsetEffect {
     }
     loot {
-        threshold
-        threshold
+        threshold(0.05) {  }
+        threshold(0.15) { tier(12, weapon, 0.045) tier(12, weapon, 0.05) tier(6, ability, 0.045) tier(5, ability, 0.065) tier(13, armor, 0.05) item("Ivory Ring", 0.05) item("Fire Dragon Battle Armor", 0.05) item("Large Red Dragon Scale Cloth", 0.045) item("Small Red Dragon Scale Cloth", 0.045) item("The World Tarot Card", 0.03) item("Dragon Pearl", 0.08) }
     }
 }
 
@@ -224,7 +224,7 @@ enemy "lod Ivory Loot" {
     state UnsetEffect {
     }
     loot {
-        threshold
+        threshold(0.15) { tier(12, weapon, 0.065) tier(12, weapon, 0.055) tier(6, ability, 0.065) tier(5, ability, 0.0685) tier(13, armor, 0.0525) item("Midnight Star", 0.04) item("Ivory Ring", 0.055) item("Large Ivory Dragon Scale Cloth", 0.045) item("Small Ivory Dragon Scale Cloth", 0.047) item("The World Tarot Card", 0.05) item("Dragon Pearl", 0.1) }
     }
 }
 
@@ -775,8 +775,8 @@ enemy "lod Ivory Wyvern" {
         suicide()
     }
     loot {
-        threshold
-        threshold
+        threshold(0.05) {  }
+        threshold(0.15) { item("Potion of Dexterity", 0.3) item("Potion of Wisdom", 0.3) tier(12, weapon, 0.065) tier(12, weapon, 0.055) tier(6, ability, 0.065) tier(5, ability, 0.0685) tier(13, armor, 0.0525) item("Midnight Star", 0.04) item("Ivory Ring", 0.055) item("Large Ivory Dragon Scale Cloth", 0.045) item("Small Ivory Dragon Scale Cloth", 0.047) }
     }
 }
 

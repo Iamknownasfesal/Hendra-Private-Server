@@ -173,8 +173,8 @@ enemy "Dr Terrible" {
         on timed(15000) -> idle
     }
     loot {
-        threshold
-        threshold
+        threshold(0.32) { item("Potion of Wisdom", 1) }
+        threshold(0.1) { item("Scepter of Fulmination", 0.005) item("Robe of the Mad Scientist", 0.005) item("Experimental Ring", 0.01) item("Wine Cellar Incantation", 0.005) tier(8, weapon, 0.2) tier(9, weapon, 0.15) tier(10, weapon, 0.1) tier(11, weapon, 0.05) tier(8, armor, 0.2) tier(9, armor, 0.15) tier(10, armor, 0.1) tier(11, armor, 0.05) tier(4, ability, 0.15) tier(5, ability, 0.1) }
     }
 }
 

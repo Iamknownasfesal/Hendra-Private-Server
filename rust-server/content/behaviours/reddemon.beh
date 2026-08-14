@@ -11,7 +11,7 @@ enemy "Red Demon" {
     spawn("Demon Warrior", max_children: 3, cooldown: 18000, gives_no_xp: false)
     taunt(0.7, 10000, "I will deliver your soul to Oryx, {PLAYER}!", "Oryx will not end our pain. We can only share it... with you!", "Our anguish is endless, unlike your lives!", "There can be no forgiveness!", "What do you know of suffering? I can teach you much, {PLAYER}", "Would you attempt to destroy us? I know your name, {PLAYER}!", "You cannot hurt us. You cannot help us. You will feed us.", "Your life is an affront to Oryx. You will die.")
     loot {
-        threshold
+        threshold(0.01) { item("Golden Sword", 0.04) item("Steel Helm", 0.04) }
     }
 }
 

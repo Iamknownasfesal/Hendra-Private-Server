@@ -621,8 +621,8 @@ enemy "Puppet Master v2" {
         }
     }
     loot {
-        threshold
-        threshold
+        threshold(0.05) { item("Potion of Attack", 1) item("Potion of Defense", 0.516) item("Potion of Mana", 0.148) }
+        threshold(0.316) { tier(11, armor, 0.08) tier(11, weapon, 0.051) tier(12, armor, 0.0629) tier(5, ring, 0.0205) item("Thousand Shot", 0.01) }
     }
 }
 

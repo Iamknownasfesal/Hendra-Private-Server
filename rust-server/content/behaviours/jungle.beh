@@ -58,7 +58,7 @@ enemy "Mixcoatl the Masked God" {
         on timed(8000, "Start Fight") -> Start_Fight
     }
     loot {
-        threshold
+        threshold(0.2) { item("Staff of the Crystal Serpent", 0.25) item("Robe of the Tlatoani", 0.2) item("Crystal Bone Ring", 0.15) item("Cracked Crystal Skull", 0.2) }
         item("Pollen Powder", 1)
         item("Pollen Powder", 0.99)
         item("Pollen Powder", 0.88)

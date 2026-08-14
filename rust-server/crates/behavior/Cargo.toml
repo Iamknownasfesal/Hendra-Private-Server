@@ -7,3 +7,7 @@ license.workspace = true
 [dependencies]
 thiserror.workspace = true
 tracing.workspace = true
+
+[[example]]
+name = "gaps"
+test = true

@@ -65,7 +65,7 @@ enemy "Grand Sphinx" {
         on timed(1900) -> Attack1
     }
     loot {
-        threshold
+        threshold(0.01) { item("Potion of Vitality", 0.1, 1) item("Potion of Wisdom", 0.1, 1) item("Helm of the Juggernaut", 0.004) }
     }
 }
 

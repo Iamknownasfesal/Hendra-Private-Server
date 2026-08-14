@@ -130,9 +130,9 @@ enemy "Garnet Statue" {
         on timed(1500) -> ChooseRandomV2
     }
     loot {
-        threshold
-        threshold
-        threshold
+        threshold(0.05) {  }
+        threshold(0.05) {  }
+        threshold(0.05) { item("Kageboshi", 0.01) }
     }
 }
 
@@ -268,9 +268,9 @@ enemy "Jade Statue" {
         on timed(1500) -> ChooseRandomV2
     }
     loot {
-        threshold
-        threshold
-        threshold
+        threshold(0.05) {  }
+        threshold(0.05) {  }
+        threshold(0.05) { item("Wand of the Fallen", 0.01) }
     }
 }
 

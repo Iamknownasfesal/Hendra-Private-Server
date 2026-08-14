@@ -2,7 +2,7 @@ enemy "Malphas Protector" {
     shoot(radius: 5, count: 3, shoot_angle: 5, projectile: 0, predictive: 0.45, cooldown: 1200)
     orbit(speed: 3.2, radius: 9, acquire_range: 20, target: "Archdemon Malphas", speed_variance: 0, radius_variance: 0, orbit_clockwise: true)
     loot {
-        threshold
+        threshold(0.01) { item(item: "Magic Potion", probability: 0.06) item(item: "Health Potion", probability: 0.04) }
     }
 }
 
@@ -131,7 +131,7 @@ enemy "Archdemon Malphas" {
     }
     drop_portal_on_death(target: "Realm Portal", probability: 1)
     loot {
-        threshold
+        threshold(0.01) { tier(tier: 7, type: weapon, probability: 0.2) tier(tier: 9, type: weapon, probability: 0.11) tier(tier: 10, type: weapon, probability: 0.05) tier(tier: 7, type: armor, probability: 0.2) tier(tier: 9, type: armor, probability: 0.11) tier(tier: 10, type: armor, probability: 0.05) tier(tier: 3, type: ability, probability: 0.1) tier(tier: 4, type: ability, probability: 0.06) tier(tier: 3, type: ring, probability: 0.1) tier(tier: 4, type: ring, probability: 0.06) item(item: "Wine Cellar Incantation", probability: 0.01) item(item: "Potion of Vitality", probability: 0.3, num_required: 1) item(item: "Potion of Defense", probability: 0.3) item(item: "Demon Blade", probability: 0.01) }
     }
 }
 
@@ -164,7 +164,7 @@ enemy "Malphas Flamer" {
         decay(time: 100)
     }
     loot {
-        threshold
+        threshold(0.01) { item("Health Potion", 0.1) item("Magic Potion", 0.1) }
     }
 }
 

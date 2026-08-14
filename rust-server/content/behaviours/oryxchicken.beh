@@ -274,7 +274,7 @@ enemy "TestChicken 2" {
         }
     }
     loot {
-        threshold
+        threshold(0.05) { tier(9, weapon, 0.03) tier(9, armor, 0.03) tier(4, ring, 0.015) tier(4, ability, 0.04) tier(10, weapon, 0.04) tier(10, armor, 0.04) tier(5, ring, 0.003) tier(5, ability, 0.05) item("Potion of Attack", 0.05) item("Potion of Defense", 0.05) item("Chicken Leg of Doom", 0.01) item("Anatis Staff", 0.01) }
     }
 }
 

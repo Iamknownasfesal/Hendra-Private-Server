@@ -31,7 +31,7 @@ enemy "Candy Gnome" {
     }
     drop_portal_on_death(target: "Candyland Portal", probability: 0.5, timeout: 30)
     loot {
-        threshold
+        threshold(0.01) { item(item: "Rock Candy", probability: 0.15) item(item: "Red Gumball", probability: 0.15) item(item: "Purple Gumball", probability: 0.15) item(item: "Blue Gumball", probability: 0.15) item(item: "Green Gumball", probability: 0.15) item(item: "Yellow Gumball", probability: 0.15) }
     }
 }
 
@@ -64,7 +64,7 @@ enemy "MegaRototo" {
         on timed(time: 4000) -> Follow
     }
     loot {
-        threshold
+        threshold(0.01) { item(item: "Ring Pop", probability: 0.02) item(item: "Wine Cellar Incantation", probability: 0.02) item(item: "Rock Candy", probability: 0.08) item(item: "Candy-Coated Armor", probability: 0.01) item(item: "Red Gumball", probability: 0.15) item(item: "Purple Gumball", probability: 0.15) item(item: "Blue Gumball", probability: 0.15) item(item: "Green Gumball", probability: 0.15) item(item: "Yellow Gumball", probability: 0.15) tier(tier: 7, type: weapon, probability: 0.04) tier(tier: 6, type: weapon, probability: 0.06) tier(tier: 8, type: armor, probability: 0.04) tier(tier: 7, type: armor, probability: 0.06) tier(tier: 3, type: ability, probability: 0.05) tier(tier: 4, type: ability, probability: 0.03) tier(tier: 3, type: ring, probability: 0.05) tier(tier: 4, type: ability, probability: 0.03) }
     }
 }
 
@@ -81,7 +81,7 @@ enemy "Spoiled Creampuff" {
     stay_close_to_spawn(speed: 1.35, range: 13)
     wander(speed: 0.4)
     loot {
-        threshold
+        threshold(0.01) { item(item: "Potion of Attack", probability: 0.03) item(item: "Potion of Defense", probability: 0.03) item(item: "Ring Pop", probability: 0.015) item(item: "Wine Cellar Incantation", probability: 0.02) item(item: "Rock Candy", probability: 0.08) item(item: "Candy-Coated Armor", probability: 0.01) item(item: "Red Gumball", probability: 0.15) item(item: "Purple Gumball", probability: 0.15) item(item: "Blue Gumball", probability: 0.15) item(item: "Green Gumball", probability: 0.15) item(item: "Yellow Gumball", probability: 0.15) tier(tier: 7, type: weapon, probability: 0.04) tier(tier: 6, type: weapon, probability: 0.06) tier(tier: 8, type: armor, probability: 0.04) tier(tier: 7, type: armor, probability: 0.06) tier(tier: 3, type: ability, probability: 0.05) tier(tier: 4, type: ability, probability: 0.03) tier(tier: 3, type: ring, probability: 0.05) tier(tier: 4, type: ability, probability: 0.03) }
     }
 }
 
@@ -132,7 +132,7 @@ enemy "Desire Troll" {
     }
     wander(speed: 0.4)
     loot {
-        threshold
+        threshold(0.01) { item(item: "Potion of Attack", probability: 0.05) item(item: "Potion of Wisdom", probability: 0.05) item(item: "Ring Pop", probability: 0.015) item(item: "Wine Cellar Incantation", probability: 0.02) item(item: "Rock Candy", probability: 0.08) item(item: "Candy-Coated Armor", probability: 0.01) item(item: "Red Gumball", probability: 0.15) item(item: "Purple Gumball", probability: 0.15) item(item: "Blue Gumball", probability: 0.15) item(item: "Green Gumball", probability: 0.15) item(item: "Yellow Gumball", probability: 0.15) tier(tier: 7, type: weapon, probability: 0.04) tier(tier: 6, type: weapon, probability: 0.06) tier(tier: 8, type: armor, probability: 0.04) tier(tier: 7, type: armor, probability: 0.06) tier(tier: 3, type: ability, probability: 0.05) tier(tier: 4, type: ability, probability: 0.03) tier(tier: 3, type: ring, probability: 0.05) tier(tier: 4, type: ability, probability: 0.03) }
     }
 }
 
@@ -154,7 +154,7 @@ enemy "Swoll Fairy" {
         on timed_random(3000, false, "ShootB") -> Shoot
     }
     loot {
-        threshold
+        threshold(0.01) { item(item: "Potion of Defense", probability: 0.05) item(item: "Potion of Wisdom", probability: 0.05) item(item: "Ring Pop", probability: 0.015) item(item: "Wine Cellar Incantation", probability: 0.02) item(item: "Rock Candy", probability: 0.08) item(item: "Candy-Coated Armor", probability: 0.01) item(item: "Red Gumball", probability: 0.15) item(item: "Purple Gumball", probability: 0.15) item(item: "Blue Gumball", probability: 0.15) item(item: "Green Gumball", probability: 0.15) item(item: "Yellow Gumball", probability: 0.15) tier(tier: 7, type: weapon, probability: 0.04) tier(tier: 6, type: weapon, probability: 0.06) tier(tier: 8, type: armor, probability: 0.04) tier(tier: 7, type: armor, probability: 0.06) tier(tier: 3, type: ability, probability: 0.05) tier(tier: 4, type: ability, probability: 0.03) tier(tier: 3, type: ring, probability: 0.05) tier(tier: 4, type: ability, probability: 0.03) }
     }
 }
 
@@ -177,7 +177,7 @@ enemy "Gigacorn" {
         }
     }
     loot {
-        threshold
+        threshold(0.01) { item(item: "Potion of Attack", probability: 0.05) item(item: "Potion of Wisdom", probability: 0.05) item(item: "Ring Pop", probability: 0.015) item(item: "Wine Cellar Incantation", probability: 0.02) item(item: "Rock Candy", probability: 0.08) item(item: "Candy-Coated Armor", probability: 0.01) item(item: "Red Gumball", probability: 0.15) item(item: "Purple Gumball", probability: 0.15) item(item: "Blue Gumball", probability: 0.15) item(item: "Green Gumball", probability: 0.15) item(item: "Yellow Gumball", probability: 0.15) tier(tier: 7, type: weapon, probability: 0.04) tier(tier: 6, type: weapon, probability: 0.06) tier(tier: 8, type: armor, probability: 0.04) tier(tier: 7, type: armor, probability: 0.06) tier(tier: 3, type: ability, probability: 0.05) tier(tier: 4, type: ability, probability: 0.03) tier(tier: 3, type: ring, probability: 0.05) tier(tier: 4, type: ability, probability: 0.03) }
     }
 }
 
@@ -220,7 +220,7 @@ enemy "Candyland Boss Spawner" {
 
 enemy "Gumball Machine" {
     loot {
-        threshold
+        threshold(0.01) { item(item: "Ring Pop", probability: 0.015) item(item: "Rock Candy", probability: 0.15) item(item: "Red Gumball", probability: 0.15) item(item: "Purple Gumball", probability: 0.15) item(item: "Blue Gumball", probability: 0.15) item(item: "Green Gumball", probability: 0.15) item(item: "Yellow Gumball", probability: 0.15) }
     }
 }
 

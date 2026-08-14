@@ -3,7 +3,7 @@ enemy "Skull Shrine" {
     reproduce("Red Flaming Skull", 40, 20, cooldown: 500)
     reproduce("Blue Flaming Skull", 40, 20, cooldown: 500)
     loot {
-        threshold
+        threshold(0.05) { tier(8, weapon, 0.15) tier(9, weapon, 0.1) tier(10, weapon, 0.07) tier(11, weapon, 0.05) tier(4, ability, 0.15) tier(5, ability, 0.07) tier(8, armor, 0.2) tier(9, armor, 0.15) tier(10, armor, 0.1) tier(11, armor, 0.07) tier(12, armor, 0.04) tier(3, ring, 0.15) tier(4, ring, 0.07) tier(5, ring, 0.03) item("Potion of Defense", 0.1) item("Potion of Attack", 0.1) item("Potion of Vitality", 0.1) item("Potion of Wisdom", 0.1) item("Potion of Speed", 0.1) item("Potion of Dexterity", 0.1) item("Large Cloud Cloth", 0.01) item("Small Cloud Cloth", 0.01) item("Large Plaid Cloth", 0.01) item("Small Plaid Cloth", 0.01) item("Large Skull Cloth", 0.01) item("Small Skull Cloth", 0.01) item("Orb of Conflict", 0.001) }
     }
 }
 

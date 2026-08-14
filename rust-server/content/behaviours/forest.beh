@@ -7,7 +7,7 @@ enemy "Mama Megamoth" {
         shoot(radius: 10, count: 1, projectile: 0, cooldown: 50)
     }
     loot {
-        threshold
+        threshold(0.01) { item("Multi-Quiver", 0.1) item("Speed Sprout", 1) }
     }
 }
 
@@ -51,7 +51,7 @@ enemy "Ultimate Squirrel" {
     }
     shoot(radius: 7, count: 3, projectile: 0, shoot_angle: 20, cooldown: 2000)
     loot {
-        threshold
+        threshold(0.1) { item("Speed Sprout", 1) }
     }
 }
 
@@ -69,7 +69,7 @@ enemy "Forest Goblin Mage" {
         shoot(radius: 10, count: 2, projectile: 0, predictive: 1, cooldown: 500, shoot_angle: 2)
     }
     loot {
-        threshold
+        threshold(0.1) { item("Speed Sprout", 1) }
     }
 }
 

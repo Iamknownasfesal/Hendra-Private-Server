@@ -74,7 +74,7 @@ enemy "Phoenix Reborn" {
         on timed(4500) -> xxx
     }
     loot {
-        threshold
+        threshold(0.1) { item("Large Stony Cloth", 0.03) item("Small Stony Cloth", 0.03) item("Large Tan Diamond Cloth", 0.03) item("Small Tan Diamond Cloth", 0.03) item("Large Smiley Cloth", 0.03) item("Small Smiley Cloth", 0.03) }
     }
 }
 

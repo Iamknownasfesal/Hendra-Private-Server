@@ -51,7 +51,7 @@ enemy "Woodland Mini Megamoth" {
     }
     shoot(25, projectile: 0, count: 3, shoot_angle: 20, cooldown: 700, cooldown_offset: 1000)
     loot {
-        threshold
+        threshold(0.5) { item("Magic Potion", 0.1) item("Magic Potion", 0.1) }
     }
 }
 
@@ -62,7 +62,7 @@ enemy "Mini Larva" {
     }
     shoot(25, projectile: 0, count: 6, cooldown: 3500, cooldown_offset: 1200)
     loot {
-        threshold
+        threshold(0.5) { item("Health Potion", 0.01) item("Magic Potion", 0.01) }
     }
 }
 
@@ -146,8 +146,8 @@ enemy "Murderous Megamoth" {
     shoot(8.4, count: 1, fixed_angle: 235, projectile: 0, cooldown: 2000, cooldown_offset: 3000)
     shoot(8.4, count: 1, fixed_angle: 315, projectile: 0, cooldown: 2000, cooldown_offset: 3000)
     loot {
-        threshold
-        threshold
+        threshold(0.05) {  }
+        threshold(0.03) { tier(10, weapon, 0.1) tier(4, ability, 0.1) tier(12, armor, 0.1) tier(4, ring, 0.05) tier(13, armor, 0.05) tier(12, weapon, 0.05) tier(5, ring, 0.025) item("Potion of Vitality", 1) item("Potion of Might", 0.33) item("Hairy Karambit", 0.03) item("Toad Bile Cannister", 0.03) item("Skinned Toad Hide", 0.03) item("Frog's Eye Ring", 0.03) }
     }
 }
 

@@ -433,6 +433,30 @@ fn emit_value(value: &CsValue) -> Option<String> {
 }
 
 fn emit_loot(call: &CsCall) -> String {
+    // `Threshold(share, children...)` carries both a number and a list, and dropping either loses
+    // the whole entry: the share decides who is eligible and the children are what they get. Before
+    // this it emitted a bare `threshold`, and two hundred of the content's soulbound drops went
+    // nowhere.
+    if call.name == "Threshold" {
+        let share = call
+            .arguments
+            .first()
+            .and_then(|argument| emit_value(&argument.value))
+            .unwrap_or_else(|| "0".to_string());
+
+        let children: Vec<String> = call
+            .arguments
+            .iter()
+            .skip(1)
+            .filter_map(|argument| match &argument.value {
+                CsValue::Call(inner) if is_loot(&inner.name) => Some(emit_loot(inner)),
+                _ => None,
+            })
+            .collect();
+
+        return format!("threshold({share}) {{ {} }}", children.join(" "));
+    }
+
     let name = match call.name.as_str() {
         "ItemLoot" => "item",
         "TierLoot" => "tier",

@@ -47,7 +47,7 @@ enemy "Son of Arachna" {
         change_size(-20, 100)
     }
     loot {
-        threshold
+        threshold(0.03) { tier(10, weapon, 0.06) tier(11, weapon, 0.05) tier(12, weapon, 0.04) tier(5, ability, 0.06) tier(6, ability, 0.04) tier(11, armor, 0.06) tier(12, armor, 0.05) tier(13, armor, 0.04) tier(5, ring, 0.05) item("Potion of Mana", 1) item("Doku No Ken", 0.01) }
     }
 }
 
@@ -87,8 +87,8 @@ enemy "Son of Arachna" {
         }
     }
     loot {
-        threshold
-        threshold
+        threshold(0.05) {  }
+        threshold(0.03) { tier(10, weapon, 0.06) tier(11, weapon, 0.05) tier(12, weapon, 0.04) tier(5, ability, 0.06) tier(6, ability, 0.04) tier(11, armor, 0.06) tier(12, armor, 0.05) tier(13, armor, 0.04) tier(5, ring, 0.05) item("Potion of Mana", 1) item("Doku No Ken", 0.03) item("SottlerWeap", 0.01) }
     }
 }
 
@@ -181,7 +181,7 @@ enemy "Yellow Son of Arachna Giant Egg Sac" {
         on entity_not_exists("Crawling Grey Spotted Spider", 20) -> Spawn
     }
     loot {
-        threshold
+        threshold(0.15) { tier(11, weapon, 0.1) tier(12, armor, 0.1) item("Doku No Ken", 0.015) }
     }
 }
 
@@ -190,7 +190,7 @@ enemy "Blue Son of Arachna Giant Egg Sac" {
         transform_on_death("Crawling Spider Hatchling", 5, 7)
     }
     loot {
-        threshold
+        threshold(0.15) { tier(11, weapon, 0.1) tier(12, armor, 0.1) item("Doku No Ken", 0.04) }
     }
 }
 
@@ -199,7 +199,7 @@ enemy "Red Son of Arachna Giant Egg Sac" {
         transform_on_death("Crawling Red Spotted Spider", 3, 3)
     }
     loot {
-        threshold
+        threshold(0.15) { tier(11, weapon, 0.1) tier(12, armor, 0.1) item("Doku No Ken", 0.015) }
     }
 }
 
@@ -208,7 +208,7 @@ enemy "Silver Son of Arachna Giant Egg Sac" {
         transform_on_death("Crawling Grey Spider", 3, 3)
     }
     loot {
-        threshold
+        threshold(0.15) { tier(11, weapon, 0.1) tier(12, armor, 0.1) item("Doku No Ken", 0.015) }
     }
 }
 

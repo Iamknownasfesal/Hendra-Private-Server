@@ -168,7 +168,7 @@ enemy "Actual Ent Ancient" {
         }
     }
     loot {
-        threshold
+        threshold(0.001) { tier(2, ring, 0.15) tier(3, ring, 0.04) tier(6, weapon, 0.3) tier(7, weapon, 0.1) tier(6, armor, 0.3) tier(7, armor, 0.1) tier(1, ability, 0.95) tier(2, ability, 0.25) tier(3, ability, 0.05) }
         item("Health Potion", 0.7)
         item("Magic Potion", 0.7)
     }
@@ -232,7 +232,7 @@ enemy "Actual Greater Nature Sprite" {
     decay(60000)
     loot {
         item("Magic Potion", 0.25)
-        threshold
+        threshold(0.01) { item("Tincture of Life", 0.06) item("Green Drake Egg", 0.08) item("Quiver of Thunder", 0.002) tier(8, armor, 0.3) }
     }
 }
 

@@ -234,8 +234,8 @@ enemy "ic Loot Balloon" {
     state UnsetEffect {
     }
     loot {
-        threshold
-        threshold
+        threshold(0.05) {  }
+        threshold(0.15) { tier(11, weapon, 0.015) tier(10, weapon, 0.02) tier(13, armor, 0.015) tier(12, armor, 0.02) item("Potion of Mana", 1) item("Staff of Esben", 0.03) item("Winter Bow", 0.005) item("Winter Armor", 0.005) item("Winter Trap", 0.005) item("Winter Ring", 0.005) item("Frost Wand", 0.04) item("Skullish Remains of Esben", 0.04) }
     }
 }
 

@@ -301,15 +301,29 @@ impl Parser {
 
         let mut entries = Vec::new();
         while self.peek() != &Token::CloseBrace && self.peek() != &Token::End {
-            let at = self.span();
-            let name = self.word("a loot entry")?;
-            entries.push(Loot {
-                call: self.call(name, at)?,
-            });
+            entries.push(self.loot_entry()?);
         }
 
         self.expect(&Token::CloseBrace, "`}` to close the loot table")?;
         Ok(entries)
+    }
+
+    /// One entry, and anything nested inside it.
+    ///
+    /// `threshold` is the only one that nests: it is a rule about who may have what is inside it
+    /// rather than a drop of its own, so its children are entries in their own right.
+    fn loot_entry(&mut self) -> Result<Loot, ParseError> {
+        let at = self.span();
+        let name = self.word("a loot entry")?;
+        let call = self.call(name, at)?;
+
+        let children = if self.peek() == &Token::OpenBrace {
+            self.loot()?
+        } else {
+            Vec::new()
+        };
+
+        Ok(Loot { call, children })
     }
 }
 

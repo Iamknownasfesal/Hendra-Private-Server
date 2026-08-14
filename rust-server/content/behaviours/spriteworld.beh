@@ -3,7 +3,7 @@ enemy "Native Fire Sprite" {
     shoot(radius: 10, count: 2, shoot_angle: 7, projectile: 0, cooldown: 300)
     wander(speed: 1.4)
     loot {
-        threshold
+        threshold(0.01) { tier(tier: 5, type: weapon, probability: 0.02) item(item: "Magic Potion", probability: 0.05) }
     }
 }
 
@@ -12,7 +12,7 @@ enemy "Native Ice Sprite" {
     shoot(radius: 10, count: 3, shoot_angle: 7, projectile: 0, cooldown: 1000)
     wander(speed: 1.4)
     loot {
-        threshold
+        threshold(0.01) { tier(tier: 2, type: ability, probability: 0.04) item(item: "Magic Potion", probability: 0.05) }
     }
 }
 
@@ -21,7 +21,7 @@ enemy "Native Magic Sprite" {
     shoot(radius: 10, count: 4, shoot_angle: 7, projectile: 0, cooldown: 1000)
     wander(speed: 1.4)
     loot {
-        threshold
+        threshold(0.01) { tier(tier: 6, type: armor, probability: 0.01) item(item: "Magic Potion", probability: 0.05) }
     }
 }
 
@@ -29,7 +29,7 @@ enemy "Native Nature Sprite" {
     shoot(radius: 10, count: 5, shoot_angle: 7, projectile: 0, cooldown: 1000)
     wander(speed: 1.6)
     loot {
-        threshold
+        threshold(0.01) { item(item: "Magic Potion", probability: 0.015) item(item: "Sprite Wand", probability: 0.015) item(item: "Ring of Greater Magic", probability: 0.01) }
     }
 }
 
@@ -37,7 +37,7 @@ enemy "Native Darkness Sprite" {
     shoot(radius: 10, count: 5, shoot_angle: 7, projectile: 0, cooldown: 1000)
     wander(speed: 1.6)
     loot {
-        threshold
+        threshold(0.01) { item(item: "Health Potion", probability: 0.015) item(item: "Ring of Dexterity", probability: 0.01) }
     }
 }
 
@@ -47,7 +47,7 @@ enemy "Native Sprite God" {
     shoot(radius: 12, projectile: 1, predictive: 1, cooldown: 1000)
     wander(speed: 0.4)
     loot {
-        threshold
+        threshold(0.01) { tier(tier: 6, type: weapon, probability: 0.02) tier(tier: 7, type: weapon, probability: 0.01) tier(tier: 8, type: weapon, probability: 0.005) tier(tier: 7, type: armor, probability: 0.02) tier(tier: 8, type: armor, probability: 0.01) tier(tier: 9, type: armor, probability: 0.005) tier(tier: 4, type: ring, probability: 0.01) tier(tier: 4, type: ability, probability: 0.01) item(item: "Potion of Attack", probability: 0.02) }
     }
 }
 
@@ -125,7 +125,7 @@ enemy "Limon the Sprite God" {
     }
     drop_portal_on_death(target: "Glowing Realm Portal", probability: 1)
     loot {
-        threshold
+        threshold(0.01) { tier(tier: 7, type: armor, probability: 0.15) tier(tier: 3, type: ability, probability: 0.11) tier(tier: 4, type: ability, probability: 0.124) tier(tier: 5, type: ability, probability: 0.11) tier(tier: 3, type: ring, probability: 0.11) item(item: "Potion of Dexterity", probability: 0.3, num_required: 1) item(item: "Potion of Defense", probability: 0.1) item(item: "Sprite Wand", probability: 0.01) item(item: "Wine Cellar Incantation", probability: 0.02) item(item: "Staff of Extreme Prejudice", probability: 0.01) item(item: "Cloak of the Planewalker", probability: 0.01) }
     }
 }
 
