@@ -847,3 +847,35 @@ category by category. It found thirteen things, one of them a mechanic that sile
   thinking, so an enemy that arrives afterwards is not woken by an echo.
 
   Conditions went from 2048 uses to 2056, all covered.
+
+### 18.16 What `Player.UseItem.cs` does before the effect runs — **M**
+
+- [x] A consumable with several uses in it
+
+  `SuccessorId` was read from the content and used by nobody. Sixteen items have one: the Elixirs of
+  Health and Magic, which carry seven charges, and the Sand Pails, which carry four. Each names the
+  next one down, and using the last one is what finishes it. Removing the item outright, which is
+  what we did, turned every seven-charge elixir into a single drink.
+
+  `Catalog::successor_of` answers what an item becomes, and `Store::succeed_item` replaces what is in
+  a slot conditional on the item still being there, for the same reason a removal is: two
+  simultaneous uses of one elixir should spend one charge, not two.
+
+- [x] A backpack is worth the slots it promises
+
+  `grant_backpack` set a flag that nothing read. The bound on where an item may be placed was a
+  constant eleven at every one of its seven call sites, so a player who had used a backpack had the
+  same twelve slots as one who had not.
+
+  The bound is now asked of the character. Read from the store rather than from the session, because
+  a backpack is used mid-session and the slots it buys should work straight away rather than after
+  logging out.
+
+  A trade carries the bound per side, since the two can differ: one range for both would either lose
+  a backpack's extra slots or place an item where the other player has nowhere to keep it.
+
+- [x] A second backpack is handed back rather than eaten
+
+  The original returns the item to the slot and refuses. Ours told the player they already had one
+  and consumed it anyway, because the refusal happened in the effect and the consumption happened
+  after. Checked before the item is spent.

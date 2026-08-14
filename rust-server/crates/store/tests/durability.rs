@@ -497,6 +497,84 @@ async fn taking_an_item_that_moved_is_refused() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn a_consumable_with_more_uses_in_it_turns_into_the_next_one() {
+    let Some(store) = store("t_succeed").await else {
+        return;
+    };
+
+    let account = store.create_account("Drinker").await.unwrap();
+    let character = store
+        .create_character(account.id, WIZARD, "Wizard", 800)
+        .await
+        .unwrap();
+
+    store
+        .set_inventory(character.id, &[(4, WAND)])
+        .await
+        .unwrap();
+
+    store
+        .succeed_item(character.id, 4, WAND, ROBE)
+        .await
+        .unwrap();
+
+    let holding = store.character(character.id).await.unwrap().inventory;
+    assert_eq!(
+        holding
+            .iter()
+            .find(|(slot, _)| *slot == 4)
+            .map(|(_, item)| *item),
+        Some(ROBE),
+        "the slot did not become the successor"
+    );
+
+    // Conditional on what is there for the same reason a removal is: two simultaneous uses of one
+    // elixir should spend one charge rather than two.
+    assert!(matches!(
+        store.succeed_item(character.id, 4, WAND, ROBE).await,
+        Err(StoreError::Refused(_))
+    ));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_backpack_is_worth_the_slots_it_promises() {
+    // A backpack was granted, stored and read by nobody, so it bought nothing. What it is for is
+    // the eight slots past the twelve a character starts with.
+    let Some(store) = store("t_backpack").await else {
+        return;
+    };
+
+    let account = store.create_account("Hoarder").await.unwrap();
+    let character = store
+        .create_character(account.id, WIZARD, "Wizard", 800)
+        .await
+        .unwrap();
+
+    assert!(!store.has_backpack(character.id).await.unwrap());
+
+    // Fill every slot a character has without one, which is four worn and eight carried.
+    let held: Vec<(i16, uuid::Uuid)> = (0..12).map(|slot| (slot, WAND)).collect();
+    store.set_inventory(character.id, &held).await.unwrap();
+
+    assert!(
+        matches!(
+            store.give_item(character.id, ROBE, 4, 11).await,
+            Err(StoreError::Refused(_))
+        ),
+        "a full inventory took another item"
+    );
+
+    assert!(store.grant_backpack(character.id).await.unwrap());
+    assert!(store.has_backpack(character.id).await.unwrap());
+
+    let placed = store.give_item(character.id, ROBE, 4, 19).await.unwrap();
+    assert_eq!(placed.slot, 12, "the first slot a backpack buys");
+
+    // And it is granted once. A second one is refused rather than silently taking the item.
+    assert!(!store.grant_backpack(character.id).await.unwrap());
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn a_character_saves_and_dies() {
     let Some(store) = store("t_save").await else {
         return;
@@ -574,6 +652,50 @@ async fn traders(store: &Store, schema_name: &str) -> (i64, i64) {
     (one.id, two.id)
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn each_side_of_a_trade_has_its_own_room() {
+    // One trader has a backpack and the other does not, which is the case one range for the whole
+    // trade cannot express: the wrong one either loses the extra slots or puts an item where the
+    // other player has nowhere to keep it.
+    let Some(store) = store("t_trade_room").await else {
+        return;
+    };
+    let (roomy, cramped) = traders(&store, "Rooms").await;
+
+    store.grant_backpack(roomy).await.unwrap();
+
+    // The cramped one is full to the last slot it has, and the roomy one has its backpack empty.
+    let full: Vec<(i16, uuid::Uuid)> = (0..12).map(|slot| (slot, ROBE)).collect();
+    store.set_inventory(cramped, &full).await.unwrap();
+    store.set_inventory(roomy, &[(4, WAND)]).await.unwrap();
+
+    // The cramped side gives up nothing, so it has nowhere to put what it is offered.
+    let outcome = store
+        .trade(
+            &Offer::new(roomy, vec![(4, WAND)], 19),
+            &Offer::new(cramped, Vec::new(), 11),
+            4,
+        )
+        .await;
+
+    assert!(
+        matches!(outcome, Err(StoreError::Refused(_))),
+        "an item was placed in a slot the receiving player does not have"
+    );
+
+    // And the same trade with the roomy player receiving goes through, so what was refused above
+    // was the room and not the trade.
+    store.set_inventory(cramped, &full).await.unwrap();
+    store
+        .trade(
+            &Offer::new(roomy, Vec::new(), 19),
+            &Offer::new(cramped, vec![(4, ROBE)], 11),
+            4,
+        )
+        .await
+        .unwrap();
+}
+
 /// Every item both characters hold, sorted.
 async fn between(store: &Store, one: i64, two: i64) -> Vec<uuid::Uuid> {
     let mut items: Vec<uuid::Uuid> = store
@@ -598,10 +720,9 @@ async fn a_trade_exchanges_both_sides() {
 
     store
         .trade(
-            &Offer::new(one, vec![(4, WAND)]),
-            &Offer::new(two, vec![(4, ROBE)]),
+            &Offer::new(one, vec![(4, WAND)], 11),
+            &Offer::new(two, vec![(4, ROBE)], 11),
             4,
-            11,
         )
         .await
         .unwrap();
@@ -641,10 +762,9 @@ async fn a_trade_of_an_item_that_moved_does_nothing_at_all() {
     // The second player's item is not what the first believes.
     let outcome = store
         .trade(
-            &Offer::new(one, vec![(4, WAND)]),
-            &Offer::new(two, vec![(4, WAND)]),
+            &Offer::new(one, vec![(4, WAND)], 11),
+            &Offer::new(two, vec![(4, WAND)], 11),
             4,
-            11,
         )
         .await;
 
@@ -684,10 +804,9 @@ async fn a_trade_into_a_full_inventory_is_refused_before_anything_moves() {
 
     let outcome = store
         .trade(
-            &Offer::new(one.id, Vec::new()),
-            &Offer::new(two.id, vec![(4, ROBE), (5, ROBE)]),
+            &Offer::new(one.id, Vec::new(), 11),
+            &Offer::new(two.id, vec![(4, ROBE), (5, ROBE)], 11),
             4,
-            11,
         )
         .await;
 
@@ -704,10 +823,9 @@ async fn a_one_sided_trade_is_a_gift() {
 
     store
         .trade(
-            &Offer::new(one, vec![(4, WAND)]),
-            &Offer::new(two, Vec::new()),
+            &Offer::new(one, vec![(4, WAND)], 11),
+            &Offer::new(two, Vec::new(), 11),
             4,
-            11,
         )
         .await
         .unwrap();
@@ -748,10 +866,9 @@ async fn the_same_item_cannot_be_traded_to_two_people_at_once() {
             tokio::spawn(async move {
                 store
                     .trade(
-                        &Offer::new(seller.id, vec![(4, WAND)]),
-                        &Offer::new(buyer_one.id, Vec::new()),
+                        &Offer::new(seller.id, vec![(4, WAND)], 11),
+                        &Offer::new(buyer_one.id, Vec::new(), 11),
                         4,
-                        11,
                     )
                     .await
             })
@@ -761,10 +878,9 @@ async fn the_same_item_cannot_be_traded_to_two_people_at_once() {
             tokio::spawn(async move {
                 store
                     .trade(
-                        &Offer::new(seller.id, vec![(4, WAND)]),
-                        &Offer::new(buyer_two.id, Vec::new()),
+                        &Offer::new(seller.id, vec![(4, WAND)], 11),
+                        &Offer::new(buyer_two.id, Vec::new(), 11),
                         4,
-                        11,
                     )
                     .await
             })

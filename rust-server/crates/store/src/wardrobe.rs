@@ -106,6 +106,20 @@ impl Store {
     }
 
     /// Gives a character its second row of carried slots.
+    /// Whether a character has a backpack, which is what says how many carried slots it has.
+    ///
+    /// Read where it is needed rather than held on the session, because it changes mid-session: a
+    /// player who uses a backpack should be able to fill the new slots without logging out first.
+    pub async fn has_backpack(&self, character_id: i64) -> Result<bool> {
+        let (held,): (bool,) = sqlx::query_as("SELECT has_backpack FROM character WHERE id = $1")
+            .bind(character_id)
+            .fetch_optional(self.pool())
+            .await?
+            .ok_or(StoreError::NoSuchCharacter(character_id))?;
+
+        Ok(held)
+    }
+
     pub async fn grant_backpack(&self, character_id: i64) -> Result<bool> {
         let granted = sqlx::query(
             "UPDATE character SET has_backpack = true WHERE id = $1 AND NOT has_backpack",

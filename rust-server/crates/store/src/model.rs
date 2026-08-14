@@ -112,6 +112,9 @@ pub struct Character {
     /// Potions carried outside the inventory, which is where the game has always kept them.
     pub health_potions: i32,
     pub magic_potions: i32,
+
+    /// Whether this character has been given a backpack, which is eight more carried slots.
+    pub has_backpack: bool,
 }
 
 /// Enough to draw a character-select screen without loading inventories.
@@ -378,10 +381,12 @@ impl Store {
                 bool,
                 i32,
                 i32,
+                bool,
             ),
         >(
             "SELECT id, account_id, class, name, hp, max_hp, mp, max_mp,
-                    level, experience, fame, alive, health_potions, magic_potions
+                    level, experience, fame, alive, health_potions, magic_potions,
+                    has_backpack
              FROM character WHERE id = $1",
         )
         .bind(id)
@@ -412,6 +417,7 @@ impl Store {
             alive: row.11,
             health_potions: row.12,
             magic_potions: row.13,
+            has_backpack: row.14,
             inventory,
         })
     }

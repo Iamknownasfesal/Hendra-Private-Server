@@ -279,6 +279,41 @@ impl Store {
         Ok(Placed { slot: free })
     }
 
+    /// Replaces what is in a slot with the item that succeeds it, if the slot still holds what the
+    /// caller expects.
+    ///
+    /// An elixir with seven charges is seven items, each naming the next one down. Using the last
+    /// one has no successor and is a plain removal, which is why this is separate from `take_item`
+    /// rather than folded into it.
+    ///
+    /// One statement, conditional on the item still being there, for the same reason `take_item` is:
+    /// two simultaneous uses of the same elixir should spend one charge, not two.
+    pub async fn succeed_item(
+        &self,
+        character_id: i64,
+        slot: i16,
+        expected: uuid::Uuid,
+        successor: uuid::Uuid,
+    ) -> Result<()> {
+        let replaced = sqlx::query(
+            "UPDATE inventory_slot SET item = $4
+             WHERE character_id = $1 AND slot = $2 AND item = $3",
+        )
+        .bind(character_id)
+        .bind(slot)
+        .bind(expected)
+        .bind(successor)
+        .execute(self.pool())
+        .await?;
+
+        if replaced.rows_affected() == 0 {
+            return Err(StoreError::Refused(
+                "that item is no longer where you left it",
+            ));
+        }
+        Ok(())
+    }
+
     /// Removes an item from a slot, but only if that slot still holds what the caller expects.
     ///
     /// The condition is what makes two simultaneous requests to drop the same item

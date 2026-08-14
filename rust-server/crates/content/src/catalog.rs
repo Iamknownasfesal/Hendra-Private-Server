@@ -510,6 +510,16 @@ impl Catalog {
         self.object(self.type_of(id)?)
     }
 
+    /// What an item becomes when it is used, where using it does not finish it.
+    ///
+    /// An elixir with seven charges is seven separate items, each naming the next one down. The
+    /// last has no successor, so `None` means the item is spent rather than that it has no answer.
+    pub fn successor_of(&self, kind: ObjectType) -> Option<uuid::Uuid> {
+        let id = self.object(kind)?.item.as_ref()?.successor_id.as_deref()?;
+
+        Some(self.by_name(id)?.uuid)
+    }
+
     pub fn object_count(&self) -> usize {
         self.objects.iter().filter(|slot| slot.is_some()).count()
     }
@@ -544,6 +554,93 @@ impl Catalog {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn every_consumable_that_names_a_successor_names_one_that_exists_and_stops() {
+        // An elixir with seven charges is seven items, each naming the next one down. If a name in
+        // that chain does not resolve, the elixir is a single drink and looks like one that always
+        // was; if the chain loops, it never runs out.
+        let Ok((catalog, _)) =
+            Catalog::load_dir(std::path::Path::new("../../../godot-client/assets/xml"))
+        else {
+            eprintln!("skipping: the content files are not where the test looks for them");
+            return;
+        };
+
+        let mut chains = 0;
+        for start in 0..u16::MAX {
+            let Some(desc) = catalog.object(crate::ObjectType(start)) else {
+                continue;
+            };
+            let Some(item) = desc.item.as_ref() else {
+                continue;
+            };
+            if item.successor_id.is_none() {
+                continue;
+            }
+            chains += 1;
+
+            // Walked to the end rather than one step, since a name that resolves is not the same as
+            // a chain that finishes. The bound is what catches a loop.
+            let mut at = desc;
+            for step in 0.. {
+                assert!(step < 32, "{} succeeds itself in a loop", desc.id);
+
+                let Some(next) = at
+                    .item
+                    .as_ref()
+                    .and_then(|item| item.successor_id.as_deref())
+                else {
+                    break;
+                };
+
+                at = catalog.by_name(next).unwrap_or_else(|| {
+                    panic!("{} names a successor the content lacks: {next}", at.id)
+                });
+
+                assert!(
+                    at.item.as_ref().is_some_and(|item| item.consumable),
+                    "{} succeeds into something that cannot be used",
+                    desc.id
+                );
+            }
+        }
+
+        assert_eq!(
+            chains, 16,
+            "the content ships sixteen items with successors"
+        );
+    }
+
+    #[test]
+    fn a_real_elixir_says_what_it_becomes() {
+        // The whole chain, walked through the lookup the server actually calls. Seven charges are
+        // seven items, and the last one is spent rather than endless.
+        let Ok((catalog, _)) =
+            Catalog::load_dir(std::path::Path::new("../../../godot-client/assets/xml"))
+        else {
+            eprintln!("skipping: the content files are not where the test looks for them");
+            return;
+        };
+
+        let mut at = catalog.type_of("Elixir of Health 7").expect("the elixir");
+        let mut drinks = 1;
+
+        while let Some(next) = catalog.successor_of(at) {
+            at = catalog
+                .type_of_uuid(next)
+                .expect("a successor in the catalog");
+            drinks += 1;
+        }
+
+        assert_eq!(drinks, 7, "an elixir of seven gave {drinks} drinks");
+        assert_eq!(
+            catalog
+                .by_name("Elixir of Health 1")
+                .map(|desc| desc.object_type),
+            Some(at)
+        );
+    }
+
     #[test]
     fn content_without_a_written_number_is_numbered_at_load() {
         // The point of the change: an author writes a name, not a free hex value found by reading

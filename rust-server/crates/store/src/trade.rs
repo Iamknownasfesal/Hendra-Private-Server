@@ -47,13 +47,21 @@ pub struct Offer {
     /// The expected item matters: an offer is agreed at one moment and executed at another, and in
     /// between the player may have moved, dropped or traded the very thing they offered.
     pub items: Vec<(i16, uuid::Uuid)>,
+
+    /// The last carried slot this side has room in.
+    ///
+    /// Per side rather than per trade, because the two can differ: a player with a backpack has
+    /// eight more slots than one without, and one range for both would either lose the extra slots
+    /// or place an item where the other player has nowhere to put it.
+    pub last_slot: i16,
 }
 
 impl Offer {
-    pub fn new(character_id: i64, items: Vec<(i16, uuid::Uuid)>) -> Offer {
+    pub fn new(character_id: i64, items: Vec<(i16, uuid::Uuid)>, last_slot: i16) -> Offer {
         Offer {
             character_id,
             items,
+            last_slot,
         }
     }
 
@@ -73,14 +81,13 @@ pub struct TradeOutcome {
 impl Store {
     /// Exchanges the offered items between two characters, or does nothing at all.
     ///
-    /// `first_slot` and `last_slot` bound the carried range items may land in. Worn slots are not
+    /// `first_slot` and each offer's `last_slot` bound the carried range items may land in. Worn slots are not
     /// a valid destination for something received, because nothing checks whether it fits.
     pub async fn trade(
         &self,
         first: &Offer,
         second: &Offer,
         first_slot: i16,
-        last_slot: i16,
     ) -> Result<TradeOutcome> {
         if first.character_id == second.character_id {
             return Err(StoreError::Refused("a character cannot trade with itself"));
@@ -121,14 +128,14 @@ impl Store {
             &first.items,
             second.items.len(),
             first_slot,
-            last_slot,
+            first.last_slot,
         )?;
         let to_second = place(
             &held_second,
             &second.items,
             first.items.len(),
             first_slot,
-            last_slot,
+            second.last_slot,
         )?;
 
         // Everything is checked. Now it happens.

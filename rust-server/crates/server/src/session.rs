@@ -917,7 +917,7 @@ async fn take_from_bag(
                     player.character.id,
                     identity,
                     EQUIPPED_SLOTS as i16,
-                    LAST_CARRIED_SLOT,
+                    last_carried_slot(&context.store, player.character.id).await,
                 )
                 .await
                 .map(|_| ())
@@ -1038,8 +1038,46 @@ fn stacks_as(catalog: &hendra_content::Catalog, item: ObjectType) -> Option<bool
     }
 }
 
-/// The highest carried slot a player has.
+/// Whether using this item would give a backpack.
+fn grants_a_backpack(catalog: &hendra_content::Catalog, kind: ObjectType) -> bool {
+    use hendra_content::activate::Unlock;
+
+    catalog
+        .object(kind)
+        .and_then(|object| object.item.as_ref())
+        .is_some_and(|item| {
+            item.activate.iter().any(|activate| {
+                matches!(
+                    hendra_content::Effect::of(activate),
+                    hendra_content::Effect::Unlock {
+                        kind: Unlock::Backpack,
+                        ..
+                    }
+                )
+            })
+        })
+}
+
+/// The highest carried slot a player has without a backpack.
+///
+/// Four worn and eight carried, which is what a character starts with.
 const LAST_CARRIED_SLOT: i16 = 11;
+
+/// The highest carried slot a backpack buys, which is eight more.
+const LAST_BACKPACK_SLOT: i16 = 19;
+
+/// The last slot this character can put something in.
+///
+/// Asked of the store rather than of the session, because a backpack is used mid-session and the
+/// slots it buys should be usable straight away rather than after logging out. A character whose
+/// row cannot be read is treated as having no backpack: refusing to place an item is recoverable,
+/// and putting one in a slot that does not exist is not.
+async fn last_carried_slot(store: &Store, character_id: i64) -> i16 {
+    match store.has_backpack(character_id).await {
+        Ok(true) => LAST_BACKPACK_SLOT,
+        _ => LAST_CARRIED_SLOT,
+    }
+}
 
 /// What is currently in a durable slot.
 async fn read_slot(store: &Store, at: Location) -> Option<uuid::Uuid> {
@@ -1643,10 +1681,17 @@ async fn settle_trade(
     let outcome = context
         .store
         .trade(
-            &hendra_store::Offer::new(character_id, first),
-            &hendra_store::Offer::new(partner_character, second),
+            &hendra_store::Offer::new(
+                character_id,
+                first,
+                last_carried_slot(&context.store, character_id).await,
+            ),
+            &hendra_store::Offer::new(
+                partner_character,
+                second,
+                last_carried_slot(&context.store, partner_character).await,
+            ),
             EQUIPPED_SLOTS as i16,
-            LAST_CARRIED_SLOT,
         )
         .await;
 
@@ -1841,6 +1886,20 @@ async fn use_item(
         return;
     };
 
+    // A backpack somebody already has is handed back rather than eaten. The refusal has to happen
+    // before the item is spent, since everything below this point consumes it: a player who used a
+    // second one would be told they already had one and be charged for it anyway.
+    if grants_a_backpack(&context.catalog, kind)
+        && context
+            .store
+            .has_backpack(player.character.id)
+            .await
+            .unwrap_or(false)
+    {
+        say(link, "you already have a backpack").await;
+        return;
+    }
+
     let (reply, answer) = tokio::sync::oneshot::channel();
     placement
         .world
@@ -1867,22 +1926,38 @@ async fn use_item(
     }
 
     // Anything the world could not carry out because it changes something durable is settled here.
-    let consumable = context
+    let item = context
         .catalog
         .object(kind)
-        .and_then(|object| object.item.as_ref())
-        .is_some_and(|item| item.consumable);
+        .and_then(|object| object.item.as_ref());
 
-    if consumable {
-        let taken = context
-            .store
-            .take_item(player.character.id, slot as i16, identity)
-            .await;
+    if !item.is_some_and(|item| item.consumable) {
+        return;
+    }
 
-        if taken.is_ok() {
-            send_containers(link, &context.catalog, &context.store, player).await;
-            refresh_equipment(context, player, placement).await;
+    // An item that names a successor turns into it rather than disappearing. That is how the game
+    // spells a consumable with several uses: an Elixir of Health 7 becomes a 6, and the 1 has no
+    // successor and goes. Removing it outright would turn every elixir into a single drink.
+    let successor = context.catalog.successor_of(kind);
+
+    let settled = match successor {
+        Some(successor) => {
+            context
+                .store
+                .succeed_item(player.character.id, slot as i16, identity, successor)
+                .await
         }
+        None => {
+            context
+                .store
+                .take_item(player.character.id, slot as i16, identity)
+                .await
+        }
+    };
+
+    if settled.is_ok() {
+        send_containers(link, &context.catalog, &context.store, player).await;
+        refresh_equipment(context, player, placement).await;
     }
 }
 
@@ -2410,7 +2485,7 @@ async fn buy(
             currency: sale.currency,
             price: sale.price,
             first_slot: EQUIPPED_SLOTS as i16,
-            last_slot: LAST_CARRIED_SLOT,
+            last_slot: last_carried_slot(&context.store, player.character.id).await,
         })
         .await;
 
@@ -2592,7 +2667,7 @@ async fn market(
                     listing as i64,
                     player.character.id,
                     EQUIPPED_SLOTS as i16,
-                    LAST_CARRIED_SLOT,
+                    last_carried_slot(&context.store, player.character.id).await,
                 )
                 .await
             {
@@ -2613,7 +2688,7 @@ async fn market(
                     character_id: player.character.id,
                     listing_id: listing as i64,
                     first_slot: EQUIPPED_SLOTS as i16,
-                    last_slot: LAST_CARRIED_SLOT,
+                    last_slot: last_carried_slot(&context.store, player.character.id).await,
                 })
                 .await;
 
@@ -3430,7 +3505,7 @@ async fn wield(
                     player.character.id,
                     item.uuid,
                     EQUIPPED_SLOTS as i16,
-                    LAST_CARRIED_SLOT,
+                    last_carried_slot(&context.store, player.character.id).await,
                 )
                 .await
             {
@@ -3568,7 +3643,7 @@ async fn wield(
                     player.character.id,
                     item.uuid,
                     EQUIPPED_SLOTS as i16,
-                    LAST_CARRIED_SLOT,
+                    last_carried_slot(&context.store, player.character.id).await,
                 )
                 .await
             {
