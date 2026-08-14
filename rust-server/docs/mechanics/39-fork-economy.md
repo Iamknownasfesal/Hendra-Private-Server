@@ -116,6 +116,69 @@ never written, so it survives only until the next reload. In practice the items 
 `BuyId` 5 through 8 pass the range check at the top and then fall into the trailing `else`, so they
 error rather than doing anything.
 
+## Raids
+
+`LaunchRaid` needs **20 stars**, **10,000 gold**, and no raid already running
+(`Manager._isRaidLaunched`, a flag on the manager, so it is server-wide).
+
+Two raids, each with an Ultra variant, each launching a portal at the fixed position **(149, 114)**
+marked `PlayerOpened` with the launcher as `Opener`. Two timers are set: the portal is removed after
+the portal descriptor's own `Timeout` seconds, and `_isRaidLaunched` is cleared after a flat **60
+seconds** — so a second raid can be launched long before the first portal closes.
+
+The launch is announced server-wide through the cross-server chat bus and shown as a green
+notification locally.
+
+```csharp
+player.Client.Manager.Database.UpdateCredit(player.Client.Account, -gold);
+player.Credits = player.Client.Account.Credits - gold;
+```
+
+The database call already decremented the account; reading it and subtracting `gold` again shows the
+player **20,000 gold poorer than they are**.
+
+The token check reads `if (player.startRaid1(player) == false) { launch } else { "You need the
+correct token" }`, so the method returns *true* when the token is missing — a name that says the
+opposite of what it does.
+
+## Alerts
+
+`AlertNotice` requires an alert token and 1,000 gold, spends **only the token**, and then picks one of
+four worlds uniformly:
+
+```
+KrakenLair  TheHollows  HiddenTempleBoss  FrozenIsland
+```
+
+An 8-second timer then reconnects the player into it. The gold check is made and the gold is never
+taken.
+
+## Marks and nodes are unreachable
+
+```csharp
+if (buyAmount != 15 || buyAmount != 40) {
+    player.SendError("Inproper purchase cost.");
+    return;
+}
+```
+
+No number is both 15 and 40, so the condition is **always true**. Every mark and node purchase errors
+out before anything else runs. The eleven node ids (15 Onrane) and seven mark ids (40 Onrane) below it
+are dead code, as is `NodeSet`'s four-slot fill.
+
+## Lootboxes
+
+```
+1 Bronze                 free
+2 Silver                 free
+3 Gold                   free
+4 Elite   + 5 Onrane
+5 (Kantos box)  600 Kantos
+```
+
+Each spends its own counter, then calls `player.Unbox(type)`. Case 5 has no box counter at all — the
+currency *is* the key.
+
 ## The rest
 
 - **`SorForgeRequest`**: 20 Onrane to ascend a Sor Crystal.
