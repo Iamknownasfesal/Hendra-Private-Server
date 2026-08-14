@@ -235,7 +235,6 @@ mod tests {
 
 #[cfg(test)]
 mod applied {
-    use super::*;
 
     #[test]
     fn a_real_set_from_the_content_raises_a_real_stat() {
