@@ -44,7 +44,7 @@ inside the game: a different data structure, a different loop, a different order
 | [21-abilities.md](21-abilities.md) | Activate effects, the wisdom modifier | `Player.UseItem.cs` |
 | [22-trading.md](22-trading.md) | Requests, offers, the exchange | `Player.Trade.cs`, `AcceptTradeHandler.cs` |
 | [23-weapon-damage-and-the-rest.md](23-weapon-damage-and-the-rest.md) | Weapon damage, keep-alive, traps, placeholders | `Player.Projectiles.cs`, `BaseStatManager.cs`, `Player.KeepAlive.cs`, `Trap.cs` |
-| [24-setpieces.md](24-setpieces.md) | The placement table and how a piece draws | `SetPieces.cs`, `Pentaract.cs` |
+| [24-setpieces.md](24-setpieces.md) | The placement table, and all 38 pieces | 38 of 38, plus `SetPieces.cs`, `Noise.cs` |
 | [25-regions-and-coverage.md](25-regions-and-coverage.md) | Region numbering, and what was read | `JsonMap.cs` |
 | [26-verification.md](26-verification.md) | What a client is believed about, and the fire-rate check | `Player.Verify.cs`, `Player.AntiCheat.cs`, `PositionTimeline.cs` |
 | [27-marketplace.md](27-marketplace.md) | Consignment shelves, merchant rotation, listing fees | `Market.cs`, `Player.Market.cs` |
@@ -76,8 +76,8 @@ bonus in the game. See [the stats page](08-stats.md).
 
 ## How much of this is actually read
 
-The C# server is **547 files**. About **250** were opened and read, including every behaviour, every
-transition, every command and every world subclass. The rest was assessed by census,
+The C# server is **547 files**. About **295** were opened and read, including every behaviour, every
+transition, every command, every world subclass and every setpiece. The rest was assessed by census,
 by signature, or by call site, which is weaker evidence and is how the first two passes of this audit
 reached wrong conclusions twice.
 
