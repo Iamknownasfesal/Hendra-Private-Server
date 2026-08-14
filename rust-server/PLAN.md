@@ -1262,3 +1262,51 @@ implementations side by side.
   differences to settle deliberately rather than close. Plus the structural one: every defect in the
   first two sections was invisible to both the test suite and a census reporting 100%, because the
   censuses count names.
+
+---
+
+# Phase 19: the client cutover
+
+The client speaks RC4 and legacy packets to the C# server. This server speaks QUIC and snapshots.
+Nothing has ever played it.
+
+**Most of the bridge is already built and none of it is wired up.** `crates/godot` is a GDExtension
+exposing the protocol to the engine, `godot-client/bin/libhendra_godot.dylib` is compiled, and
+`src/Net/HendraNet.cs` is a typed C# wrapper over it that the client builds and never calls:
+`grep -rn HendraNet src/` outside its own file returns nothing.
+
+So this phase is mostly connecting two finished halves, plus four real gaps.
+
+**What already crosses.** Events: connected, welcome, rejected, chat, disconnected, container,
+refused, ground, notice, queued, stacks, died, the five trade messages, scenery, terrain, shot.
+Sends: input, move item, pick up, drop, shoot, chat, use portal.
+
+**What agrees already.** Object numbering: all 4,624 objects in `assets/xml` carry a written `type`,
+and the Rust catalog honours a written number and only assigns one where it is absent. The two sides
+cannot disagree about what a `0x0a08` is.
+
+- [ ] **The world view carries five fields of twelve.** `WorldView` in `crates/godot/src/lib.rs`
+      marshals ids, types, positions, hp and max hp. `EntityState` also has conditions, size, name,
+      texture, the eight stats, stars and oxygen. Without them there is no HUD, no condition icons,
+      no names over heads, no alt textures and no air gauge. Cheapest item and it unblocks the rest.
+
+- [ ] **Auth.** The client posts `/account/verify` and `/char/list` to the C# app server. The Rust
+      one answers `/login` and `/characters`, and the world server wants a token it mints. One new
+      path in `LoginScreen`, and the token carried into `connect_to_server`.
+
+- [ ] **A session over the extension.** The game layer subscribes to `GameSession`'s events and
+      sends `ClientPacket`s. Give it the same shape backed by `HendraNet` so `WorldController`,
+      `GameScene`, the HUD, inventory, vault and trade move over without being rewritten.
+
+- [ ] **Four things the protocol has no message for**, which the client uses today: damage numbers,
+      `ShowEffect`, sounds and music, and the quest-arrow target. Decide each: add a message, drop
+      the feature, or derive it client-side. Damage numbers are derivable from the snapshot; the
+      quest arrow is not.
+
+- [ ] **Movement.** The legacy model is one `Move` per `NewTick` against an acknowledgement ledger
+      the server audits. Ours is an `Input` datagram and a server-authoritative position. `MoveRecords`
+      and the ledger go.
+
+- [ ] **Play it, then delete the legacy net layer.** `Rc4.cs`, `PacketId.cs`, `ProtocolKeys.cs`,
+      `GameSession.cs`, `GameConnection.cs` and `src/Net/Packets/` are ~2,900 lines that exist only
+      to speak to the C# server.
