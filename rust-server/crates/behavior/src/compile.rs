@@ -942,6 +942,26 @@ fn condition(call: &Call, names: &mut Names, diagnostics: &mut Vec<Diagnostic>) 
             amount: number(call, "amount", 0, 1.0).max(0.0) as i32,
         },
 
+        // `PlayerTextTransition(target, regex, dist, setAttackTarget, ignoreCase)`. The target is
+        // taken as the state by the transpiler, so what arrives here is the rest.
+        "player_text" => Condition::PlayerSaid {
+            word: call
+                .argument("word", 0)
+                .and_then(Value::as_text)
+                .unwrap_or_default()
+                .to_string(),
+            within: call
+                .argument("within", 1)
+                .and_then(Value::as_number)
+                .map(|value| value as f32),
+            // The C# argument is `ignoreCase` and defaults to true, so the sense is inverted here to
+            // say what it means rather than what it negates.
+            exact_case: !call
+                .argument("ignore_case", 3)
+                .and_then(Value::as_bool)
+                .unwrap_or(true),
+        },
+
         "not_moving" => Condition::NotMoving {
             after_ms: number(call, "delay", 0, 250.0).max(0.0) as u32,
         },

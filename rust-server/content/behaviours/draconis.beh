@@ -24,6 +24,7 @@ enemy "NM Red Dragon Soul" {
     set_no_x_p()
     conditional_effect(invincible)
     state idle {
+        on player_text("Red", 99, false, true) -> goToRedDragon
         orbit(0.2, 2.5, 20, "NM Altar of Draconis")
     }
     state goToRedDragon {
@@ -60,6 +61,7 @@ enemy "NM Blue Dragon Soul" {
     set_no_x_p()
     conditional_effect(invincible)
     state idle {
+        on player_text("Blue", 99, false, true) -> goToBlueDragon
         orbit(0.2, 2.5, 20, "NM Altar of Draconis")
     }
     state goToBlueDragon {
@@ -96,6 +98,7 @@ enemy "NM Green Dragon Soul" {
     set_no_x_p()
     conditional_effect(invincible)
     state idle {
+        on player_text("Green", 99, false, true) -> goToGreenDragon
         orbit(0.2, 2.5, 20, "NM Altar of Draconis")
     }
     state goToGreenDragon {
@@ -132,6 +135,7 @@ enemy "NM Black Dragon Soul" {
     set_no_x_p()
     conditional_effect(invincible)
     state idle {
+        on player_text("Black", 99, false, true) -> goToBlackDragon
         orbit(0.3, 2.5, 20, "NM Altar of Draconis")
     }
     state goToBlackDragon {

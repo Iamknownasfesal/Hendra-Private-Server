@@ -457,6 +457,13 @@ pub struct World {
     /// setpiece drawn once should not cost a place in every snapshot for the rest of the world.
     scenery_changes: Vec<(u16, u16, u16, u16)>,
 
+    /// What players said this tick, and where they were standing.
+    ///
+    /// Cleared every tick: a word is heard when it is said, and an enemy that reacted to something
+    /// shouted a minute ago would be answering an echo. Held on the world rather than passed along,
+    /// because every enemy in earshot has to hear the same thing.
+    heard: Vec<(f32, f32, Box<str>)>,
+
     /// Players who have died since the last drain.
     deaths: Vec<Death>,
 
@@ -563,6 +570,7 @@ impl World {
             realm: crate::realm::Realm::new(),
             spawn_squares: std::collections::HashMap::new(),
             allows_teleport: true,
+            heard: Vec::new(),
             deaths: Vec::new(),
             keys_found: Vec::new(),
             refused_squares: 0,
@@ -941,6 +949,10 @@ impl World {
         self.run_death_effects(catalog);
         self.note_deaths(catalog);
         self.reap();
+
+        // A word is heard when it is said. Cleared after the thinking, so everything in earshot has
+        // had its chance and nothing reacts to an echo on the next tick.
+        self.heard.clear();
         self.reindex();
     }
 
@@ -997,6 +1009,20 @@ impl World {
                 continue;
             };
 
+            // What was said, as distances from this entity. Built per entity because the condition
+            // asks how far away the speaker was, and that is a different answer for each listener.
+            let spoken: Vec<(f32, &str)> = if self.heard.is_empty() {
+                Vec::new()
+            } else {
+                self.heard
+                    .iter()
+                    .map(|(x, y, text)| {
+                        let (dx, dy) = (x - scalars.x, y - scalars.y);
+                        ((dx * dx + dy * dy).sqrt(), &**text)
+                    })
+                    .collect()
+            };
+
             let senses = Senses {
                 x: scalars.x,
                 y: scalars.y,
@@ -1006,6 +1032,7 @@ impl World {
                 spawn_y: scalars.spawn_y,
                 nearest_player: scalars.nearest_player,
                 nearby: &neighbours,
+                said: &spoken,
                 damage_taken: scalars.damage_taken,
             };
 
@@ -1108,6 +1135,12 @@ fn restack(entity: &mut Entity) {
 
     entity.stats.set_boosts(totals);
 }
+
+/// How much speech one tick holds before the rest is dropped.
+///
+/// A room full of people all typing at once is still a room, and an enemy only needs to hear one of
+/// them say the word.
+const MOST_HEARD_AT_ONCE: usize = 64;
 
 /// How many players one enemy remembers being hurt by.
 ///
@@ -3004,6 +3037,16 @@ impl World {
         });
         grave.expires_in_ms = Some(standing_ms);
         self.spawn(grave);
+    }
+
+    /// Notes that somebody said something, for whatever is listening.
+    ///
+    /// A dungeon whose door opens when you say the right word is built out of this, and without it
+    /// the door has no handle.
+    pub fn heard(&mut self, at: (f32, f32), text: &str) {
+        if self.heard.len() < MOST_HEARD_AT_ONCE {
+            self.heard.push((at.0, at.1, text.into()));
+        }
     }
 
     /// Notes that a key has been found here, and says whether it is new.
@@ -6987,6 +7030,105 @@ mod tests {
 
         assert_eq!(world.thinking(), 1);
         assert!(world.get(enemy).unwrap().mind.is_some());
+    }
+
+    #[test]
+    fn an_enemy_hears_what_is_said_near_it() {
+        // A dungeon whose door opens when you say the right word is built out of this. Draconis is
+        // the one in the content: three dragon souls that wait, orbiting an altar, until somebody
+        // says the colour.
+        let catalog = catalog();
+        let (mut world, enemy, _) = confrontation(
+            &catalog,
+            r#"enemy "Slime" {
+                state quiet { on player_text("Red", 99, false, false) -> loud }
+                state loud { wander(0.4) }
+            }"#,
+        );
+
+        let quiet = world.get(enemy).unwrap().mind.as_ref().unwrap().state();
+
+        world.heard((14.0, 10.0), "Red");
+        world.advance(&catalog, 50);
+
+        assert_ne!(
+            world.get(enemy).unwrap().mind.as_ref().unwrap().state(),
+            quiet,
+            "saying the word changed nothing"
+        );
+    }
+
+    #[test]
+    fn a_word_is_heard_when_it_is_said_and_not_after() {
+        // Held for the tick it was said in and no longer. A word that lingered would be heard by
+        // everything that arrived afterwards, so a door would open for somebody who walked up to it
+        // in silence, having missed the moment entirely.
+        let catalog = catalog();
+        let listener = r#"enemy "Slime" {
+                state quiet { on player_text("Red", 99, false, false) -> loud }
+                state loud { wander(0.4) }
+            }"#;
+        let (mut world, first, _) = confrontation(&catalog, listener);
+
+        // What waiting looks like, read rather than assumed: a state's number is whatever the
+        // compiler gave it, and a test that hard-codes one passes for the wrong reason.
+        let quiet = world.get(first).unwrap().mind.as_ref().unwrap().state();
+
+        world.heard((14.0, 10.0), "Red");
+        world.advance(&catalog, 50);
+        assert_ne!(
+            world.get(first).unwrap().mind.as_ref().unwrap().state(),
+            quiet,
+            "the word was not heard at all"
+        );
+
+        // A second enemy arrives after the word was said, into a world where nobody has spoken
+        // since. It should be waiting, not reacting. Handing the world its behaviours again is how
+        // the newcomer gets a mind, and it puts the first one back at its beginning too, which the
+        // assertion above has already read.
+        let mut slime = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
+        slime.kind = Kind::Enemy;
+        slime.hp = 500;
+        slime.max_hp = 500;
+        let second = world.spawn(slime).unwrap();
+
+        let (programs, _) = hendra_behavior::compile::compile(
+            &hendra_behavior::parse::parse(listener).expect("behaviour should parse"),
+        );
+        world.set_behaviours(&catalog, programs);
+
+        for _ in 0..5 {
+            world.advance(&catalog, 50);
+        }
+
+        assert_eq!(
+            world.get(second).unwrap().mind.as_ref().unwrap().state(),
+            quiet,
+            "a word carried over into later ticks"
+        );
+    }
+
+    #[test]
+    fn somebody_shouting_from_across_the_map_is_not_heard() {
+        let catalog = catalog();
+        let (mut world, enemy, _) = confrontation(
+            &catalog,
+            r#"enemy "Slime" {
+                state quiet { on player_text("Red", 4, false, false) -> loud }
+                state loud { wander(0.4) }
+            }"#,
+        );
+
+        let quiet = world.get(enemy).unwrap().mind.as_ref().unwrap().state();
+
+        world.heard((30.0, 30.0), "Red");
+        world.advance(&catalog, 50);
+
+        assert_eq!(
+            world.get(enemy).unwrap().mind.as_ref().unwrap().state(),
+            quiet,
+            "a shout from across the map was heard"
+        );
     }
 
     #[test]

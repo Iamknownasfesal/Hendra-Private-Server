@@ -35,6 +35,12 @@ pub struct Senses<'a> {
     /// The closest player, and how far away they are.
     pub nearest_player: Option<Nearby>,
 
+    /// What players nearby have said this tick, with how far away each speaker was.
+    ///
+    /// Borrowed and usually empty: speech is rare, and a tick that allocated for it would allocate
+    /// for every enemy in the world to hear nothing.
+    pub said: &'a [(f32, &'a str)],
+
     /// Everything else in sight.
     ///
     /// Needed because a great many behaviours are about other entities rather than about players:
@@ -657,6 +663,23 @@ pub enum Condition {
     /// Has not moved for this long.
     NotMoving {
         after_ms: u32,
+    },
+
+    /// Somebody nearby said something matching this.
+    ///
+    /// The one condition a player can trigger on purpose. A dungeon whose door opens when you say
+    /// the right word is built out of this, and without it the door has no handle.
+    PlayerSaid {
+        /// What to listen for. A whole word rather than a pattern: the original compiles a regular
+        /// expression, and every use in the content is a plain word, so this matches the word and
+        /// says so rather than pulling in an expression engine for eight uses.
+        word: String,
+
+        /// How near they have to be, or `None` for anywhere in the world.
+        within: Option<f32>,
+
+        /// Whether capitals matter.
+        exact_case: bool,
     },
 
     /// A condition the runtime does not implement. Never fires, and is reported at load.

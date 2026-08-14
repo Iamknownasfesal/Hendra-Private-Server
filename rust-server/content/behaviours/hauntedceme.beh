@@ -846,6 +846,7 @@ enemy "Area 1 Controller" {
     state talk3 {
         set_alt_texture(1)
         taunt(1, "Prepare yourself, Say Ready when you wish the battle to begin!")
+        on player_text("1", "Ready", 99, false, true) -> s1
     }
     state s1 {
         set_alt_texture(0)
@@ -939,6 +940,7 @@ enemy "Area 2 Controller" {
     state talk3 {
         set_alt_texture(1)
         taunt(1, "Prepare yourself, Say Ready when you wish the battle to begin!")
+        on player_text("1", "Ready", 99, false, true) -> s1
     }
     state s1 {
         set_alt_texture(0)
@@ -1037,6 +1039,7 @@ enemy "Area 3 Controller" {
     state talk3 {
         set_alt_texture(1)
         taunt(1, "Prepare yourself, Say Ready when you wish the battle to begin!")
+        on player_text("1", "Ready", 99, false, true) -> s1
     }
     state s1 {
         set_alt_texture(0)
@@ -1135,6 +1138,7 @@ enemy "Area 4 Controller" {
     state talk3 {
         set_alt_texture(1)
         taunt(1, "Prepare yourself, Say Ready when you wish the battle to begin!")
+        on player_text("1", "Ready", 99, false, true) -> s1
     }
     state s1 {
         set_alt_texture(0)

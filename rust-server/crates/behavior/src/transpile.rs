@@ -333,10 +333,15 @@ fn emit_transition(
         .filter_map(|argument| argument.value.as_text())
         .collect();
 
+    // Which string is the target state depends on the transition, because the C# constructors put
+    // it in different places. Guessing "the last one" is right for most and wrong for these, and
+    // wrong here does not read as wrong: the target comes out as some other word, no state has that
+    // name, and the transition is dropped as though the original were at fault.
     let target = match call.name.as_str() {
-        "EntitiesNotExistsTransition" | "EntitiesNotExistTransition" | "TimedRandomTransition" => {
-            strings.first()
-        }
+        "EntitiesNotExistsTransition"
+        | "EntitiesNotExistTransition"
+        | "TimedRandomTransition"
+        | "PlayerTextTransition" => strings.first(),
         _ => strings.last(),
     }?
     .to_string();
@@ -561,6 +566,47 @@ mod tests {
             new ItemLoot("Health Potion", 0.02)
         )
     "#;
+
+    #[test]
+    fn the_target_state_is_taken_from_where_the_transition_actually_puts_it() {
+        // The C# constructors do not agree on where the target state goes. Taking the last string
+        // is right for most of them and wrong for these, and wrong here does not read as wrong: the
+        // target comes out as some other word, no state has that name, and the transition is
+        // dropped as though the original were at fault. That is exactly what happened to the eight
+        // `PlayerTextTransition` uses in the content, which took Draconis' three dragon souls with
+        // them.
+        let source = r#"
+            .Init("Talker",
+                new State(
+                    new State("waiting",
+                        new PlayerTextTransition("goToRed", "Red", 99, false, true),
+                        new EntitiesNotExistsTransition("alone", 10, "Guardian"),
+                        new TimedRandomTransition("wander", 1000, 2000, false)
+                        ),
+                    new State("goToRed"),
+                    new State("alone"),
+                    new State("wander")
+                    )
+                )
+        "#;
+
+        let mut report = Report::default();
+        let text = transpile(source, &mut report);
+
+        for target in ["goToRed", "alone", "wander"] {
+            assert!(
+                text.contains(&format!("-> {target}")),
+                "the target was not read from the front: {text}"
+            );
+        }
+
+        // And it has to survive compiling, or a transition naming a state that does not exist is
+        // dropped later and just as silently.
+        let behaviours = parse(&text).expect("the output parses");
+        let (programs, diagnostics) = compile(&behaviours);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        assert_eq!(programs.programs.len(), 1);
+    }
 
     #[test]
     fn a_real_enemy_converts_and_parses_back() {

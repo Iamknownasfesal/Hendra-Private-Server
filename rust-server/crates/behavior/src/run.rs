@@ -276,6 +276,27 @@ impl Mind {
 
             Condition::DamageTaken { amount } => self.damage_in_state >= *amount,
 
+            Condition::PlayerSaid {
+                word,
+                within,
+                exact_case,
+            } => senses.said.iter().any(|(distance, text)| {
+                if within.is_some_and(|near| *distance > near) {
+                    return false;
+                }
+
+                // A whole word rather than a substring: the original matches a regular expression,
+                // and every use in the content is a plain word. "Red" should answer to somebody
+                // saying "red" and not to somebody saying "prepared".
+                text.split(|c: char| !c.is_alphanumeric()).any(|held| {
+                    if *exact_case {
+                        held == word
+                    } else {
+                        held.eq_ignore_ascii_case(word)
+                    }
+                })
+            }),
+
             Condition::NotMoving { after_ms } => self.still_for_ms >= *after_ms,
 
             Condition::EntityWithin { kind, radius } => program
@@ -1138,6 +1159,86 @@ impl Mind {
 }
 
 #[cfg(test)]
+mod speech {
+    use super::*;
+    use crate::program::{Condition, Senses};
+
+    fn heard<'a>(said: &'a [(f32, &'a str)]) -> Senses<'a> {
+        Senses {
+            x: 0.0,
+            y: 0.0,
+            hp: 100,
+            max_hp: 100,
+            spawn_x: 0.0,
+            spawn_y: 0.0,
+            nearest_player: None,
+            nearby: &[],
+            said,
+            damage_taken: 0,
+        }
+    }
+
+    fn listens(word: &str, within: Option<f32>, exact_case: bool) -> Condition {
+        Condition::PlayerSaid {
+            word: word.to_string(),
+            within,
+            exact_case,
+        }
+    }
+
+    fn hears(condition: &Condition, said: &[(f32, &str)]) -> bool {
+        let program = crate::Program::default();
+        let mut mind = Mind::new(&program, 1);
+        mind.fires(&program, condition, &heard(said))
+    }
+
+    #[test]
+    fn the_word_is_heard_when_it_is_said() {
+        assert!(hears(&listens("Red", None, false), &[(1.0, "Red")]));
+    }
+
+    #[test]
+    fn a_word_inside_another_word_is_not_the_word() {
+        // "Red" should answer to somebody saying red and not to somebody saying prepared.
+        assert!(!hears(&listens("Red", None, false), &[(1.0, "prepared")]));
+        assert!(!hears(&listens("Red", None, false), &[(1.0, "Fred")]));
+    }
+
+    #[test]
+    fn the_word_is_found_in_a_sentence() {
+        assert!(hears(
+            &listens("Red", None, false),
+            &[(1.0, "I think we should do Red first")]
+        ));
+    }
+
+    #[test]
+    fn capitals_do_not_matter_unless_they_are_asked_to() {
+        assert!(hears(&listens("Red", None, false), &[(1.0, "red")]));
+        assert!(!hears(&listens("Red", None, true), &[(1.0, "red")]));
+    }
+
+    #[test]
+    fn somebody_too_far_away_is_not_heard() {
+        assert!(hears(&listens("Red", Some(10.0), false), &[(5.0, "Red")]));
+        assert!(!hears(&listens("Red", Some(10.0), false), &[(50.0, "Red")]));
+    }
+
+    #[test]
+    fn silence_is_not_the_word() {
+        assert!(!hears(&listens("Red", None, false), &[]));
+    }
+
+    #[test]
+    fn one_speaker_saying_it_is_enough() {
+        assert!(hears(
+            &listens("Red", None, false),
+            &[(1.0, "no"), (2.0, "Red"), (3.0, "maybe")]
+        ));
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::compile::compile;
@@ -1160,6 +1261,7 @@ mod tests {
             spawn_y: 10.0,
             nearest_player: None,
             nearby: &[],
+            said: &[],
             damage_taken: 0,
         }
     }

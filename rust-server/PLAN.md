@@ -820,3 +820,30 @@ category by category. It found thirteen things, one of them a mechanic that sile
   place in a world, and taking either before the other would hold a world open for somebody who has
   not got in yet. A connection that goes while waiting leaves the line, because nobody in a queue
   sends anything that would otherwise reveal it had gone.
+
+### 18.15 Words spoken to a monster — **S**
+
+- [x] `PlayerTextTransition`, and the converter bug that hid it
+
+  Found by sweeping `Entity.cs` for a second time and reading `OnChatTextReceived`. The C# behaviour
+  database uses `PlayerTextTransition` eight times; our converted content used it zero times, and the
+  converter had reported the difference as "transitions naming a state that does not exist… bugs in
+  the original".
+
+  The bug was ours. `emit_transition` took the last string argument as the target state, which is
+  right for most transitions and wrong for `PlayerTextTransition`, where the target comes first.
+  Being wrong here did not read as wrong: the target came out as some other word, no state had that
+  name, and the transition was dropped with a message blaming the original. The same mistake covered
+  `EntitiesNotExistsTransition` and `TimedRandomTransition`, which were already listed by name.
+
+  What it cost: Draconis' three dragon souls sat orbiting their altar with no way to be woken, since
+  saying the colour is the only thing that starts that fight. Dropped transitions went from nine to
+  one, and the survivor is a genuine original bug (Son of Arachna transitions to a state it does not
+  have).
+
+  Implemented end to end: the world holds what was said for the tick it was said in, each listener
+  measures its own distance to the speaker, and the word is matched whole rather than as a substring
+  so a boss listening for "Red" does not answer to somebody saying "prepared". Cleared after the
+  thinking, so an enemy that arrives afterwards is not woken by an echo.
+
+  Conditions went from 2048 uses to 2056, all covered.

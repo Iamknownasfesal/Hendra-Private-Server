@@ -1146,6 +1146,12 @@ fn handle(
                 return;
             };
 
+            // Enemies hear it too. A dungeon whose door opens when you say the right word is built
+            // out of this, and without it the door has no handle.
+            if let Some(at) = world.get(handle).map(|entity| (entity.x, entity.y)) {
+                world.heard(at, &text);
+            }
+
             let mut buf = Vec::new();
             ServerMessage::Chat {
                 from: &speaker,
