@@ -260,6 +260,31 @@ pub fn slot_accepts(
         .is_some_and(|item| item.slot_type == wanted)
 }
 
+/// Whether an item may be activated from the slot it is sitting in.
+///
+/// Follows the last line of `Player.UseItem`, which activates an item only when it is consumable or
+/// the slot it is in is the kind of slot it belongs to. Without it a player carries four tomes in
+/// the pack and uses each in turn, which is four abilities rather than one.
+///
+/// Consumables are exempt, as they are in the original: drinking a potion out of the pack is how a
+/// potion is drunk. So is anything with no slot type of its own, which is what a carried item is.
+pub fn activates_from_slot(
+    catalog: &Catalog,
+    class: &hendra_content::PlayerDesc,
+    slot: i16,
+    item: ObjectType,
+) -> bool {
+    let Some(desc) = catalog.object(item).and_then(|desc| desc.item.as_ref()) else {
+        return false;
+    };
+
+    if desc.consumable || desc.slot_type == 0 {
+        return true;
+    }
+
+    slot < EQUIPPED_SLOTS && slot_accepts(catalog, class, slot, item)
+}
+
 /// Records how far a character got, so its class counts toward unlocking the next.
 ///
 /// Called when a character dies or is saved rather than only at death: an account whose best
@@ -273,4 +298,153 @@ pub async fn record_progress(
     store
         .record_class_progress(account_id, character.class, character.level, character.fame)
         .await
+}
+
+#[cfg(test)]
+mod slots {
+    use super::*;
+
+    /// A wizard, a tome that only fits the ability slot, and a potion that fits no worn slot at
+    /// all.
+    ///
+    /// The slot types are the ones the content actually uses, which matters for the potion: every
+    /// consumable in the files has a slot type of its own, so a potion is exempt because it is
+    /// consumable and not because it fits nowhere.
+    const CONTENT: &str = r#"<Objects>
+        <Object id="Wizard" type="0x030e">
+            <Class>Wizard</Class>
+            <Player/>
+            <SlotTypes>1, 4, 6, 9</SlotTypes>
+            <Equipment>-1, -1, -1, -1</Equipment>
+        </Object>
+        <Object id="Tome of Purification">
+            <Class>Equipment</Class><Item/><SlotType>4</SlotType>
+        </Object>
+        <Object id="Wand of Sparks">
+            <Class>Equipment</Class><Item/><SlotType>1</SlotType>
+        </Object>
+        <Object id="Health Potion">
+            <Class>Equipment</Class><Item/><SlotType>10</SlotType><Consumable/>
+        </Object>
+    </Objects>"#;
+
+    fn content() -> Catalog {
+        Catalog::load_str(&[CONTENT]).0
+    }
+
+    fn wizard(catalog: &Catalog) -> &hendra_content::PlayerDesc {
+        let kind = catalog.type_of("Wizard").expect("the class");
+        catalog.class(kind).expect("the class description")
+    }
+
+    #[test]
+    fn an_ability_works_from_the_slot_it_is_worn_in() {
+        let catalog = content();
+        let tome = catalog.type_of("Tome of Purification").expect("the tome");
+
+        assert!(activates_from_slot(&catalog, wizard(&catalog), 1, tome));
+    }
+
+    #[test]
+    fn an_ability_carried_in_the_pack_does_nothing() {
+        // Or a player carries four tomes and uses each in turn, which is four abilities rather
+        // than one.
+        let catalog = content();
+        let tome = catalog.type_of("Tome of Purification").expect("the tome");
+
+        assert!(!activates_from_slot(&catalog, wizard(&catalog), 5, tome));
+        assert!(!activates_from_slot(&catalog, wizard(&catalog), 11, tome));
+    }
+
+    #[test]
+    fn an_ability_in_the_wrong_worn_slot_does_nothing_either() {
+        let catalog = content();
+        let tome = catalog.type_of("Tome of Purification").expect("the tome");
+
+        assert!(!activates_from_slot(&catalog, wizard(&catalog), 0, tome));
+        assert!(!activates_from_slot(&catalog, wizard(&catalog), 2, tome));
+        assert!(!activates_from_slot(&catalog, wizard(&catalog), 3, tome));
+    }
+
+    #[test]
+    fn a_potion_is_drunk_from_wherever_it_is() {
+        // The exemption the original has: drinking out of the pack is how a potion is drunk.
+        let catalog = content();
+        let potion = catalog.type_of("Health Potion").expect("the potion");
+
+        assert!(activates_from_slot(&catalog, wizard(&catalog), 7, potion));
+    }
+
+    #[test]
+    fn the_rule_makes_nothing_in_the_content_unusable() {
+        // The risk in refusing an activation from the pack is refusing one that was fine. Every
+        // item the game lets you use from the pack is consumable, and everything else with an
+        // activate is equipment: a shield that shoots, a ring that boosts. If that ever stops being
+        // true, something usable has quietly become unusable.
+        let Ok((catalog, _)) =
+            Catalog::load_dir(std::path::Path::new("../../../godot-client/assets/xml"))
+        else {
+            eprintln!("skipping: the content files are not where the test looks for them");
+            return;
+        };
+
+        let worn: std::collections::HashSet<i32> = catalog
+            .classes()
+            .iter()
+            .flat_map(|class| (0..EQUIPPED_SLOTS).filter_map(|slot| class.slot_type(slot as usize)))
+            .collect();
+
+        let mut checked = 0;
+        let mut stranded = Vec::new();
+        for number in 0..u16::MAX {
+            let Some(desc) = catalog.object(ObjectType(number)) else {
+                continue;
+            };
+            let Some(item) = desc.item.as_ref() else {
+                continue;
+            };
+            if item.activate.is_empty() || item.consumable || item.slot_type == 0 {
+                continue;
+            }
+            checked += 1;
+
+            if !worn.contains(&item.slot_type) {
+                stranded.push(desc);
+            }
+        }
+
+        assert!(checked > 100, "only {checked} items were judged");
+
+        // What is left names the potion slot type and so belongs in no worn slot at all. The
+        // original refuses these from the pack by the same arithmetic, so it is the shape of the
+        // content rather than a hole this rule opened. All of them summon a pet, which this server
+        // does not have; anything else appearing here would be a usable item quietly made unusable.
+        for desc in &stranded {
+            let item = desc.item.as_ref().expect("an item");
+            assert!(
+                item.activate.iter().all(|activate| matches!(
+                    hendra_content::Effect::of(activate),
+                    hendra_content::Effect::Pet { .. }
+                )),
+                "{} can be activated but no class can wear it",
+                desc.id
+            );
+        }
+    }
+
+    #[test]
+    fn a_worn_slot_takes_only_what_the_class_wears_in_it() {
+        let catalog = content();
+        let class = wizard(&catalog);
+        let wand = catalog.type_of("Wand of Sparks").expect("the wand");
+        let tome = catalog.type_of("Tome of Purification").expect("the tome");
+
+        assert!(slot_accepts(&catalog, class, 0, wand));
+        assert!(!slot_accepts(&catalog, class, 0, tome));
+        assert!(slot_accepts(&catalog, class, 1, tome));
+        assert!(!slot_accepts(&catalog, class, 1, wand));
+
+        // A carried slot has no opinion, which is what makes it carried.
+        assert!(slot_accepts(&catalog, class, 6, tome));
+    }
 }

@@ -879,3 +879,29 @@ category by category. It found thirteen things, one of them a mechanic that sile
   The original returns the item to the slot and refuses. Ours told the player they already had one
   and consumed it anyway, because the refusal happened in the effect and the consumption happened
   after. Checked before the item is spent.
+
+- [x] An ability works where it is worn and nowhere else
+
+  The last line of `Player.UseItem` activates an item only when it is consumable or the slot it is
+  in is the kind of slot it belongs to. We checked neither, so a player could carry four tomes in the
+  pack and use each in turn, which is four abilities rather than one.
+
+  The exemption is load-bearing rather than decorative: every one of the 439 consumables in the
+  content has a slot type of its own, so a potion is usable from the pack because it is consumable
+  and not because it fits nowhere. Every utility item, including the backpack and the boosts, is
+  consumable too, so the rule refuses equipment and nothing else.
+
+  Checked against the whole content: the only items with an activate that no class can wear are the
+  five permanent pets, which name the potion slot type. The original refuses those from the pack by
+  the same arithmetic, and this server has no pets anyway.
+
+- [x] A bag was the way around the worn-slot rule
+
+  `move_item` refuses to put a sword in a wizard's weapon slot, and taking an item out of a bag
+  returned before reaching that check. So the rule held for everything except the one route items
+  most often arrive by. Refused now, and the item goes back to the bag by the path that was already
+  there for a full inventory.
+
+  Not a gap: the four further worn slots. The original gives a class eight typed slots, of which
+  ours models four; slot types 52 to 55 are the other four and no item in the content has one, so
+  they are four slots that can hold nothing.

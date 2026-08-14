@@ -900,6 +900,16 @@ async fn take_from_bag(
     }
 
     let outcome = match locate(destination, player.character.id, player.account.id) {
+        // A worn slot only takes what the class wears in it. Checked here as well as in `move_item`
+        // because a bag is the one route into a worn slot that does not pass through it: without
+        // this a wizard takes a sword straight out of a bag and shoots with it.
+        Some(Location::Inventory { slot, .. })
+            if slot < EQUIPPED_SLOTS as i16
+                && !worn_slot_accepts(context, player, slot, ObjectType(item)) =>
+        {
+            Err(hendra_store::StoreError::Refused("that does not go there"))
+        }
+
         // A named durable slot: it has to be free, because there is nothing to swap with.
         Some(Location::Inventory { character_id, slot }) => context
             .store
@@ -944,7 +954,14 @@ async fn take_from_bag(
             .await;
 
         tracing::debug!(%err, "returned an item to its bag");
-        say(link, "there is no room for that").await;
+        say(
+            link,
+            match err {
+                hendra_store::StoreError::Refused(why) => why,
+                _ => "there is no room for that",
+            },
+        )
+        .await;
         return;
     }
 
@@ -1036,6 +1053,27 @@ fn stacks_as(catalog: &hendra_content::Catalog, item: ObjectType) -> Option<bool
         MAGIC_POTION => Some(true),
         _ => None,
     }
+}
+
+/// Whether a worn slot takes this item, for the routes that do not go through `move_item`.
+///
+/// A class whose description is missing accepts anything, for the same reason `move_item` allows
+/// the move: refusing everything a character does is a worse answer than allowing it.
+fn worn_slot_accepts(
+    context: &Context,
+    player: &crate::accounts::Session,
+    slot: i16,
+    item: ObjectType,
+) -> bool {
+    let Some(class) = context
+        .catalog
+        .type_of_uuid(player.character.class)
+        .and_then(|found| context.catalog.class(found))
+    else {
+        return true;
+    };
+
+    hendra_characters::slot_accepts(&context.catalog, class, slot, item)
 }
 
 /// Whether using this item would give a backpack.
@@ -1885,6 +1923,18 @@ async fn use_item(
         say(link, "that is not something you can use").await;
         return;
     };
+
+    // An ability works where it is worn and nowhere else, or a player carries four tomes in the
+    // pack and uses each in turn.
+    if let Some(class) = context
+        .catalog
+        .type_of_uuid(player.character.class)
+        .and_then(|found| context.catalog.class(found))
+        && !hendra_characters::activates_from_slot(&context.catalog, class, slot as i16, kind)
+    {
+        say(link, "that only works when you are wearing it").await;
+        return;
+    }
 
     // A backpack somebody already has is handed back rather than eaten. The refusal has to happen
     // before the item is spent, since everything below this point consumes it: a player who used a
