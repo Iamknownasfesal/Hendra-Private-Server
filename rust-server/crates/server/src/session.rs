@@ -2081,6 +2081,12 @@ fn arrival_of(player: &crate::accounts::Session, context: &Context) -> crate::wo
 
     crate::world_task::Arrival {
         avatar,
+
+        // Read when the session started rather than at every door: a boost lasts half an hour and a
+        // player walks through a dozen doors in one, so re-reading it per world would be a query
+        // per door for a number that has not moved.
+        loot_drop: player.loot_drop,
+
         stats,
         boosts: worn_boosts(&context.catalog, &player.character.inventory),
         hp: player.character.hp.clamp(1, max_hp),

@@ -740,8 +740,18 @@ category by category. It found thirteen things, one of them a mechanic that sile
 
 ### 18.9 Anti-cheat strikes — **M**
 
-- [ ] Five named offences are recorded in the original and nothing is recorded here, so there is no
+- [x] Five named offences are recorded in the original and nothing is recorded here, so there is no
       repeat-offender signal
+
+  `crates/server/src/strikes.rs`. The world already refuses each thing on its own and none of that
+  needs a record to be correct; what a record adds is the difference between one refusal and forty
+  in ten seconds, which is the difference between a bad connection and a changed client. Twelve
+  inside a ten-second window ends the connection, from the original.
+
+  The account is left alone deliberately. Everything counted is a judgement made from timings over a
+  network, and a network can produce all of it honestly, so the connection is cut and the reason
+  logged for somebody to read. A server that banned on arithmetic would eventually ban somebody on
+  a train.
 
 ### 18.10 Vault broadcast — **S**
 
@@ -753,7 +763,15 @@ category by category. It found thirteen things, one of them a mechanic that sile
 
 ### 18.12 Loot boosts — **S**
 
-- [ ] `LTBoosted` and `LDBoosted`: loot-tier and loot-drop boosts, which the loot roll should apply
+- [x] `LTBoosted` and `LDBoosted`: loot-tier and loot-drop boosts, which the loot roll should apply
+
+  The boosts were granted, stored with an expiry, and never read by anything that rolls loot. The
+  drop boost now multiplies the chance on loot that belongs to whoever earned it, which is the roll
+  that knows whose boost applies. A multiplier rather than a bonus, as the original has it: worth
+  more on something that already drops often.
+
+  Not done: the luck stat, which the original reads as boost index ten. This server models eight
+  stats and has no tenth, so there is nothing to read. Faking it would be inventing a number.
 
 ### 18.13 Pets — **not wanted**
 

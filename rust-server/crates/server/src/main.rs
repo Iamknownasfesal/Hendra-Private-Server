@@ -15,6 +15,7 @@ mod accounts;
 mod chat;
 mod commands;
 mod session;
+mod strikes;
 mod trades;
 mod world_task;
 mod worlds;

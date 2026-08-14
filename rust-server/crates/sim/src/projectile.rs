@@ -408,6 +408,7 @@ mod tests {
             belongs_to: None,
             damage_by: Vec::new(),
             last_hurt_by: None,
+            loot_drop: 1.0,
             boosts: Vec::new(),
             tally: crate::fame::Tally::default(),
             teleport_cooldown_ms: 0,

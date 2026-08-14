@@ -29,6 +29,12 @@ pub struct StartingKit {
 pub struct Session {
     pub account: Account,
     pub character: Character,
+
+    /// How much likelier this account is to be given loot, from whatever boost it holds.
+    ///
+    /// One for everybody without one. Read once when the session starts rather than at every door:
+    /// a boost lasts half an hour and a player walks through a dozen doors in one.
+    pub loot_drop: f32,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -88,14 +94,24 @@ pub async fn log_in(
         && character.account_id == account.id
         && character.alive
     {
-        return Ok(Session { account, character });
+        let loot_drop = loot_drop_for(store, account.id).await;
+        return Ok(Session {
+            account,
+            character,
+            loot_drop,
+        });
     }
 
     let living = store.characters(account.id).await?;
     if let Some(first) = living.first()
         && let Ok(character) = store.character(first.id).await
     {
-        return Ok(Session { account, character });
+        let loot_drop = loot_drop_for(store, account.id).await;
+        return Ok(Session {
+            account,
+            character,
+            loot_drop,
+        });
     }
 
     // Nobody with a living character reaches here, so this is a first arrival: they are given one
@@ -113,5 +129,26 @@ pub async fn log_in(
         hendra_characters::CreateError::Store(err) => LoginError::Store(err),
         other => LoginError::NoCharacter(other.to_string()),
     })?;
-    Ok(Session { account, character })
+    let loot_drop = loot_drop_for(store, account.id).await;
+    Ok(Session {
+        account,
+        character,
+        loot_drop,
+    })
+}
+
+/// How much likelier an account is to be given loot right now.
+///
+/// One for everybody without a boost. The original reads whether the boost has time left and
+/// multiplies by one and a half; the multiplier is stored with the boost here, so a content drop
+/// can offer a different one without a code change.
+async fn loot_drop_for(store: &Store, account_id: i64) -> f32 {
+    store
+        .boosts(account_id)
+        .await
+        .unwrap_or_default()
+        .iter()
+        .find(|boost| boost.kind == "loot_drop")
+        .map(|boost| boost.multiplier)
+        .unwrap_or(1.0)
 }

@@ -464,6 +464,12 @@ struct Player {
     /// and the session's job is to write it down, not to decide whether to.
     died: mpsc::Sender<Departed>,
 
+    /// What this connection has been refused lately.
+    ///
+    /// Per connection rather than per account, because it is a judgement about a link: the same
+    /// person on a better line is not the same case.
+    strikes: crate::strikes::Strikes,
+
     /// What this player has been sent, so a snapshot can be a delta against what they confirm.
     history: BaselineRing<WorldSnapshot>,
     encoder: SnapshotEncoder,
@@ -653,6 +659,11 @@ pub struct Loadout {
 #[derive(Debug, Clone, Copy)]
 pub struct Arrival {
     pub avatar: ObjectType,
+
+    /// How much likelier this account is to be given loot, from whatever boost it holds. One for
+    /// everybody without one.
+    pub loot_drop: f32,
+
     pub hp: i32,
     pub max_hp: i32,
     pub weapon: Option<ObjectType>,
@@ -840,6 +851,7 @@ fn handle(
 
             let mut entity = Entity::player(avatar, x, y, max_hp);
             entity.stats = arrival.stats;
+            entity.loot_drop = arrival.loot_drop;
             entity.stats.set_equipment(arrival.boosts);
             entity.hp = arrival.hp.clamp(1, max_hp);
             entity.name = Some(name.as_str().into());
@@ -862,6 +874,7 @@ fn handle(
                 sender,
                 orders,
                 died,
+                strikes: crate::strikes::Strikes::new(),
                 history: BaselineRing::new(),
                 encoder: SnapshotEncoder::with_budget(budget),
                 acknowledged: Acknowledgement::NONE,
@@ -887,6 +900,37 @@ fn handle(
             if let Some(outcome) =
                 world.resolve_move(handle, catalog, x, y, tick_ms(client_time_ms))
             {
+                // A refusal on its own is not evidence of anything: a bad line produces every one
+                // of these honestly. What is worth noticing is the rate, so they are counted and
+                // the counting is what decides whether a connection is worth keeping.
+                if let Some(why) = outcome.refused
+                    && let Some(player) = players.iter_mut().find(|player| player.handle == handle)
+                {
+                    let verdict = player.strikes.note(std::time::Instant::now());
+
+                    tracing::debug!(
+                        world = %world.name,
+                        name = %player.name,
+                        ?why,
+                        held = player.strikes.held(),
+                        "a move was refused"
+                    );
+
+                    if verdict == crate::strikes::Verdict::Cut {
+                        tracing::info!(
+                            world = %world.name,
+                            name = %player.name,
+                            ?why,
+                            "cutting a connection that will not stop being refused"
+                        );
+
+                        // The account is left alone deliberately. Everything counted here is a
+                        // judgement made from timings over a network, and a network can produce all
+                        // of it honestly; the log is for somebody to read before anything permanent.
+                        player.sender.close("moving faster than it can");
+                    }
+                }
+
                 world.place(handle, outcome);
             }
         }

@@ -138,6 +138,13 @@ pub struct Entity {
     /// hurt. Cleared once read, so a hit counts toward exactly one tick.
     pub damage_since_tick: i32,
 
+    /// How much more likely this player is to be given loot, as a multiplier.
+    ///
+    /// One for everybody without a boost. The original reads `LDBoostTime > 0` and multiplies by
+    /// one and a half; the boost itself is durable and its remaining time is the account's, so what
+    /// reaches the world is the multiplier rather than the clock.
+    pub loot_drop: f32,
+
     /// Temporary stat boosts, each with what is left of its time.
     ///
     /// Held as a list rather than folded into a total, because they do not add: the largest counts
@@ -247,6 +254,7 @@ impl Entity {
             damage_since_tick: 0,
             damage_by: Vec::new(),
             last_hurt_by: None,
+            loot_drop: 1.0,
             boosts: Vec::new(),
             tally: crate::fame::Tally::default(),
             texture: 0,
@@ -294,6 +302,7 @@ impl Entity {
             damage_since_tick: 0,
             damage_by: Vec::new(),
             last_hurt_by: None,
+            loot_drop: 1.0,
             boosts: Vec::new(),
             tally: crate::fame::Tally::default(),
             texture: 0,
@@ -2340,9 +2349,15 @@ impl World {
                             continue;
                         }
 
+                        let luckier = self
+                            .entities
+                            .get(*who)
+                            .map(|player| player.loot_drop)
+                            .unwrap_or(1.0);
+
                         let mut theirs = Vec::new();
                         for child in children {
-                            if let Some(item) = self.roll_loot(child, catalog) {
+                            if let Some(item) = self.roll_loot_for(child, catalog, luckier) {
                                 theirs.push(item);
                             }
                         }
@@ -2453,11 +2468,25 @@ impl World {
         entry: &hendra_behavior::program::LootEntry,
         catalog: &Catalog,
     ) -> Option<ObjectType> {
+        self.roll_loot_for(entry, catalog, 1.0)
+    }
+
+    /// The same roll, with whatever makes this player luckier than the last.
+    ///
+    /// A multiplier rather than a bonus, as the original has it: a boost is worth more on something
+    /// that already drops often, which is what makes it worth having on a run rather than on one
+    /// kill.
+    fn roll_loot_for(
+        &mut self,
+        entry: &hendra_behavior::program::LootEntry,
+        catalog: &Catalog,
+        luckier: f32,
+    ) -> Option<ObjectType> {
         use hendra_behavior::program::LootEntry;
 
         match entry {
             LootEntry::Item { name, chance } => {
-                if self.roll() > *chance {
+                if self.roll() > *chance * luckier {
                     return None;
                 }
                 catalog.type_of(name)
@@ -2468,7 +2497,7 @@ impl World {
             LootEntry::Threshold { .. } => None,
 
             LootEntry::Tier { tier, kind, chance } => {
-                if self.roll() > *chance {
+                if self.roll() > *chance * luckier {
                     return None;
                 }
 
@@ -6260,6 +6289,52 @@ mod tests {
         assert_eq!(world.player_named("fesal"), Some(handle));
         assert_eq!(world.player_named("FESAL"), Some(handle));
         assert_eq!(world.player_named("Nobody"), None);
+    }
+
+    #[test]
+    fn a_loot_boost_makes_earned_loot_likelier() {
+        // A multiplier rather than a bonus, as the original has it: a boost is worth more on
+        // something that already drops often, which is what makes it worth having on a run.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let entry = hendra_behavior::program::LootEntry::Item {
+            name: "Rare Blade".to_string(),
+            chance: 0.5,
+        };
+
+        // Decisive rather than statistical. Comparing two runs of a random draw can agree by luck,
+        // and a test that can pass by luck passes with the multiplier taken out as well: this one
+        // did, which is why it is written this way. Half a chance doubled is a certainty.
+        for _ in 0..200 {
+            assert!(
+                world.roll_loot_for(&entry, &catalog, 2.0).is_some(),
+                "a doubled half-chance missed"
+            );
+        }
+
+        // And without it, some of them miss.
+        let missed = (0..200)
+            .filter(|_| world.roll_loot_for(&entry, &catalog, 1.0).is_none())
+            .count();
+        assert!(missed > 0, "an unboosted half-chance never missed");
+    }
+
+    #[test]
+    fn a_boost_cannot_make_something_drop_that_never_drops() {
+        // A multiplier on nothing is nothing, which is what keeps a boost from turning a table
+        // entry with no chance into a certainty.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let never = hendra_behavior::program::LootEntry::Item {
+            name: "Rare Blade".to_string(),
+            chance: 0.0,
+        };
+
+        for _ in 0..200 {
+            assert!(world.roll_loot_for(&never, &catalog, 10.0).is_none());
+        }
     }
 
     #[test]
