@@ -805,7 +805,7 @@ async fn administering(
         .await
         .map_err(|_| refuse(StatusCode::UNAUTHORIZED, "no such account"))?;
 
-    if Admin::from_number(caller.admin_rank) < Admin::Administrator {
+    if Admin::from_number(caller.admin_rank) < Admin::OWNER {
         return Err(refuse(StatusCode::FORBIDDEN, "no permission"));
     }
 

@@ -20,26 +20,51 @@
 use hendra_store::Admin;
 
 /// What a command needs before it will run.
+///
+/// The rungs are the original's, which declares each command with a `permLevel` and compares the
+/// account's rank against it. Naming them rather than writing the numbers at each command keeps the
+/// ladder in one place, and the numbers are what the comparison uses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Needs {
     /// Anybody.
     Nobody,
 
-    /// A moderator or above.
+    /// A supporter: cosmetics and the donor shop. `permLevel: 10`.
+    Supporter,
+
+    /// Trusted with items rather than with players. `permLevel: 40`.
+    Tester,
+
+    /// Trusted with the players in a world: kick, mute, ban. `permLevel: 80`.
     Moderator,
 
-    /// An administrator.
-    Administrator,
+    /// Trusted to put things into a world that were not there: spawn, loot. `permLevel: 90`.
+    Content,
+
+    /// Trusted with the ranks of others. `permLevel: 95`.
+    GuildMaster,
+
+    /// Trusted with the map itself: setpieces, ground. `permLevel: 100`.
+    Owner,
 }
 
 impl Needs {
+    /// The rank this asks for.
+    pub fn rank(self) -> Admin {
+        match self {
+            Needs::Nobody => Admin::NONE,
+            Needs::Supporter => Admin::SUPPORTER,
+            Needs::Tester => Admin::TESTER,
+            Needs::Moderator => Admin::MODERATOR,
+            Needs::Content => Admin::CONTENT,
+            Needs::GuildMaster => Admin::GUILD_MASTER,
+            Needs::Owner => Admin::OWNER,
+        }
+    }
+
     /// Whether a rank is enough.
     pub fn met_by(self, rank: Admin) -> bool {
-        match self {
-            Needs::Nobody => true,
-            Needs::Moderator => rank.may_mute(),
-            Needs::Administrator => rank.may_ban(),
-        }
+        rank.meets(self.rank())
     }
 }
 
@@ -295,7 +320,7 @@ pub const ALL: &[Command] = &[
     Command {
         name: "donorshop",
         aliases: &[],
-        needs: Needs::Nobody,
+        needs: Needs::Supporter,
         summary: "go to the donor shop",
     },
     Command {
@@ -492,92 +517,92 @@ pub const ALL: &[Command] = &[
     Command {
         name: "ban",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Moderator,
         summary: "keep a player out",
     },
     Command {
         name: "unban",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Moderator,
         summary: "let them back",
     },
     Command {
         name: "rank",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Content,
         summary: "set a player's rank",
     },
     Command {
         name: "setfame",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Content,
         summary: "set a player's fame",
     },
     Command {
         name: "setgold",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Content,
         summary: "set a player's gold",
     },
     Command {
         name: "setprestige",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Content,
         summary: "set a player's prestige",
     },
     Command {
         name: "gift",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Content,
         summary: "send a player an item",
     },
     Command {
         name: "rename",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Moderator,
         summary: "rename an account",
     },
     Command {
         name: "unname",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Moderator,
         summary: "take an account's name away",
     },
     // Tools for looking at the world rather than at an account.
     Command {
         name: "spawn",
         aliases: &["summon"],
-        needs: Needs::Administrator,
+        needs: Needs::Content,
         summary: "put an enemy in front of you",
     },
     Command {
         name: "gimme",
         aliases: &["give"],
-        needs: Needs::Administrator,
+        needs: Needs::Tester,
         summary: "put an item in your pack",
     },
     Command {
         name: "killall",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Owner,
         summary: "kill every enemy of a kind here",
     },
     Command {
         name: "max",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Tester,
         summary: "set your stats to their maximum",
     },
     Command {
         name: "level20",
         aliases: &["maxlevel"],
-        needs: Needs::Administrator,
+        needs: Needs::Nobody,
         summary: "set your level to twenty",
     },
     Command {
         name: "size",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Supporter,
         summary: "set how large you are drawn",
     },
     Command {
@@ -589,49 +614,49 @@ pub const ALL: &[Command] = &[
     Command {
         name: "clearinv",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Moderator,
         summary: "empty your pack",
     },
     Command {
         name: "quake",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Content,
         summary: "send everyone here to another world",
     },
     Command {
         name: "closerealm",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Content,
         summary: "close this realm now",
     },
     Command {
         name: "visit",
         aliases: &[],
-        needs: Needs::Moderator,
+        needs: Needs::Content,
         summary: "go to the world a player is in",
     },
     Command {
         name: "resetfame",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Owner,
         summary: "set a player's fame to nothing",
     },
     Command {
         name: "removeallgold",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Owner,
         summary: "set a player's gold to nothing",
     },
     Command {
         name: "banip",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Moderator,
         summary: "keep an address out",
     },
     Command {
         name: "uptimeall",
         aliases: &["worlds"],
-        needs: Needs::Moderator,
+        needs: Needs::Content,
         summary: "which worlds are running",
     },
     // The rest a player may use about their own game.
@@ -681,139 +706,139 @@ pub const ALL: &[Command] = &[
     Command {
         name: "eff",
         aliases: &["effect"],
-        needs: Needs::Administrator,
+        needs: Needs::Content,
         summary: "give yourself a condition",
     },
     Command {
         name: "glow",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Supporter,
         summary: "set the colour you glow",
     },
     Command {
         name: "music",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Content,
         summary: "set what is playing here",
     },
     Command {
         name: "setstar",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Content,
         summary: "set a player's star count",
     },
     Command {
         name: "killplayer",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Content,
         summary: "kill a player's character",
     },
     Command {
         name: "summonall",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Content,
         summary: "bring everybody here to you",
     },
     Command {
         name: "override",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Content,
         summary: "act as another account",
     },
     Command {
         name: "removeoverride",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Content,
         summary: "stop acting as another account",
     },
     Command {
         name: "link",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Content,
         summary: "make this world reachable by name",
     },
     Command {
         name: "unlink",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Supporter,
         summary: "stop it being reachable by name",
     },
     Command {
         name: "setpiece",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Owner,
         summary: "draw a setpiece where you stand",
     },
     Command {
         name: "lootspawn",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Content,
         summary: "drop an item at your feet",
     },
     Command {
         name: "cleargraves",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Moderator,
         summary: "clear the graves here",
     },
     Command {
         name: "clearspawn",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Moderator,
         summary: "clear the enemies here",
     },
     Command {
         name: "addwelcomemessage",
         aliases: &["setwelcome"],
-        needs: Needs::Administrator,
+        needs: Needs::Owner,
         summary: "set what players are told on arrival",
     },
     Command {
         name: "set",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Owner,
         summary: "set one of your stats",
     },
     Command {
         name: "reskin",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Supporter,
         summary: "wear a skin without owning it",
     },
     Command {
         name: "tq",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Owner,
         summary: "go to your quest",
     },
     Command {
         name: "warg",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Owner,
         summary: "control an enemy",
     },
     Command {
         name: "debug",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Owner,
         summary: "what the world is doing",
     },
     Command {
         name: "reboot",
         aliases: &["shutdown"],
-        needs: Needs::Administrator,
+        needs: Needs::Owner,
         summary: "stop the server",
     },
     Command {
         name: "wipeserver",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Owner,
         summary: "refuse: nothing here does this",
     },
     Command {
         name: "compactloh",
         aliases: &[],
-        needs: Needs::Administrator,
+        needs: Needs::Owner,
         summary: "refuse: there is no such heap here",
     },
 ];
@@ -1139,20 +1164,27 @@ mod tests {
 
     #[test]
     fn ranks_are_what_they_say() {
-        assert!(Needs::Nobody.met_by(Admin::None));
-        assert!(!Needs::Moderator.met_by(Admin::None));
-        assert!(Needs::Moderator.met_by(Admin::Moderator));
+        assert!(Needs::Nobody.met_by(Admin::NONE));
+        assert!(!Needs::Moderator.met_by(Admin::NONE));
+        assert!(Needs::Moderator.met_by(Admin::MODERATOR));
 
         // A moderator may not ban, which is the whole reason the two ranks are separate.
-        assert!(!Needs::Administrator.met_by(Admin::Moderator));
-        assert!(Needs::Administrator.met_by(Admin::Administrator));
+        assert!(!Needs::Owner.met_by(Admin::MODERATOR));
+        assert!(Needs::Owner.met_by(Admin::OWNER));
     }
 
     #[test]
     fn only_moderation_and_tools_ask_for_a_rank() {
         // Everything a player types about their own game should be theirs to type. A command that
         // asked for a rank and then did something ordinary would be one nobody could reach.
-        for command in ALL.iter().filter(|command| command.needs != Needs::Nobody) {
+        //
+        // The supporter rung is the exception, and is one in the original too: `permLevel: 10`
+        // gates perks — the donor shop, a glow, a reskin — rather than powers. Those do something
+        // ordinary on purpose, and the rank is who is allowed the perk rather than what it does.
+        for command in ALL
+            .iter()
+            .filter(|command| !matches!(command.needs, Needs::Nobody | Needs::Supporter))
+        {
             let action = read(command.name, "somebody something").expect("it reads");
             assert!(
                 matches!(action, Action::Moderate { .. } | Action::Wield { .. }),

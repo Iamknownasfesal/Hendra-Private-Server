@@ -33,35 +33,57 @@ pub struct Account {
     pub credits: i32,
 }
 
-/// What a moderator may do.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-#[repr(i16)]
-pub enum Admin {
-    /// An ordinary player.
-    None = 0,
-
-    /// May mute and kick.
-    Moderator = 10,
-
-    /// May ban, and may raise others.
-    Administrator = 20,
-}
+/// How far an account is trusted, as a number.
+///
+/// A ladder rather than a handful of tiers, because the original's is one:
+/// `Command.HasPermission` compares the account's rank against the level the command was declared
+/// with, and those levels run 0, 8, 10, 40, 80, 90, 95, 100 across the fifty-four ranked commands.
+/// Collapsing them makes handing out an item as trusted as stamping a setpiece into a live world,
+/// which are not the same amount of damage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub struct Admin(pub i16);
 
 impl Admin {
+    /// An ordinary player.
+    pub const NONE: Admin = Admin(0);
+
+    /// A supporter: cosmetics and the donor shop.
+    pub const SUPPORTER: Admin = Admin(10);
+
+    /// Trusted with items.
+    pub const TESTER: Admin = Admin(40);
+
+    /// Trusted with the players in a world: kick, mute, ban.
+    pub const MODERATOR: Admin = Admin(80);
+
+    /// Trusted to put things into a world that were not there.
+    pub const CONTENT: Admin = Admin(90);
+
+    /// Trusted with the ranks of others.
+    pub const GUILD_MASTER: Admin = Admin(95);
+
+    /// Trusted with the map itself.
+    pub const OWNER: Admin = Admin(100);
+
     pub fn from_number(number: i16) -> Admin {
-        match number {
-            n if n >= Admin::Administrator as i16 => Admin::Administrator,
-            n if n >= Admin::Moderator as i16 => Admin::Moderator,
-            _ => Admin::None,
-        }
+        Admin(number.clamp(0, 100))
+    }
+
+    pub fn rank(self) -> i16 {
+        self.0
+    }
+
+    /// Whether this rank meets a command's declared level.
+    pub fn meets(self, needed: Admin) -> bool {
+        self >= needed
     }
 
     pub fn may_mute(self) -> bool {
-        self >= Admin::Moderator
+        self.meets(Admin::MODERATOR)
     }
 
     pub fn may_ban(self) -> bool {
-        self >= Admin::Administrator
+        self.meets(Admin::MODERATOR)
     }
 }
 
@@ -983,7 +1005,7 @@ impl Store {
     pub async fn set_admin_rank(&self, account_id: i64, rank: Admin) -> Result<()> {
         sqlx::query("UPDATE account SET admin_rank = $2 WHERE id = $1")
             .bind(account_id)
-            .bind(rank as i16)
+            .bind(rank.rank())
             .execute(self.pool())
             .await?;
         Ok(())

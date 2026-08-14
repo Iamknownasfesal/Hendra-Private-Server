@@ -39,9 +39,8 @@ fn main() {
 
     for command in commands::ALL {
         let rank = match command.needs {
-            commands::Needs::Nobody => "",
-            commands::Needs::Moderator => " (moderator)",
-            commands::Needs::Administrator => " (administrator)",
+            commands::Needs::Nobody => String::new(),
+            needs => format!(" (rank {})", needs.rank().rank()),
         };
 
         let spellings = if command.aliases.is_empty() {

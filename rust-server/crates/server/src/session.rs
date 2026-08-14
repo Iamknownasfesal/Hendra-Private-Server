@@ -1336,7 +1336,7 @@ async fn run_command(
 
     let rank = match context.store.account(player.account.id).await {
         Ok(account) => Admin::from_number(account.admin_rank),
-        Err(_) => Admin::None,
+        Err(_) => Admin::NONE,
     };
 
     // Somebody who may not use a command is told it does not exist rather than that they may not,
@@ -3190,7 +3190,7 @@ async fn report(
                 .account(player.account.id)
                 .await
                 .map(|account| hendra_store::Admin::from_number(account.admin_rank))
-                .unwrap_or(hendra_store::Admin::None);
+                .unwrap_or(hendra_store::Admin::NONE);
 
             // Only what they may actually use. Listing the rest would be telling everybody what a
             // moderator can do and inviting them to try.
@@ -3343,9 +3343,9 @@ async fn moderate(
 
         Moderation::Rank => {
             let rank = match rest.trim().to_ascii_lowercase().as_str() {
-                "admin" | "administrator" => hendra_store::Admin::Administrator,
-                "mod" | "moderator" => hendra_store::Admin::Moderator,
-                _ => hendra_store::Admin::None,
+                "admin" | "administrator" => hendra_store::Admin::OWNER,
+                "mod" | "moderator" => hendra_store::Admin::MODERATOR,
+                _ => hendra_store::Admin::NONE,
             };
 
             context

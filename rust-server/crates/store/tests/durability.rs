@@ -1732,12 +1732,12 @@ async fn a_moderator_may_mute_and_an_administrator_may_ban() {
     };
 
     let player = store.create_account("Fesal").await.unwrap();
-    assert_eq!(Admin::from_number(player.admin_rank), Admin::None);
-    assert!(!Admin::None.may_mute());
-    assert!(!Admin::None.may_ban());
+    assert_eq!(Admin::from_number(player.admin_rank), Admin::NONE);
+    assert!(!Admin::NONE.may_mute());
+    assert!(!Admin::NONE.may_ban());
 
     store
-        .set_admin_rank(player.id, Admin::Moderator)
+        .set_admin_rank(player.id, Admin::MODERATOR)
         .await
         .unwrap();
     let moderator = store.account(player.id).await.unwrap();
@@ -1748,7 +1748,7 @@ async fn a_moderator_may_mute_and_an_administrator_may_ban() {
     assert!(!Admin::from_number(moderator.admin_rank).may_ban());
 
     store
-        .set_admin_rank(player.id, Admin::Administrator)
+        .set_admin_rank(player.id, Admin::OWNER)
         .await
         .unwrap();
     let admin = store.account(player.id).await.unwrap();
