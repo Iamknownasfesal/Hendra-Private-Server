@@ -529,6 +529,9 @@ pub struct World {
     handles: Vec<Handle>,
     nearby: Vec<Handle>,
 
+    /// The chunks near enough to a player that what stands in them thinks.
+    awake: std::collections::HashSet<(i32, i32)>,
+
     /// What entities have said, waiting to be sent out.
     ///
     /// Bounded, because nothing in the simulation makes a taunt stop: a boss left alive in an
@@ -672,6 +675,7 @@ impl World {
             bag_types: Vec::new(),
             handles: Vec::new(),
             nearby: Vec::new(),
+            awake: std::collections::HashSet::new(),
             neighbours: Vec::new(),
             announcements: Vec::new(),
             ground_changes: Vec::new(),
@@ -1228,6 +1232,24 @@ impl World {
         // tick, which is the most expensive thing that could possibly happen in this loop.
         let behaviours = std::mem::take(&mut self.behaviours);
 
+        // Which chunks hold a player, so that only what is near one thinks. `TickLogic` ticks
+        // `EnemiesCollision.GetActiveChunks(PlayersCollision)` rather than every enemy: anything
+        // more than three chunks from a player is frozen where it stands. That is a rule about the
+        // game and not only about cost — a boss should be waiting where it was left rather than
+        // three phases further on, and a spawner should not have filled an empty room.
+        self.awake.clear();
+        for (_, entity) in self.entities.iter() {
+            if entity.kind != Kind::Player || entity.dead {
+                continue;
+            }
+            let (cx, cy) = chunk_of(entity.x, entity.y);
+            for dy in -ACTIVE_CHUNKS..=ACTIVE_CHUNKS {
+                for dx in -ACTIVE_CHUNKS..=ACTIVE_CHUNKS {
+                    self.awake.insert((cx + dx, cy + dy));
+                }
+            }
+        }
+
         self.handles.clear();
         self.handles.extend(
             self.entities
@@ -1236,6 +1258,11 @@ impl World {
                     entity.mind.is_some()
                         && !entity.dead
                         && !crate::effects::Rules::of(entity.conditions).paused
+                })
+                // A decoy is ticked wherever it is, as it is there: its whole job is to be
+                // somewhere its owner is not.
+                .filter(|(_, entity)| {
+                    entity.kind == Kind::Decoy || self.awake.contains(&chunk_of(entity.x, entity.y))
                 })
                 .map(|(handle, _)| handle),
         );
@@ -1357,6 +1384,19 @@ fn named_kinds(
             .map(|kind| ObjectType(*kind))
             .collect(),
     )
+}
+
+/// How many chunks from a player something still thinks.
+///
+/// `Collision.ACTIVE_RADIUS`, over `CHUNK_SIZE` of sixteen tiles.
+const ACTIVE_CHUNKS: i32 = 3;
+
+/// The side of one chunk, in tiles. `Collision.CHUNK_SIZE`.
+const CHUNK_SIZE: f32 = 16.0;
+
+/// Which chunk a position falls in.
+fn chunk_of(x: f32, y: f32) -> (i32, i32) {
+    ((x / CHUNK_SIZE) as i32, (y / CHUNK_SIZE) as i32)
 }
 
 /// How often ground that hurts takes its toll.
@@ -5104,6 +5144,18 @@ mod tests {
     // -- what behaviours do to the world -------------------------------------------------------
 
     /// Installs behaviours from source and gives everything already present a mind.
+    /// Puts somebody in the world so that what is in it thinks.
+    ///
+    /// Nothing ticks in a world with no players in it, which is the original's rule and not an
+    /// artefact: `TickLogic` walks out from the chunks players are standing in. Placed at the far
+    /// corner, well outside the twenty-tile sight radius, so it wakes the room without being seen
+    /// from it.
+    fn a_watcher(world: &mut World) -> Handle {
+        world
+            .spawn(Entity::player(ObjectType(0x600), 31.0, 31.0, 500))
+            .expect("room for a watcher")
+    }
+
     fn behaving(world: &mut World, catalog: &Catalog, source: &str) {
         use hendra_behavior::compile::compile;
         use hendra_behavior::parse::parse;
@@ -5144,6 +5196,7 @@ mod tests {
     fn a_boss_wakes_when_the_entity_it_watches_for_is_gone() {
         let catalog = catalog();
         let mut world = field(&catalog);
+        a_watcher(&mut world);
 
         let mut boss = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
         boss.kind = Kind::Enemy;
@@ -5185,6 +5238,7 @@ mod tests {
     fn a_conditional_effect_lands_and_lifts_when_the_state_does() {
         let catalog = catalog();
         let mut world = field(&catalog);
+        a_watcher(&mut world);
 
         let mut boss = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
         boss.kind = Kind::Enemy;
@@ -5233,6 +5287,7 @@ mod tests {
     fn a_spawn_makes_children_that_have_minds_of_their_own() {
         let catalog = catalog();
         let mut world = field(&catalog);
+        a_watcher(&mut world);
 
         let mut parent = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
         parent.kind = Kind::Enemy;
@@ -5268,6 +5323,7 @@ mod tests {
     fn an_order_drives_other_entities_into_a_state() {
         let catalog = catalog();
         let mut world = field(&catalog);
+        a_watcher(&mut world);
 
         let mut boss = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
         boss.kind = Kind::Enemy;
@@ -5397,6 +5453,7 @@ mod tests {
     fn a_transform_replaces_the_body_without_awarding_a_kill() {
         let catalog = catalog();
         let mut world = field(&catalog);
+        a_watcher(&mut world);
 
         let mut boss = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
         boss.kind = Kind::Enemy;
@@ -5421,6 +5478,7 @@ mod tests {
     fn changing_the_ground_changes_what_can_be_walked_on() {
         let catalog = catalog();
         let mut world = field(&catalog);
+        a_watcher(&mut world);
         assert!(world.terrain().walkable(10, 10), "grass to begin with");
 
         let mut boss = Entity::fixture(ObjectType(0x502), 10.5, 10.5);
@@ -5467,6 +5525,42 @@ mod tests {
         let hurt = world.get(victim).unwrap().hp;
         assert!(hurt < 500, "should have been caught in the blast");
         assert!(hurt > 0, "but not killed outright");
+    }
+
+    #[test]
+    fn nothing_thinks_in_a_room_nobody_is_standing_near() {
+        // The original ticks out from the chunks players occupy, so a boss left three phases back
+        // is where it was left rather than three phases further on, and a spawner has not filled
+        // an empty room while nobody watched.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut slime = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
+        slime.kind = Kind::Enemy;
+        slime.max_hp = 200;
+        slime.hp = 200;
+        world.spawn(slime).unwrap();
+
+        behaving(
+            &mut world,
+            &catalog,
+            r#"enemy "Slime" { state a { spawn("Spawnling", max_children: 4) } }"#,
+        );
+        world.reindex();
+
+        for _ in 0..10 {
+            world.advance(&catalog, 50);
+        }
+        assert_eq!(count_of(&world, 0x505), 0, "nobody is watching, so nothing happens");
+
+        a_watcher(&mut world);
+        world.reindex();
+        world.advance(&catalog, 50);
+
+        assert!(
+            count_of(&world, 0x505) > 0,
+            "and it starts the moment somebody is near enough"
+        );
     }
 
     #[test]
@@ -5590,6 +5684,7 @@ mod tests {
     fn an_entity_that_shrinks_stops_at_its_target_size() {
         let catalog = catalog();
         let mut world = field(&catalog);
+        a_watcher(&mut world);
 
         let mut boss = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
         boss.kind = Kind::Enemy;
@@ -6176,6 +6271,7 @@ mod tests {
     fn a_spawn_with_no_telegraph_arrives_at_once() {
         let catalog = catalog();
         let mut world = field(&catalog);
+        a_watcher(&mut world);
 
         let mut parent = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
         parent.kind = Kind::Enemy;
@@ -7560,6 +7656,7 @@ mod tests {
         // it stop. A queue nobody drains has to stop growing on its own.
         let catalog = catalog();
         let mut world = field(&catalog);
+        a_watcher(&mut world);
 
         let mut boss = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
         boss.kind = Kind::Enemy;
@@ -7817,6 +7914,7 @@ mod tests {
         // empty set looks exactly like a boss whose heal works.
         let catalog = catalog();
         let mut world = field(&catalog);
+        a_watcher(&mut world);
 
         let healer = {
             let mut entity = Entity::fixture(ObjectType(0x509), 10.0, 10.0);
