@@ -69,6 +69,11 @@ pub struct Entity {
     pub object_type: ObjectType,
     pub kind: Kind,
 
+    /// What colour this glows, for an administrator who wants to be seen.
+    ///
+    /// Zero is no glow, which is everybody.
+    pub glow: i32,
+
     /// What this entity is selling, for a shop merchant.
     ///
     /// Held on the entity rather than looked up from its type, because eight merchants of the same
@@ -189,6 +194,7 @@ impl Entity {
             object_type,
             terrain: hendra_content::Terrain::None,
             selling: None,
+            glow: 0,
             kind: Kind::Fixture,
             x,
             y,
@@ -230,6 +236,7 @@ impl Entity {
             object_type,
             terrain: hendra_content::Terrain::None,
             selling: None,
+            glow: 0,
             kind: Kind::Player,
             x,
             y,

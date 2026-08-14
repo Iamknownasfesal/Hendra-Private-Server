@@ -188,6 +188,12 @@ pub enum ToWorld {
         reply: tokio::sync::oneshot::Sender<String>,
     },
 
+    /// The nearest quest, which is the most worthwhile enemy near a player.
+    Quest {
+        handle: Handle,
+        reply: tokio::sync::oneshot::Sender<Option<(String, i32, i32)>>,
+    },
+
     /// Where a player is standing.
     Where {
         handle: Handle,
@@ -899,6 +905,10 @@ fn handle(
             let _ = reply.send(wield_in_world(world, catalog, handle, what));
         }
 
+        ToWorld::Quest { handle, reply } => {
+            let _ = reply.send(nearest_quest(world, catalog, handle));
+        }
+
         ToWorld::Where { handle, reply } => {
             let at = world
                 .get(handle)
@@ -1111,6 +1121,28 @@ fn place_gift_chest(world: &mut World, catalog: &Catalog, slots: &[(u16, u16)]) 
     placed
 }
 
+/// The most worthwhile enemy near a player, which is what a quest arrow points at.
+///
+/// The original marks some objects `Quest` and picks the nearest of those. Ours picks by the same
+/// rule, and answers with nothing rather than the closest enemy when none is marked: an arrow
+/// pointing at a slime is worse than no arrow.
+fn nearest_quest(world: &World, catalog: &Catalog, handle: Handle) -> Option<(String, i32, i32)> {
+    let player = world.get(handle)?;
+
+    world
+        .iter()
+        .filter(|(_, entity)| entity.kind == hendra_sim::Kind::Enemy && !entity.dead)
+        .filter_map(|(_, entity)| {
+            let desc = catalog.object(entity.object_type)?;
+            desc.quest.then_some((desc, entity))
+        })
+        .min_by_key(|(_, entity)| {
+            let (dx, dy) = (entity.x - player.x, entity.y - player.y);
+            (dx * dx + dy * dy) as i64
+        })
+        .map(|(desc, entity)| (desc.id.clone(), entity.x as i32, entity.y as i32))
+}
+
 /// What an administrator is doing to the world in front of them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Wielding {
@@ -1128,6 +1160,30 @@ pub enum Wielding {
 
     /// Close this realm now, wherever its clock had got to.
     CloseRealm,
+
+    /// Stop, and be left alone, until they move.
+    Pause,
+
+    /// Give the caller a condition by name.
+    Effect { name: String },
+
+    /// Set what colour the caller glows.
+    Glow { colour: i32 },
+
+    /// Kill a named player's character where it stands.
+    KillPlayer { name: String },
+
+    /// Bring everybody here to the caller.
+    SummonAll,
+
+    /// Draw a setpiece where the caller stands.
+    Setpiece { name: String },
+
+    /// Clear every enemy here.
+    ClearSpawn,
+
+    /// What the world is doing.
+    Debug,
 }
 
 /// Carries out an administrator's tool, and says what happened.
@@ -1197,6 +1253,131 @@ fn wield_in_world(world: &mut World, catalog: &Catalog, handle: Handle, what: Wi
             if hidden { "seen again" } else { "hidden" }.to_string()
         }
 
+        Wielding::Pause => {
+            // The same condition a paused player has, which is what makes it mean something: a
+            // paused player is not hit, does not hit, and is not somewhere anybody can teleport to.
+            let paused = world
+                .get(handle)
+                .is_some_and(|entity| entity.conditions.contains(PAUSED));
+
+            if let Some(entity) = world.get_mut(handle) {
+                if paused {
+                    entity.conditions.remove(PAUSED);
+                } else {
+                    entity.conditions.insert(PAUSED);
+                }
+            }
+
+            if paused { "moving again" } else { "paused" }.to_string()
+        }
+
+        Wielding::Effect { name } => {
+            let Some(effect) = hendra_content::ConditionEffect::from_name(&name) else {
+                return format!("there is no {name}");
+            };
+
+            if let Some(entity) = world.get_mut(handle) {
+                entity.conditions.insert(effect);
+            }
+            format!("{name} given")
+        }
+
+        Wielding::Glow { colour } => {
+            if let Some(entity) = world.get_mut(handle) {
+                entity.glow = colour;
+            }
+            "glowing".to_string()
+        }
+
+        Wielding::KillPlayer { name } => {
+            let Some(target) = world.player_named(&name) else {
+                return format!("{name} is not here");
+            };
+
+            if let Some(entity) = world.get_mut(target) {
+                entity.hp = 0;
+                entity.dead = true;
+            }
+            format!("{name} killed")
+        }
+
+        Wielding::SummonAll => {
+            let Some((x, y)) = world.get(handle).map(|entity| (entity.x, entity.y)) else {
+                return "you are nowhere".to_string();
+            };
+
+            // Anybody hidden is left where they are, as the original leaves them: somebody who has
+            // made themselves invisible has said where they want to be.
+            let summoned: Vec<Handle> = world
+                .iter()
+                .filter(|(held, entity)| {
+                    *held != handle
+                        && entity.kind == hendra_sim::Kind::Player
+                        && !entity.conditions.contains(HIDDEN)
+                })
+                .map(|(held, _)| held)
+                .collect();
+
+            let count = summoned.len();
+            for held in summoned {
+                if let Some(entity) = world.get_mut(held) {
+                    entity.x = x;
+                    entity.y = y;
+                    entity.move_grace_ms = hendra_sim::world::MOVE_GRACE_MS;
+                }
+            }
+
+            format!("{count} summoned")
+        }
+
+        Wielding::Setpiece { name } => {
+            let Some(kind) = hendra_sim::setpiece::Kind::named(&name) else {
+                return format!("there is no {name}");
+            };
+            let Some((x, y)) = world.get(handle).map(|entity| (entity.x, entity.y)) else {
+                return "you are nowhere".to_string();
+            };
+
+            let half = kind.size() as f32 / 2.0;
+            let at = ((x - half).max(0.0) as u32, (y - half).max(0.0) as u32);
+
+            let mut dice = hendra_sim::setpiece::Dice::new(at.0 ^ at.1 ^ 0x5e7);
+            let drawing = kind.draw(&mut dice);
+            let missing = world.draw(catalog, &drawing, at);
+
+            if missing.is_empty() {
+                format!("{name} drawn")
+            } else {
+                format!("{name} drawn, without {}", missing.join(", "))
+            }
+        }
+
+        Wielding::ClearSpawn => {
+            let doomed: Vec<Handle> = world
+                .iter()
+                .filter(|(_, entity)| entity.kind == hendra_sim::Kind::Enemy && !entity.dead)
+                .map(|(handle, _)| handle)
+                .collect();
+
+            let count = doomed.len();
+            for handle in doomed {
+                if let Some(entity) = world.get_mut(handle) {
+                    entity.dead = true;
+                    entity.no_experience = true;
+                }
+            }
+
+            format!("{count} cleared")
+        }
+
+        Wielding::Debug => format!(
+            "{}: {} entities, {} of them enemies, tick {}",
+            world.name,
+            world.len(),
+            world.enemy_count(),
+            world.tick_number().0
+        ),
+
         Wielding::CloseRealm => {
             if world.realm().phase() == hendra_sim::realm::Phase::Open {
                 world.realm_mut().close_now();
@@ -1207,6 +1388,9 @@ fn wield_in_world(world: &mut World, catalog: &Catalog, handle: Handle, what: Wi
         }
     }
 }
+
+/// What being paused is, which is the same condition the game's own pause gives.
+const PAUSED: hendra_content::ConditionEffect = hendra_content::ConditionEffect::Paused;
 
 /// What being hidden is, which is the same invisibility a cloak gives.
 const HIDDEN: hendra_content::ConditionEffect = hendra_content::ConditionEffect::Invisible;

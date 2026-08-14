@@ -86,6 +86,9 @@ pub enum Action {
     /// Something a moderator or administrator does to the world in front of them.
     Wield { what: Wielded, rest: String },
 
+    /// Something to do with a duel.
+    Duel(DuelAction),
+
     /// Something a moderator or administrator does to somebody.
     Moderate {
         what: Moderation,
@@ -99,6 +102,12 @@ pub enum Action {
 pub enum Report {
     /// Where they are standing.
     Position,
+
+    /// Which world they are in.
+    World,
+
+    /// Where their quest is.
+    Quest,
 
     /// Who is in this world.
     Who,
@@ -123,6 +132,13 @@ pub enum Report {
 
     /// The time, as the original answers it.
     Time,
+}
+
+/// What a player wants done about a duel.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DuelAction {
+    Invite(String),
+    Accept,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -151,6 +167,32 @@ pub enum MarketAction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Wielded {
     Spawn,
+    Pause,
+    Spectate,
+    Effect,
+    Glow,
+    Music,
+    SetStar,
+    KillPlayer,
+    SummonAll,
+    Override,
+    RemoveOverride,
+    Link,
+    Unlink,
+    Setpiece,
+    LootSpawn,
+    ClearGraves,
+    ClearSpawn,
+    WelcomeMessage,
+    SetStat,
+    Reskin,
+    ToQuest,
+    Warg,
+    Debug,
+    Reboot,
+
+    /// Something the original does that this server will not.
+    Refuse,
     Give,
     KillAll,
     MaxStats,
@@ -592,6 +634,188 @@ pub const ALL: &[Command] = &[
         needs: Needs::Moderator,
         summary: "which worlds are running",
     },
+    // The rest a player may use about their own game.
+    Command {
+        name: "world",
+        aliases: &[],
+        needs: Needs::Nobody,
+        summary: "which world you are in",
+    },
+    Command {
+        name: "pause",
+        aliases: &[],
+        needs: Needs::Nobody,
+        summary: "stop, and be left alone, until you move",
+    },
+    Command {
+        name: "spectate",
+        aliases: &[],
+        needs: Needs::Nobody,
+        summary: "watch a player instead of yourself",
+    },
+    Command {
+        name: "getquest",
+        aliases: &["quest"],
+        needs: Needs::Nobody,
+        summary: "where your quest is",
+    },
+    Command {
+        name: "tutorial",
+        aliases: &["npe"],
+        needs: Needs::Nobody,
+        summary: "go to the tutorial",
+    },
+    Command {
+        name: "daccept",
+        aliases: &[],
+        needs: Needs::Nobody,
+        summary: "accept a duel",
+    },
+    Command {
+        name: "dinvite",
+        aliases: &[],
+        needs: Needs::Nobody,
+        summary: "ask a player to duel",
+    },
+    // And the rest an administrator may.
+    Command {
+        name: "eff",
+        aliases: &["effect"],
+        needs: Needs::Administrator,
+        summary: "give yourself a condition",
+    },
+    Command {
+        name: "glow",
+        aliases: &[],
+        needs: Needs::Administrator,
+        summary: "set the colour you glow",
+    },
+    Command {
+        name: "music",
+        aliases: &[],
+        needs: Needs::Administrator,
+        summary: "set what is playing here",
+    },
+    Command {
+        name: "setstar",
+        aliases: &[],
+        needs: Needs::Administrator,
+        summary: "set a player's star count",
+    },
+    Command {
+        name: "killplayer",
+        aliases: &[],
+        needs: Needs::Administrator,
+        summary: "kill a player's character",
+    },
+    Command {
+        name: "summonall",
+        aliases: &[],
+        needs: Needs::Administrator,
+        summary: "bring everybody here to you",
+    },
+    Command {
+        name: "override",
+        aliases: &[],
+        needs: Needs::Administrator,
+        summary: "act as another account",
+    },
+    Command {
+        name: "removeoverride",
+        aliases: &[],
+        needs: Needs::Administrator,
+        summary: "stop acting as another account",
+    },
+    Command {
+        name: "link",
+        aliases: &[],
+        needs: Needs::Administrator,
+        summary: "make this world reachable by name",
+    },
+    Command {
+        name: "unlink",
+        aliases: &[],
+        needs: Needs::Administrator,
+        summary: "stop it being reachable by name",
+    },
+    Command {
+        name: "setpiece",
+        aliases: &[],
+        needs: Needs::Administrator,
+        summary: "draw a setpiece where you stand",
+    },
+    Command {
+        name: "lootspawn",
+        aliases: &[],
+        needs: Needs::Administrator,
+        summary: "drop an item at your feet",
+    },
+    Command {
+        name: "cleargraves",
+        aliases: &[],
+        needs: Needs::Administrator,
+        summary: "clear the graves here",
+    },
+    Command {
+        name: "clearspawn",
+        aliases: &[],
+        needs: Needs::Administrator,
+        summary: "clear the enemies here",
+    },
+    Command {
+        name: "addwelcomemessage",
+        aliases: &["setwelcome"],
+        needs: Needs::Administrator,
+        summary: "set what players are told on arrival",
+    },
+    Command {
+        name: "set",
+        aliases: &[],
+        needs: Needs::Administrator,
+        summary: "set one of your stats",
+    },
+    Command {
+        name: "reskin",
+        aliases: &[],
+        needs: Needs::Administrator,
+        summary: "wear a skin without owning it",
+    },
+    Command {
+        name: "tq",
+        aliases: &[],
+        needs: Needs::Administrator,
+        summary: "go to your quest",
+    },
+    Command {
+        name: "warg",
+        aliases: &[],
+        needs: Needs::Administrator,
+        summary: "control an enemy",
+    },
+    Command {
+        name: "debug",
+        aliases: &[],
+        needs: Needs::Administrator,
+        summary: "what the world is doing",
+    },
+    Command {
+        name: "reboot",
+        aliases: &["shutdown"],
+        needs: Needs::Administrator,
+        summary: "stop the server",
+    },
+    Command {
+        name: "wipeserver",
+        aliases: &[],
+        needs: Needs::Administrator,
+        summary: "refuse: nothing here does this",
+    },
+    Command {
+        name: "compactloh",
+        aliases: &[],
+        needs: Needs::Administrator,
+        summary: "refuse: there is no such heap here",
+    },
 ];
 
 /// Finds a command by what was typed, whatever its spelling or capitals.
@@ -687,11 +911,50 @@ pub fn read(name: &str, rest: &str) -> Result<Action, String> {
         "lefttomax" => Action::Report(Report::LeftToMax),
         "currentsong" => Action::Report(Report::CurrentSong),
         "time" => Action::Report(Report::Time),
+        "world" => Action::Report(Report::World),
+        "getquest" => Action::Report(Report::Quest),
+
+        "pause" => Action::Wield {
+            what: Wielded::Pause,
+            rest: String::new(),
+        },
+        "spectate" => Action::Wield {
+            what: Wielded::Spectate,
+            rest: nonempty(first, "who?")?.to_string(),
+        },
+        "tutorial" => Action::GoTo(TUTORIAL),
+        "daccept" => Action::Duel(DuelAction::Accept),
+        "dinvite" => Action::Duel(DuelAction::Invite(nonempty(first, "who?")?.to_string())),
 
         "spawn" | "gimme" | "killall" | "max" | "level20" | "size" | "hide" | "clearinv"
-        | "quake" | "closerealm" | "visit" | "uptimeall" => {
+        | "quake" | "closerealm" | "visit" | "uptimeall" | "eff" | "glow" | "music" | "setstar"
+        | "killplayer" | "summonall" | "override" | "removeoverride" | "link" | "unlink"
+        | "setpiece" | "lootspawn" | "cleargraves" | "clearspawn" | "addwelcomemessage" | "set"
+        | "reskin" | "tq" | "warg" | "debug" | "reboot" | "wipeserver" | "compactloh" => {
             let what = match command.name {
                 "spawn" => Wielded::Spawn,
+                "eff" => Wielded::Effect,
+                "glow" => Wielded::Glow,
+                "music" => Wielded::Music,
+                "setstar" => Wielded::SetStar,
+                "killplayer" => Wielded::KillPlayer,
+                "summonall" => Wielded::SummonAll,
+                "override" => Wielded::Override,
+                "removeoverride" => Wielded::RemoveOverride,
+                "link" => Wielded::Link,
+                "unlink" => Wielded::Unlink,
+                "setpiece" => Wielded::Setpiece,
+                "lootspawn" => Wielded::LootSpawn,
+                "cleargraves" => Wielded::ClearGraves,
+                "clearspawn" => Wielded::ClearSpawn,
+                "addwelcomemessage" => Wielded::WelcomeMessage,
+                "set" => Wielded::SetStat,
+                "reskin" => Wielded::Reskin,
+                "tq" => Wielded::ToQuest,
+                "warg" => Wielded::Warg,
+                "debug" => Wielded::Debug,
+                "reboot" => Wielded::Reboot,
+                "wipeserver" | "compactloh" => Wielded::Refuse,
                 "gimme" => Wielded::Give,
                 "killall" => Wielded::KillAll,
                 "max" => Wielded::MaxStats,
@@ -709,7 +972,23 @@ pub fn read(name: &str, rest: &str) -> Result<Action, String> {
             // the world they are standing in.
             let needs_words = matches!(
                 what,
-                Wielded::Spawn | Wielded::Give | Wielded::KillAll | Wielded::Size | Wielded::Visit
+                Wielded::Spawn
+                    | Wielded::Give
+                    | Wielded::KillAll
+                    | Wielded::Size
+                    | Wielded::Visit
+                    | Wielded::Effect
+                    | Wielded::Glow
+                    | Wielded::Music
+                    | Wielded::SetStar
+                    | Wielded::KillPlayer
+                    | Wielded::Override
+                    | Wielded::Setpiece
+                    | Wielded::LootSpawn
+                    | Wielded::WelcomeMessage
+                    | Wielded::SetStat
+                    | Wielded::Reskin
+                    | Wielded::Warg
             );
             if needs_words && rest.is_empty() {
                 return Err("what?".to_string());
@@ -780,6 +1059,9 @@ pub fn read(name: &str, rest: &str) -> Result<Action, String> {
 /// Named here because this is the file that has to name every world a command can reach, and one
 /// place naming them all beats two places agreeing.
 pub const NEXUS: &str = "Nexus";
+
+/// Where `/tutorial` goes.
+pub const TUTORIAL: &str = "Tutorial";
 
 /// The guild hall, which is one room per guild rather than one per player.
 pub const GUILD_HALL: &str = "GuildHall";
@@ -881,16 +1163,32 @@ mod tests {
     }
 
     #[test]
-    fn nothing_a_player_types_asks_for_a_rank() {
-        // The other direction, which is the one that matters: a mechanic gated behind a rank is a
-        // mechanic nobody can use.
+    fn nothing_a_player_types_does_something_to_somebody_else() {
+        // The direction that matters. `Wield` is not itself privileged, since `/pause` acts on the
+        // world in front of you and anybody may; `Moderate` is, because every one of those does
+        // something to another account.
         for command in ALL.iter().filter(|command| command.needs == Needs::Nobody) {
             let action = read(command.name, "somebody something").expect("it reads");
             assert!(
-                !matches!(action, Action::Moderate { .. } | Action::Wield { .. }),
-                "/{} is a tool but anybody may use it",
+                !matches!(action, Action::Moderate { .. }),
+                "/{} moderates but anybody may use it",
                 command.name
             );
+        }
+    }
+
+    #[test]
+    fn every_tool_that_touches_another_account_asks_for_a_rank() {
+        for command in ALL {
+            let action = read(command.name, "somebody something").expect("it reads");
+            if matches!(action, Action::Moderate { .. }) {
+                assert_ne!(
+                    command.needs,
+                    Needs::Nobody,
+                    "/{} moderates for free",
+                    command.name
+                );
+            }
         }
     }
 

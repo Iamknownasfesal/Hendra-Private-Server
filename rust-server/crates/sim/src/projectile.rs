@@ -399,6 +399,7 @@ mod tests {
             kind: Kind::Enemy,
             terrain: hendra_content::Terrain::None,
             selling: None,
+            glow: 0,
             teleport_cooldown_ms: 0,
             move_grace_ms: 0,
             x,

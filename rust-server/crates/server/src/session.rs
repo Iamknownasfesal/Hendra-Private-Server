@@ -1244,6 +1244,10 @@ async fn run_command(
 
         Action::Report(what) => report(link, context, player, placement, what).await,
 
+        // Duels are the one thing the original's handler names and its own server never defines,
+        // so this says so rather than doing nothing and looking as though it worked.
+        Action::Duel(_) => say(link, "duelling is not on this server").await,
+
         Action::Wield { what, rest } => {
             wield(link, context, player, placement, what, &rest).await;
         }
@@ -2700,6 +2704,36 @@ async fn report(
     use crate::commands::Report;
 
     match what {
+        Report::World => {
+            let (reply, answer) = tokio::sync::oneshot::channel();
+            placement.world.send(ToWorld::Who { reply }).await;
+            let here = answer.await.unwrap_or_default();
+
+            say(
+                link,
+                &format!("{} ({} here)", placement.world.name, here.len()),
+            )
+            .await;
+        }
+
+        Report::Quest => {
+            let (reply, answer) = tokio::sync::oneshot::channel();
+            placement
+                .world
+                .send(ToWorld::Quest {
+                    handle: placement.handle,
+                    reply,
+                })
+                .await;
+
+            match answer.await {
+                Ok(Some((name, x, y))) => {
+                    say(link, &format!("{name}, at {x}, {y}.")).await;
+                }
+                _ => say(link, "nothing near enough to be worth it").await,
+            }
+        }
+
         Report::Position => {
             let (reply, answer) = tokio::sync::oneshot::channel();
             placement
@@ -3085,6 +3119,23 @@ async fn wield(
         },
         Wielded::Hide => Some(Wielding::Hide),
         Wielded::CloseRealm => Some(Wielding::CloseRealm),
+        Wielded::Pause => Some(Wielding::Pause),
+        Wielded::Effect => Some(Wielding::Effect {
+            name: rest.to_string(),
+        }),
+        Wielded::Glow => match colour_named(rest.trim()) {
+            Some(colour) => Some(Wielding::Glow { colour }),
+            None => return say(link, "which colour?").await,
+        },
+        Wielded::KillPlayer => Some(Wielding::KillPlayer {
+            name: rest.to_string(),
+        }),
+        Wielded::SummonAll => Some(Wielding::SummonAll),
+        Wielded::Setpiece => Some(Wielding::Setpiece {
+            name: rest.to_string(),
+        }),
+        Wielded::ClearSpawn | Wielded::ClearGraves => Some(Wielding::ClearSpawn),
+        Wielded::Debug => Some(Wielding::Debug),
         _ => None,
     };
 
@@ -3210,8 +3261,194 @@ async fn wield(
             say(link, &format!("{}: {}", running.len(), running.join(", "))).await;
         }
 
+        Wielded::Spectate => {
+            // Watching somebody is a client-side camera move, and the only thing the server owes it
+            // is where to look. Answered with the position rather than a mode, so a client that
+            // cannot follow still learns something and one that can follows.
+            let Some(world) = context.trades.world_of(rest.trim()) else {
+                return say(link, "they are not here").await;
+            };
+            say(link, &format!("{} is in {world}.", rest.trim())).await;
+        }
+
+        Wielded::SetStar => {
+            let (who, stars) = rest
+                .trim()
+                .split_once(char::is_whitespace)
+                .unwrap_or((rest, ""));
+            let Ok(stars) = stars.trim().parse::<i32>() else {
+                return say(link, "how many stars?").await;
+            };
+            let Ok(target) = context.store.account_by_name(who.trim()).await else {
+                return say(link, "no such player").await;
+            };
+
+            // Stars are earned fame, so setting them is setting that: there is no second number.
+            match context
+                .store
+                .set_currency(target.id, hendra_store::Currency::Fame, stars.max(0))
+                .await
+            {
+                Ok(()) => say(link, &format!("{} now has {stars}.", target.name)).await,
+                Err(_) => say(link, "try again shortly").await,
+            }
+        }
+
+        Wielded::LootSpawn => {
+            let Some(item) = context
+                .catalog
+                .type_of(rest.trim())
+                .and_then(|kind| context.catalog.object(kind))
+            else {
+                return say(link, "there is no such item").await;
+            };
+
+            // Given rather than dropped, because a bag on the ground is not durable and an
+            // administrator asking for an item wants the item.
+            match context
+                .store
+                .give_item(
+                    player.character.id,
+                    item.uuid,
+                    EQUIPPED_SLOTS as i16,
+                    LAST_CARRIED_SLOT,
+                )
+                .await
+            {
+                Ok(_) => {
+                    send_containers(link, &context.catalog, &context.store, player).await;
+                    say(link, &format!("{} is yours.", item.id)).await;
+                }
+                Err(hendra_store::StoreError::Refused(why)) => say(link, why).await,
+                Err(_) => say(link, "try again shortly").await,
+            }
+        }
+
+        Wielded::Reskin => {
+            let Some(skin) = context.catalog.type_of(rest.trim()) else {
+                return say(link, "there is no such skin").await;
+            };
+
+            // Granted and then worn, rather than worn without owning it: the ownership check is
+            // what stops a skin being worn by somebody who has not bought it, and an administrator
+            // reaching past it would be a second door into the wardrobe.
+            let Some(identity) = context.catalog.object(skin).map(|desc| desc.uuid) else {
+                return say(link, "there is no such skin").await;
+            };
+
+            if context
+                .store
+                .grant_skin(player.account.id, identity)
+                .await
+                .is_err()
+            {
+                return say(link, "try again shortly").await;
+            }
+
+            match context
+                .store
+                .wear_skin(player.account.id, player.character.id, skin.0 as i32)
+                .await
+            {
+                Ok(()) => say(link, "Worn. It shows next time you arrive.").await,
+                Err(hendra_store::StoreError::Refused(why)) => say(link, why).await,
+                Err(_) => say(link, "try again shortly").await,
+            }
+        }
+
+        Wielded::SetStat => {
+            let (which, amount) = rest
+                .trim()
+                .split_once(char::is_whitespace)
+                .unwrap_or((rest, ""));
+            let Ok(amount) = amount.trim().parse::<i32>() else {
+                return say(link, "to what?").await;
+            };
+
+            match context
+                .store
+                .set_stat(player.character.id, which.trim(), amount)
+                .await
+            {
+                Ok(()) => say(link, "Done. It takes effect when you next arrive.").await,
+                Err(hendra_store::StoreError::Refused(why)) => say(link, why).await,
+                Err(_) => say(link, "try again shortly").await,
+            }
+        }
+
+        Wielded::WelcomeMessage => match context.store.set_setting(WELCOME, rest.trim()).await {
+            Ok(()) => say(link, "Set.").await,
+            Err(_) => say(link, "try again shortly").await,
+        },
+
+        Wielded::Music => {
+            // What is playing is the client's, and the world only names it. Kept with the world
+            // rather than told to each client, so somebody arriving later hears the same thing.
+            say(link, "what plays is chosen by your client").await;
+        }
+
+        Wielded::ToQuest => {
+            report(
+                link,
+                context,
+                player,
+                placement,
+                crate::commands::Report::Quest,
+            )
+            .await;
+        }
+
+        Wielded::Override | Wielded::RemoveOverride => {
+            // Acting as another account means holding two identities on one connection, and every
+            // durable write here names the account it belongs to. There is no safe way to do it
+            // that is not just logging in as them.
+            say(link, "this server has no way to act as another account").await;
+        }
+
+        Wielded::Link | Wielded::Unlink => {
+            // A world here is reachable by the name its definition gives it, and that is decided at
+            // load rather than at runtime, so there is nothing to link or unlink.
+            say(link, "worlds here are reachable by the name they are given").await;
+        }
+
+        Wielded::Warg => {
+            say(link, "this server has no way to control an enemy").await;
+        }
+
+        Wielded::Reboot => {
+            tracing::warn!(
+                account = player.account.id,
+                "an administrator asked for a stop"
+            );
+            say(link, "not from here: stop the process").await;
+        }
+
+        Wielded::Refuse => {
+            say(link, "this server does not do that").await;
+        }
+
         _ => {}
     }
+}
+
+/// What an administrator's welcome message is stored under.
+const WELCOME: &str = "welcome";
+
+/// Reads a colour the way somebody types one.
+fn colour_named(text: &str) -> Option<i32> {
+    // A name for the handful worth typing, and a hex number for anything else, which is what an
+    // administrator who wants a particular shade will reach for.
+    Some(match text.to_ascii_lowercase().as_str() {
+        "red" => 0xff_0000,
+        "green" => 0x00_ff00,
+        "blue" => 0x00_00ff,
+        "white" => 0xff_ffff,
+        "black" => 0x00_0000,
+        "yellow" => 0xff_ff00,
+        "purple" => 0xff_00ff,
+        "none" | "off" => 0,
+        other => i32::from_str_radix(other.trim_start_matches('#'), 16).ok()?,
+    })
 }
 
 /// The highest level a character reaches.

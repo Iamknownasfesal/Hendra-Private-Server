@@ -1060,3 +1060,37 @@ impl Store {
         Ok(found.is_some())
     }
 }
+
+/// Setting one of a character's stored numbers by name.
+impl Store {
+    /// Sets a stat an administrator names.
+    ///
+    /// Only the two that are stored: the other six live in the world, recomputed from the class and
+    /// what is worn every time the character arrives, so writing them here would change nothing and
+    /// look as though it had.
+    pub async fn set_stat(&self, character_id: i64, which: &str, amount: i32) -> Result<()> {
+        let column = match which.trim().to_ascii_lowercase().as_str() {
+            "hp" | "health" | "maxhitpoints" => "max_hp",
+            "mp" | "magic" | "maxmagicpoints" => "max_mp",
+            "fame" => "fame",
+            "experience" | "xp" => "experience",
+            _ => {
+                return Err(StoreError::Refused(
+                    "only hp, mp, fame and experience are stored",
+                ));
+            }
+        };
+
+        let changed = sqlx::query(&format!("UPDATE character SET {column} = $2 WHERE id = $1"))
+            .bind(character_id)
+            .bind(amount.max(0))
+            .execute(self.pool())
+            .await?;
+
+        if changed.rows_affected() == 0 {
+            return Err(StoreError::NoSuchCharacter(character_id));
+        }
+
+        Ok(())
+    }
+}

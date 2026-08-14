@@ -325,3 +325,28 @@ impl Store {
         Ok(found.map(|(verified,)| verified).unwrap_or(false))
     }
 }
+
+/// Settings an administrator changes without restarting.
+impl Store {
+    pub async fn set_setting(&self, name: &str, value: &str) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO setting (name, value) VALUES ($1, $2)
+             ON CONFLICT (name) DO UPDATE SET value = $2, at = now()",
+        )
+        .bind(name)
+        .bind(value)
+        .execute(self.pool())
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn setting(&self, name: &str) -> Result<Option<String>> {
+        let found = sqlx::query_as::<_, (String,)>("SELECT value FROM setting WHERE name = $1")
+            .bind(name)
+            .fetch_optional(self.pool())
+            .await?;
+
+        Ok(found.map(|(value,)| value))
+    }
+}
