@@ -21,7 +21,12 @@ pub struct Catalog {
     /// Indexed by tile type.
     tiles: Vec<Option<TileDesc>>,
 
+    /// Keyed by the lower-cased id. The original matches ids with
+    /// `StringComparer.InvariantCultureIgnoreCase`, and the behaviour scripts rely on it: they
+    /// spell the same entity `shtrs Bridge Obelisk A` where they register it and `Shtrs ...` where
+    /// they name it, and a shop asks for `"Ghostly trap"` where the content says `Ghostly Trap`.
     by_id: HashMap<String, ObjectType>,
+    /// Keyed by the lower-cased id, for the same reason as [`Catalog::by_id`].
     tiles_by_id: HashMap<String, TileType>,
 
     /// Object types that can be held in a slot, for the loot and vault paths.
@@ -312,7 +317,8 @@ impl Catalog {
             return;
         }
 
-        self.by_id.insert(desc.id.clone(), desc.object_type);
+        self.by_id
+            .insert(desc.id.to_lowercase(), desc.object_type);
         if desc.is_item() {
             self.items.push(desc.object_type);
         }
@@ -441,7 +447,8 @@ impl Catalog {
             return;
         }
 
-        self.tiles_by_id.insert(tile.id.clone(), tile.tile_type);
+        self.tiles_by_id
+            .insert(tile.id.to_lowercase(), tile.tile_type);
         self.tiles[index] = Some(tile);
     }
 
@@ -455,7 +462,7 @@ impl Catalog {
         for slot in self.objects.iter_mut() {
             let Some(desc) = slot else { continue };
             for shot in desc.projectiles.iter_mut() {
-                match by_id.get(&shot.object_id) {
+                match by_id.get(&shot.object_id.to_lowercase()) {
                     Some(&object_type) => shot.object_type = object_type,
                     None => problems.push(LoadProblem::UnknownProjectileObject {
                         owner: desc.id.clone(),
@@ -498,12 +505,15 @@ impl Catalog {
     }
 
     /// Resolves a content name to its type. Load-time and tooling only; never call this per tick.
+    ///
+    /// Case-insensitive, as the original is.
     pub fn type_of(&self, id: &str) -> Option<ObjectType> {
-        self.by_id.get(id).copied()
+        self.by_id.get(&id.to_lowercase()).copied()
     }
 
+    /// Case-insensitive, as the original is.
     pub fn tile_type_of(&self, id: &str) -> Option<TileType> {
-        self.tiles_by_id.get(id).copied()
+        self.tiles_by_id.get(&id.to_lowercase()).copied()
     }
 
     /// Every object in a named group.
@@ -517,7 +527,11 @@ impl Catalog {
         self.objects
             .iter()
             .flatten()
-            .filter(|desc| desc.group.as_deref() == Some(group))
+            .filter(|desc| {
+                desc.group
+                    .as_deref()
+                    .is_some_and(|name| name.eq_ignore_ascii_case(group))
+            })
             .map(|desc| desc.object_type)
             .collect()
     }
@@ -632,6 +646,37 @@ mod tests {
                 "{meant} is what {asked} was meant to say, and it is not there either"
             );
         }
+    }
+
+    #[test]
+    fn a_name_is_matched_whatever_its_capitals() {
+        // `XmlData.IdToObjectType` is built with `StringComparer.InvariantCultureIgnoreCase`, and
+        // the behaviour scripts lean on it: Shatters spells the same entity `shtrs Bridge Obelisk A`
+        // where it registers it and `Shtrs ...` where a transition names it. Matching by exact case
+        // turns those into names nothing answers to.
+        let Ok((catalog, _)) =
+            Catalog::load_dir(std::path::Path::new("../../../godot-client/assets/xml"))
+        else {
+            eprintln!("skipping: the content files are not where the test looks for them");
+            return;
+        };
+
+        let obelisk = catalog.type_of("shtrs Bridge Obelisk A");
+        assert!(obelisk.is_some(), "the entity is in the content");
+        assert_eq!(obelisk, catalog.type_of("Shtrs Bridge Obelisk A"));
+        assert_eq!(obelisk, catalog.type_of("SHTRS BRIDGE OBELISK A"));
+
+        // Groups are compared the same way — `GetNearestEntitiesByGroup` also uses
+        // `InvariantCultureIgnoreCase`.
+        assert_eq!(
+            catalog.types_in_group("Crystals").len(),
+            catalog.types_in_group("crystals").len()
+        );
+
+        // And tiles, which `change_ground` and `replace_tile` name.
+        let lava = catalog.tile_type_of("Hot Lava");
+        assert!(lava.is_some(), "the tile is in the content");
+        assert_eq!(lava, catalog.tile_type_of("hot lava"));
     }
 
     #[test]

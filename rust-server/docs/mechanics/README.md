@@ -181,13 +181,14 @@ deliberately ignored, so the next one cannot be silent.
   instead, which resets `in_state_ms` and every cooldown in the state — Shatters' ten-second obelisk
   sweep became its first second, ten times. Fixed: the guard now sits on the receiving side, as it
   does in the original. See [page 44](44-how-a-dungeon-is-wired.md).
-- **Object-id lookup is case-insensitive in the original and case-sensitive here.**
-  `XmlData.IdToObjectType` is built with `StringComparer.InvariantCultureIgnoreCase`, and the
-  behaviour scripts rely on it: Shatters names `"Shtrs Bridge Closer4"` where the entity is
-  registered as `shtrs Bridge Closer4`, and `"shtrs Lava Souls Maker"` where it is
-  `shtrs Lava Souls maker`. Our `Catalog::by_id` is a plain `HashMap<String, _>`, so those miss. The
-  original also has a fallback the miss would land in: an unresolvable name becomes **`Pirate`**,
-  with a log warning and no error.
+- **Object-id lookup was case-sensitive here and is case-insensitive in the original.**
+  `XmlData.IdToObjectType` and `GetNearestEntitiesByGroup` both use
+  `InvariantCultureIgnoreCase`, and the content relies on it: the behaviour scripts spell the same
+  entity `shtrs Bridge Obelisk A` and `Shtrs Bridge Obelisk A`, and the shop table asks for
+  `"Ghostly trap"` where the content says `Ghostly Trap`. Fixed: `Catalog::type_of`,
+  `tile_type_of` and `types_in_group` now match without regard to case, and the shop's local
+  workaround for it is gone. The original also has a fallback ours does not need: an unresolvable
+  name becomes **`Pirate`**, with a log warning and no error.
 
 Pages are added as the reading proceeds. A page is only written from files actually read, never from
 a grep of their names: an earlier pass of this audit compared surfaces with scripts and concluded

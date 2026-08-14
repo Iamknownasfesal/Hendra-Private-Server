@@ -237,11 +237,11 @@ programs than there are entries, and that is correct.
   name up in `XmlData.IdToObjectType` and, on a miss, returns the type of `"Pirate"` with a log
   warning. Every `Spawn`, `Order`, `TossObject`, `EntityNotExistsTransition` and friend goes through
   it. The lookup dictionary is built with `StringComparer.InvariantCultureIgnoreCase`, so the case
-  mismatches that litter the content — `"Shtrs Bridge Closer4"` against the registered
-  `shtrs Bridge Closer4`, `"shtrs Lava Souls Maker"` against `shtrs Lava Souls maker` — resolve
-  correctly and are harmless. **Our catalog's `by_id` is a plain case-sensitive `HashMap`**
-  (`crates/content/src/catalog.rs`), so those same names would miss. Object-id lookup must be
-  case-insensitive.
+  mismatches that litter the content — `"Shtrs Bridge Obelisk A"` against the registered
+  `shtrs Bridge Obelisk A`, `"shtrs Lava Souls Maker"` against `shtrs Lava Souls maker` — resolve
+  correctly. Our catalog matched exact case until this was found; it is now case-insensitive too, in
+  `crates/content/src/catalog.rs`. The `Pirate` fallback matters separately, because 51 scripted
+  entities have no descriptor at all — see [page 44](44-how-a-dungeon-is-wired.md).
 - **`PlayerTextTransition` has exactly two users.** `HauntedCeme` and `Draconis`, four each — the
   whole census of 8. Haunted Cemetery's four area controllers all wait on the word `"Ready"`;
   Draconis's four souls wait on `"Red"`, `"Blue"`, `"Green"` and `"Black"`. Because the transition

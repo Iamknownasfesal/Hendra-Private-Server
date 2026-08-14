@@ -46,6 +46,10 @@ obelisks. Neither holds the timing alone. `shtrs king timer` is the same shape w
 **A converter must therefore keep `Order` as a world-level broadcast**, not as a message to a
 specific instance. The orchestrator does not know which obelisks exist.
 
+Four of those sixteen orchestrators — all three Shatters ones and `shtrs Loot Balloon Bridge` — are
+never registered on this fork's content at all. See the next section before treating the Shatters
+timing loop as something that runs.
+
 ### Ordering a state that does not exist freezes the target
 
 `Order` resolves its state name by walking the *target type's* state tree
@@ -79,6 +83,60 @@ At range 9,999 that is every such spawner in the world.
 (`crates/sim/src/world.rs`) resolves the state name first and returns without doing anything if the
 target has no state by that name. Reproducing the C# would mean reproducing a permanently dead wave
 in the Haunted Cemetery, which no player could have come to rely on. Leave it diverged.
+
+## Fifty-one of the 746 are never registered at all
+
+`Init` refuses an id the content does not declare:
+
+```csharp
+if (!dat.IdToObjectType.ContainsKey(id))
+{
+    Log.Error($"Failed to add behavior: {id}. Xml data not found.");
+    return this;
+}
+```
+
+Checking every live `.Init` name against the 4,315 object ids the server actually loads from
+`XmlDatas/xmls/client/*.dat`, **51 of the 746 name nothing** and are dropped at boot:
+
+| Script | Dropped | Of |
+| --- | --- | --- |
+| Shatters | 19 | 64 |
+| Catacombs | **17** | 18 |
+| Janus | 7 | 11 |
+| Tutorial | 4 | 11 |
+| Hermit, IceCave, Oryx, Woodland | 1 each | |
+
+**Catacombs is dead content.** Seventeen of its eighteen entries — `Tridorno`, `Guardian of the
+Catacombs`, both turrets, every skeleton — have no descriptor. The one that survives is
+`Grey Torch Wall`. The `Sequence` example on [page 43](43-the-behaviour-scripts.md) is real code that
+has never run.
+
+The nineteen dropped from Shatters are, almost exactly, the wiring described above:
+
+```
+shtrs obelisk controller   shtrs obelisk timer      shtrs king timer
+shtrs Chest Spawner 1/2/3  shtrs Lava Souls maker   shtrs Crystal Tracker
+shtrs king lava1/lava2     shtrs Bridge Closer2/3/4 shtrs Spawn Bridge 2/3/5
+shtrs Wooden Gate 2/3      Tooky Shatters Master
+```
+
+So on this content, the obelisk timing loop never starts, the three chest spawners never fire, and
+the crystals have nothing to orbit. `shtrs Bridge Closer` (unnumbered) is the only closer the content
+has. The transitions that name the missing ones do not fail loudly either — `Behavior.GetObjType`
+turns each unknown name into `Pirate`, so `EntityNotExistsTransition("Shtrs Bridge Closer4", 100,
+"TALK")` becomes "no Pirate within 100 tiles", which is trivially true in the Shatters, and every
+obelisk leaves Idle immediately.
+
+**This is content missing from this fork, not a defect in the engine.** Reproducing the engine
+faithfully reproduces the silence. It is worth knowing before someone spends a day debugging why a
+converted Shatters does not sequence: the C# does not sequence it either.
+
+Our loader lands in the same place by a different route: a program is found through the entity's own
+descriptor (`behaviours.get(&desc.id)`), so a program named after something with no descriptor is
+never selected. The *names inside* a behaviour are reported separately — `World::set_behaviours`
+warns `"behaviour names entities the catalog does not have"` — which is the log line to read when a
+dungeon is quiet.
 
 ## The gate
 

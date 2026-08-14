@@ -328,7 +328,7 @@ pub fn deal(
     for square in 0..squares {
         let (name, price) = shop.stock[square % shop.stock.len()];
 
-        let Some(item) = named(catalog, name) else {
+        let Some(item) = catalog.type_of(name) else {
             if !missing.contains(&name) {
                 missing.push(name);
             }
@@ -345,23 +345,6 @@ pub fn deal(
     }
 
     (stalls, missing)
-}
-
-/// Finds an item by name, ignoring case if an exact match fails.
-///
-/// The original's own table gets two names wrong by capitals alone: it asks for
-/// "Veil of the ancient oceans" and "Ghostly trap", and the content spells both with capitals. A
-/// case-sensitive lookup drops both, which is two things a shop is meant to sell and nothing to say
-/// why. The intent is not in doubt, so the capitals are not insisted on.
-fn named(catalog: &hendra_content::Catalog, name: &str) -> Option<hendra_content::ObjectType> {
-    if let Some(exact) = catalog.type_of(name) {
-        return Some(exact);
-    }
-
-    catalog
-        .objects()
-        .find(|desc| desc.id.eq_ignore_ascii_case(name))
-        .map(|desc| desc.object_type)
 }
 
 #[cfg(test)]
@@ -396,7 +379,8 @@ mod tests {
 
     #[test]
     fn a_name_that_differs_only_in_capitals_still_finds_its_item() {
-        // The original's table gets two wrong this way, and a case-sensitive lookup drops both.
+        // The shop table asks for "Veil of the ancient oceans" and "Ghostly trap"; the content
+        // spells both with capitals. The original matches ids case-insensitively, so both sell.
         let Ok((catalog, _)) = hendra_content::Catalog::load_dir(std::path::Path::new(
             "../../../godot-client/assets/xml",
         )) else {
@@ -404,15 +388,10 @@ mod tests {
             return;
         };
 
-        assert!(catalog.type_of("Ghostly trap").is_none(), "the exact name");
-        assert!(
-            named(&catalog, "Ghostly trap").is_some(),
-            "but the item is there"
-        );
-        assert_eq!(
-            named(&catalog, "Ghostly trap"),
-            catalog.type_of("Ghostly Trap")
-        );
+        let found = catalog.type_of("Ghostly trap");
+        assert!(found.is_some(), "the item is there under other capitals");
+        assert_eq!(found, catalog.type_of("Ghostly Trap"));
+        assert_eq!(found, catalog.type_of("GHOSTLY TRAP"));
     }
 
     #[test]
@@ -486,7 +465,7 @@ mod prestige_tests {
 
         for (name, price) in PRESTIGE_OFFERS {
             assert!(
-                named(&catalog, name).is_some(),
+                catalog.type_of(name).is_some(),
                 "{name} is not in the content"
             );
             assert!(*price > 0, "{name} costs nothing");
