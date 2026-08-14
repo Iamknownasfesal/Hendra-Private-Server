@@ -82,13 +82,15 @@ and [40](40-packets.md).
 **All of `common/`** — now read; see [page 42](42-between-servers.md). The only file skipped is
 `WeakDictionary.cs`, a generic container with no callers in this tree.
 
-**The 61 `logic/db/BehaviorDb.*.cs` scripts** — 24,392 lines of behaviour *content*, not engine code.
-These are what our converter consumes, and coverage is established by the `gaps` census, which
-reports every construct it could not translate. Reading them one by one would confirm what the
-converter already reports per line.
+**28 of the 61 `logic/db/BehaviorDb.*.cs` scripts.** The other 33 were read line by line, and all 61
+were censused for every constructor and named argument — see [page 43](43-the-behaviour-scripts.md).
+The 28 unread ones are the large dungeon files, and the census establishes that they use no construct
+the read ones do not.
 
-If any of those turns out to matter, the census that covers it is the thing to distrust first — one
-of them was under-reporting for the life of the project before this audit.
+**`common/WeakDictionary.cs`**, a generic container with no callers in this tree.
+
+If either of those turns out to matter, the census that covers it is the thing to distrust first —
+one of them was under-reporting for the life of the project before this audit.
 
 ## Dead code in the C# tree, so nobody ports it
 
