@@ -64,6 +64,24 @@ public sealed class RustSession : IDisposable
         _net.TerrainRow += OnTerrainRow;
         _net.GroundChanged += OnGroundChanged;
         _net.WorldChanged += OnWorldChanged;
+        _net.ContainerFilled += OnContainerFilled;
+        _net.Shot += OnShot;
+        _net.Notice += text => PacketReceived?.Invoke(new TextPacket
+        {
+            Name = "",
+            ObjectId = -1,
+            Text = text,
+            Recipient = "",
+            CleanText = text,
+        });
+        _net.Refused += text => PacketReceived?.Invoke(new TextPacket
+        {
+            Name = "",
+            ObjectId = -1,
+            Text = text,
+            Recipient = "",
+            CleanText = text,
+        });
     }
 
     public void Dispose()
@@ -83,8 +101,29 @@ public sealed class RustSession : IDisposable
     /// <summary>Names of unhandled sends already reported, so each is mentioned once.</summary>
     private readonly HashSet<string> _reported = new();
 
+    /// <summary>
+    /// What the player is carrying and wearing, by slot.
+    /// </summary>
+    /// <remarks>
+    /// Containers arrive whole, on their own event, rather than in the snapshot — a container
+    /// changes when a player moves something, not twenty times a second. The game layer reads them
+    /// as stats on the player's own entity, so they are held here and put back on the next status.
+    /// </remarks>
+    private readonly Dictionary<int, int> _carried = new();
+    private bool _containersChanged;
+
     private int _tickTime;
     private bool _entered;
+
+    /// <summary>
+    /// How far the client and the server may disagree about the player before the server wins.
+    /// </summary>
+    /// <remarks>
+    /// Loose enough that ordinary prediction — the client moving a frame ahead of the tick that
+    /// confirms it — is never fought over, and tight enough that a real divergence is corrected
+    /// long before it looks like a client claiming to have crossed the map.
+    /// </remarks>
+    private const float MaxDriftSquared = 4f;
 
     public int PlayerObjectId { get; private set; } = -1;
 
@@ -338,6 +377,47 @@ public sealed class RustSession : IDisposable
         });
     }
 
+    /// <summary>Takes a container's whole contents, to be reported as slots on the player.</summary>
+    private void OnContainerFilled(int container, int[] slots)
+    {
+        // 0 is what the player carries and 1 what they wear; the client lays both out in one run of
+        // slots, equipment first. The vault is a screen of its own and not part of this.
+        if (container > 1)
+            return;
+
+        int first = container == 1 ? 0 : EquipmentSlots;
+
+        for (int i = 0; i + 1 < slots.Length; i += 2)
+            _carried[first + slots[i]] = slots[i + 1];
+
+        _containersChanged = true;
+    }
+
+    /// <summary>How many slots a character wears before the carried ones begin.</summary>
+    private const int EquipmentSlots = 4;
+
+    /// <summary>A projectile somebody fired, which the client draws and animates itself.</summary>
+    private void OnShot(
+        int projectile, int owner, int objectType, float x, float y, float angle, float speed, int lifetimeMs)
+    {
+        // Our own shots are drawn locally the moment the trigger is pulled, so echoing them would
+        // draw every bullet twice.
+        if (owner == PlayerObjectId)
+            return;
+
+        PacketReceived?.Invoke(new EnemyShootPacket
+        {
+            BulletId = (byte)projectile,
+            OwnerId = owner,
+            BulletType = 0,
+            StartingPos = new WorldPos(x, y),
+            Angle = angle,
+            Damage = 0,
+            NumShots = 1,
+            AngleInc = 0f,
+        });
+    }
+
     // ----------------------------------------------------------------------------------------
     // The ground
     // ----------------------------------------------------------------------------------------
@@ -396,6 +476,11 @@ public sealed class RustSession : IDisposable
                 continue;
             }
 
+            // No correction while simply walking. The server clamps a claim it will not grant and
+            // the client walks on from where it believes it is; snapping to the server's answer
+            // every frame is a fight between the two, and the fight is what a player feels as
+            // jitter. Arriving in a world is the exception, and it is handled where an entity
+            // first appears.
             _statuses.Add(stats);
         }
 
@@ -469,6 +554,20 @@ public sealed class RustSession : IDisposable
         // nothing displays.
         if (view.Ids[index] == PlayerObjectId)
         {
+            // What the character is wearing and carrying, which the game reads as slots on the
+            // player rather than as a container of its own.
+            if (_containersChanged)
+            {
+                foreach (var (slot, item) in _carried)
+                {
+                    var type = slot < 16
+                        ? (StatsType)((int)StatsType.Inventory0 + slot)
+                        : (StatsType)((int)StatsType.Backpack0 + slot - 16);
+
+                    stats.Add(new StatData { Type = type, IntValue = item });
+                }
+            }
+
             var own = view.StatsOf(index);
             if (own.Length == 8)
             {

@@ -931,48 +931,27 @@ fn handle(
             if let Some(outcome) =
                 world.resolve_move(handle, catalog, x, y, tick_ms(client_time_ms))
             {
-                // Only a claim to have moved *faster than possible* says anything about the
-                // client. Walking into a wall is refused as `Blocked` and being held by an effect
-                // as `Rooted`, and an honest client produces one of those per tick for as long as
-                // the key is held — twelve of them inside a second, which is the whole strike
-                // budget. Counting those disconnects a player for leaning on a wall, which is
-                // what happened the first time anybody played this.
+                // Movement is not struck on at all, and the reason is in the line above: the
+                // claim is advisory and the world decides. A clamped claim cannot cheat — the
+                // player ends up where the server says whatever they asked for — so counting
+                // refusals buys nothing and costs sessions.
                 //
-                // The original strikes for "moving faster than it can" and for nothing else about
-                // movement, which is the same judgement.
-                let judging = players
-                    .iter()
-                    .find(|player| player.handle == handle)
-                    .is_some_and(|player| std::time::Instant::now() >= player.judge_moves_from);
-
-                if let Some(why) = outcome
-                    .refused
-                    .filter(|why| judging && matches!(why, hendra_sim::MoveRefusal::TooFar))
-                    && let Some(player) = players.iter_mut().find(|player| player.handle == handle)
-                {
-                    let verdict = player.strikes.note(std::time::Instant::now());
-
+                // It cost three. Walking into a wall is refused every tick while the key is held.
+                // Arriving in a world, the first claims are measured from the world just left. And
+                // a claim that is merely *ahead* of the server is refused for every message it
+                // takes the clamp to catch up, which is the ordinary way a client and a server
+                // reconcile and looked exactly like cheating to a counter that only saw refusals.
+                //
+                // The original needed this check because its client reported its own position and
+                // was believed. Ours is not believed, so the check is not load-bearing.
+                if let Some(why) = outcome.refused {
                     tracing::debug!(
                         world = %world.name,
-                        name = %player.name,
                         ?why,
-                        held = player.strikes.held(),
-                        "a move was refused"
+                        claimed = ?(x, y),
+                        server = ?(outcome.x, outcome.y),
+                        "a move was clamped"
                     );
-
-                    if verdict == crate::strikes::Verdict::Cut {
-                        tracing::info!(
-                            world = %world.name,
-                            name = %player.name,
-                            ?why,
-                            "cutting a connection that will not stop being refused"
-                        );
-
-                        // The account is left alone deliberately. Everything counted here is a
-                        // judgement made from timings over a network, and a network can produce all
-                        // of it honestly; the log is for somebody to read before anything permanent.
-                        player.sender.close("moving faster than it can");
-                    }
                 }
 
                 world.place(handle, outcome);
