@@ -1196,7 +1196,12 @@ lookup, and the argument census that counts names instead of arguments — are w
 for. Each was invisible to the test suite and to the census, and each was found by reading two
 implementations side by side.
 
-- [ ] `content` — 13 files. Against pages 20, 33, 35, and the descriptor defaults.
+- [x] `content` — 13 files. Against pages 20, 33, 35, and the descriptor defaults.
+
+  Six divergences, in [`docs/audit/01-content.md`](docs/audit/01-content.md). The worst is that the
+  content's `stat=` numbers are in a third numbering the original translates twice and we translate
+  not at all, in two places that fail differently: a worn bonus above 20 is dropped, and a potion
+  above 7 becomes max HP. Twenty-one of the game's twenty-four potions raise max HP.
 - [ ] `behavior` — 9 files. Against pages 01, 02, 03, 43, 44.
 - [ ] `sim`, part one: the world loop and entities — against pages 04, 09, 12, 17, 30.
 - [ ] `sim`, part two: combat, stats, items — against pages 05, 07, 08, 11, 13, 18, 21, 23.
