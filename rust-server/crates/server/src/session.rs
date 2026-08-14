@@ -1801,8 +1801,18 @@ async fn say_something(
         return None;
     }
 
-    if !limit.allow(std::time::Instant::now()) {
+    let now = std::time::Instant::now();
+
+    if !limit.allow(now) {
         say(link, "you are speaking too quickly").await;
+        return None;
+    }
+
+    // Said too often is separate from said too fast: five lines in five seconds is a conversation,
+    // and the same line five times is not. Commands are exempt, since repeating one is how somebody
+    // walks to the same place twice.
+    if !matches!(said, Said::Command { .. }) && limit.repeats(line, now) {
+        say(link, "you have already said that").await;
         return None;
     }
 

@@ -1015,3 +1015,22 @@ category by category. It found thirteen things, one of them a mechanic that sile
   Covered by comparing every curving shot in the content against the same shot with nothing curving
   it, rather than against a threshold: some are a tenth of a tile wide and one turns round inside
   fifty milliseconds, and any fixed distance that catches one calls the other straight.
+
+### 18.21 The same thing said over and over — **S**
+
+- [x] `Player.CompareAndCheckSpam`
+
+  We limited how fast somebody could speak and not how often they could say the same thing. Five
+  lines in five seconds is a conversation; the same line five times is not, and the rate limit
+  cannot tell them apart.
+
+  Two things make the original's check work, and both are kept. The comparison strips punctuation,
+  case and runs of a repeated character, so "hi!!!" and "HIII" are one line and changing an
+  exclamation mark does not start the count again. And it counts the repeating rather than the
+  repeat: three of the same line pass and the fourth does not, because it takes two lines to
+  establish that a line is being repeated and one more before that reads as deliberate.
+
+  A short line is only ever a repeat of itself, since "ok" and "no" are two edits apart and both are
+  worth saying.
+
+  Commands are exempt. Repeating one is how somebody walks to the same place twice.
