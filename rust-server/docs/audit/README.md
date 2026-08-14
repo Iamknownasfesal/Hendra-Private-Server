@@ -35,6 +35,7 @@ argument census counts names.
 | --- | --- | --- |
 | [01-content.md](01-content.md) | `hendra-content` | 13 |
 | [02-behaviour.md](02-behaviour.md) | `hendra-behavior` | 9 |
+| [03-sim-loop.md](03-sim-loop.md) | `hendra-sim`, the loop | the tick, entities, movement |
 
 ## Findings so far, worst first
 
@@ -49,3 +50,5 @@ argument census counts names.
 | `Shoot` drops its acquire range and its stagger | 4,486 and 2,663 uses | [02](02-behaviour.md) |
 | Projectile damage rolls can hit the maximum | every projectile | [01](01-content.md) |
 | A thrown object lands 700ms before it should | 389 uses | [02](02-behaviour.md) |
+| Enemies think with nobody in the room | every enemy, every world | [03](03-sim-loop.md) |
+| No slow tick, where the original has two clocks | world timers, dungeon logic | [03](03-sim-loop.md) |

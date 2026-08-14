@@ -1209,7 +1209,12 @@ implementations side by side.
   counts constructor names. The one that changes a fight most is `Orbit`, whose target we do not
   read at all: 137 of its 167 uses name an entity to circle, and every one of them circles the
   nearest player instead.
-- [ ] `sim`, part one: the world loop and entities — against pages 04, 09, 12, 17, 30.
+- [x] `sim`, part one: the world loop and entities — against pages 04, 09, 12, 17, 30.
+
+  In [`docs/audit/03-sim-loop.md`](docs/audit/03-sim-loop.md). Every stat formula matches to the
+  constant. What differs is scheduling: the original has a second, slower loop we do not, and it
+  ticks only the enemies within three chunks of a player where we tick all of them — so a boss walks
+  its phases here while nobody is in the room.
 - [ ] `sim`, part two: combat, stats, items — against pages 05, 07, 08, 11, 13, 18, 21, 23.
 - [ ] `sim`, part three: worlds, setpieces, realm, shops — against pages 06, 10, 14, 15, 16, 24.
 - [ ] `net` — 6 files. Against pages 19, 37, 40.
