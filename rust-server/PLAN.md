@@ -1255,4 +1255,10 @@ implementations side by side.
   denominator was checked and this one has not been. The Redis bus and its one-second `TimedLock`
   have no counterpart because this is one process, which removes a failure mode rather than leaving
   a gap.
-- [ ] A refactor list, ordered by how many players notice.
+- [x] A refactor list, ordered by how many players notice.
+
+  [`docs/audit/10-what-to-fix.md`](docs/audit/10-what-to-fix.md). Four things a player feels in the
+  first hour, five that change how a fight reads, seven worth doing over a session, and four
+  differences to settle deliberately rather than close. Plus the structural one: every defect in the
+  first two sections was invisible to both the test suite and a census reporting 100%, because the
+  censuses count names.

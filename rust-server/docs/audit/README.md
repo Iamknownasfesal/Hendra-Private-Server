@@ -42,8 +42,11 @@ argument census counts names.
 | [07-server.md](07-server.md) | `hendra-server` | commands, verification, sessions |
 | [08-store.md](08-store.md) | `hendra-store` | persistence, the economy |
 | [09-app-auth-transport.md](09-app-auth-transport.md) | `app`, `auth`, `transport` | endpoints, the wire |
+| **[10-what-to-fix.md](10-what-to-fix.md)** | — | **the ordered refactor list** |
 
-## Findings so far, worst first
+## Findings, worst first
+
+The ordered list with the reasoning is [page 10](10-what-to-fix.md).
 
 | What | Reach | Where |
 | --- | --- | --- |
