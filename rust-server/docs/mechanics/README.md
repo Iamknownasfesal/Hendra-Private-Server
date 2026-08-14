@@ -57,6 +57,7 @@ inside the game: a different data structure, a different loop, a different order
 | [34-persistence.md](34-persistence.md) | The key space, locking, currency, death, the records | `Database.cs`, `DbModels.cs` |
 | [35-descriptors.md](35-descriptors.md) | Every default, the third stat numbering, four dead fields | `XmlDescriptors.cs` |
 | [36-the-shared-random-stream.md](36-the-shared-random-stream.md) | The lockstep generator, its three draws, and why an extra one desyncs | `wRandom.cs`, `StatsManager.cs` |
+| [37-the-wire.md](37-the-wire.md) | Framing, RC4, pooling, keep-alive, disconnect saves | `Client.cs`, `Server.cs`, `CommHandler.cs` |
 
 Page 25 lists exactly what was read and states the case for the groups assessed by census rather
 than file by file. See "How much of this is actually read" below before trusting any of it.
@@ -73,7 +74,7 @@ bonus in the game. See [the stats page](08-stats.md).
 
 ## How much of this is actually read
 
-The C# server is **547 files**. About **195** were opened and read, including every behaviour, every
+The C# server is **547 files**. About **205** were opened and read, including every behaviour, every
 transition, every command and every world subclass. The rest was assessed by census,
 by signature, or by call site, which is weaker evidence and is how the first two passes of this audit
 reached wrong conclusions twice.
