@@ -24,11 +24,7 @@ use crate::program::*;
 /// invulnerable well into the phase where it is meant to be hit.
 const RENEWAL_MS: u32 = 250;
 
-/// How often an `order` is repeated.
-///
-/// Orders are not one-shot, because an entity that wanders into range afterwards should get the
-/// order too, but repeating one every tick would hold its targets at the start of the state they were sent
-/// to, and they would never progress out of it.
+/// The least time between two sweeps of `remove_nearby`.
 const ORDER_INTERVAL_MS: u32 = 1000;
 
 /// The least time between two ground changes from the same behaviour.
@@ -143,6 +139,15 @@ impl Mind {
     /// boss's minions in a state whose behaviours were all mid-cooldown from the last one.
     pub fn force_into(&mut self, program: &Program, target: usize) {
         self.enter(program, target);
+    }
+
+    /// Whether the enemy is in `target` or in a state nested inside it.
+    ///
+    /// Entering a state lands on its innermost child, so a mind ordered into an outer state is
+    /// never sitting on that index itself. Anything asking "is it already there?" has to walk up.
+    pub fn is_within(&mut self, program: &Program, target: usize) -> bool {
+        program.ancestry(self.current, &mut self.chain);
+        self.chain.contains(&target)
     }
 
     /// Which state the enemy is in.
@@ -803,9 +808,9 @@ impl Mind {
                 state,
                 once,
             } => {
-                // Once per entry rather than every tick: an order repeated every tick would hold
-                // its targets at the start of the state they were sent to and they would never
-                // progress out of it.
+                // A standing order is re-sent every tick, as the original does, so that an entity
+                // arriving in range afterwards is caught at once. Re-sending is harmless because
+                // the receiving side leaves alone anything already in the ordered state.
                 if self.cooldowns.get(slot).copied().unwrap_or(0) > 0 {
                     return 1;
                 }
@@ -815,10 +820,12 @@ impl Mind {
                     kind: *kind,
                     state: state.clone(),
                 });
-                if let Some(cooldown) = self.cooldowns.get_mut(slot) {
+                if *once
+                    && let Some(cooldown) = self.cooldowns.get_mut(slot)
+                {
                     // A once-only order is held for longer than any state lasts, so entering the
                     // state again is what gives it a second time rather than waiting it out.
-                    *cooldown = if *once { u32::MAX } else { ORDER_INTERVAL_MS };
+                    *cooldown = u32::MAX;
                 }
                 1
             }
@@ -1864,9 +1871,10 @@ mod tests {
     }
 
     #[test]
-    fn an_order_is_repeated_but_not_every_tick() {
-        // Repeating every tick would hold the ordered entities at the start of the state they were
-        // sent to, and they would never progress out of it.
+    fn an_order_stands_for_as_long_as_the_state_does() {
+        // The original re-sends every tick so that an entity arriving in range afterwards is caught
+        // at once. What stops the targets being held at the start of the ordered state is the
+        // receiving side, which leaves alone anything already in it.
         let program = program(r#"enemy "X" { state a { order(10, "Minion", "attack") } }"#);
         let mut mind = Mind::new(&program, 1);
         let mut out = Vec::new();
@@ -1879,10 +1887,50 @@ mod tests {
             mind.tick(&program, &alone(), 50, &mut out);
             given += out.len();
         }
-        assert!(
-            (1..=3).contains(&given),
-            "should repeat occasionally, not constantly: {given} in two seconds"
+        assert_eq!(given, 40, "one order per tick, for as long as the state lasts");
+    }
+
+    #[test]
+    fn a_once_only_order_is_given_once_per_entry() {
+        let program = program(r#"enemy "X" { state a { order_once(10, "Minion", "attack") } }"#);
+        let mut mind = Mind::new(&program, 1);
+        let mut out = Vec::new();
+
+        mind.tick(&program, &alone(), 50, &mut out);
+        assert_eq!(out.len(), 1, "ordered on entering a");
+
+        let mut given = 0;
+        for _ in 0..40 {
+            mind.tick(&program, &alone(), 50, &mut out);
+            given += out.len();
+        }
+        assert_eq!(given, 0, "not again while still in a");
+
+        mind.force_into(&program, program.state_named("a").expect("a"));
+        mind.tick(&program, &alone(), 50, &mut out);
+        assert_eq!(out.len(), 1, "and once more on re-entering a");
+    }
+
+    #[test]
+    fn a_mind_ordered_into_an_outer_state_counts_as_being_in_it() {
+        // Entering a state lands on its innermost child, so an entity ordered into `outer` is
+        // sitting on `inner`. A caller asking "is it already there?" must get yes, or a standing
+        // order would restart the state — and every cooldown in it — on every repeat.
+        let program = program(
+            r#"enemy "X" {
+                state idle { }
+                state outer { state inner { wander(1) } }
+            }"#,
         );
+        let mut mind = Mind::new(&program, 1);
+        let outer = program.state_named("outer").expect("outer");
+        let inner = program.state_named("inner").expect("inner");
+
+        mind.force_into(&program, outer);
+        assert_eq!(mind.state(), inner, "lands on the innermost child");
+        assert!(mind.is_within(&program, outer), "still counts as in outer");
+        assert!(mind.is_within(&program, inner));
+        assert!(!mind.is_within(&program, program.state_named("idle").expect("idle")));
     }
 
     #[test]

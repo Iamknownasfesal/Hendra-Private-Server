@@ -164,12 +164,9 @@ This is the extreme of the idiom described on page 43, and it is the clearest st
 `coolDownOffset` cannot be skipped: without it each obelisk fires 51 volleys on the same frame and
 then stands silent for ten seconds.
 
-## What this server does differently
+## Where the guard on a repeated order belongs
 
-**A repeated `Order` restarts the target's state instead of leaving it alone.** The two servers throttle
-`Order` in different places, and the difference is visible in play.
-
-The C# broadcasts every tick but guards each target:
+The C# broadcasts every tick and guards each *target*:
 
 ```csharp
 if (!i.CurrentState.Is(_targetState))
@@ -177,24 +174,25 @@ if (!i.CurrentState.Is(_targetState))
 ```
 
 `Is` walks the parent chain, so a target already in the ordered state *or any descendant of it* is
-skipped. The order is therefore effectively "put anyone not already here, here", every tick, for as
-long as the orderer stays in its ordering state.
+skipped. The order means "put anyone not already here, here", every tick, for as long as the orderer
+stays in its ordering state.
 
-This server instead throttles the *sender*: `Primitive::Order` in `crates/behavior/src/run.rs` emits
-at most one order per `ORDER_INTERVAL_MS`, which is **1,000 ms**, and the receiving side
-(`Mind::force_into` → `enter`) re-enters unconditionally. `enter` zeroes `in_state_ms`, clears
-`deadline_ms`, and resets every cooldown slot in the state's ancestry.
+This server used to guard the *sender* instead: `Primitive::Order` emitted at most one order per
+1,000 ms and the receiving side re-entered unconditionally. Re-entry is not free — `Mind::enter`
+zeroes `in_state_ms` and `deadline_ms` and clears every cooldown slot in the state's ancestry — so a
+target under a standing order had its state restarted once a second.
 
-So a target held under a standing order has its state restarted **once a second**, and with it every
-cooldown in that state. The Shatters bridge phase is where this shows: `shtrs obelisk controller`
-sits in "obeliskshoot" for the full ten seconds — nothing transitions it out, the timer entity orders
-it onward — continuously ordering the four obelisks into "Shoot". Under the C# each obelisk enters
-"Shoot" once and runs its 51 offsets from 0 to 10,000 ms. Here, every second the offsets reset, so
-only the first second of the sweep ever fires, ten times over.
+The Shatters bridge phase is where that showed. `shtrs obelisk controller` sits in "obeliskshoot" for
+the full ten seconds, continuously ordering the four obelisks into "Shoot", and "Shoot" is the
+51-behaviour sweep described above. Restarting it every second meant only the first second of the
+sweep ever fired, ten times over.
 
-The fix is not to remove the throttle — a per-tick `force_into` would pin the targets even harder.
-It is to make the receiving side match the C#: skip a target already in the ordered state or a
-descendant of it, and then the sender does not need throttling at all.
+**The guard now sits where the original puts it.** `World::order_into` skips a target already within
+the ordered state — `Mind::is_within`, which walks up from the landing child, because entering a
+state lands on its innermost descendant and never on the named state itself. `Primitive::Order` no
+longer throttles, so an entity wandering into range is caught on the next tick rather than up to a
+second later, and `order_once` still fires once per state entry, which is what `OrderOnce`'s 10 uses
+expect.
 
 ## What a converter has to get right
 

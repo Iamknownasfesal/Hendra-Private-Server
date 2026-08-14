@@ -176,11 +176,11 @@ deliberately ignored, so the next one cannot be silent.
   budget, the other a population cap, and we treat both as the latter.
 - `StayCloseToSpawn` anchors to the position where the *state* was entered; `ReturnToSpawn` anchors
   to the entity's spawn point. We use the spawn point for both.
-- **A standing `Order` restarts its targets' state every second here, and never in the original.**
-  The C# skips a target already in the ordered state; we re-enter unconditionally and throttle the
-  sender to 1,000 ms instead, which resets `in_state_ms` and every cooldown in the state. Shatters'
-  ten-second obelisk sweep becomes its first second, ten times. See
-  [page 44](44-how-a-dungeon-is-wired.md).
+- **A standing `Order` used to restart its targets' state every second.** The C# skips a target
+  already in the ordered state; we re-entered unconditionally and throttled the sender to 1,000 ms
+  instead, which resets `in_state_ms` and every cooldown in the state — Shatters' ten-second obelisk
+  sweep became its first second, ten times. Fixed: the guard now sits on the receiving side, as it
+  does in the original. See [page 44](44-how-a-dungeon-is-wired.md).
 - **Object-id lookup is case-insensitive in the original and case-sensitive here.**
   `XmlData.IdToObjectType` is built with `StringComparer.InvariantCultureIgnoreCase`, and the
   behaviour scripts rely on it: Shatters names `"Shtrs Bridge Closer4"` where the entity is

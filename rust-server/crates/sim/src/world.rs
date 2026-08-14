@@ -2290,6 +2290,13 @@ impl World {
         if let Some(entity) = self.entities.get_mut(handle)
             && let Some(mind) = entity.mind.as_mut()
         {
+            // A target already inside the ordered state is left alone. Orders stand for as long as
+            // the sender holds its own state, so without this an entity under a standing order
+            // would have that state — and every cooldown in it — restarted on every repeat, and a
+            // staggered volley spread over ten seconds would never get past its first repeat.
+            if mind.is_within(program, index) {
+                return;
+            }
             mind.force_into(program, index);
         }
     }
