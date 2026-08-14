@@ -1287,6 +1287,26 @@ async fn send_terrain(link: &mut Link, placement: &Placement) {
     }
 
     send_scenery(link, placement).await;
+
+    // What has already been found here, for somebody arriving after it was. Sent with the ground
+    // because it is the same kind of thing: the state of the room rather than something happening
+    // in it.
+    let (reply, answer) = tokio::sync::oneshot::channel();
+    if placement.world.send(ToWorld::KeysFound { reply }).await
+        && let Ok(found) = answer.await
+    {
+        for key in found {
+            let mut buffer = Vec::new();
+            ServerMessage::Notice {
+                text: format!("{key} has been found."),
+            }
+            .encode(&mut Writer::new(&mut buffer));
+
+            if link.send(Delivery::Stream, &buffer).await.is_err() {
+                return;
+            }
+        }
+    }
 }
 
 /// Tells a client where the scenery is.

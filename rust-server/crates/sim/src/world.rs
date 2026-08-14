@@ -409,6 +409,13 @@ pub struct World {
     /// setpiece drawn once should not cost a place in every snapshot for the rest of the world.
     scenery_changes: Vec<(u16, u16, u16, u16)>,
 
+    /// Which of a dungeon's keys have been found here.
+    ///
+    /// Davy's locker is the one that uses this: four coloured keys, dropped by four enemies, and a
+    /// door that opens when all four are in. Held by the world because it is the world's state, and
+    /// somebody arriving late has to be told what has already been found.
+    keys_found: Vec<Box<str>>,
+
     /// Setpiece names a behaviour asked for that nothing answers to, so they can be reported once.
     ///
     /// Four of the shipped behaviours name a setpiece that does not exist, in the original too. A
@@ -505,6 +512,7 @@ impl World {
             realm: crate::realm::Realm::new(),
             spawn_squares: std::collections::HashMap::new(),
             allows_teleport: true,
+            keys_found: Vec::new(),
             refused_squares: 0,
             scenery_changes: Vec::new(),
             unknown_setpieces: std::collections::HashSet::new(),
@@ -2107,6 +2115,17 @@ impl World {
                 }
             }
 
+            // A key dropping is worth saying out loud: a dungeon whose door needs four of them is a
+            // room where knowing how many are in is the whole state of the fight.
+            for item in &dropped {
+                if let Some(desc) = catalog.object(*item)
+                    && desc.id.ends_with(" Key")
+                    && self.found_key(&desc.id)
+                {
+                    self.announce(&format!("{} has been found.", desc.id));
+                }
+            }
+
             if dropped.is_empty() {
                 continue;
             }
@@ -2595,6 +2614,24 @@ impl World {
         let mut stall = Entity::fixture(kind, x as f32 + 0.5, y as f32 + 0.5);
         stall.selling = Some(selling);
         self.spawn(stall)
+    }
+
+    /// Notes that a key has been found here, and says whether it is new.
+    ///
+    /// New matters: the world tells everybody when one is found, and telling them twice for the
+    /// same key is telling them something that did not happen.
+    pub fn found_key(&mut self, name: &str) -> bool {
+        if self.keys_found.iter().any(|held| &**held == name) {
+            return false;
+        }
+
+        self.keys_found.push(name.into());
+        true
+    }
+
+    /// Which keys have been found here, for somebody arriving late.
+    pub fn keys_found(&self) -> Vec<String> {
+        self.keys_found.iter().map(|key| key.to_string()).collect()
     }
 
     /// Moves a player to another player, if every rule allows it.

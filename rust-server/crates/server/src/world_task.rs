@@ -173,6 +173,19 @@ pub enum ToWorld {
         reply: tokio::sync::oneshot::Sender<Option<Sale>>,
     },
 
+    /// Which of this world's keys have been found, for somebody who has just arrived.
+    KeysFound {
+        reply: tokio::sync::oneshot::Sender<Vec<String>>,
+    },
+
+    /// Show a portal to each of these worlds, at the squares the map marks for them.
+    ///
+    /// The nexus is the only world that asks: it is the one place a player picks where to go, and
+    /// the counts are what makes the choice mean anything.
+    ShowPortals {
+        portals: Vec<PortalSign>,
+    },
+
     /// Send everybody here to another world, which is what a quake is.
     SendEveryoneTo {
         world: String,
@@ -891,6 +904,14 @@ fn handle(
             let _ = reply.send(world_sale(world, handle, merchant));
         }
 
+        ToWorld::KeysFound { reply } => {
+            let _ = reply.send(world.keys_found());
+        }
+
+        ToWorld::ShowPortals { portals } => {
+            show_portals(world, catalog, &portals);
+        }
+
         ToWorld::SendEveryoneTo { world: destination } => {
             for player in players.iter() {
                 let _ = player.orders.try_send(Order::GoTo(destination.clone()));
@@ -1119,6 +1140,66 @@ fn place_gift_chest(world: &mut World, catalog: &Catalog, slots: &[(u16, u16)]) 
     }
 
     placed
+}
+
+/// One world a nexus portal leads to, and how busy it is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PortalSign {
+    /// The world's name, which is what the portal is labelled with.
+    pub world: String,
+
+    /// The portal object that leads there.
+    pub portal: ObjectType,
+
+    /// How many are in it, which is the whole reason the label is worth reading.
+    pub players: usize,
+}
+
+/// Puts a portal for each named world on the squares the map marks for them.
+///
+/// Replaced outright each time rather than reconciled: the list is short, it changes every few
+/// seconds anyway, and a portal that lingered after its world closed is a door into nothing.
+fn show_portals(world: &mut World, catalog: &Catalog, portals: &[PortalSign]) {
+    let mut places: Vec<(u32, u32)> = world
+        .terrain()
+        .map()
+        .regions()
+        .filter(|(_, _, region)| *region == hendra_content::Region::RealmPortals)
+        .map(|(x, y, _)| (x, y))
+        .collect();
+    places.sort();
+
+    if places.is_empty() {
+        return;
+    }
+
+    let standing: Vec<Handle> = world
+        .iter()
+        .filter(|(_, entity)| {
+            entity.kind == hendra_sim::Kind::Portal
+                && places
+                    .iter()
+                    .any(|(x, y)| entity.x == *x as f32 + 0.5 && entity.y == *y as f32 + 0.5)
+        })
+        .map(|(handle, _)| handle)
+        .collect();
+    for handle in standing {
+        world.despawn(handle);
+    }
+
+    for ((x, y), sign) in places.iter().zip(portals) {
+        let Some(desc) = catalog.object(sign.portal) else {
+            continue;
+        };
+
+        let mut portal =
+            hendra_sim::world::Entity::fixture(desc.object_type, *x as f32 + 0.5, *y as f32 + 0.5);
+        portal.kind = hendra_sim::Kind::Portal;
+
+        // Labelled with the count, which is what somebody choosing a realm is actually reading.
+        portal.name = Some(format!("{} ({})", sign.world, sign.players).into());
+        world.spawn(portal);
+    }
 }
 
 /// The most worthwhile enemy near a player, which is what a quest arrow points at.

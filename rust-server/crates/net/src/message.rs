@@ -80,6 +80,7 @@ pub mod server_id {
     pub const TRADE_CHANGED: u16 = 0x800e;
     pub const TRADE_ACCEPTED: u16 = 0x800f;
     pub const TRADE_DONE: u16 = 0x8010;
+    pub const NOTICE: u16 = 0x8011;
 }
 
 /// Why a connection was refused.
@@ -906,6 +907,14 @@ pub enum ServerMessage<'a> {
         message: String,
     },
 
+    /// Something the world wants shown rather than said.
+    ///
+    /// Separate from chat because it is not somebody talking: a dungeon saying which keys have been
+    /// found is state, and putting it in the chat log would bury it under conversation.
+    Notice {
+        text: String,
+    },
+
     /// Squares whose ground has changed, as `(x, y, tile)`.
     ///
     /// Sent rather than folded into the snapshot because ground is not an entity: it has no id, it
@@ -938,6 +947,7 @@ impl ServerMessage<'_> {
             ServerMessage::TradeChanged { .. } => server_id::TRADE_CHANGED,
             ServerMessage::TradeAccepted { .. } => server_id::TRADE_ACCEPTED,
             ServerMessage::TradeDone { .. } => server_id::TRADE_DONE,
+            ServerMessage::Notice { .. } => server_id::NOTICE,
         }
     }
 
@@ -961,6 +971,7 @@ impl ServerMessage<'_> {
                 w.string(from);
                 w.string(text);
             }
+            ServerMessage::Notice { text } => w.string(text),
             ServerMessage::TradeRequested { name } => w.string(name),
             ServerMessage::TradeStart {
                 mine,
@@ -1104,6 +1115,9 @@ impl ServerMessage<'_> {
                 }
                 ServerMessage::Terrain { x, y, runs }
             }
+            server_id::NOTICE => ServerMessage::Notice {
+                text: r.string()?.to_string(),
+            },
             server_id::TRADE_REQUESTED => ServerMessage::TradeRequested {
                 name: r.string()?.to_string(),
             },

@@ -248,6 +248,27 @@ impl Trades {
             .filter(|world| !world.is_empty())
     }
 
+    /// How many players are in each world.
+    ///
+    /// From the roster because this is what already knows where everybody is; the alternative is
+    /// asking every world in turn, which is a message per world per refresh for a number the
+    /// roster is holding anyway.
+    pub fn counts(&self) -> std::collections::HashMap<String, usize> {
+        let Ok(state) = self.inner.lock() else {
+            return std::collections::HashMap::new();
+        };
+
+        let mut counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        for party in state.present.values() {
+            if party.world.is_empty() {
+                continue;
+            }
+            *counts.entry(party.world.clone()).or_default() += 1;
+        }
+
+        counts
+    }
+
     /// Everybody online, by name.
     ///
     /// The roster is here because this is what already knows who is connected and how to reach

@@ -113,6 +113,53 @@ impl Worlds {
         self.destinations.get(&portal_type).map(String::as_str)
     }
 
+    /// Which portal leads to a world, which is the table read the other way round.
+    ///
+    /// A definition lists the portals that lead *to* it, so the answer is the first one that names
+    /// this world: any of them opens the same door.
+    pub fn portal_to(&self, world: &str) -> Option<u16> {
+        self.destinations
+            .iter()
+            .find(|(_, destination)| destination.as_str() == world)
+            .map(|(portal, _)| *portal)
+    }
+
+    /// The worlds a nexus should show a portal to, and how busy each is.
+    ///
+    /// Only what has a portal object and is worth walking into: a world nothing leads to cannot be
+    /// shown, and one nobody is in is still worth showing because somebody has to be first.
+    pub fn signposts(
+        &self,
+        counts: &std::collections::HashMap<String, usize>,
+    ) -> Vec<crate::world_task::PortalSign> {
+        let Ok(running) = self.running.lock() else {
+            return Vec::new();
+        };
+
+        let mut signs: Vec<crate::world_task::PortalSign> = running
+            .iter()
+            .filter(|(_, handle)| !handle.inbox.is_closed())
+            .filter_map(|(key, _)| {
+                // The instance key is the world's name for everything shared, which is everything
+                // a nexus shows: a personal world is not somewhere anybody else can be sent.
+                let name = key.split('#').next()?;
+                if self.is_personal(name) {
+                    return None;
+                }
+
+                Some(crate::world_task::PortalSign {
+                    portal: hendra_content::ObjectType(self.portal_to(name)?),
+                    players: counts.get(key).copied().unwrap_or(0),
+                    world: name.to_string(),
+                })
+            })
+            .collect();
+
+        // Busiest first, so the portal somebody wants is the one they see.
+        signs.sort_by(|a, b| b.players.cmp(&a.players).then(a.world.cmp(&b.world)));
+        signs
+    }
+
     /// Which worlds are ticking, by their instance key.
     pub fn running(&self) -> Vec<String> {
         let Ok(running) = self.running.lock() else {
@@ -142,6 +189,14 @@ impl Worlds {
     /// A handle to a world, starting it if it is not already running.
     ///
     /// `account_id` only matters for a personal world, where it selects which instance.
+    ///
+    /// # Why there is no access check
+    ///
+    /// The original checks, on entry, that the vault you are opening is yours and the hall is your
+    /// guild's. Here the instance key carries the account or the guild, and the only caller is the
+    /// session acting for that account, so there is no way to name somebody else's room. A check
+    /// would be a second answer to a question the key has already answered, and a second answer is
+    /// somewhere the two can disagree.
     pub fn get_or_start_for(&self, name: &str, account_id: i64) -> Option<WorldHandle> {
         if self.is_personal(name) {
             // The instance key includes the account, so two players asking for the vault get two

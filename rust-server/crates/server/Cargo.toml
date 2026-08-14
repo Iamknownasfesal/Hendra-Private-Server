@@ -33,3 +33,7 @@ test = true
 [[example]]
 name = "commands"
 test = true
+
+[[example]]
+name = "worlds"
+test = true

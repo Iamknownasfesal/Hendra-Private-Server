@@ -508,8 +508,38 @@ surface nobody had counted: what a player can type. The original has 95 across
   Each needed something the server did not expose: the world can now say who is in it and where
   somebody is standing, and the roster can say who is connected.
 
-- [ ] The 46 that are left, which are administrators' tools rather than mechanics
+- [x] The 46 that are left, which are administrators' tools rather than mechanics
 
-  `spawn`, `gimme`, `max`, `level20`, `killAll`, `glow`, `size`, `hide`, `quake`, `setpiece`,
-  `lootspawn`, `clearinv`, `banip`, `debug`, `reboot`, `wipeServer` and the rest. Nothing a player
-  can reach depends on any of them, which is why they are last rather than skipped.
+  All of them. Five say plainly that this server will not do them rather than doing nothing and
+  looking as though they worked: acting as another account means holding two identities on one
+  connection and every durable write here names its own, and linking a world at runtime means
+  nothing when a world is reachable by the name its definition gives it.
+
+## Phase 15 — The last two categories
+
+- [x] The gift chest, which closed a hole opened three commits earlier
+
+  Prestige purchases and gifts had storage and nowhere to open them from. The chest is a durable
+  location like the vault rather than a bag, so taking a gift removes the row in one locked
+  transaction; without that the same gift is handed out on every visit. One-way, refused at the
+  store rather than in the session so it holds for every path into it.
+
+- [x] Guild halls, which were one room per account loading one of four maps
+
+  One room per guild now, as the original has them, and the level chooses the map, so the three
+  `GuildHallN.hmap` files that were sitting unused are reachable. The upgrade merchant works, paid
+  from the guild's fame by an officer.
+
+- [x] The nexus shows portals to every running world, labelled with who is in them
+
+- [x] Davy's keys are announced as they are found, and told to whoever arrives after
+
+- [x] Access is enforced by the instance key rather than by a check
+
+  The original checks on entry that the vault is yours and the hall is your guild's. Here the key
+  carries the account or the guild and the only caller is the session acting for it, so there is no
+  way to name somebody else's room. A check would be a second answer to a question already
+  answered, and a second answer is somewhere the two can disagree.
+
+`cargo run -p hendra-server --example worlds` counts the worlds with their own logic.
+`cargo run -p hendra-server --example commands` counts the commands against the original's own list.

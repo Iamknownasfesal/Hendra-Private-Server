@@ -88,6 +88,9 @@ enum Event {
     /// Squares whose ground changed, as `(x, y, tile)`.
     Ground(Vec<(u16, u16, u16)>),
 
+    /// Something the world wants shown rather than said.
+    Notice(String),
+
     /// Somebody asked to trade.
     TradeRequested(String),
 
@@ -398,6 +401,10 @@ impl HendraConnection {
 
                     let row: Vec<i32> = tiles.iter().map(|tile| *tile as i32).collect();
                     entry.set("tiles", &PackedInt32Array::from(row.as_slice()));
+                }
+                Event::Notice(text) => {
+                    entry.set("kind", "notice");
+                    entry.set("text", text.as_str());
                 }
                 Event::TradeRequested(name) => {
                     entry.set("kind", "trade_requested");
@@ -847,6 +854,7 @@ fn apply(
 
         ServerMessage::Scenery { y, objects } => shared.push(Event::Scenery { y, objects }),
 
+        ServerMessage::Notice { text } => shared.push(Event::Notice(text)),
         ServerMessage::TradeRequested { name } => shared.push(Event::TradeRequested(name)),
         ServerMessage::TradeStart {
             mine,

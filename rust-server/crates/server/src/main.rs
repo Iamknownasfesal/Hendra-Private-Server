@@ -82,6 +82,9 @@ fn parse_options() -> Options {
     options
 }
 
+/// How often the nexus's portal labels are brought up to date.
+const PORTAL_REFRESH: std::time::Duration = std::time::Duration::from_secs(5);
+
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
     tracing_subscriber::fmt()
@@ -290,6 +293,32 @@ async fn main() {
     };
 
     let trades = Arc::new(trades::Trades::new());
+
+    // The nexus is where a player chooses where to go, and the counts are what makes the choice
+    // mean anything. Refreshed on a timer rather than on every arrival: a portal label that changed
+    // twenty times a second would cost more to send than it tells anybody.
+    {
+        let registry = Arc::clone(&registry);
+        let roster = Arc::clone(&trades);
+        let nexus = entry.clone();
+
+        tokio::spawn(async move {
+            let mut every = tokio::time::interval(PORTAL_REFRESH);
+            every.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+            loop {
+                every.tick().await;
+
+                let portals = registry.signposts(&roster.counts());
+                if !nexus
+                    .send(world_task::ToWorld::ShowPortals { portals })
+                    .await
+                {
+                    break;
+                }
+            }
+        });
+    }
 
     let context = Arc::new(session::Context {
         trades: Arc::clone(&trades),
