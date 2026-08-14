@@ -491,6 +491,7 @@ fn behaviour(call: &Call, names: &mut Names, diagnostics: &mut Vec<Diagnostic>) 
             speed: number(call, "speed", 0, 1.0) as f32,
             radius: number(call, "radius", 1, 4.0) as f32,
             acquire_range: number(call, "acquire_range", 2, 10.0) as f32,
+            target: maybe_entity(call, names, "target", 3),
         },
 
         "stay_back" => Primitive::StayBack {

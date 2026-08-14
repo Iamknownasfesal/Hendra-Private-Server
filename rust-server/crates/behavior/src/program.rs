@@ -345,6 +345,14 @@ pub enum Primitive {
         speed: f32,
         radius: f32,
         acquire_range: f32,
+
+        /// What to circle. `None` circles the nearest player.
+        ///
+        /// 137 of the content's 167 orbits name something, and they are the ones that make an
+        /// encounter readable: crystals circling a tracker, guardians circling their king. Without
+        /// it every one of them circles whoever is closest, and a ring the player is meant to move
+        /// around becomes a ring that follows them.
+        target: Option<NameRef>,
     },
 
     StayBack {

@@ -508,21 +508,39 @@ impl Mind {
                 speed,
                 radius,
                 acquire_range,
+                target,
             } => {
                 if *has_moved {
                     return 1;
                 }
-                let Some(player) = senses.nearest_player else {
+
+                // A named target is circled instead of the nearest player, which is what the
+                // content asks for in 137 of its 167 orbits: minions ring their boss rather than
+                // ringing whoever walked in.
+                let centre = match target {
+                    Some(name) => {
+                        let kinds = program.kinds_of(*name);
+                        senses
+                            .nearby
+                            .iter()
+                            .filter(|other| kinds.contains(&other.kind))
+                            .filter(|other| other.distance <= *acquire_range)
+                            .min_by(|a, b| a.distance.total_cmp(&b.distance))
+                            .map(|other| (other.x, other.y, other.distance))
+                    }
+                    None => senses
+                        .nearest_player
+                        .filter(|player| player.distance <= *acquire_range)
+                        .map(|player| (player.x, player.y, player.distance)),
+                };
+                let Some((centre_x, centre_y, distance)) = centre else {
                     return 1;
                 };
-                if player.distance > *acquire_range {
-                    return 1;
-                }
 
                 // Tangential, corrected toward the intended radius so it spirals into the ring
                 // rather than orbiting at whatever distance it happened to arrive at.
-                let toward = (player.y - senses.y).atan2(player.x - senses.x);
-                let drift = (player.distance - *radius).clamp(-1.0, 1.0);
+                let toward = (centre_y - senses.y).atan2(centre_x - senses.x);
+                let drift = (distance - *radius).clamp(-1.0, 1.0);
                 let angle = toward + std::f32::consts::FRAC_PI_2 - drift * 0.6;
 
                 out.push(Action::Move {
@@ -1894,6 +1912,46 @@ mod tests {
         assert!(
             duration_ms > 0 && duration_ms < 1000,
             "renewed, not forever"
+        );
+    }
+
+    #[test]
+    fn an_orbit_circles_what_it_was_told_to_circle() {
+        // The content names something to orbit in 137 of its 167 uses. Circling the nearest player
+        // instead turns a ring the player moves around into a ring that follows them.
+        let mut program = program(r#"enemy "X" { state a { orbit(1, 4, 20, target: "King") } }"#);
+        const KING: u16 = 7;
+        program.resolve(|name| if name == "King" { vec![KING] } else { Vec::new() });
+
+        let mut mind = Mind::new(&program, 1);
+        let mut out = Vec::new();
+
+        // The king stands to the west, a player to the east, and the orbit should ignore the
+        // player entirely.
+        let neighbours = [Neighbour {
+            kind: KING,
+            id: 1,
+            x: 4.0,
+            y: 10.0,
+            distance: 6.0,
+            hp: 100,
+            max_hp: 100,
+            player: false,
+        }];
+        let mut senses = with_player_at(16.0, 10.0);
+        senses.nearby = &neighbours;
+
+        mind.tick(&program, &senses, 50, &mut out);
+
+        let Some(Action::Move { angle, .. }) = out.first() else {
+            panic!("expected a move, got {out:?}");
+        };
+
+        // Tangential to the king, which is west of us, so the heading has a westward component
+        // rather than the eastward one a player-following orbit would produce.
+        assert!(
+            angle.cos() < 0.5,
+            "should be circling the king to the west, not the player to the east"
         );
     }
 
