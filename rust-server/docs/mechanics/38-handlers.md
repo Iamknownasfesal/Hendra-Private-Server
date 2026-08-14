@@ -38,6 +38,41 @@ empty is why a client cannot give itself an effect.
 Three acks do something: `UpdateAck` and `GotoAck` feed the player's tick accounting, and `Pong`
 feeds latency.
 
+## Logging in
+
+`Hello` checks, in order: the build version matches; the credentials verify; `NameChosen`; not
+banned; the IP is not banned; the server is not admin-only; and `Rank >= serverInfo.minRank`.
+
+Two things worth noting.
+
+**An unknown account is registered on the spot**, as a guest, with the submitted GUID and password.
+There is no separate registration step in the game protocol.
+
+**A build-version mismatch returns without saying anything** — the `SendFailure` is commented out. The
+client is left connected with no answer and no disconnect, which reads to a player as the server
+being down.
+
+On success the IP is logged against the account (`LogAccountByIp`, which is what makes an IP ban reach
+alts), the account is stamped with the IP, and the connection is queued onto the tick as a `ConInfo`.
+
+`Create` and `Load` both require `State == Handshaked`, build the player, `EnterWorld`, send
+`CreateSuccess` at **high priority**, and move to `Ready`. `Load` refuses a character marked `Dead`.
+Both construct `new Player(client, false)` in a `Test` world — the flag that stops it saving.
+
+## Choosing a name
+
+```
+letters only, 3 to 10 characters, first letter upper-cased, not a guest name
+5,000 fame if a name has already been chosen, free the first time
+```
+
+The uniqueness check and the rename happen under the global `nameLock`, taken with the same
+**unbounded spin** as `/rename`: `while ((lockToken = AcquireLock(key)) == null) {}`. The rename
+itself is a second spin: `while (!RenameIGN(...)) {}`.
+
+The fame is deducted **before** the rename is attempted, and the rename spin cannot fail out, so the
+two cannot separate — but nothing releases the fame if the process dies between them.
+
 ## Inventory
 
 ### Swapping
