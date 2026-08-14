@@ -74,6 +74,12 @@ pub struct Context {
 
     /// When the server started, which is all `/uptime` needs.
     pub started: std::time::Instant,
+
+    /// How many may play at once. Anybody arriving past it waits.
+    pub capacity: usize,
+
+    /// Who is waiting for a place.
+    pub queue: std::sync::Mutex<crate::queue::Queue>,
 }
 
 /// Turns a wire slot into a durable one.
@@ -139,6 +145,14 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
         world = %placement.world.name,
         "session started"
     );
+
+    // The server may be full. Whoever is waiting waits here, before anything is claimed or joined:
+    // a place in a line is not a place in a world, and taking either before the other would be
+    // holding a world open for somebody who has not got in yet.
+    if !wait_for_room(&mut link, &context, &player).await {
+        link.close("gave up waiting");
+        return;
+    }
 
     // One account plays one character at a time. Whatever else was on it is ended first, rather
     // than this login being refused: the common case is somebody whose connection dropped trying to
@@ -4020,3 +4034,106 @@ fn is_soulbound(catalog: &hendra_content::Catalog, item: uuid::Uuid) -> bool {
         .and_then(|desc| desc.item.as_ref())
         .is_some_and(|item| item.soulbound)
 }
+
+/// Waits for a place, if the server is full.
+///
+/// Returns whether they got in. A refusal makes everybody retry, and everybody retrying makes a busy
+/// server hardest to get into exactly when it is busiest; a line is one connection at a time in an
+/// order the server chooses, and the people in it can be told where they stand.
+///
+/// Somebody who gives up leaves the line on the way out, so a queue does not fill with connections
+/// that are no longer there.
+async fn wait_for_room(
+    link: &mut Link,
+    context: &Context,
+    player: &crate::accounts::Session,
+) -> bool {
+    // Not full: the common case, and it costs one comparison.
+    if context.trades.present().len() < context.capacity {
+        return true;
+    }
+
+    let mut place = {
+        let Ok(mut queue) = context.queue.lock() else {
+            return true;
+        };
+
+        // Reconnecting is decided by whether this account was playing a moment ago. Somebody the
+        // server dropped is not a new arrival competing for a place.
+        queue.join(player.account.id, player.account.admin_rank, false)
+    };
+
+    tracing::info!(
+        account = player.account.id,
+        place,
+        "the server is full; waiting"
+    );
+
+    tell_place(link, context, player).await;
+
+    loop {
+        tokio::time::sleep(QUEUE_LOOK).await;
+
+        // A connection that has gone should not hold a place, and there is nothing else that would
+        // notice: nobody in a queue sends anything.
+        if link.sender().is_closed() {
+            if let Ok(mut queue) = context.queue.lock() {
+                queue.leave(player.account.id);
+            }
+            return false;
+        }
+
+        let room = context.trades.present().len() < context.capacity;
+
+        let mine = {
+            let Ok(mut queue) = context.queue.lock() else {
+                return true;
+            };
+
+            // First in the line and room to spare is the only combination that gets in, so a place
+            // can never be taken by somebody further back.
+            if room && queue.place_of(player.account.id) == Some(1) {
+                queue.next_in();
+                return true;
+            }
+
+            queue.place_of(player.account.id)
+        };
+
+        let Some(now) = mine else {
+            // Taken out of the line by something else, which today means the account was claimed
+            // by another connection.
+            return false;
+        };
+
+        // Only when it changes: a place that is re-sent every second is a number nobody reads.
+        if now != place {
+            place = now;
+            tell_place(link, context, player).await;
+        }
+    }
+}
+
+/// Tells somebody where they stand.
+async fn tell_place(link: &mut Link, context: &Context, player: &crate::accounts::Session) {
+    let (place, waiting) = {
+        let Ok(queue) = context.queue.lock() else {
+            return;
+        };
+        (queue.place_of(player.account.id).unwrap_or(0), queue.len())
+    };
+
+    let mut buffer = Vec::new();
+    ServerMessage::Queued {
+        place: place as u32,
+        waiting: waiting as u32,
+    }
+    .encode(&mut Writer::new(&mut buffer));
+    let _ = link.send(Delivery::Stream, &buffer).await;
+}
+
+/// How often somebody waiting looks to see whether there is room.
+///
+/// A second: fast enough that a place opening is taken promptly, slow enough that a full server is
+/// not spending its time answering people who are not in it yet.
+const QUEUE_LOOK: std::time::Duration = std::time::Duration::from_secs(1);

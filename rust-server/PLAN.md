@@ -769,7 +769,20 @@ category by category. It found thirteen things, one of them a mechanic that sile
 
 ### 18.11 Position history — **M**
 
-- [ ] `PositionTimeline`, which answers where a player was when a shot was fired
+- [x] `PositionTimeline`, which answers where a player was when a shot was fired
+
+  Not needed here, and checked rather than assumed. The timeline has exactly one consumer in the
+  original: `ValidateShotGeometry`, which takes the origin a client claims for a shot and asks
+  whether the player was really there at the time the client says. Our `Shoot` carries an angle and
+  nothing else, and the world fires from the position it holds for that player, so there is no
+  claimed origin to check and nothing for a history to answer.
+
+  The same reasoning covers the client's clock: it arrives and is treated as diagnostic, because a
+  client reporting a large interval would be granting itself a proportionally larger step.
+
+  The cost of that choice is real and worth naming: a player with high latency fires from where the
+  server had them rather than where they saw themselves, which is the ordinary price of an
+  authoritative server and the same price every other rule here already pays.
 
 ### 18.12 Loot boosts — **S**
 
@@ -793,4 +806,17 @@ category by category. It found thirteen things, one of them a mechanic that sile
 
 ### 18.14 A login queue — **S**
 
-- [ ] `ConnectionQueue`, for when the server is full
+- [x] `ConnectionQueue`, for when the server is full
+
+  A line rather than a refusal. A refusal makes everybody retry, and everybody retrying makes a busy
+  server hardest to get into exactly when it is busiest; a line is one connection at a time, in an
+  order the server chooses, and the people in it can be told where they stand.
+
+  Ordered by rank with reconnections ahead of everybody, as the original does by adding more than
+  any rank to their sort value. Somebody the server dropped a minute ago is not a new arrival
+  competing for a place, and the back of a queue it caused would be its own unfairness.
+
+  Waiting happens before the account is claimed or any world is joined: a place in a line is not a
+  place in a world, and taking either before the other would hold a world open for somebody who has
+  not got in yet. A connection that goes while waiting leaves the line, because nobody in a queue
+  sends anything that would otherwise reveal it had gone.

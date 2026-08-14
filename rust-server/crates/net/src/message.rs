@@ -83,6 +83,7 @@ pub mod server_id {
     pub const NOTICE: u16 = 0x8011;
     pub const DIED: u16 = 0x8012;
     pub const STACKS: u16 = 0x8013;
+    pub const QUEUED: u16 = 0x8014;
 }
 
 /// Why a connection was refused.
@@ -909,6 +910,16 @@ pub enum ServerMessage<'a> {
         message: String,
     },
 
+    /// The server is full, and this is where you stand in the line.
+    ///
+    /// Sent rather than closing the connection, because a refusal makes everybody retry and
+    /// everybody retrying makes a busy server hardest to get into exactly when it is busiest. Sent
+    /// again whenever the place changes, so waiting looks like waiting rather than a hang.
+    Queued {
+        place: u32,
+        waiting: u32,
+    },
+
     /// How many of each stacking potion the character holds.
     ///
     /// Its own message rather than a container, because a stack is one kind of thing many times
@@ -975,6 +986,7 @@ impl ServerMessage<'_> {
             ServerMessage::Notice { .. } => server_id::NOTICE,
             ServerMessage::Died { .. } => server_id::DIED,
             ServerMessage::Stacks { .. } => server_id::STACKS,
+            ServerMessage::Queued { .. } => server_id::QUEUED,
         }
     }
 
@@ -997,6 +1009,10 @@ impl ServerMessage<'_> {
             ServerMessage::Chat { from, text } => {
                 w.string(from);
                 w.string(text);
+            }
+            ServerMessage::Queued { place, waiting } => {
+                w.varint(*place as u64);
+                w.varint(*waiting as u64);
             }
             ServerMessage::Stacks { health, magic } => {
                 w.varint(*health as u64);
@@ -1155,6 +1171,10 @@ impl ServerMessage<'_> {
                 }
                 ServerMessage::Terrain { x, y, runs }
             }
+            server_id::QUEUED => ServerMessage::Queued {
+                place: r.varint_u32()?,
+                waiting: r.varint_u32()?,
+            },
             server_id::STACKS => ServerMessage::Stacks {
                 health: r.varint_u32()? as u16,
                 magic: r.varint_u32()? as u16,

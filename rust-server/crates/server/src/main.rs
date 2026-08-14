@@ -14,6 +14,7 @@
 mod accounts;
 mod chat;
 mod commands;
+mod queue;
 mod session;
 mod strikes;
 mod trades;
@@ -82,6 +83,13 @@ fn parse_options() -> Options {
     }
     options
 }
+
+/// How many players may be in the server at once.
+///
+/// Anybody arriving past this waits in a line rather than being refused, because a refusal makes
+/// everybody retry and everybody retrying makes a busy server hardest to get into exactly when it
+/// is busiest.
+const MAX_PLAYERS: usize = 200;
 
 /// How often the nexus's portal labels and the marketplace's stalls are brought up to date.
 const PORTAL_REFRESH: std::time::Duration = std::time::Duration::from_secs(5);
@@ -371,6 +379,8 @@ async fn main() {
     let context = Arc::new(session::Context {
         trades: Arc::clone(&trades),
         started: std::time::Instant::now(),
+        capacity: MAX_PLAYERS,
+        queue: std::sync::Mutex::new(queue::Queue::new()),
         worlds: Arc::clone(&registry),
         store,
         catalog: Arc::clone(&catalog),

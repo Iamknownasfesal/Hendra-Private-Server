@@ -91,6 +91,12 @@ enum Event {
     /// Something the world wants shown rather than said.
     Notice(String),
 
+    /// The server is full, and this is where you stand in the line.
+    Queued {
+        place: u32,
+        waiting: u32,
+    },
+
     /// How many of each stacking potion the character holds.
     Stacks {
         health: u16,
@@ -414,6 +420,11 @@ impl HendraConnection {
 
                     let row: Vec<i32> = tiles.iter().map(|tile| *tile as i32).collect();
                     entry.set("tiles", &PackedInt32Array::from(row.as_slice()));
+                }
+                Event::Queued { place, waiting } => {
+                    entry.set("kind", "queued");
+                    entry.set("place", place as i64);
+                    entry.set("waiting", waiting as i64);
                 }
                 Event::Stacks { health, magic } => {
                     entry.set("kind", "stacks");
@@ -883,6 +894,7 @@ fn apply(
         ServerMessage::Scenery { y, objects } => shared.push(Event::Scenery { y, objects }),
 
         ServerMessage::Stacks { health, magic } => shared.push(Event::Stacks { health, magic }),
+        ServerMessage::Queued { place, waiting } => shared.push(Event::Queued { place, waiting }),
         ServerMessage::Notice { text } => shared.push(Event::Notice(text)),
         ServerMessage::Died {
             character,
