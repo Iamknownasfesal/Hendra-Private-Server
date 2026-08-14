@@ -2896,8 +2896,20 @@ impl World {
             // Everything that belongs to whoever reaches it first.
             let mut dropped = Vec::new();
             for entry in table.iter().filter(|entry| entry.share() <= 0.0) {
+                // The roll, and then however many the entry insists on that the roll did not
+                // produce. Three entries in the content ask for this, and they are asking for a
+                // drop that is certain rather than likely.
+                let mut made = 0;
                 if let Some(item) = self.roll_loot(entry, catalog) {
                     dropped.push(item);
+                    made += 1;
+                }
+                while made < entry.required() {
+                    match self.roll_loot_certain(entry, catalog) {
+                        Some(item) => dropped.push(item),
+                        None => break,
+                    }
+                    made += 1;
                 }
             }
 
@@ -2909,6 +2921,7 @@ impl World {
                 tier: 1,
                 kind: "potion".to_string(),
                 chance: WORLD_POTION_CHANCE,
+                required: 0,
             };
             if let Some(item) = self.roll_loot(&world_loot, catalog) {
                 dropped.push(item);
@@ -3060,6 +3073,18 @@ impl World {
         self.roll_loot_for(entry, catalog, 1.0)
     }
 
+    /// The same entry, taken without rolling for it.
+    ///
+    /// For the drops an entry insists on: the chance decides whether it appears *this* time, and a
+    /// required count decides that it appears regardless.
+    fn roll_loot_certain(
+        &mut self,
+        entry: &hendra_behavior::program::LootEntry,
+        catalog: &Catalog,
+    ) -> Option<ObjectType> {
+        self.roll_loot_for(entry, catalog, f32::INFINITY)
+    }
+
     /// The same roll, with whatever makes this player luckier than the last.
     ///
     /// A multiplier rather than a bonus, as the original has it: a boost is worth more on something
@@ -3074,7 +3099,7 @@ impl World {
         use hendra_behavior::program::LootEntry;
 
         match entry {
-            LootEntry::Item { name, chance } => {
+            LootEntry::Item { name, chance, .. } => {
                 if self.roll() > *chance * luckier {
                     return None;
                 }
@@ -3085,7 +3110,12 @@ impl World {
             // `drop_loot` walks into it; reaching here means somebody asked it to roll directly.
             LootEntry::Threshold { .. } => None,
 
-            LootEntry::Tier { tier, kind, chance } => {
+            LootEntry::Tier {
+                tier,
+                kind,
+                chance,
+                ..
+            } => {
                 if self.roll() > *chance * luckier {
                     return None;
                 }
@@ -4128,6 +4158,7 @@ impl World {
                 tier: tier.tier,
                 kind: tier.kind.to_string(),
                 chance: tier.chance,
+                required: 0,
             };
             if let Some(item) = self.roll_loot(&entry, catalog) {
                 held.push(item);
@@ -7187,6 +7218,7 @@ mod tests {
         let entry = hendra_behavior::program::LootEntry::Item {
             name: "Rare Blade".to_string(),
             chance: 0.5,
+            required: 0
         };
 
         // Decisive rather than statistical. Comparing two runs of a random draw can agree by luck,
@@ -7216,6 +7248,7 @@ mod tests {
         let never = hendra_behavior::program::LootEntry::Item {
             name: "Rare Blade".to_string(),
             chance: 0.0,
+            required: 0
         };
 
         for _ in 0..200 {

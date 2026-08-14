@@ -858,10 +858,24 @@ pub struct Program {
 #[derive(Debug, Clone, PartialEq)]
 pub enum LootEntry {
     /// A named item at a probability.
-    Item { name: String, chance: f32 },
+    Item {
+        name: String,
+        chance: f32,
+
+        /// How many must drop whatever the roll says.
+        ///
+        /// `numRequired`. The original rolls as usual and then forces out however many did not
+        /// appear, so an entry with one required and a three-in-ten chance always drops.
+        required: u32,
+    },
 
     /// Anything of a tier and kind.
-    Tier { tier: u8, kind: String, chance: f32 },
+    Tier {
+        tier: u8,
+        kind: String,
+        chance: f32,
+        required: u32,
+    },
 
     /// Loot that belongs to whoever earned it, rather than to whoever reaches the bag first.
     ///
@@ -875,6 +889,14 @@ pub enum LootEntry {
 }
 
 impl LootEntry {
+    /// How many of this must drop whatever the roll says.
+    pub fn required(&self) -> u32 {
+        match self {
+            LootEntry::Item { required, .. } | LootEntry::Tier { required, .. } => *required,
+            LootEntry::Threshold { .. } => 0,
+        }
+    }
+
     /// What share of an enemy somebody must have damaged to be eligible for this.
     ///
     /// Zero for anything that drops into the bag everybody can reach.

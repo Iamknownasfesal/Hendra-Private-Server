@@ -1041,6 +1041,7 @@ fn loot(entry: &crate::ast::Loot) -> Option<LootEntry> {
                 .and_then(Value::as_text)?
                 .to_string(),
             chance: number(call, "chance", 1, 0.0) as f32,
+            required: number(call, "num_required", usize::MAX, 0.0).max(0.0) as u32,
         }),
         "tier" => Some(LootEntry::Tier {
             tier: number(call, "tier", 0, 0.0).clamp(0.0, 255.0) as u8,
@@ -1050,6 +1051,7 @@ fn loot(entry: &crate::ast::Loot) -> Option<LootEntry> {
                 .unwrap_or("any")
                 .to_string(),
             chance: number(call, "chance", 2, 0.0) as f32,
+            required: number(call, "num_required", usize::MAX, 0.0).max(0.0) as u32,
         }),
         // `Threshold(share, children...)`: everything inside belongs to whoever earned it.
         //
@@ -1327,12 +1329,14 @@ mod tests {
             vec![
                 LootEntry::Item {
                     name: "Health Potion".into(),
-                    chance: 0.02
+                    chance: 0.02,
+                    required: 0
                 },
                 LootEntry::Tier {
                     tier: 2,
                     kind: "weapon".into(),
-                    chance: 0.3
+                    chance: 0.3,
+                    required: 0
                 },
             ]
         );
