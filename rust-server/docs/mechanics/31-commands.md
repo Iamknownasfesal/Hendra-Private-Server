@@ -69,9 +69,9 @@ get a watch!!"), `/removeOverride`.
   non-equipment slot. `/marketall` starts its loop at index 4 for the same reason.
 - **`/marketall` checks `Soulbound` and `/market` does not.** The same protection, present in one
   path and missing in the other.
-- `/l` is the only chat command that goes through `CompareAndCheckSpam`, and it is the only one that
-  calls `Owner.ChatReceived` — which is what feeds `PlayerTextTransition`. **Enemies only hear local
-  chat**, not `/say`.
+- `/l` is the only chat command that goes through `CompareAndCheckSpam`, and one of two places that
+  call `Owner.ChatReceived` — the other is `PlayerTextHandler`, so **enemies hear both ordinary say
+  and local**, and neither whispers nor guild chat.
 - `/spectate` on yourself clears the target and then schedules a 3-second timer to un-pause, guarded
   by re-checking that no new target was picked in the meantime.
 - `/ignore`, `/unignore`, `/lock`, `/unlock` and `/gkick` all refuse outright in a `Test` world.

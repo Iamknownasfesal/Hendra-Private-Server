@@ -68,6 +68,20 @@ Admins get an `@` prepended to the name, in addition to the `Admin` flag on the 
 `BubbleTime = 5` for everything a player or enemy says; Oryx uses `0`, so his lines do not draw a
 speech bubble over anything.
 
+## What enemies hear
+
+`World.ChatReceived` is what feeds `PlayerTextTransition`, and it is called from **two** places:
+`PlayerTextHandler` for ordinary say, and the `/l` command for local. So enemies hear both channels
+and neither whispers nor guild chat.
+
+`PlayerTextHandler` also gates everything before it: a message longer than **512 characters** is
+dropped, a message starting with `/` goes to the command dispatcher **before any other check** (so
+commands work while muted and before choosing a name), and otherwise the player must have chosen a
+name, must not be muted, and must pass `CompareAndCheckSpam`.
+
+The command branch is `text[0] == '/'` with no length check, so an **empty message throws** — caught
+by the pending-action drain, logged, and otherwise ignored.
+
 ## Local range
 
 ```csharp
