@@ -1202,7 +1202,13 @@ implementations side by side.
   content's `stat=` numbers are in a third numbering the original translates twice and we translate
   not at all, in two places that fail differently: a worn bonus above 20 is dropped, and a potion
   above 7 becomes max HP. Twenty-one of the game's twenty-four potions raise max HP.
-- [ ] `behavior` — 9 files. Against pages 01, 02, 03, 43, 44.
+- [x] `behavior` — 9 files. Against pages 01, 02, 03, 43, 44.
+
+  In [`docs/audit/02-behaviour.md`](docs/audit/02-behaviour.md). The state machine is faithful; the
+  arguments are not. 39 of 118 constructs drop at least one, and the census cannot see it because it
+  counts constructor names. The one that changes a fight most is `Orbit`, whose target we do not
+  read at all: 137 of its 167 uses name an entity to circle, and every one of them circles the
+  nearest player instead.
 - [ ] `sim`, part one: the world loop and entities — against pages 04, 09, 12, 17, 30.
 - [ ] `sim`, part two: combat, stats, items — against pages 05, 07, 08, 11, 13, 18, 21, 23.
 - [ ] `sim`, part three: worlds, setpieces, realm, shops — against pages 06, 10, 14, 15, 16, 24.

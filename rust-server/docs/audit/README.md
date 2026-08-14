@@ -34,6 +34,7 @@ argument census counts names.
 | Page | Crate | Files |
 | --- | --- | --- |
 | [01-content.md](01-content.md) | `hendra-content` | 13 |
+| [02-behaviour.md](02-behaviour.md) | `hendra-behavior` | 9 |
 
 ## Findings so far, worst first
 
@@ -44,4 +45,7 @@ argument census counts names.
 | Ground damage is averaged, continuous, and burns enemies | every hazard tile | [01](01-content.md) |
 | `GenericActivate` does nothing | 26 items | [01](01-content.md) |
 | Ocean Trench has no oxygen | one dungeon, entirely | [01](01-content.md) |
+| Everything that orbits, orbits the player | 137 of 167 orbits | [02](02-behaviour.md) |
+| `Shoot` drops its acquire range and its stagger | 4,486 and 2,663 uses | [02](02-behaviour.md) |
 | Projectile damage rolls can hit the maximum | every projectile | [01](01-content.md) |
+| A thrown object lands 700ms before it should | 389 uses | [02](02-behaviour.md) |
