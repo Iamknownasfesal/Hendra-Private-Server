@@ -62,6 +62,27 @@ Two things worth copying:
 Both inventories are written in **one `Inventory.Execute`**, which validates that neither side changed
 since the snapshot and applies both or neither.
 
+## What the handlers add
+
+Read from `RequestTradeHandler.cs`, `ChangeTradeHandler.cs`, `CancelTradeHandler.cs`.
+
+All three run **inline on the network thread**, not on the tick, with the queued version commented
+out above.
+
+`ChangeTrade` walks the offer array and **silently clears any bit on a soulbound item**, then tells
+the player once at the end ("You can't trade Soulbound items."). Any change to either offer resets
+**both** players' `tradeAccepted` to false, which is what stops the classic swap-at-the-last-moment
+trick.
+
+```csharp
+if (packet.Offer[i])
+    if (player.Inventory[i].Soulbound)
+```
+
+**No null check.** An offer bit set on an empty slot throws, and the packet dispatcher drops the
+connection. The offer array's length is also not checked against the inventory's, so a longer array
+walks off the end.
+
 ## What this server does differently
 
 - Ours is a durable transaction in the store with per-side room limits, which is stronger than the

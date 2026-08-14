@@ -82,6 +82,35 @@ Target states are resolved by name once, at load; a name that is not a state is 
 load time in the original (dictionary lookup), which is why the converter must not emit a name that
 does not exist.
 
+## How a behaviour reaches an enemy
+
+Read from `logic/BehaviorDb.cs`.
+
+Every `BehaviorDb.<Dungeon>.cs` file declares one private field of delegate type `_`. The constructor
+reflects over **every private instance field of that type**, calls it, and then sets the field to
+null so the closure and everything it captured can be collected.
+
+So a script is registered by *existing as a field*. There is no list, and a file that declares its
+field with the wrong type or the wrong accessibility is skipped without a word.
+
+`Behav().Init(id, rootState, drops...)` resolves the state tree, then registers it against the object
+type the **name** `id` resolves to. A name with no XML behind it logs `"Failed to add behavior: {id}.
+Xml data not found."` and is skipped — that log line is the only thing standing between a typo and a
+silently inert enemy.
+
+`Definitions` is a plain `Dictionary`, so **two scripts claiming the same id throw at startup**.
+
+Loot is attached as a `Death` handler on the root state rather than stored separately, and an entry
+with no drops stores a null `Loot`. `ResolveBehavior` is `SwitchTo(rootState)` and nothing else — an
+object type with no entry simply has no behaviour.
+
+`InitMany` exists because a resolved state tree **cannot be shared**: `Init` resolves children in
+place against one object type, so handing the same instance to two ids leaves the second holding the
+first's resolved children. It takes a generator and runs it once per id.
+
+Initialisation is guarded by an `Interlocked.Exchange` on a static, and a second concurrent
+`BehaviorDb` throws, because `InitDb` is a static the scripts read while they run.
+
 ## What this server does differently
 
 - **`Prioritize` does not tick the children it passes over**, and does not latch on `InProgress`.

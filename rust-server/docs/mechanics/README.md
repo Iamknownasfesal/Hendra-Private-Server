@@ -76,7 +76,7 @@ bonus in the game. See [the stats page](08-stats.md).
 
 ## How much of this is actually read
 
-The C# server is **547 files**. About **235** were opened and read, including every behaviour, every
+The C# server is **547 files**. About **250** were opened and read, including every behaviour, every
 transition, every command and every world subclass. The rest was assessed by census,
 by signature, or by call site, which is weaker evidence and is how the first two passes of this audit
 reached wrong conclusions twice.
