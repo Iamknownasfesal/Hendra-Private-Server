@@ -622,6 +622,21 @@ category by category. It found thirteen things, one of them a mechanic that sile
   The durable half runs before anything is sent. A death message the player sees and a character the
   database still calls alive is a character they can log back into.
 
+- [x] A death is kept, not just noted
+
+  A `death` table, one row per character that has died, written in the same transaction that marks
+  the character dead: neither half alone means anything. The class is remembered by identity and the
+  row does not reference the character, so a death outlives the character it happened to and a
+  graveyard does not empty itself when somebody tidies up.
+
+  A character dies once. A second attempt finds it already dead and refuses, which is what stops two
+  worlds both deciding they killed the same person from paying its fame twice. Proved with eight
+  concurrent attempts against a real database: one recorded, one payment.
+
+  The fame a character finished with goes to the account and to its guild, both inside the same
+  transaction, so a guild joined or left between the death and the payment cannot take it to the
+  wrong place.
+
 ### 18.2 Fame — **L**
 
 - [ ] `FameCounter` and the twenty bonuses in `common/FameStats.cs`. Nothing tracks shots, hits,

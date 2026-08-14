@@ -480,6 +480,140 @@ impl Store {
         Ok(())
     }
 
+    /// Records a death, and marks the character dead, in one transaction.
+    ///
+    /// Both or neither. A character marked dead with no death recorded loses the only account of
+    /// what happened to it, and a death recorded against a character still alive is a graveyard
+    /// entry for somebody still playing.
+    ///
+    /// Refuses a second death for the same character. A character dies once, and a repeat is either
+    /// a bug or two worlds both deciding they killed the same person; either way, recording it
+    /// twice would put one character in the graveyard twice and pay its fame twice.
+    pub async fn record_death(&self, death: Death) -> Result<i64> {
+        let Death {
+            account_id,
+            character_id,
+            killed_by,
+            final_fame,
+            first_born,
+        } = death;
+
+        let mut transaction = self.pool().begin().await?;
+
+        // The character is locked and read before anything is written, so two deaths racing on one
+        // character resolve to one: the second finds it already dead and refuses.
+        let held = sqlx::query_as::<_, (String, uuid::Uuid, i16, bool, i64)>(
+            "SELECT name, class, level, alive, account_id
+             FROM character WHERE id = $1 FOR UPDATE",
+        )
+        .bind(character_id)
+        .fetch_optional(&mut *transaction)
+        .await?
+        .ok_or(StoreError::NoSuchCharacter(character_id))?;
+
+        if held.4 != account_id {
+            return Err(StoreError::Refused("that is not your character"));
+        }
+        if !held.3 {
+            return Err(StoreError::Refused("that character is already dead"));
+        }
+
+        sqlx::query(
+            "UPDATE character SET alive = false, hp = 0, fame = $2, last_seen = now()
+             WHERE id = $1",
+        )
+        .bind(character_id)
+        .bind(final_fame)
+        .execute(&mut *transaction)
+        .await?;
+
+        let (id,): (i64,) = sqlx::query_as(
+            "INSERT INTO death
+                 (account_id, character_id, name, class, level, final_fame, killed_by, first_born)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             RETURNING id",
+        )
+        .bind(account_id)
+        .bind(character_id)
+        .bind(&held.0)
+        .bind(held.1)
+        .bind(held.2)
+        .bind(final_fame)
+        .bind(&killed_by)
+        .bind(first_born)
+        .fetch_one(&mut *transaction)
+        .await?;
+
+        // The fame a character finished with is the account's to keep, which is what makes a death
+        // worth anything at all.
+        sqlx::query("UPDATE account SET fame = fame + $2 WHERE id = $1")
+            .bind(account_id)
+            .bind(final_fame.max(0))
+            .execute(&mut *transaction)
+            .await?;
+
+        // And the guild's, where there is one. Read inside the transaction, so a guild joined or
+        // left between the death and the payment cannot take fame to the wrong place.
+        let guild =
+            sqlx::query_as::<_, (Option<i64>,)>("SELECT guild_id FROM account WHERE id = $1")
+                .bind(account_id)
+                .fetch_optional(&mut *transaction)
+                .await?
+                .and_then(|(guild,)| guild);
+
+        if let Some(guild) = guild {
+            sqlx::query("UPDATE guild SET fame = fame + $2 WHERE id = $1")
+                .bind(guild)
+                .bind(final_fame.max(0))
+                .execute(&mut *transaction)
+                .await?;
+        }
+
+        transaction.commit().await?;
+        Ok(id)
+    }
+
+    /// Whether this account has ever had a character die.
+    ///
+    /// What decides the first-born bonus, which can only be earned once and so is remembered rather
+    /// than recomputed from anything that could change.
+    pub async fn has_died_before(&self, account_id: i64) -> Result<bool> {
+        let found =
+            sqlx::query_as::<_, (i64,)>("SELECT id FROM death WHERE account_id = $1 LIMIT 1")
+                .bind(account_id)
+                .fetch_optional(self.pool())
+                .await?;
+
+        Ok(found.is_some())
+    }
+
+    /// An account's graveyard, most recent first.
+    pub async fn graveyard(&self, account_id: i64, limit: i64) -> Result<Vec<Departed>> {
+        let rows = sqlx::query_as::<_, DeathRow>(
+            "SELECT id, character_id, name, class, level, final_fame, killed_by, first_born, at
+             FROM death WHERE account_id = $1 ORDER BY at DESC LIMIT $2",
+        )
+        .bind(account_id)
+        .bind(limit.clamp(1, MOST_DEATHS_READ))
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(rows.into_iter().map(departed).collect())
+    }
+
+    /// The most famous deaths on the server, which is what a leaderboard shows.
+    pub async fn best_deaths(&self, limit: i64) -> Result<Vec<Departed>> {
+        let rows = sqlx::query_as::<_, DeathRow>(
+            "SELECT id, character_id, name, class, level, final_fame, killed_by, first_born, at
+             FROM death ORDER BY final_fame DESC, at DESC LIMIT $1",
+        )
+        .bind(limit.clamp(1, MOST_DEATHS_READ))
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(rows.into_iter().map(departed).collect())
+    }
+
     /// Deletes a character, if it belongs to the account asking.
     ///
     /// The ownership check is in the statement rather than in a lookup before it, so there is no
@@ -885,6 +1019,68 @@ impl Store {
         Ok(chests)
     }
 }
+
+/// One graveyard row as the database hands it over.
+type DeathRow = (
+    i64,
+    i64,
+    String,
+    uuid::Uuid,
+    i16,
+    i32,
+    String,
+    bool,
+    chrono::DateTime<chrono::Utc>,
+);
+
+fn departed(row: DeathRow) -> Departed {
+    let (id, character_id, name, class, level, final_fame, killed_by, first_born, at) = row;
+
+    Departed {
+        id,
+        character_id,
+        name,
+        class,
+        level,
+        final_fame,
+        killed_by,
+        first_born,
+        at,
+    }
+}
+
+/// What a death is, as it goes into the graveyard.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Death {
+    pub account_id: i64,
+    pub character_id: i64,
+    pub killed_by: String,
+
+    /// What the character finished with, after the bonuses.
+    pub final_fame: i32,
+
+    /// Whether this is the first character on the account ever to die.
+    pub first_born: bool,
+}
+
+/// One row of a graveyard.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Departed {
+    pub id: i64,
+    pub character_id: i64,
+    pub name: String,
+    pub class: uuid::Uuid,
+    pub level: i16,
+    pub final_fame: i32,
+    pub killed_by: String,
+    pub first_born: bool,
+    pub at: chrono::DateTime<chrono::Utc>,
+}
+
+/// How many graveyard rows one read may ask for.
+///
+/// A length a caller controls is bounded before anything is reserved.
+const MOST_DEATHS_READ: i64 = 100;
 
 /// How much fame one prestige costs.
 pub const FAME_PER_PRESTIGE: i32 = 1500;

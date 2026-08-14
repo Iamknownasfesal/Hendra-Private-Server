@@ -8,7 +8,8 @@
 //! machine with no Postgres can still run the rest of the suite.
 
 use hendra_store::{
-    Admin, Currency, DyeSlot, Location, MarketPurchase, Offer, Purchase, Rank, Store, StoreError,
+    Admin, Currency, Death, DyeSlot, Location, MarketPurchase, Offer, Purchase, Rank, Store,
+    StoreError,
 };
 
 /// A store with a schema of its own, or `None` when no database is configured.
@@ -2316,4 +2317,181 @@ async fn nothing_goes_into_a_gift_chest() {
         .await;
 
     assert!(outcome.is_err(), "the gift chest took a deposit");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_death_is_recorded_and_the_character_is_marked_dead_together() {
+    // A character marked dead with no death recorded loses the only account of what happened to it,
+    // and a death recorded against a living character is a graveyard entry for somebody playing.
+    let Some(store) = store("t_death_record").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    let character = store
+        .create_character(account.id, uuid::Uuid::nil(), "Fesal", 100)
+        .await
+        .unwrap();
+
+    assert!(!store.has_died_before(account.id).await.unwrap());
+
+    store
+        .record_death(Death {
+            account_id: account.id,
+            character_id: character.id,
+            killed_by: "Slime".to_string(),
+            final_fame: 250,
+            first_born: true,
+        })
+        .await
+        .unwrap();
+
+    assert!(!store.character(character.id).await.unwrap().alive);
+    assert!(store.has_died_before(account.id).await.unwrap());
+
+    let graveyard = store.graveyard(account.id, 10).await.unwrap();
+    assert_eq!(graveyard.len(), 1);
+    assert_eq!(graveyard[0].killed_by, "Slime");
+    assert_eq!(graveyard[0].final_fame, 250);
+    assert!(graveyard[0].first_born);
+
+    // The fame a character finished with is the account's to keep.
+    assert_eq!(store.account(account.id).await.unwrap().fame, 250);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_character_cannot_die_twice() {
+    // Two worlds both deciding they killed the same person would put one character in the graveyard
+    // twice and pay its fame twice.
+    let Some(store) = store("t_death_twice").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    let character = store
+        .create_character(account.id, uuid::Uuid::nil(), "Fesal", 100)
+        .await
+        .unwrap();
+
+    let death = Death {
+        account_id: account.id,
+        character_id: character.id,
+        killed_by: "Slime".to_string(),
+        final_fame: 100,
+        first_born: false,
+    };
+
+    store.record_death(death.clone()).await.unwrap();
+    assert!(store.record_death(death).await.is_err(), "it died twice");
+
+    assert_eq!(store.graveyard(account.id, 10).await.unwrap().len(), 1);
+    assert_eq!(store.account(account.id).await.unwrap().fame, 100);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn two_deaths_racing_on_one_character_resolve_to_one() {
+    let Some(store) = store("t_death_race").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    let character = store
+        .create_character(account.id, uuid::Uuid::nil(), "Fesal", 100)
+        .await
+        .unwrap();
+
+    let attempts: Vec<_> = (0..8)
+        .map(|_| {
+            let store = store.clone();
+            let death = Death {
+                account_id: account.id,
+                character_id: character.id,
+                killed_by: "Slime".to_string(),
+                final_fame: 50,
+                first_born: false,
+            };
+            tokio::spawn(async move { store.record_death(death).await })
+        })
+        .collect();
+
+    let mut recorded = 0;
+    for attempt in attempts {
+        if attempt.await.unwrap().is_ok() {
+            recorded += 1;
+        }
+    }
+
+    assert_eq!(recorded, 1, "{recorded} of eight attempts were recorded");
+    assert_eq!(store.graveyard(account.id, 10).await.unwrap().len(), 1);
+    assert_eq!(
+        store.account(account.id).await.unwrap().fame,
+        50,
+        "paid twice"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_death_outlives_the_character_it_happened_to() {
+    // A graveyard that emptied itself when somebody tidied up would be no graveyard at all.
+    let Some(store) = store("t_death_outlives").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    let character = store
+        .create_character(account.id, uuid::Uuid::nil(), "Fesal", 100)
+        .await
+        .unwrap();
+
+    store
+        .record_death(Death {
+            account_id: account.id,
+            character_id: character.id,
+            killed_by: "Slime".to_string(),
+            final_fame: 10,
+            first_born: false,
+        })
+        .await
+        .unwrap();
+
+    store
+        .delete_character(account.id, character.id)
+        .await
+        .unwrap();
+
+    let graveyard = store.graveyard(account.id, 10).await.unwrap();
+    assert_eq!(graveyard.len(), 1, "the death went with the character");
+    assert_eq!(graveyard[0].name, "Fesal");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_guild_keeps_what_its_members_finished_with() {
+    let Some(store) = store("t_death_guild").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    let guild = store.found_guild(account.id, "The Quiet").await.unwrap();
+    let character = store
+        .create_character(account.id, uuid::Uuid::nil(), "Fesal", 100)
+        .await
+        .unwrap();
+
+    store
+        .record_death(Death {
+            account_id: account.id,
+            character_id: character.id,
+            killed_by: "Slime".to_string(),
+            final_fame: 300,
+            first_born: false,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(store.guild(guild.id).await.unwrap().fame, 300);
 }

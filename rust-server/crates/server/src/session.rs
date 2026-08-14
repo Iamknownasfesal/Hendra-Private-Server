@@ -3605,16 +3605,46 @@ async fn die(
     }
 
     // The durable half first. Everything after this is telling people about it.
-    if let Err(err) = context.store.kill_character(player.character.id).await {
-        tracing::error!(%err, character = player.character.id, "could not record a death");
-    }
-
+    //
+    // The graveyard row and the character being marked dead go together in one transaction: a
+    // character marked dead with no death recorded loses the only account of what happened to it,
+    // and a death recorded against a living character is a graveyard entry for somebody still
+    // playing.
     let fame = context
         .store
         .character(player.character.id)
         .await
         .map(|character| character.fame)
         .unwrap_or(0);
+
+    // Only once per account, ever, which is why it is asked of the graveyard rather than worked out
+    // from anything that could change.
+    let first_born = !context
+        .store
+        .has_died_before(player.account.id)
+        .await
+        .unwrap_or(true);
+
+    if let Err(err) = context
+        .store
+        .record_death(hendra_store::Death {
+            account_id: player.account.id,
+            character_id: player.character.id,
+            killed_by: departed.killer.clone(),
+            final_fame: fame,
+            first_born,
+        })
+        .await
+    {
+        // Said loudly. A death that was not written down is a character the player can log back
+        // into, which is the one outcome worth shouting about.
+        tracing::error!(
+            %err,
+            character = player.character.id,
+            account = player.account.id,
+            "a death could not be recorded"
+        );
+    }
 
     // How much of the character was finished, which decides the stone and how long it stands.
     let maxed = maxed_stats(context, player).await;
