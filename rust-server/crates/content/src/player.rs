@@ -57,6 +57,31 @@ impl Stat {
     pub fn index(self) -> usize {
         self as usize
     }
+
+    /// The stat a `stat="N"` attribute in the content names.
+    ///
+    /// The number in the files is in neither the wire numbering nor this one. The original puts it
+    /// through two translations: `XmlStat.ToStatsType` maps it to a `StatsType`, and
+    /// `StatsManager.GetStatIndex` maps that to a position in the eight-stat array. This is the
+    /// composition of the two, which is why it is not ordered — vitality and wisdom sit before
+    /// dexterity in `StatsType` and after it here.
+    ///
+    /// Anything outside the table is `None`. The original would index an array with the -1 its
+    /// lookup returns and throw; no content reaches that, and refusing is the useful answer either
+    /// way.
+    pub fn from_content_number(written: i64) -> Option<Stat> {
+        Some(match written {
+            0 => Stat::MaxHitPoints,
+            3 => Stat::MaxMagicPoints,
+            20 => Stat::Attack,
+            21 => Stat::Defense,
+            22 => Stat::Speed,
+            26 => Stat::HpRegen,
+            27 => Stat::MpRegen,
+            28 => Stat::Dexterity,
+            _ => return None,
+        })
+    }
 }
 
 /// One stat's starting value, ceiling, and how much a level adds.

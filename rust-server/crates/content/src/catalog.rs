@@ -680,6 +680,47 @@ mod tests {
     }
 
     #[test]
+    fn the_potions_in_the_content_raise_what_they_are_named_after() {
+        // Read from the shipped content rather than from a fixture, because the bug this replaced
+        // was invisible to every fixture: a hand-written `stat="0"` works under both the right
+        // translation and the wrong one, and the game's potions are the eight numbers that do not.
+        let Ok((catalog, _)) =
+            Catalog::load_dir(std::path::Path::new("../../../godot-client/assets/xml"))
+        else {
+            eprintln!("skipping: the content files are not where the test looks for them");
+            return;
+        };
+
+        for (name, expected) in [
+            ("Potion of Life", 0),
+            ("Potion of Mana", 1),
+            ("Potion of Attack", 2),
+            ("Potion of Defense", 3),
+            ("Potion of Speed", 4),
+            ("Potion of Dexterity", 5),
+            ("Potion of Vitality", 6),
+            ("Potion of Wisdom", 7),
+        ] {
+            let Some(desc) = catalog.by_name(name) else {
+                continue;
+            };
+            let item = desc.item.as_ref().expect("a potion is an item");
+
+            let raised: Vec<u8> = item
+                .activate
+                .iter()
+                .map(crate::Effect::of)
+                .filter_map(|effect| match effect {
+                    crate::Effect::IncrementStat { stat, .. } => Some(stat),
+                    _ => None,
+                })
+                .collect();
+
+            assert_eq!(raised, vec![expected], "{name} raises the wrong stat");
+        }
+    }
+
+    #[test]
     fn every_consumable_that_names_a_successor_names_one_that_exists_and_stops() {
         // An elixir with seven charges is seven items, each naming the next one down. If a name in
         // that chain does not resolve, the elixir is a single drink and looks like one that always

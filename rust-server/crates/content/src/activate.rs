@@ -16,6 +16,7 @@
 
 use crate::desc::ActivateDesc;
 use crate::effect::ConditionEffect;
+use crate::player::Stat;
 
 /// One thing using an item does.
 #[derive(Debug, Clone, PartialEq)]
@@ -229,21 +230,33 @@ impl Effect {
                 range: range(),
             },
 
-            "IncrementStat" => Effect::IncrementStat {
-                stat: stat(),
-                amount: amount(),
+            // A stat these do not recognise is reported rather than guessed at. Guessing is what
+            // made every potion in the game raise max health: an unmatched number fell through to
+            // stat zero, which is a plausible-looking answer and the wrong one.
+            "IncrementStat" => match stat() {
+                Some(stat) => Effect::IncrementStat {
+                    stat,
+                    amount: amount(),
+                },
+                None => unsupported(desc),
             },
-            "StatBoostSelf" => Effect::StatBoost {
-                stat: stat(),
-                amount: amount(),
-                duration_ms: duration(),
-                range: None,
+            "StatBoostSelf" => match stat() {
+                Some(stat) => Effect::StatBoost {
+                    stat,
+                    amount: amount(),
+                    duration_ms: duration(),
+                    range: None,
+                },
+                None => unsupported(desc),
             },
-            "StatBoostAura" => Effect::StatBoost {
-                stat: stat(),
-                amount: amount(),
-                duration_ms: duration(),
-                range: Some(range()),
+            "StatBoostAura" => match stat() {
+                Some(stat) => Effect::StatBoost {
+                    stat,
+                    amount: amount(),
+                    duration_ms: duration(),
+                    range: Some(range()),
+                },
+                None => unsupported(desc),
             },
 
             "ConditionEffectSelf" => Effect::ConditionSelf {
@@ -451,25 +464,42 @@ fn named_condition(written: &str) -> Option<ConditionEffect> {
         })
 }
 
-/// Which of the eight stats an activate names.
-fn stat_index(written: &str) -> u8 {
+/// An activate whose arguments this runtime could not make sense of.
+fn unsupported(desc: &ActivateDesc) -> Effect {
+    Effect::Unsupported {
+        name: desc.name.clone(),
+    }
+}
+
+/// Which of the eight stats an activate names, or `None` if it names none of them.
+///
+/// A written number is in the content's own numbering and goes through
+/// [`Stat::from_content_number`]; a written name is matched directly, because a few files spell the
+/// stat out. The two are different alphabets for the same eight things: `stat="21"` and
+/// `stat="Defense"` both mean defence, and `stat="3"` means max magic rather than the defence its
+/// digit would suggest here.
+fn stat_index(written: &str) -> Option<u8> {
     let tidy: String = written
         .chars()
         .filter(char::is_ascii_alphanumeric)
         .map(|c| c.to_ascii_lowercase())
         .collect();
 
-    match tidy.as_str() {
-        "maxhitpoints" | "hp" | "0" => 0,
-        "maxmagicpoints" | "mp" | "1" => 1,
-        "attack" | "2" => 2,
-        "defense" | "defence" | "3" => 3,
-        "speed" | "4" => 4,
-        "dexterity" | "5" => 5,
-        "hpregen" | "vitality" | "6" => 6,
-        "mpregen" | "wisdom" | "7" => 7,
-        _ => 0,
+    if let Ok(number) = tidy.parse::<i64>() {
+        return Stat::from_content_number(number).map(|stat| stat.index() as u8);
     }
+
+    Some(match tidy.as_str() {
+        "maxhitpoints" | "hp" => 0,
+        "maxmagicpoints" | "mp" => 1,
+        "attack" => 2,
+        "defense" | "defence" => 3,
+        "speed" => 4,
+        "dexterity" => 5,
+        "hpregen" | "vitality" => 6,
+        "mpregen" | "wisdom" => 7,
+        _ => return None,
+    })
 }
 
 #[cfg(test)]
@@ -496,8 +526,9 @@ mod tests {
 
     #[test]
     fn a_stat_can_be_named_by_word_or_by_number() {
-        // The files use both, and reading one as the other silently raises the wrong stat.
-        for written in ["2", "Attack", "attack"] {
+        // The files use both, and the two are different alphabets: attack is `20` written as a
+        // number and `Attack` written as a word. Reading one as the other raises the wrong stat.
+        for written in ["20", "Attack", "attack"] {
             let effect = Effect::of(&desc(
                 "IncrementStat",
                 &[("stat", written), ("amount", "1")],
@@ -511,11 +542,50 @@ mod tests {
     }
 
     #[test]
+    fn every_potion_in_the_game_raises_what_it_says_on_the_bottle() {
+        // The whole table, because getting one row wrong is how twenty-one of the game's
+        // twenty-four potions came to raise max health. The left column is what the content
+        // writes; the right is the position in the eight-stat array.
+        for (written, expected) in [
+            ("0", 0),  // Life
+            ("3", 1),  // Mana
+            ("20", 2), // Attack
+            ("21", 3), // Defense
+            ("22", 4), // Speed
+            ("26", 6), // Vitality
+            ("27", 7), // Wisdom
+            ("28", 5), // Dexterity
+        ] {
+            let effect = Effect::of(&desc(
+                "IncrementStat",
+                &[("stat", written), ("amount", "1")],
+            ));
+            assert_eq!(
+                effect,
+                Effect::IncrementStat {
+                    stat: expected,
+                    amount: 1
+                },
+                "stat={written}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_stat_number_outside_the_table_is_reported_rather_than_guessed() {
+        // Falling through to stat zero is exactly the bug this replaced: it turns an unreadable
+        // potion into a max-health potion, which looks like it worked.
+        let effect = Effect::of(&desc("IncrementStat", &[("stat", "99"), ("amount", "1")]));
+
+        assert_eq!(effect.unsupported_name(), Some("IncrementStat"));
+    }
+
+    #[test]
     fn wisdom_and_vitality_are_the_names_the_files_use_for_the_regens() {
-        assert_eq!(stat_index("Vitality"), 6);
-        assert_eq!(stat_index("HpRegen"), 6);
-        assert_eq!(stat_index("Wisdom"), 7);
-        assert_eq!(stat_index("MpRegen"), 7);
+        assert_eq!(stat_index("Vitality"), Some(6));
+        assert_eq!(stat_index("HpRegen"), Some(6));
+        assert_eq!(stat_index("Wisdom"), Some(7));
+        assert_eq!(stat_index("MpRegen"), Some(7));
     }
 
     #[test]
@@ -530,9 +600,9 @@ mod tests {
     fn an_aura_carries_a_range_and_a_self_effect_does_not() {
         let aura = Effect::of(&desc(
             "StatBoostAura",
-            &[("stat", "4"), ("amount", "20"), ("range", "6")],
+            &[("stat", "22"), ("amount", "20"), ("range", "6")],
         ));
-        let alone = Effect::of(&desc("StatBoostSelf", &[("stat", "4"), ("amount", "20")]));
+        let alone = Effect::of(&desc("StatBoostSelf", &[("stat", "22"), ("amount", "20")]));
 
         assert!(matches!(aura, Effect::StatBoost { range: Some(_), .. }));
         assert!(matches!(alone, Effect::StatBoost { range: None, .. }));
@@ -727,10 +797,10 @@ mod tests {
         ];
 
         for kind in kinds {
-            assert!(
-                Effect::of(&desc(kind, &[])).is_supported(),
-                "{kind} is not read as anything"
-            );
+            // A stat is supplied because the three that take one now refuse an activate that
+            // names no stat, rather than silently choosing the first.
+            let effect = Effect::of(&desc(kind, &[("stat", "20")]));
+            assert!(effect.is_supported(), "{kind} is not read as anything");
         }
     }
     #[test]

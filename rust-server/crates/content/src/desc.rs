@@ -247,12 +247,16 @@ impl ItemDesc {
 
         // A stat boost is spelled as an IncrementStat activation; lifting it out here means the
         // stat manager never has to walk the activation list.
+        //
+        // The written number is translated to a stat here rather than where the boost is applied,
+        // so that nothing downstream ever holds a content number. Applying it at the point of use
+        // is what let two call sites translate differently and neither notice.
         let stat_boosts = on_equip
             .iter()
             .filter(|a| a.name == "IncrementStat")
             .filter_map(|a| {
                 Some(StatBoost {
-                    stat: a.int("stat")? as u8,
+                    stat: crate::player::Stat::from_content_number(a.int("stat")?)?.index() as u8,
                     amount: a.int("amount")? as i32,
                 })
             })
@@ -625,15 +629,19 @@ mod tests {
         );
 
         let item = desc.item.as_ref().unwrap();
+
+        // The written numbers are 21 and 3 and the stats are defence and max magic, which are
+        // positions 3 and 1. Reading the numbers as positions is what made every mana bonus in
+        // the game raise defence.
         assert_eq!(
             item.stat_boosts,
             vec![
                 StatBoost {
-                    stat: 21,
+                    stat: 3,
                     amount: 10
                 },
                 StatBoost {
-                    stat: 3,
+                    stat: 1,
                     amount: 50
                 },
             ]
