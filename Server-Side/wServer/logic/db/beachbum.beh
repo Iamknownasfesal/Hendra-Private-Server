@@ -1,0 +1,10 @@
+enemy "Beach Bum" {
+    prioritize() {
+        stay_close_to_spawn(0.5, 3)
+        wander(0.05)
+    }
+    loot {
+        item("Davy's Key", 1)
+    }
+}
+

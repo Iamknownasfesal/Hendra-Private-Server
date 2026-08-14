@@ -1,0 +1,122 @@
+enemy "Lord Ruthven" {
+    realm_portal_drop()
+    state default {
+        on player_within(8) -> spooksters
+    }
+    state spooksters {
+        wander(0.2)
+        shoot(10, count: 5, shoot_angle: 2, projectile: 0, cooldown: 900)
+        on timed(6000) -> spooksters2
+    }
+    state spooksters2 {
+        wander(0.15)
+        shoot(8.4, count: 40, projectile: 1, cooldown: 2750)
+        shoot(10, count: 5, shoot_angle: 2, projectile: 0, cooldown: 900)
+        on timed(4000) -> spooksters3
+    }
+    state spooksters3 {
+        heal_self(cooldown: 1250)
+        shoot(8.4, count: 40, projectile: 1, cooldown: 2750)
+        on timed(4000) -> spooksters
+    }
+    loot {
+        threshold(0.05) {  }
+        threshold(0.025) { tier(9, weapon, 0.1) tier(4, ability, 0.1) tier(9, armor, 0.1) tier(3, ring, 0.05) tier(10, armor, 0.05) tier(10, weapon, 0.05) tier(4, ring, 0.025) item("Potion of Attack", 1) item("Holy Water", 0.5) item("Death Tarot Card", 0.05) item("Chasuble of Holy Light", 0.01) item("St. Abraham's Wand", 0.01) item("Unholy Quiver", 0.001) item("Unholy Wand", 0.001) item("Tome of Purification", 0.001) item("Ring of Divine Faith", 0.01) item("Bone Dagger", 0.08) }
+    }
+}
+
+enemy "Hellhound" {
+    follow(1.25, 8, 1, cooldown: 275)
+    shoot(10, count: 5, shoot_angle: 7, cooldown: 2000)
+    loot {
+        item("Magic Potion", 0.05)
+        threshold(0.5) { item("Timelock Orb", 0.01) }
+    }
+}
+
+enemy "Vampire Bat Swarmer" {
+    follow(1.5, 8, 1)
+    shoot(10, count: 1, cooldown: 6)
+}
+
+enemy "Lil Feratu" {
+    follow(0.35, 8, 1)
+    shoot(10, count: 6, shoot_angle: 2, cooldown: 900)
+    loot {
+        item("Health Potion", 0.05)
+        threshold(0.5) { item("Steel Helm", 0.01) }
+    }
+}
+
+enemy "Lesser Bald Vampire" {
+    follow(0.35, 8, 1)
+    shoot(10, count: 5, shoot_angle: 6, cooldown: 1000)
+    loot {
+        item("Health Potion", 0.05)
+        threshold(0.5) { item("Steel Helm", 0.01) }
+    }
+}
+
+enemy "Nosferatu" {
+    wander(0.25)
+    shoot(10, count: 5, shoot_angle: 2, projectile: 1, cooldown: 1000)
+    shoot(10, count: 6, shoot_angle: 90, projectile: 0, cooldown: 1500)
+    loot {
+        item("Health Potion", 0.05)
+        threshold(0.5) { item("Bone Dagger", 0.01) item("Wand of Death", 0.05) item("Golden Bow", 0.04) item("Steel Helm", 0.05) item("Ring of Paramount Defense", 0.09) }
+    }
+}
+
+enemy "Armor Guard" {
+    wander(0.2)
+    toss_object("RockBomb", 7, cooldown: 3000)
+    shoot(10, count: 1, projectile: 0, predictive: 7, cooldown: 1000)
+    shoot(10, count: 1, projectile: 1, cooldown: 750)
+    loot {
+        item("Magic Potion", 0.05)
+        threshold(0.5) { item("Glass Sword", 0.01) item("Staff of Destruction", 0.01) item("Golden Shield", 0.01) item("Ring of Paramount Speed", 0.01) }
+    }
+}
+
+enemy "Coffin Creature" {
+    spawn("Lil Feratu", initial_spawn: 1, max_children: 2, cooldown: 2250)
+    shoot(10, count: 1, projectile: 0, cooldown: 700)
+    loot {
+        item("Magic Potion", 0.05)
+    }
+}
+
+enemy "RockBomb" {
+    state BOUTTOEXPLODE {
+        on timed(1111) -> boom
+    }
+    state boom {
+        shoot(8.4, count: 1, fixed_angle: 0, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 90, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 180, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 270, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 45, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 135, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 235, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 315, projectile: 0, cooldown: 1000)
+        suicide()
+    }
+}
+
+enemy "Coffin" {
+    state Coffin1 {
+        on hp_below(0.75) -> Coffin2
+    }
+    state Coffin2 {
+        spawn("Vampire Bat Swarmer", initial_spawn: 1, max_children: 15, cooldown: 99999)
+        on hp_below(0.4) -> Coffin3
+    }
+    state Coffin3 {
+        spawn("Vampire Bat Swarmer", initial_spawn: 1, max_children: 8, cooldown: 99999)
+        spawn("Nosferatu", initial_spawn: 1, max_children: 2, cooldown: 99999)
+    }
+    loot {
+        threshold(0.5) { item("Holy Water", 1) item("Potion of Attack", 0.5) item("Chasuble of Holy Light", 0.01) item("St. Abraham's Wand", 0.01) item("Tome of Purification", 0.001) item("Ring of Divine Faith", 0.01) item("Bone Dagger", 0.08) tier(7, weapon, 0.05) tier(6, armor, 0.2) tier(4, ability, 0.15) }
+    }
+}
+

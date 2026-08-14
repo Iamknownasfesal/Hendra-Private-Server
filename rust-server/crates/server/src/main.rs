@@ -21,7 +21,7 @@ mod trades;
 mod world_task;
 mod worlds;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use hendra_content::Catalog;
@@ -40,6 +40,9 @@ struct Options {
     map: String,
     content: PathBuf,
     worlds: PathBuf,
+
+    /// Where the converted enemy behaviours are.
+    behaviours: PathBuf,
     certificate: Option<(PathBuf, PathBuf)>,
     database: String,
 }
@@ -51,6 +54,7 @@ impl Default for Options {
             map: "Nexus.jm".into(),
             content: PathBuf::from("../Server-Side/XmlDatas/xmls/client"),
             worlds: PathBuf::from("../Server-Side/XmlDatas/worlds"),
+            behaviours: PathBuf::from("content/behaviours"),
             certificate: None,
             database: std::env::var("HENDRA_DATABASE")
                 .unwrap_or_else(|_| DEFAULT_DATABASE.to_string()),
@@ -71,6 +75,9 @@ fn parse_options() -> Options {
                 options.content = args.next().map(PathBuf::from).unwrap_or(options.content)
             }
             "--worlds" => options.worlds = args.next().map(PathBuf::from).unwrap_or(options.worlds),
+            "--behaviours" => {
+                options.behaviours = args.next().map(PathBuf::from).unwrap_or(options.behaviours)
+            }
             "--cert" => cert = args.next().map(PathBuf::from),
             "--key" => key = args.next().map(PathBuf::from),
             "--database" => options.database = args.next().unwrap_or(options.database),
@@ -82,6 +89,70 @@ fn parse_options() -> Options {
         options.certificate = Some((cert, key));
     }
     options
+}
+
+/// Reads and compiles every converted behaviour.
+///
+/// A world without these is a world where nothing moves: every enemy stands where it was placed and
+/// waits to be shot. Loading them is therefore not optional, but a directory that cannot be read is
+/// still not a reason to refuse to start, because a server full of motionless enemies is easier to
+/// diagnose than a server that would not boot.
+fn load_behaviours(directory: &Path) -> hendra_behavior::Programs {
+    let mut source = String::new();
+    let mut files = 0;
+
+    let mut paths: Vec<PathBuf> = std::fs::read_dir(directory)
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().and_then(|e| e.to_str()) == Some("beh"))
+        .collect();
+    paths.sort();
+
+    for path in &paths {
+        match std::fs::read_to_string(path) {
+            Ok(text) => {
+                source.push_str(&text);
+                source.push('\n');
+                files += 1;
+            }
+            Err(err) => tracing::warn!(path = %path.display(), %err, "cannot read behaviours"),
+        }
+    }
+
+    if files == 0 {
+        tracing::error!(
+            path = %directory.display(),
+            "no behaviours were read; every enemy will stand still"
+        );
+        return hendra_behavior::Programs::default();
+    }
+
+    let parsed = match hendra_behavior::parse::parse(&source) {
+        Ok(parsed) => parsed,
+        Err(err) => {
+            tracing::error!(%err, "the behaviours do not parse; every enemy will stand still");
+            return hendra_behavior::Programs::default();
+        }
+    };
+
+    let (programs, diagnostics) = hendra_behavior::compile::compile(&parsed);
+
+    // Reported rather than swallowed. A behaviour that did not compile is an enemy that does
+    // nothing, and an enemy that does nothing looks exactly like one that is working.
+    for diagnostic in &diagnostics {
+        tracing::warn!(message = %diagnostic.message, "behaviour problem");
+    }
+
+    tracing::info!(
+        files,
+        enemies = programs.programs.len(),
+        problems = diagnostics.len(),
+        "behaviours loaded"
+    );
+
+    programs
 }
 
 /// How many players may be in the server at once.
@@ -190,6 +261,8 @@ async fn main() {
         })
         .collect();
 
+    let behaviours = Arc::new(load_behaviours(&options.behaviours));
+
     // What may live outdoors, read from the content: every enemy that names a terrain.
     let spawnable = hendra_sim::realm::spawnable(&catalog);
     tracing::info!(kinds = spawnable.len(), "enemies that can populate a realm");
@@ -240,6 +313,7 @@ async fn main() {
     let registry = Arc::new(worlds::Worlds::load(
         &options.worlds,
         Arc::clone(&catalog),
+        Arc::clone(&behaviours),
         loadout.clone(),
     ));
 
@@ -273,7 +347,8 @@ async fn main() {
         "entry world loaded"
     );
 
-    let world = World::new(name.clone(), terrain, &catalog);
+    let mut world = World::new(name.clone(), terrain, &catalog);
+    world.set_behaviours(&catalog, (*behaviours).clone());
     tracing::info!(
         world = %name,
         entities = world.len(),

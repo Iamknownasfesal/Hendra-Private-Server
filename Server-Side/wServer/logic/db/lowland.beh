@@ -1,0 +1,528 @@
+enemy "Hobbit Mage" {
+    state idle {
+        on player_within(12) -> ring1
+    }
+    state ring1 {
+        shoot(1, fixed_angle: 0, count: 15, shoot_angle: 24, cooldown: 1200, projectile: 0)
+        on timed(400) -> ring2
+    }
+    state ring2 {
+        shoot(1, fixed_angle: 8, count: 15, shoot_angle: 24, cooldown: 1200, projectile: 1)
+        on timed(400) -> ring3
+    }
+    state ring3 {
+        shoot(1, fixed_angle: 16, count: 15, shoot_angle: 24, cooldown: 1200, projectile: 2)
+        on timed(400) -> idle
+    }
+    prioritize() {
+        stay_above(0.4, 9)
+        follow(0.75, range: 6)
+        wander(0.4)
+    }
+    spawn("Hobbit Archer", max_children: 4, cooldown: 12000, gives_no_xp: false)
+    spawn("Hobbit Rogue", max_children: 3, cooldown: 6000, gives_no_xp: false)
+    loot {
+        tier(2, weapon, 0.3)
+        tier(2, armor, 0.3)
+        tier(1, ring, 0.11)
+        tier(1, ability, 0.39)
+        item("Health Potion", 0.02)
+        item("Magic Potion", 0.02)
+    }
+}
+
+enemy "Hobbit Archer" {
+    shoot(10)
+    state run1 {
+        prioritize() {
+            protect(1.1, "Hobbit Mage", acquire_range: 12, protection_range: 10, reprotect_range: 1)
+            wander(0.4)
+        }
+        on timed(400) -> run2
+    }
+    state run2 {
+        prioritize() {
+            stay_back(0.8, 4)
+            wander(0.4)
+        }
+        on timed(600) -> run3
+    }
+    state run3 {
+        prioritize() {
+            protect(1, "Hobbit Archer", acquire_range: 16, protection_range: 2, reprotect_range: 2)
+            wander(0.4)
+        }
+        on timed(400) -> run1
+    }
+    loot {
+        item("Health Potion", 0.04)
+    }
+}
+
+enemy "Hobbit Rogue" {
+    shoot(3)
+    prioritize() {
+        protect(1.2, "Hobbit Mage", acquire_range: 15, protection_range: 9, reprotect_range: 2.5)
+        follow(0.85, range: 1)
+        wander(0.4)
+    }
+    loot {
+        item("Health Potion", 0.04)
+    }
+}
+
+enemy "Undead Hobbit Mage" {
+    shoot(10, projectile: 3)
+    state idle {
+        on player_within(12) -> ring1
+    }
+    state ring1 {
+        shoot(1, fixed_angle: 0, count: 15, shoot_angle: 24, cooldown: 1200, projectile: 0)
+        on timed(400) -> ring2
+    }
+    state ring2 {
+        shoot(1, fixed_angle: 8, count: 15, shoot_angle: 24, cooldown: 1200, projectile: 1)
+        on timed(400) -> ring3
+    }
+    state ring3 {
+        shoot(1, fixed_angle: 16, count: 15, shoot_angle: 24, cooldown: 1200, projectile: 2)
+        on timed(400) -> idle
+    }
+    prioritize() {
+        stay_above(0.4, 20)
+        follow(0.75, range: 6)
+        wander(0.4)
+    }
+    spawn("Undead Hobbit Archer", max_children: 4, cooldown: 12000, gives_no_xp: false)
+    spawn("Undead Hobbit Rogue", max_children: 3, cooldown: 6000, gives_no_xp: false)
+    loot {
+        tier(3, weapon, 0.3)
+        tier(3, armor, 0.3)
+        tier(1, ring, 0.12)
+        tier(1, ability, 0.39)
+        item("Magic Potion", 0.03)
+    }
+}
+
+enemy "Undead Hobbit Archer" {
+    shoot(10)
+    state run1 {
+        prioritize() {
+            protect(1.1, "Undead Hobbit Mage", acquire_range: 12, protection_range: 10, reprotect_range: 1)
+            wander(0.4)
+        }
+        on timed(400) -> run2
+    }
+    state run2 {
+        prioritize() {
+            stay_back(0.8, 4)
+            wander(0.4)
+        }
+        on timed(600) -> run3
+    }
+    state run3 {
+        prioritize() {
+            protect(1, "Undead Hobbit Archer", acquire_range: 16, protection_range: 2, reprotect_range: 2)
+            wander(0.4)
+        }
+        on timed(400) -> run1
+    }
+    loot {
+        item("Magic Potion", 0.03)
+    }
+}
+
+enemy "Undead Hobbit Rogue" {
+    shoot(3)
+    prioritize() {
+        protect(1.2, "Undead Hobbit Mage", acquire_range: 15, protection_range: 9, reprotect_range: 2.5)
+        follow(0.85, range: 1)
+        wander(0.4)
+    }
+    loot {
+        item("Health Potion", 0.04)
+    }
+}
+
+enemy "Sumo Master" {
+    state sleeping1 {
+        set_alt_texture(0)
+        on timed(1000) -> sleeping2
+        on hp_below(0.99) -> hurt
+    }
+    state sleeping2 {
+        set_alt_texture(3)
+        on timed(1000) -> sleeping1
+        on hp_below(0.99) -> hurt
+    }
+    state hurt {
+        set_alt_texture(2)
+        spawn("Lil Sumo", cooldown: 200)
+        on timed(1000) -> awake
+    }
+    state awake {
+        set_alt_texture(1)
+        shoot(3, cooldown: 250)
+        prioritize() {
+            follow(0.05, range: 1)
+            wander(0.05)
+        }
+        on hp_below(0.5) -> rage
+    }
+    state rage {
+        set_alt_texture(4)
+        taunt("Engaging Super-Mode!!!")
+        prioritize() {
+            follow(0.6, range: 1)
+            wander(0.6)
+        }
+        state shoot {
+            shoot(8, projectile: 1, cooldown: 150)
+            on timed(700) -> rest
+        }
+        state rest {
+            on timed(400) -> shoot
+        }
+    }
+    loot {
+        item("Health Potion", 0.05)
+        item("Magic Potion", 0.05)
+    }
+}
+
+enemy "Lil Sumo" {
+    shoot(8)
+    prioritize() {
+        orbit(0.4, 2, target: "Sumo Master")
+        wander(0.4)
+    }
+    loot {
+        item("Health Potion", 0.02)
+        item("Magic Potion", 0.02)
+    }
+}
+
+enemy "Elf Wizard" {
+    state idle {
+        wander(0.4)
+        on player_within(11) -> move1
+    }
+    state move1 {
+        shoot(10, count: 3, shoot_angle: 14, predictive: 0.3)
+        prioritize() {
+            stay_above(0.4, 14)
+            back_and_forth(0.8)
+        }
+        on timed(2000) -> move2
+    }
+    state move2 {
+        shoot(10, count: 3, shoot_angle: 10, predictive: 0.5)
+        prioritize() {
+            stay_above(0.4, 14)
+            follow(0.6, acquire_range: 10.5, range: 3)
+            wander(0.4)
+        }
+        on timed(2000) -> move3
+    }
+    state move3 {
+        prioritize() {
+            stay_above(0.4, 14)
+            stay_back(0.6, distance: 5)
+            wander(0.4)
+        }
+        on timed(2000) -> idle
+    }
+    spawn("Elf Archer", max_children: 2, cooldown: 15000, gives_no_xp: false)
+    spawn("Elf Swordsman", max_children: 4, cooldown: 7000, gives_no_xp: false)
+    spawn("Elf Mage", max_children: 1, cooldown: 8000, gives_no_xp: false)
+    loot {
+        tier(2, weapon, 0.36)
+        tier(2, armor, 0.36)
+        tier(1, ring, 0.11)
+        tier(1, ability, 0.39)
+        item("Health Potion", 0.02)
+        item("Magic Potion", 0.02)
+    }
+}
+
+enemy "Elf Archer" {
+    shoot(10, predictive: 1)
+    prioritize() {
+        orbit(0.5, 3, speed_variance: 0.1, radius_variance: 0.5)
+        protect(1.2, "Elf Wizard", acquire_range: 30, protection_range: 10, reprotect_range: 1)
+        wander(0.4)
+    }
+    loot {
+        item("Health Potion", 0.04)
+    }
+}
+
+enemy "Elf Swordsman" {
+    shoot(10, predictive: 1)
+    prioritize() {
+        protect(1.2, "Elf Wizard", acquire_range: 15, protection_range: 10, reprotect_range: 5)
+        buzz(1, dist: 1, cooldown: 2000)
+        orbit(0.6, 3, speed_variance: 0.1, radius_variance: 0.5)
+        wander(0.4)
+    }
+    loot {
+        item("Health Potion", 0.04)
+    }
+}
+
+enemy "Elf Mage" {
+    shoot(8, cooldown: 300)
+    prioritize() {
+        orbit(0.5, 3)
+        protect(1.2, "Elf Wizard", acquire_range: 30, protection_range: 10, reprotect_range: 1)
+        wander(0.4)
+    }
+    loot {
+        item("Magic Potion", 0.03)
+    }
+}
+
+enemy "Goblin Rogue" {
+    state protect {
+        protect(0.8, "Goblin Mage", acquire_range: 12, protection_range: 1.5, reprotect_range: 1.5)
+        on timed(1200, randomized: true) -> scatter
+    }
+    state scatter {
+        orbit(0.8, 7, target: "Goblin Mage", radius_variance: 1)
+        on timed(2400) -> protect
+    }
+    shoot(3)
+    state help {
+        protect(0.8, "Goblin Mage", acquire_range: 12, protection_range: 6, reprotect_range: 3)
+        follow(0.8, acquire_range: 10.5, range: 1.5)
+        on entity_not_exists("Goblin Mage", 15) -> protect
+    }
+    loot {
+        item("Health Potion", 0.04)
+    }
+}
+
+enemy "Goblin Warrior" {
+    state protect {
+        protect(0.8, "Goblin Mage", acquire_range: 12, protection_range: 1.5, reprotect_range: 1.5)
+        on timed(1200, randomized: true) -> scatter
+    }
+    state scatter {
+        orbit(0.8, 7, target: "Goblin Mage", radius_variance: 1)
+        on timed(2400) -> protect
+    }
+    shoot(3)
+    state help {
+        protect(0.8, "Goblin Mage", acquire_range: 12, protection_range: 6, reprotect_range: 3)
+        follow(0.8, acquire_range: 10.5, range: 1.5)
+        on entity_not_exists("Goblin Mage", 15) -> protect
+    }
+    drop_portal_on_death("Pirate Cave Portal", 0.01)
+    loot {
+        item("Health Potion", 0.04)
+    }
+}
+
+enemy "Goblin Mage" {
+    state unharmed {
+        shoot(8, projectile: 0, predictive: 0.35, cooldown: 1000)
+        shoot(8, projectile: 1, predictive: 0.35, cooldown: 1300)
+        prioritize() {
+            stay_above(0.4, 16)
+            follow(0.5, acquire_range: 10.5, range: 4)
+            wander(0.4)
+        }
+        on hp_below(0.65) -> activate_horde
+    }
+    state activate_horde {
+        shoot(8, projectile: 0, predictive: 0.25, cooldown: 1000)
+        shoot(8, projectile: 1, predictive: 0.25, cooldown: 1000)
+        flash(4282927176, 0.6, 5000)
+        order(12, "Goblin Rogue", "help")
+        order(12, "Goblin Warrior", "help")
+        prioritize() {
+            stay_above(0.4, 16)
+            stay_back(0.5, distance: 6)
+        }
+    }
+    spawn("Goblin Rogue", max_children: 7, cooldown: 12000, gives_no_xp: false)
+    spawn("Goblin Warrior", max_children: 7, cooldown: 12000, gives_no_xp: false)
+    loot {
+        tier(3, weapon, 0.3)
+        tier(3, armor, 0.3)
+        tier(1, ring, 0.09)
+        tier(1, ability, 0.38)
+        item("Health Potion", 0.02)
+        item("Magic Potion", 0.02)
+    }
+}
+
+enemy "Easily Enraged Bunny" {
+    prioritize() {
+        stay_above(0.4, 15)
+        follow(0.7, acquire_range: 9.5, range: 1)
+    }
+    transform_on_death("Enraged Bunny")
+}
+
+enemy "Enraged Bunny" {
+    shoot(9, predictive: 0.5, cooldown: 400)
+    state red {
+        flash(16711680, 1.5, 1)
+        on timed(1600) -> yellow
+    }
+    state yellow {
+        flash(16777011, 1.5, 1)
+        on timed(1600) -> orange
+    }
+    state orange {
+        flash(16750848, 1.5, 1)
+        on timed(1600) -> red
+    }
+    prioritize() {
+        stay_above(0.4, 15)
+        follow(0.85, acquire_range: 9, range: 2.5)
+        wander(0.85)
+    }
+    loot {
+        item("Health Potion", 0.01)
+        item("Magic Potion", 0.02)
+    }
+}
+
+enemy "Forest Nymph" {
+    state circle {
+        shoot(4, projectile: 0, count: 1, predictive: 0.1, cooldown: 900)
+        prioritize() {
+            stay_above(0.4, 25)
+            follow(0.9, acquire_range: 11, range: 3.5, duration: 1000, cooldown: 5000)
+            orbit(1.3, 3.5, acquire_range: 12)
+            wander(0.7)
+        }
+        on timed(4000) -> dart_away
+    }
+    state dart_away {
+        shoot(9, projectile: 1, count: 6, fixed_angle: 20, shoot_angle: 60, cooldown: 1400)
+        wander(0.4)
+        on timed(3600) -> circle
+    }
+    drop_portal_on_death("Pirate Cave Portal", 0.01)
+    loot {
+        item("Health Potion", 0.03)
+        item("Magic Potion", 0.02)
+    }
+}
+
+enemy "Sandsman King" {
+    shoot(10, cooldown: 10000)
+    prioritize() {
+        stay_above(0.4, 15)
+        follow(0.6, range: 4)
+        wander(0.4)
+    }
+    spawn("Sandsman Archer", max_children: 2, cooldown: 10000, gives_no_xp: false)
+    spawn("Sandsman Sorcerer", max_children: 3, cooldown: 8000, gives_no_xp: false)
+    loot {
+        tier(3, weapon, 0.3)
+        tier(3, armor, 0.3)
+        tier(1, ring, 0.11)
+        tier(1, ability, 0.39)
+        item("Health Potion", 0.04)
+    }
+}
+
+enemy "Sandsman Sorcerer" {
+    shoot(10, projectile: 0, cooldown: 5000)
+    shoot(5, projectile: 1, cooldown: 400)
+    prioritize() {
+        protect(1.2, "Sandsman King", acquire_range: 15, protection_range: 6, reprotect_range: 5)
+        wander(0.4)
+    }
+    loot {
+        item("Magic Potion", 0.03)
+    }
+}
+
+enemy "Sandsman Archer" {
+    shoot(10, predictive: 0.5)
+    prioritize() {
+        orbit(0.8, 3.25, acquire_range: 15, target: "Sandsman King", radius_variance: 0.5)
+        wander(0.4)
+    }
+    loot {
+        item("Magic Potion", 0.03)
+    }
+}
+
+enemy "Giant Crab" {
+    state idle {
+        prioritize() {
+            stay_above(0.6, 13)
+            wander(0.6)
+        }
+        on player_within(11) -> scuttle
+    }
+    state scuttle {
+        shoot(9, projectile: 0, cooldown: 1000)
+        shoot(9, projectile: 1, cooldown: 1000)
+        shoot(9, projectile: 2, cooldown: 1000)
+        shoot(9, projectile: 3, cooldown: 1000)
+        state move_2 {
+            prioritize() {
+                follow(1, acquire_range: 10.6, range: 2)
+                stay_above(1, 25)
+                wander(0.6)
+            }
+            on timed(400) -> pause
+        }
+        state pause_2 {
+            on timed(200) -> move
+        }
+        on timed(4700, "tri-spit") -> tri_spit
+    }
+    state tri_spit {
+        shoot(9, projectile: 4, predictive: 0.5, cooldown_offset: 1200, cooldown: 90000)
+        shoot(9, projectile: 4, predictive: 0.5, cooldown_offset: 1800, cooldown: 90000)
+        shoot(9, projectile: 4, predictive: 0.5, cooldown_offset: 2400, cooldown: 90000)
+        state move {
+            prioritize() {
+                follow(1, acquire_range: 10.6, range: 2)
+                stay_above(1, 25)
+                wander(0.6)
+            }
+            on timed(400) -> pause
+        }
+        state pause {
+            on timed(200) -> move
+        }
+        on timed(3200) -> idle
+    }
+    drop_portal_on_death("Pirate Cave Portal", 0.01)
+    loot {
+        tier(2, weapon, 0.14)
+        tier(2, armor, 0.19)
+        tier(1, ring, 0.05)
+        tier(1, ability, 0.28)
+        item("Health Potion", 0.02)
+        item("Magic Potion", 0.02)
+    }
+}
+
+enemy "Sand Devil" {
+    state wander {
+        shoot(8, predictive: 0.3, cooldown: 700)
+        prioritize() {
+            stay_above(0.7, 10)
+            follow(0.7, acquire_range: 10, range: 2.2)
+            wander(0.7)
+        }
+        on timed(3000) -> circle
+    }
+    state circle {
+        shoot(8, predictive: 0.3, cooldown_offset: 1000, cooldown: 1000)
+        orbit(0.7, 2, acquire_range: 9)
+        on timed(3100) -> wander
+    }
+    drop_portal_on_death("Pirate Cave Portal", 0.01)
+}
+

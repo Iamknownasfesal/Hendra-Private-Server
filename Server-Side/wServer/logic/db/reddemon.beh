@@ -1,0 +1,55 @@
+enemy "Red Demon" {
+    shoot(10, projectile: 0, count: 5, shoot_angle: 5, predictive: 1, cooldown: 1200)
+    shoot(11, projectile: 1, cooldown: 1400)
+    prioritize() {
+        stay_close_to_spawn(0.8, 5)
+        follow(1, range: 7)
+        wander(0.4)
+    }
+    spawn("Imp", max_children: 5, cooldown: 10000, gives_no_xp: false)
+    spawn("Demon", max_children: 3, cooldown: 14000, gives_no_xp: false)
+    spawn("Demon Warrior", max_children: 3, cooldown: 18000, gives_no_xp: false)
+    taunt(0.7, 10000, "I will deliver your soul to Oryx, {PLAYER}!", "Oryx will not end our pain. We can only share it... with you!", "Our anguish is endless, unlike your lives!", "There can be no forgiveness!", "What do you know of suffering? I can teach you much, {PLAYER}", "Would you attempt to destroy us? I know your name, {PLAYER}!", "You cannot hurt us. You cannot help us. You will feed us.", "Your life is an affront to Oryx. You will die.")
+    loot {
+        threshold(0.01) { item("Golden Sword", 0.04) item("Steel Helm", 0.04) }
+    }
+}
+
+enemy "Imp" {
+    prioritize() {
+        stay_close_to_spawn(1.4, 15)
+        wander(0.8)
+    }
+    shoot(10, predictive: 0.5, cooldown: 200)
+    loot {
+        item("Missile Wand", 0.02)
+        item("Serpentine Staff", 0.02)
+        item("Fire Bow", 0.02)
+    }
+}
+
+enemy "Demon" {
+    prioritize() {
+        stay_close_to_spawn(1.4, 15)
+        follow(1.4, range: 7)
+        wander(0.4)
+    }
+    shoot(10, count: 2, shoot_angle: 7, predictive: 0.5)
+    loot {
+        item("Fire Bow", 0.03)
+    }
+}
+
+enemy "Demon Warrior" {
+    prioritize() {
+        stay_close_to_spawn(1.4, 15)
+        follow(1, range: 2.8)
+        wander(0.4)
+    }
+    shoot(10, count: 3, shoot_angle: 7, predictive: 0.5)
+    loot {
+        item("Obsidian Dagger", 0.03)
+        item("Steel Shield", 0.02)
+    }
+}
+

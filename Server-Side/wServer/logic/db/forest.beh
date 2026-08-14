@@ -1,0 +1,75 @@
+enemy "Mama Megamoth" {
+    state swaggin_around {
+        charge(1, 10, 2000)
+        wander(0.2)
+        spawn("Mini Megamoth", cooldown: 2000, initial_spawn: 1)
+        reproduce("Mini Megamoth", cooldown: 4000, density_max: 4)
+        shoot(radius: 10, count: 1, projectile: 0, cooldown: 50)
+    }
+    loot {
+        threshold(0.01) { item("Multi-Quiver", 0.1) item("Speed Sprout", 1) }
+    }
+}
+
+enemy "Mini Megamoth" {
+    state protect_the_queen {
+        on entity_exists("Mama Megamoth", 100, "protecto the queen") -> protecto_the_queen
+        on entity_not_exists("Mama Megamoth", 100, "oh crap there is no queen") -> oh_crap_there_is_no_queen
+    }
+    state protecto_the_queen {
+        protect(1, "Mama Megamoth", 100, 3, 1)
+        wander(0.1)
+        on timed(5000, "swaggin shot time 1") -> swaggin_shot_time_1
+    }
+    state swaggin_shot_time_1 {
+        shoot(radius: 8, count: 1, cooldown: 100)
+        on timed(3000, "protecto the queen") -> protecto_the_queen
+    }
+    state oh_crap_there_is_no_queen {
+        wander(0.5)
+        shoot(radius: 10, count: 1, projectile: 0, predictive: 1, cooldown: 1000)
+        on timed(5000, "swaggin shots tiem") -> swaggin_shots_tiem
+    }
+    state swaggin_shots_tiem {
+        shoot(radius: 8, count: 1, cooldown: 100)
+        on timed(3000, "oh crap there is no queen") -> oh_crap_there_is_no_queen
+    }
+}
+
+enemy "Armored Squirrel" {
+    prioritize() {
+        follow(0.6, 6, 1, -1, 0)
+        wander(0.7)
+        shoot(radius: 7, count: 2, projectile: 0, predictive: 1, cooldown: 1000, shoot_angle: 15)
+    }
+}
+
+enemy "Ultimate Squirrel" {
+    prioritize() {
+        follow(0.4, 6, 1, -1, 0)
+        wander(0.3)
+    }
+    shoot(radius: 7, count: 3, projectile: 0, shoot_angle: 20, cooldown: 2000)
+    loot {
+        threshold(0.1) { item("Speed Sprout", 1) }
+    }
+}
+
+enemy "Forest Goblin" {
+    prioritize() {
+        wander(0.4)
+        follow(0.7, 10, 3, -1, 0)
+        shoot(radius: 4, count: 1, projectile: 0, cooldown: 500)
+    }
+}
+
+enemy "Forest Goblin Mage" {
+    prioritize() {
+        wander(0.4)
+        shoot(radius: 10, count: 2, projectile: 0, predictive: 1, cooldown: 500, shoot_angle: 2)
+    }
+    loot {
+        threshold(0.1) { item("Speed Sprout", 1) }
+    }
+}
+

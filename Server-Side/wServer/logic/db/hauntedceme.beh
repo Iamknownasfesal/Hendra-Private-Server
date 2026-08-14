@@ -1,0 +1,1225 @@
+enemy "Arena Skeleton" {
+    prioritize() {
+        follow(0.45, 8, 1)
+        wander(0.35)
+    }
+    shoot(10, count: 1, projectile: 0, predictive: 0.5, cooldown: 1200)
+    shoot(10, count: 1, projectile: 0, cooldown: 900)
+    loot {
+        item("Spirit Salve Tome", 0.02)
+        threshold(0.5) { item("Golden Sword", 0.01) item("Ring of Greater Dexterity", 0.01) item("Magesteel Quiver", 0.01) }
+    }
+}
+
+enemy "Troll 1" {
+    follow(0.4, 8, 1)
+    shoot(10, count: 1, projectile: 0, cooldown: 850)
+    loot {
+        item("Tome of Renewing", 0.02)
+        threshold(0.5) { item("Golden Sword", 0.01) item("Ring of Greater Defense", 0.01) item("Magesteel Quiver", 0.01) }
+    }
+}
+
+enemy "Troll 2" {
+    follow(0.3, 8, 1)
+    shoot(10, count: 1, projectile: 0, cooldown: 850)
+    grenade(3.5, 80, 8, cooldown: 2750)
+    loot {
+        item("Ravenheart Sword", 0.02)
+        threshold(0.5) { item("Wand of Death", 0.01) item("Ring of Greater Health", 0.01) item("Steel Shield", 0.01) }
+    }
+}
+
+enemy "Arena Mushroom" {
+    state Mush1 {
+        on hp_below(0.75) -> Mush2
+    }
+    state Mush2 {
+        set_alt_texture(1)
+        on hp_below(0.5) -> Mush3
+    }
+    state Mush3 {
+        set_alt_texture(2)
+        on hp_below(0.25) -> die
+    }
+    state die {
+        shoot(8.4, count: 1, fixed_angle: 0, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 90, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 180, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 270, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 45, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 135, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 235, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 315, projectile: 0, cooldown: 1000)
+        suicide()
+    }
+}
+
+enemy "Troll 3" {
+    state trololo {
+        on player_within(8) -> move
+        conditional_effect(invulnerable)
+    }
+    state move {
+        conditional_effect(invulnerable)
+        move_to(speed: 1, x: 22, y: 18)
+        on timed(500) -> trolled
+    }
+    state trolled {
+        wander(0.4)
+        toss_object("Arena Mushroom", 3, cooldown: 2000)
+        shoot(10, count: 6, projectile: 0, cooldown: 1250)
+        shoot(10, count: 1, projectile: 1, cooldown: 1000)
+        on damage_taken(5000) -> skilitins
+    }
+    state skilitins {
+        shoot(10, predictive: 1, cooldown: 1750)
+        toss_object("Arena Skeleton", 3, cooldown: 1000)
+        on timed(4750) -> skelcheck
+    }
+    state skelcheck {
+        conditional_effect(invulnerable)
+        shoot(10, predictive: 1, cooldown: 1750)
+        toss_object("Arena Skeleton", 3, cooldown: 3000)
+        on entities_not_exists(9999, "Arena Skeleton") -> trolled
+    }
+    loot {
+        threshold(0.025) { tier(8, weapon, 0.1) tier(5, ability, 0.1) tier(9, armor, 0.1) tier(3, ring, 0.05) tier(10, armor, 0.05) tier(10, weapon, 0.05) tier(4, ring, 0.025) item("Potion of Speed", 1) item("Potion of Wisdom", 0.5) }
+    }
+}
+
+enemy "Arena Possessed Girl" {
+    prioritize() {
+        follow(0.55, 8, 1)
+        wander(0.35)
+    }
+    shoot(10, count: 8, projectile: 0, cooldown: 1250)
+    loot {
+        item("Avenger Staff", 0.02)
+        threshold(0.5) { item("Golden Sword", 0.01) item("Ring of Superior Magic", 0.01) item("Magesteel Quiver", 0.01) }
+    }
+}
+
+enemy "Arena Ghost 1" {
+    follow(0.4, 8, 1)
+    shoot(10, count: 1, projectile: 0, predictive: 2.5, cooldown: 1200)
+    shoot(10, count: 1, projectile: 0, cooldown: 900)
+    loot {
+        item("Avenger Staff", 0.02)
+        threshold(0.5) { item("Golden Sword", 0.01) item("Mithril Chainmail", 0.01) item("Magesteel Quiver", 0.01) }
+    }
+}
+
+enemy "Arena Ghost 2" {
+    state GetRekt {
+        follow(0.3, 8, 1)
+        set_alt_texture(0)
+        shoot(8.4, count: 3, shoot_angle: 20, projectile: 0, cooldown: 1250)
+        on timed(3700) -> Scrub
+    }
+    state Scrub {
+        wander(0.6)
+        conditional_effect(invincible)
+        set_alt_texture(1)
+        on timed(3700) -> GetRekt
+    }
+}
+
+enemy "Arena Statue Left" {
+    state GetRekt {
+        on entity_exists("FateT", 9999) -> getem
+        conditional_effect(invincible)
+        set_alt_texture(1)
+    }
+    state getem {
+        set_alt_texture(0)
+        follow(0.6, 8, 1)
+        shoot(8.4, count: 1, projectile: 0, cooldown: 275)
+    }
+}
+
+enemy "Arena Statue Right" {
+    state GetRekt {
+        on entity_exists("GloryT", 9999) -> getem
+        conditional_effect(invincible)
+        set_alt_texture(1)
+    }
+    state getem {
+        set_alt_texture(0)
+        follow(0.6, 8, 1)
+        shoot(8.4, count: 1, projectile: 1, cooldown: 575)
+        shoot(8.4, count: 3, shoot_angle: 20, projectile: 0, cooldown: 1000)
+    }
+}
+
+enemy "Arena Ghost Bride" {
+    state trololo {
+        on player_within(8) -> fightTillFate
+        conditional_effect(invulnerable)
+    }
+    state moveFate {
+        set_alt_texture(0)
+        move_to(speed: 1, x: 21, y: 11)
+        on timed(500) -> goByeFate
+    }
+    state moveGlory {
+        set_alt_texture(0)
+        move_to(speed: 1, x: 27, y: 11)
+        on timed(500) -> goByeGlory
+    }
+    state fightTillFate {
+        back_and_forth(1, 2)
+        set_alt_texture(0)
+        shoot(10, count: 1, projectile: 0, cooldown: 1100)
+        shoot(10, count: 8, projectile: 1, cooldown: 1000)
+        on timed(4000) -> moveFate
+    }
+    state fightTillGlory {
+        back_and_forth(1, 2)
+        set_alt_texture(0)
+        shoot(10, count: 1, projectile: 0, cooldown: 1100)
+        shoot(10, count: 8, projectile: 1, cooldown: 1000)
+        on timed(4000) -> moveGlory
+    }
+    state goByeFate {
+        spawn("FateT", initial_spawn: 1, max_children: 1, cooldown: 99999)
+        conditional_effect(invincible)
+        set_alt_texture(1)
+        on entities_not_exists(9999, "Arena Statue Left") -> fightTillGlory
+    }
+    state goByeGlory {
+        set_alt_texture(1)
+        spawn("GloryT", initial_spawn: 1, max_children: 1, cooldown: 99999)
+        conditional_effect(invincible)
+        on entities_not_exists(9999, "Arena Statue Right") -> justfight
+    }
+    state justfight {
+        wander(1)
+        shoot(10, count: 6, shoot_angle: 5, projectile: 0, cooldown: 1100)
+        shoot(10, count: 2, shoot_angle: 5, projectile: 1, cooldown: 1000)
+    }
+    loot {
+        threshold(0.025) { tier(8, weapon, 0.1) tier(5, ability, 0.1) tier(9, armor, 0.1) tier(3, ring, 0.05) tier(10, armor, 0.05) tier(10, weapon, 0.05) tier(4, ring, 0.025) item("Potion of Speed", 1) item("Amulet of Resurrection", 0.0002) item("Potion of Wisdom", 0.5) }
+    }
+}
+
+enemy "Arena Risen Archer" {
+    stay_back(0.65, 4)
+    shoot(10, count: 1, projectile: 0, predictive: 0.5, cooldown: 1200)
+    shoot(10, count: 8, projectile: 1, cooldown: 1450)
+    loot {
+        item("Spirit Salve Tome", 0.02)
+        threshold(0.5) { item("Golden Sword", 0.01) item("Ring of Greater Dexterity", 0.01) item("Magesteel Quiver", 0.01) }
+    }
+}
+
+enemy "Arena Risen Brawler" {
+    follow(0.55, 8, 1)
+    shoot(10, count: 5, projectile: 0, shoot_angle: 5, predictive: 0.5, cooldown: 1200)
+    loot {
+        item("Spirit Salve Tome", 0.02)
+        threshold(0.5) { item("Golden Sword", 0.01) item("Ring of Greater Dexterity", 0.01) item("Magesteel Quiver", 0.01) }
+    }
+}
+
+enemy "Arena Risen Mummy" {
+    follow(0.55, 8, 1)
+    shoot(10, count: 8, projectile: 0, shoot_angle: 14, predictive: 5, cooldown: 3750)
+    loot {
+        item("Spirit Salve Tome", 0.02)
+        threshold(0.5) { item("Golden Sword", 0.01) item("Ring of Superior Dexterity", 0.01) item("Magesteel Quiver", 0.01) }
+    }
+}
+
+enemy "Arena Risen Mage" {
+    follow(0.3, 8, 1)
+    shoot(10, count: 1, projectile: 0, cooldown: 1200)
+    heal_group(10, "Hallowrena", cooldown: 5000)
+    loot {
+        item("Magesteel Quiver", 0.02)
+        threshold(0.5) { item("Golden Sword", 0.01) item("Ring of Greater Dexterity", 0.01) item("Verdant Bow", 0.01) }
+    }
+}
+
+enemy "Arena Risen Warrior" {
+    follow(0.6, 8, 1)
+    shoot(10, count: 1, projectile: 0, cooldown: 10)
+    loot {
+        item("DDOS Sword", 0.02)
+        threshold(0.5) { item("Golden Sword", 0.01) }
+    }
+}
+
+enemy "Arena Blue Flame" {
+    state imgonnagetcha {
+        follow(0.65, 8, 1)
+        on player_within(1) -> blam
+    }
+    state blam {
+        shoot(8.4, count: 1, fixed_angle: 0, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 90, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 180, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 270, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 45, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 135, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 235, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 315, projectile: 0, cooldown: 1000)
+        suicide()
+    }
+}
+
+enemy "Arena Grave Caretaker" {
+    state gravesandk {
+        stay_back(0.78, 4)
+        shoot(10, count: 1, projectile: 0, cooldown: 1500)
+        shoot(10, count: 1, projectile: 0, predictive: 7, cooldown: 300)
+        shoot(10, count: 6, projectile: 1, cooldown: 1000)
+        spawn("Arena Blue Flame", initial_spawn: 1, max_children: 1, cooldown: 3750)
+    }
+    loot {
+        threshold(0.025) { tier(10, weapon, 0.1) tier(4, ability, 0.1) tier(9, armor, 0.1) tier(4, ring, 0.05) tier(11, armor, 0.05) tier(11, weapon, 0.05) tier(4, ring, 0.025) item("Potion of Speed", 1) item("Potion of Wisdom", 0.5) }
+    }
+}
+
+enemy "Classic Ghost" {
+    wander(0.5)
+    shoot(10, count: 3, projectile: 0, shoot_angle: 3, predictive: 1, cooldown: 1200)
+    loot {
+        item("Timelock Orb", 0.02)
+        threshold(0.5) { item("Golden Sword", 0.01) item("Ring of Greater Attack", 0.01) item("Steel Shield", 0.01) }
+    }
+}
+
+enemy "Mini Werewolf" {
+    follow(0.5, 8, 1)
+    shoot(10, count: 3, projectile: 0, cooldown: 1200)
+    loot {
+        item("Magic Potion", 0.02)
+        threshold(0.5) { item("Golden Sword", 0.01) item("Ring of Greater Attack", 0.01) item("Steel Shield", 0.01) }
+    }
+}
+
+enemy "Zombie Hulk" {
+    prioritize() {
+        follow(0.6, 8, 1)
+        wander(0.2)
+    }
+    shoot(10, count: 4, projectile: 0, shoot_angle: 5, cooldown: 1500)
+    shoot(10, count: 1, projectile: 1, cooldown: 2000)
+    loot {
+        item("Health Potion", 0.02)
+        threshold(0.5) { item("Golden Sword", 0.01) item("Ring of Greater Dexterity", 0.01) item("Magesteel Quiver", 0.01) }
+    }
+}
+
+enemy "Werewolf" {
+    wander(0.4)
+    shoot(10, count: 6, projectile: 0, shoot_angle: 5, cooldown: 1500)
+    spawn("Mini Werewolf", initial_spawn: 1, max_children: 3, cooldown: 7000)
+    loot {
+        item("Health Potion", 0.02)
+        threshold(0.5) { item("Golden Sword", 0.01) item("Ring of Greater Dexterity", 0.01) item("Magesteel Quiver", 0.01) }
+    }
+}
+
+enemy "Blue Zombie" {
+    follow(0.1, 8, 1)
+    shoot(10, count: 1, projectile: 0, cooldown: 1000)
+}
+
+enemy "Flying Flame Skull" {
+    swirl(0.65, 7)
+    shoot(10, count: 10, projectile: 0, cooldown: 500)
+    conditional_effect(invincible)
+}
+
+enemy "Halloween Zombie Spawner" {
+    state idle {
+        conditional_effect(invincible)
+    }
+    state spawn {
+        spawn("Blue Zombie", initial_spawn: 1, max_children: 1, cooldown: 6850)
+    }
+}
+
+enemy "Ghost of Skuld" {
+    realm_portal_drop()
+    on hp_below(0.1) -> deadTask
+    state skuld1 {
+        order(9999, "Halloween Zombie Spawner", "spawn")
+        taunt(1, "Your reward is....A SWIFT DEATH!")
+        invisi_toss("Flying Flame Skull", range: 6, angle: 270, cooldown: 9999)
+        invisi_toss("Flying Flame Skull", range: 6, angle: 90, cooldown: 9999)
+        conditional_effect(invulnerable)
+        on timed(4500) -> gotem
+    }
+    state gotem {
+        shoot(10, count: 5, shoot_angle: 5, projectile: 0, cooldown: 700)
+        shoot(10, count: 1, projectile: 0, cooldown: 1200)
+        shoot(12, count: 1, fixed_angle: 0, projectile: 2, cooldown: 4000)
+        shoot(12, count: 1, fixed_angle: 90, projectile: 2, cooldown: 4000)
+        shoot(12, count: 1, fixed_angle: 180, projectile: 2, cooldown: 4000)
+        shoot(12, count: 1, fixed_angle: 270, projectile: 2, cooldown: 4000)
+        on timed(10000) -> telestart
+    }
+    state blam1 {
+        set_alt_texture(1)
+        shoot(10, count: 7, shoot_angle: 12, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 0, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 90, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 180, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 270, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 45, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 135, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 235, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 315, projectile: 1, cooldown: 1400)
+        on timed(5000) -> tele7
+    }
+    state blam2 {
+        set_alt_texture(1)
+        shoot(10, count: 7, shoot_angle: 12, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 0, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 90, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 180, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 270, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 45, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 135, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 235, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 315, projectile: 1, cooldown: 1400)
+        on timed(5000) -> tele5
+    }
+    state blam3 {
+        set_alt_texture(1)
+        shoot(10, count: 7, shoot_angle: 12, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 0, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 90, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 180, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 270, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 45, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 135, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 235, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 315, projectile: 1, cooldown: 1400)
+        on timed(5000) -> tele4
+    }
+    state blam4 {
+        set_alt_texture(1)
+        shoot(10, count: 7, shoot_angle: 12, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 0, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 90, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 180, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 270, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 45, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 135, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 235, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 315, projectile: 1, cooldown: 1400)
+        on timed(5000) -> tele6
+    }
+    state blam5 {
+        set_alt_texture(1)
+        shoot(10, count: 7, shoot_angle: 12, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 0, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 90, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 180, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 270, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 45, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 135, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 235, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 315, projectile: 1, cooldown: 1400)
+        on timed(5000) -> tele2
+    }
+    state blam6 {
+        set_alt_texture(1)
+        shoot(10, count: 7, shoot_angle: 12, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 0, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 90, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 180, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 270, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 45, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 135, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 235, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 315, projectile: 1, cooldown: 1400)
+        on timed(5000) -> tele3
+    }
+    state blam7 {
+        set_alt_texture(1)
+        shoot(10, count: 7, shoot_angle: 12, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 0, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 90, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 180, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 270, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 45, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 135, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 235, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 315, projectile: 1, cooldown: 1400)
+        on timed(5000) -> tele8
+    }
+    state blam8 {
+        set_alt_texture(1)
+        shoot(10, count: 7, shoot_angle: 12, projectile: 0, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 0, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 90, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 180, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 270, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 45, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 135, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 235, projectile: 1, cooldown: 1400)
+        shoot(8.4, count: 1, fixed_angle: 315, projectile: 1, cooldown: 1400)
+        on timed(5000) -> tele8
+    }
+    state telestart {
+        set_alt_texture(1)
+        conditional_effect(invulnerable)
+        on timed(3000) -> tele1
+    }
+    state tele1 {
+        set_alt_texture(11)
+        conditional_effect(invincible)
+        move_to(speed: 2, x: 24, y: 18)
+        on timed(1000) -> blam2
+    }
+    state tele2 {
+        set_alt_texture(11)
+        conditional_effect(invincible)
+        move_to(speed: 2, x: 17, y: 26)
+        on timed(1000) -> blam3
+    }
+    state tele3 {
+        set_alt_texture(11)
+        conditional_effect(invincible)
+        move_to(speed: 2, x: 29, y: 19)
+        on timed(1000) -> blam4
+    }
+    state tele4 {
+        set_alt_texture(11)
+        conditional_effect(invincible)
+        move_to(speed: 2, x: 29, y: 29)
+        on timed(1000) -> blam5
+    }
+    state tele5 {
+        set_alt_texture(11)
+        conditional_effect(invincible)
+        move_to(speed: 2, x: 24, y: 18)
+        on timed(1000) -> blam6
+    }
+    state tele6 {
+        set_alt_texture(11)
+        conditional_effect(invincible)
+        move_to(speed: 2, x: 25, y: 35)
+        on timed(1000) -> blam7
+    }
+    state tele7 {
+        set_alt_texture(11)
+        conditional_effect(invincible)
+        move_to(speed: 2, x: 20, y: 29)
+        on timed(1000) -> blam8
+    }
+    state tele8 {
+        set_alt_texture(11)
+        conditional_effect(invincible)
+        move_to(speed: 2, x: 24, y: 24)
+        on timed(1000) -> gotem
+    }
+    state deadTask {
+        remove_entity(9999, "Halloween Zombie Spawner")
+        remove_entity(9999, "Blue Zombie")
+        remove_entity(9999, "Flying Flame Skull")
+        suicide()
+    }
+    loot {
+        threshold(0.05) {  }
+        threshold(0.025) { tier(11, weapon, 0.1) tier(4, ability, 0.1) tier(11, armor, 0.1) tier(5, ring, 0.05) tier(11, armor, 0.05) tier(11, weapon, 0.05) tier(4, ring, 0.025) item("Potion of Vitality", 1) item("Potion of Wisdom", 0.5) item("Resurrected Warrior's Armor", 0.04) item("Plague Poison", 0.04) item("Etherite Dagger", 0.02) item("Ghastly Drape", 0.02) item("Mantle of Skuld", 0.02) item("Spectral Ring of Horrors", 0.02) }
+    }
+}
+
+enemy "Arena South Gate Spawner" {
+    state Greeting {
+        conditional_effect(invincible)
+    }
+    state arena1wave1 {
+        spawn("Arena Skeleton", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena1wave2 {
+        spawn("Arena Skeleton", initial_spawn: 1, max_children: 3, cooldown: 90000)
+    }
+    state arena1wave3 {
+        spawn("Arena Skeleton", initial_spawn: 1, max_children: 3, cooldown: 90000)
+        spawn("Troll 1", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Troll 2", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena1wave4 {
+        spawn("Arena Skeleton", initial_spawn: 1, max_children: 2, cooldown: 90000)
+        spawn("Troll 1", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Troll 2", initial_spawn: 1, max_children: 2, cooldown: 90000)
+    }
+    state arena2wave1 {
+        spawn("Arena Ghost 1", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Ghost 2", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena2wave2 {
+        spawn("Arena Ghost 1", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Ghost 2", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Possessed Girl", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena2wave3 {
+        spawn("Arena Ghost 1", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Ghost 2", initial_spawn: 1, max_children: 2, cooldown: 90000)
+        spawn("Arena Possessed Girl", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena2wave4 {
+        spawn("Arena Ghost 1", initial_spawn: 1, max_children: 2, cooldown: 90000)
+        spawn("Arena Ghost 2", initial_spawn: 1, max_children: 2, cooldown: 90000)
+        spawn("Arena Possessed Girl", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena3wave1 {
+        spawn("Arena Risen Archer", initial_spawn: 1, max_children: 2, cooldown: 90000)
+        spawn("Arena Risen Mage", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena3wave2 {
+        spawn("Arena Risen Archer", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Risen Warrior", initial_spawn: 1, max_children: 2, cooldown: 90000)
+    }
+    state arena3wave3 {
+        spawn("Arena Risen Mage", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Risen Brawler", initial_spawn: 1, max_children: 2, cooldown: 90000)
+    }
+    state arena3wave4 {
+        spawn("Arena Risen Mage", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Risen Brawler", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Risen Archer", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena4wave1 {
+        spawn("Classic Ghost", initial_spawn: 1, max_children: 2, cooldown: 90000)
+        spawn("Werewolf", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena4wave2 {
+        spawn("Classic Ghost", initial_spawn: 1, max_children: 2, cooldown: 90000)
+        spawn("Zombie Hulk", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena4wave3 {
+        spawn("Classic Ghost", initial_spawn: 1, max_children: 2, cooldown: 90000)
+        spawn("Zombie Hulk", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Werewolf", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena4wave4 {
+        spawn("Zombie Hulk", initial_spawn: 2, max_children: 1, cooldown: 90000)
+        spawn("Werewolf", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+}
+
+enemy "Arena East Gate Spawner" {
+    state Greeting {
+        conditional_effect(invincible)
+    }
+    state arena1wave1 {
+        spawn("Arena Skeleton", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena1wave2 {
+        spawn("Arena Skeleton", initial_spawn: 1, max_children: 3, cooldown: 90000)
+    }
+    state arena1wave3 {
+        spawn("Arena Skeleton", initial_spawn: 1, max_children: 3, cooldown: 90000)
+    }
+    state arena1wave4 {
+        spawn("Arena Skeleton", initial_spawn: 1, max_children: 2, cooldown: 90000)
+        spawn("Troll 1", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Troll 2", initial_spawn: 1, max_children: 2, cooldown: 90000)
+    }
+    state arena2wave1 {
+        spawn("Arena Ghost 1", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Ghost 2", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena2wave2 {
+        spawn("Arena Ghost 1", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Ghost 2", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Possessed Girl", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena2wave3 {
+        spawn("Arena Ghost 1", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena2wave4 {
+        spawn("Arena Ghost 1", initial_spawn: 1, max_children: 2, cooldown: 90000)
+    }
+    state arena3wave1 {
+        spawn("Arena Risen Archer", initial_spawn: 1, max_children: 2, cooldown: 90000)
+        spawn("Arena Risen Mage", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena3wave2 {
+        spawn("Arena Risen Archer", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Risen Warrior", initial_spawn: 1, max_children: 2, cooldown: 90000)
+    }
+    state arena3wave3 {
+        spawn("Arena Risen Mage", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Risen Brawler", initial_spawn: 1, max_children: 2, cooldown: 90000)
+    }
+    state arena3wave4 {
+        spawn("Arena Risen Mage", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Risen Brawler", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Risen Archer", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena4wave1 {
+        spawn("Classic Ghost", initial_spawn: 1, max_children: 2, cooldown: 90000)
+        spawn("Werewolf", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena4wave2 {
+        spawn("Classic Ghost", initial_spawn: 1, max_children: 2, cooldown: 90000)
+        spawn("Zombie Hulk", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena4wave3 {
+        spawn("Classic Ghost", initial_spawn: 1, max_children: 2, cooldown: 90000)
+        spawn("Zombie Hulk", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Werewolf", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena4wave4 {
+        spawn("Zombie Hulk", initial_spawn: 2, max_children: 1, cooldown: 90000)
+        spawn("Werewolf", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+}
+
+enemy "Arena West Gate Spawner" {
+    state Greeting {
+        conditional_effect(invincible)
+    }
+    state arena1wave1 {
+        spawn("Arena Skeleton", initial_spawn: 1, max_children: 2, cooldown: 90000)
+    }
+    state arena1wave2 {
+        spawn("Arena Skeleton", initial_spawn: 1, max_children: 3, cooldown: 90000)
+        spawn("Troll 1", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena1wave3 {
+        spawn("Arena Skeleton", initial_spawn: 1, max_children: 3, cooldown: 90000)
+        spawn("Troll 1", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Troll 2", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena1wave4 {
+        spawn("Arena Skeleton", initial_spawn: 1, max_children: 2, cooldown: 90000)
+        spawn("Troll 1", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Troll 2", initial_spawn: 1, max_children: 2, cooldown: 90000)
+    }
+    state arena2wave1 {
+        spawn("Arena Ghost 1", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Ghost 2", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena2wave2 {
+        spawn("Arena Ghost 1", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Ghost 2", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Possessed Girl", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena2wave3 {
+        spawn("Arena Ghost 1", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Ghost 2", initial_spawn: 1, max_children: 2, cooldown: 90000)
+        spawn("Arena Possessed Girl", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena2wave4 {
+        spawn("Arena Ghost 1", initial_spawn: 1, max_children: 2, cooldown: 90000)
+        spawn("Arena Ghost 2", initial_spawn: 1, max_children: 2, cooldown: 90000)
+        spawn("Arena Possessed Girl", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena3wave1 {
+        spawn("Arena Risen Archer", initial_spawn: 1, max_children: 2, cooldown: 90000)
+        spawn("Arena Risen Mage", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena3wave2 {
+        spawn("Arena Risen Archer", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Risen Warrior", initial_spawn: 1, max_children: 2, cooldown: 90000)
+    }
+    state arena3wave3 {
+        spawn("Arena Risen Mage", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Risen Brawler", initial_spawn: 1, max_children: 2, cooldown: 90000)
+    }
+    state arena3wave4 {
+        spawn("Arena Risen Mage", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Risen Brawler", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Risen Archer", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena4wave1 {
+        spawn("Classic Ghost", initial_spawn: 1, max_children: 2, cooldown: 90000)
+        spawn("Werewolf", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena4wave2 {
+        spawn("Classic Ghost", initial_spawn: 1, max_children: 2, cooldown: 90000)
+        spawn("Zombie Hulk", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena4wave3 {
+        spawn("Classic Ghost", initial_spawn: 1, max_children: 2, cooldown: 90000)
+        spawn("Zombie Hulk", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Werewolf", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena4wave4 {
+        spawn("Zombie Hulk", initial_spawn: 2, max_children: 1, cooldown: 90000)
+        spawn("Werewolf", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+}
+
+enemy "Arena North Gate Spawner" {
+    state Greeting {
+        conditional_effect(invincible)
+    }
+    state arena1wave1 {
+        spawn("Arena Skeleton", initial_spawn: 1, max_children: 2, cooldown: 90000)
+    }
+    state arena1wave2 {
+        spawn("Troll 1", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena1wave3 {
+        spawn("Troll 2", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena1wave4 {
+        spawn("Arena Skeleton", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Troll 1", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Troll 2", initial_spawn: 1, max_children: 2, cooldown: 90000)
+    }
+    state arena1boss {
+        spawn("Troll 3", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena2wave1 {
+        spawn("Arena Ghost 1", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Ghost 2", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena2wave2 {
+        spawn("Arena Ghost 1", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Ghost 2", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Possessed Girl", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena2wave3 {
+        spawn("Arena Ghost 1", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Ghost 2", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Possessed Girl", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena2wave4 {
+        spawn("Arena Ghost 1", initial_spawn: 1, max_children: 2, cooldown: 90000)
+        spawn("Arena Ghost 2", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Possessed Girl", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena2boss {
+        spawn("Arena Ghost Bride", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena3wave1 {
+        spawn("Arena Risen Archer", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Risen Mage", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena3wave2 {
+        spawn("Arena Risen Archer", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Risen Warrior", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena3wave3 {
+        spawn("Arena Risen Mage", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Risen Brawler", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena3wave4 {
+        spawn("Arena Risen Mage", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Risen Brawler", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Arena Risen Archer", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena3boss {
+        spawn("Arena Grave Caretaker", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena4wave1 {
+        spawn("Classic Ghost", initial_spawn: 1, max_children: 2, cooldown: 90000)
+        spawn("Werewolf", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena4wave2 {
+        spawn("Classic Ghost", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Zombie Hulk", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena4wave3 {
+        spawn("Classic Ghost", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Zombie Hulk", initial_spawn: 1, max_children: 1, cooldown: 90000)
+        spawn("Werewolf", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+    state arena4wave4 {
+        spawn("Zombie Hulk", initial_spawn: 2, max_children: 1, cooldown: 90000)
+        spawn("Werewolf", initial_spawn: 1, max_children: 1, cooldown: 90000)
+    }
+}
+
+enemy "Area 1 Controller" {
+    conditional_effect(invincible)
+    state Greeting {
+        on player_within(2) -> talk1
+    }
+    state talk1 {
+        set_alt_texture(2)
+        taunt(1, "Welcome to my domain. I challenge you, warrior, to defeat my undead hordes and claim your prize...")
+        on timed(5000) -> talk3
+    }
+    state talk3 {
+        set_alt_texture(1)
+        taunt(1, "Prepare yourself, Say Ready when you wish the battle to begin!")
+        on player_text("1", "Ready", 99, false, true) -> s1
+    }
+    state s1 {
+        set_alt_texture(0)
+        order(9999, "Arena East Gate Spawner", "arena1wave1")
+        order(9999, "Arena West Gate Spawner", "arena1wave1")
+        order(9999, "Arena South Gate Spawner", "arena1wave1")
+        order(9999, "Arena North Gate Spawner", "arena1wave1")
+        on timed(2750, "2") -> s2
+    }
+    state s2 {
+        set_alt_texture(0)
+        on entities_not_exists(9999, "3", "Arena Skeleton", "Troll 1", "Troll 2") -> s3
+    }
+    state s3 {
+        set_alt_texture(1)
+        taunt(1, "Only seconds until the next wave.")
+        on timed(5000, "4") -> s4
+    }
+    state s4 {
+        set_alt_texture(0)
+        order(9999, "Arena East Gate Spawner", "arena1wave2")
+        order(9999, "Arena West Gate Spawner", "arena1wave2")
+        order(9999, "Arena South Gate Spawner", "arena1wave2")
+        order(9999, "Arena North Gate Spawner", "arena1wave2")
+        on timed(2750, "5") -> s5
+    }
+    state s5 {
+        set_alt_texture(0)
+        on entities_not_exists(9999, "6", "Arena Skeleton", "Troll 1", "Troll 2") -> s6
+    }
+    state s6 {
+        set_alt_texture(1)
+        taunt(1, "Only seconds until the next wave.")
+        on timed(5000, "7") -> s7
+    }
+    state s7 {
+        set_alt_texture(0)
+        order(9999, "Arena East Gate Spawner", "arena1wave3")
+        order(9999, "Arena West Gate Spawner", "arena1wave3")
+        order(9999, "Arena South Gate Spawner", "arena1wave3")
+        order(9999, "Arena North Gate Spawner", "arena1wave3")
+        on timed(2750, "8") -> s8
+    }
+    state s8 {
+        set_alt_texture(0)
+        on entities_not_exists(9999, "9", "Arena Skeleton", "Troll 1", "Troll 2") -> s9
+    }
+    state s9 {
+        set_alt_texture(1)
+        taunt(1, "Only seconds until the next wave.")
+        on timed(5000, "10") -> s10
+    }
+    state s10 {
+        set_alt_texture(0)
+        order(9999, "Arena East Gate Spawner", "arena1wave4")
+        order(9999, "Arena West Gate Spawner", "arena1wave4")
+        order(9999, "Arena South Gate Spawner", "arena1wave4")
+        order(9999, "Arena North Gate Spawner", "arena1wave4")
+        on timed(2750, "11") -> s11
+    }
+    state s11 {
+        set_alt_texture(0)
+        on entities_not_exists(9999, "12", "Arena Skeleton", "Troll 1", "Troll 2") -> s12
+    }
+    state s12 {
+        set_alt_texture(1)
+        taunt(1, "Only seconds until the next wave.")
+        on timed(5000, "13") -> s13
+    }
+    state s13 {
+        set_alt_texture(0)
+        order(9999, "Arena North Gate Spawner", "arena1boss")
+        on timed(2750, "14") -> s14
+    }
+    state s14 {
+        set_alt_texture(0)
+        on entities_not_exists(9999, "Troll 3") -> portal
+    }
+    state portal {
+        set_alt_texture(0)
+        drop_portal_on_death("Haunted Cemetery Gates Portal", 100, timeout: 9999)
+        suicide()
+    }
+}
+
+enemy "Area 2 Controller" {
+    conditional_effect(invincible)
+    state Greeting {
+        on player_within(2) -> talk3
+    }
+    state talk3 {
+        set_alt_texture(1)
+        taunt(1, "Prepare yourself, Say Ready when you wish the battle to begin!")
+        on player_text("1", "Ready", 99, false, true) -> s1
+    }
+    state s1 {
+        set_alt_texture(0)
+        order(9999, "Arena East Gate Spawner", "arena2wave1")
+        order(9999, "Arena West Gate Spawner", "arena2wave1")
+        order(9999, "Arena South Gate Spawner", "arena2wave1")
+        order(9999, "Arena North Gate Spawner", "arena2wave1")
+        on timed(2750, "2") -> s2
+    }
+    state s2 {
+        set_alt_texture(0)
+        on entities_not_exists(9999, "3", "Arena Possessed Girl", "Arena Ghost 1", "Arena Ghost 2") -> s3
+    }
+    state s3 {
+        set_alt_texture(2)
+        taunt(1, "Only seconds until the next wave.")
+        on timed(5000, "4") -> s4
+    }
+    state s4 {
+        set_alt_texture(0)
+        order(9999, "Arena East Gate Spawner", "arena2wave2")
+        order(9999, "Arena West Gate Spawner", "arena2wave2")
+        order(9999, "Arena South Gate Spawner", "arena2wave2")
+        order(9999, "Arena North Gate Spawner", "arena2wave2")
+        on timed(2750, "5") -> s5
+    }
+    state s5 {
+        set_alt_texture(0)
+        on entities_not_exists(9999, "6", "Arena Possessed Girl", "Arena Ghost 1", "Arena Ghost 2") -> s6
+    }
+    state s6 {
+        set_alt_texture(2)
+        taunt(1, "Only seconds until the next wave.")
+        on timed(5000, "7") -> s7
+    }
+    state s7 {
+        set_alt_texture(0)
+        order(9999, "Arena East Gate Spawner", "arena2wave3")
+        order(9999, "Arena West Gate Spawner", "arena2wave3")
+        order(9999, "Arena South Gate Spawner", "arena2wave3")
+        order(9999, "Arena North Gate Spawner", "arena2wave3")
+        on timed(2750, "8") -> s8
+    }
+    state s8 {
+        set_alt_texture(0)
+        on entities_not_exists(9999, "9", "Arena Possessed Girl", "Arena Ghost 1", "Arena Ghost 2") -> s9
+    }
+    state s9 {
+        set_alt_texture(2)
+        taunt(1, "Only seconds until the next wave.")
+        on timed(5000, "10") -> s10
+    }
+    state s10 {
+        set_alt_texture(0)
+        order(9999, "Arena East Gate Spawner", "arena2wave4")
+        order(9999, "Arena West Gate Spawner", "arena2wave4")
+        order(9999, "Arena South Gate Spawner", "arena2wave4")
+        order(9999, "Arena North Gate Spawner", "arena2wave4")
+        on timed(2750, "11") -> s11
+    }
+    state s11 {
+        set_alt_texture(0)
+        on entities_not_exists(9999, "12", "Arena Possessed Girl", "Arena Ghost 1", "Arena Ghost 2") -> s12
+    }
+    state s12 {
+        set_alt_texture(2)
+        taunt(1, "Only seconds until the next wave.")
+        on timed(5000, "13") -> s13
+    }
+    state s13 {
+        set_alt_texture(0)
+        order(9999, "Arena North Gate Spawner", "arena2boss")
+        on timed(2750, "14") -> s14
+    }
+    state s14 {
+        set_alt_texture(0)
+        on entities_not_exists(9999, "Arena Ghost Bride") -> portal
+    }
+    state portal {
+        set_alt_texture(0)
+        drop_portal_on_death("Haunted Cemetery Graves Portal", 100, timeout: 9999)
+        suicide()
+    }
+}
+
+enemy "Area 3 Controller" {
+    conditional_effect(invincible)
+    state Greeting {
+        on player_within(2) -> talk1
+    }
+    state talk1 {
+        set_alt_texture(2)
+        taunt(1, "You've made it this far..")
+        on timed(5000) -> talk3
+    }
+    state talk3 {
+        set_alt_texture(1)
+        taunt(1, "Prepare yourself, Say Ready when you wish the battle to begin!")
+        on player_text("1", "Ready", 99, false, true) -> s1
+    }
+    state s1 {
+        set_alt_texture(0)
+        order(9999, "Arena East Gate Spawner", "arena3wave1")
+        order(9999, "Arena West Gate Spawner", "arena3wave1")
+        order(9999, "Arena South Gate Spawner", "arena3wave1")
+        order(9999, "Arena North Gate Spawner", "arena3wave1")
+        on timed(2750, "2") -> s2
+    }
+    state s2 {
+        set_alt_texture(0)
+        on entities_not_exists(9999, "3", "Arena Risen Warrior", "Arena Risen Archer", "Arena Risen Mage", "Arena Risen Brawler") -> s3
+    }
+    state s3 {
+        set_alt_texture(2)
+        taunt(1, "Only seconds until the next wave.")
+        on timed(5000, "4") -> s4
+    }
+    state s4 {
+        set_alt_texture(0)
+        order(9999, "Arena East Gate Spawner", "arena3wave2")
+        order(9999, "Arena West Gate Spawner", "arena3wave2")
+        order(9999, "Arena South Gate Spawner", "aren3wave2")
+        order(9999, "Arena North Gate Spawner", "arena3wave2")
+        on timed(2750, "5") -> s5
+    }
+    state s5 {
+        set_alt_texture(0)
+        on entities_not_exists(9999, "6", "Arena Risen Warrior", "Arena Risen Archer", "Arena Risen Mage", "Arena Risen Brawler") -> s6
+    }
+    state s6 {
+        set_alt_texture(2)
+        taunt(1, "Only seconds until the next wave.")
+        on timed(5000, "7") -> s7
+    }
+    state s7 {
+        set_alt_texture(0)
+        order(9999, "Arena East Gate Spawner", "arena3wave3")
+        order(9999, "Arena West Gate Spawner", "arena3wave3")
+        order(9999, "Arena South Gate Spawner", "arena3wave3")
+        order(9999, "Arena North Gate Spawner", "arena3wave3")
+        on timed(2750, "8") -> s8
+    }
+    state s8 {
+        set_alt_texture(0)
+        on entities_not_exists(9999, "9", "Arena Risen Warrior", "Arena Risen Archer", "Arena Risen Mage", "Arena Risen Brawler") -> s9
+    }
+    state s9 {
+        set_alt_texture(2)
+        taunt(1, "Only seconds until the next wave.")
+        on timed(5000, "10") -> s10
+    }
+    state s10 {
+        set_alt_texture(0)
+        order(9999, "Arena East Gate Spawner", "arena3wave4")
+        order(9999, "Arena West Gate Spawner", "arena3wave4")
+        order(9999, "Arena South Gate Spawner", "arena3wave4")
+        order(9999, "Arena North Gate Spawner", "arena3wave4")
+        on timed(2750, "11") -> s11
+    }
+    state s11 {
+        set_alt_texture(0)
+        on entities_not_exists(9999, "12", "Arena Risen Warrior", "Arena Risen Archer", "Arena Risen Mage", "Arena Risen Brawler") -> s12
+    }
+    state s12 {
+        set_alt_texture(2)
+        taunt(1, "Only seconds until the next wave.")
+        on timed(5000, "13") -> s13
+    }
+    state s13 {
+        set_alt_texture(0)
+        order(9999, "Arena North Gate Spawner", "arena3boss")
+        on timed(2750, "14") -> s14
+    }
+    state s14 {
+        set_alt_texture(0)
+        on entities_not_exists(9999, "Arena Grave Caretaker") -> portal
+    }
+    state portal {
+        set_alt_texture(0)
+        drop_portal_on_death("Haunted Cemetery Final Rest Portal", 100, timeout: 9999)
+        suicide()
+    }
+}
+
+enemy "Area 4 Controller" {
+    conditional_effect(invincible)
+    state Greeting {
+        on player_within(2) -> talk1
+    }
+    state talk1 {
+        set_alt_texture(2)
+        taunt(1, "The final battle is imminent.")
+        on timed(5000) -> talk3
+    }
+    state talk3 {
+        set_alt_texture(1)
+        taunt(1, "Prepare yourself, Say Ready when you wish the battle to begin!")
+        on player_text("1", "Ready", 99, false, true) -> s1
+    }
+    state s1 {
+        set_alt_texture(0)
+        order(9999, "Arena East Gate Spawner", "aren4wave1")
+        order(9999, "Arena West Gate Spawner", "arena4wave1")
+        order(9999, "Arena South Gate Spawner", "arena4wave1")
+        order(9999, "Arena North Gate Spawner", "arena4wave1")
+        on timed(2750, "2") -> s2
+    }
+    state s2 {
+        set_alt_texture(0)
+        on entities_not_exists(9999, "3", "Classic Ghost", "Werewolf", "Zombie Hulk", "Mini Werewolf") -> s3
+    }
+    state s3 {
+        set_alt_texture(2)
+        taunt(1, "Only seconds until the next wave.")
+        on timed(5000, "4") -> s4
+    }
+    state s4 {
+        set_alt_texture(0)
+        order(9999, "Arena East Gate Spawner", "arena4wave2")
+        order(9999, "Arena West Gate Spawner", "arena4wave2")
+        order(9999, "Arena South Gate Spawner", "aren4wave2")
+        order(9999, "Arena North Gate Spawner", "arena4wave2")
+        on timed(2750, "5") -> s5
+    }
+    state s5 {
+        set_alt_texture(0)
+        on entities_not_exists(9999, "6", "Classic Ghost", "Werewolf", "Zombie Hulk", "Mini Werewolf") -> s6
+    }
+    state s6 {
+        set_alt_texture(2)
+        taunt(1, "Only seconds until the next wave.")
+        on timed(5000, "7") -> s7
+    }
+    state s7 {
+        set_alt_texture(0)
+        order(9999, "Arena East Gate Spawner", "arena4wave3")
+        order(9999, "Arena West Gate Spawner", "arena4wave3")
+        order(9999, "Arena South Gate Spawner", "arena4wave3")
+        order(9999, "Arena North Gate Spawner", "arena4wave3")
+        on timed(2750, "8") -> s8
+    }
+    state s8 {
+        set_alt_texture(0)
+        on entities_not_exists(9999, "9", "Classic Ghost", "Werewolf", "Zombie Hulk", "Mini Werewolf") -> s9
+    }
+    state s9 {
+        set_alt_texture(2)
+        taunt(1, "Only seconds until the next wave.")
+        on timed(5000, "10") -> s10
+    }
+    state s10 {
+        set_alt_texture(0)
+        order(9999, "Arena East Gate Spawner", "arena4wave4")
+        order(9999, "Arena West Gate Spawner", "arena4wave4")
+        order(9999, "Arena South Gate Spawner", "arena4wave4")
+        order(9999, "Arena North Gate Spawner", "arena4wave4")
+        on timed(2750, "11") -> s11
+    }
+    state s11 {
+        set_alt_texture(0)
+        on entities_not_exists(9999, "12", "Classic Ghost", "Werewolf", "Zombie Hulk", "Mini Werewolf") -> s12
+    }
+    state s12 {
+        set_alt_texture(2)
+        taunt(1, "Only seconds until the next wave.")
+        on timed(5000, "13") -> s13
+    }
+    state s13 {
+        set_alt_texture(0)
+        on timed(2750, "14") -> s14
+    }
+    state s14 {
+        set_alt_texture(0)
+        on entities_not_exists(9999, "Classic Ghost", "Werewolf", "Zombie Hulk", "Mini Werewolf") -> portal
+    }
+    state portal {
+        set_alt_texture(0)
+        transform_on_death("Ghost of Skuld", 1, 1, 1)
+        suicide()
+    }
+}
+

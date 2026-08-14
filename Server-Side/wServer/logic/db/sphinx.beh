@@ -1,0 +1,99 @@
+enemy "Grand Sphinx" {
+    drop_portal_on_death("Tomb of the Ancients Portal", 0.33)
+    state Spawned {
+        conditional_effect(invulnerable)
+        reproduce("Horrid Reaper", 30, 4, cooldown: 100)
+        on timed(500) -> Attack1
+    }
+    state Attack1 {
+        prioritize() {
+            wander(0.5)
+        }
+        shoot(12, count: 1, cooldown: 800)
+        shoot(12, count: 3, shoot_angle: 10, cooldown: 1000)
+        shoot(12, count: 1, shoot_angle: 130, cooldown: 1000)
+        shoot(12, count: 1, shoot_angle: 230, cooldown: 1000)
+        on timed(6000) -> TransAttack2
+    }
+    state TransAttack2 {
+        conditional_effect(invulnerable)
+        wander(0.5)
+        flash(65292, 0.25, 8)
+        taunt(0.99, "You hide behind rocks like cowards but you cannot hide from this!")
+        on timed(2000) -> Attack2
+    }
+    state Attack2 {
+        prioritize() {
+            wander(0.5)
+        }
+        shoot(0, count: 8, shoot_angle: 10, fixed_angle: 0, rotate_angle: 70, cooldown: 2000, projectile: 1)
+        shoot(0, count: 8, shoot_angle: 10, fixed_angle: 180, rotate_angle: 70, cooldown: 2000, projectile: 1)
+        on timed(6200) -> TransAttack3
+    }
+    state TransAttack3 {
+        conditional_effect(invulnerable)
+        wander(0.5)
+        flash(65292, 0.25, 8)
+        on timed(2000) -> Attack3
+    }
+    state Attack3 {
+        prioritize() {
+            wander(0.5)
+        }
+        shoot(20, count: 9, fixed_angle: 360, projectile: 2, cooldown: 2300)
+        on timed(6000) -> TransAttack1
+        state Shoot1 {
+            shoot(20, count: 2, shoot_angle: 4, projectile: 2, cooldown: 700)
+            on timed_random(1000, false, "Shoot2") -> Shoot1
+        }
+        state Shoot2 {
+            shoot(20, count: 8, shoot_angle: 5, projectile: 2, cooldown: 1100)
+            on timed_random(1000, false, "Shoot2") -> Shoot1
+        }
+    }
+    state TransAttack1 {
+        conditional_effect(invulnerable)
+        wander(0.5)
+        flash(65292, 0.25, 8)
+        on timed(2000) -> Attack1
+        on hp_below(0.15) -> Order
+    }
+    state Order {
+        wander(0.5)
+        conditional_effect(invulnerable)
+        order(30, "Horrid Reaper", "Die")
+        on timed(1900) -> Attack1
+    }
+    loot {
+        threshold(0.01) { item("Potion of Vitality", 0.1, 1) item("Potion of Wisdom", 0.1, 1) item("Helm of the Juggernaut", 0.004) }
+    }
+}
+
+enemy "Horrid Reaper" {
+    conditional_effect(invulnerable)
+    state Move {
+        prioritize() {
+            stay_close_to_spawn(3, 10)
+            wander(3)
+        }
+        on entity_not_exists("Grand Sphinx", 50) -> Die
+        on timed_random(2000, true) -> Attack
+    }
+    state Attack {
+        shoot(0, count: 6, fixed_angle: 360, cooldown: 700)
+        on player_within(2) -> Follow
+        on timed_random(5000, true) -> Move
+    }
+    state Follow {
+        prioritize() {
+            follow(0.7, 10, 3)
+        }
+        shoot(7, count: 1, cooldown: 700)
+        on timed_random(5000, true) -> Move
+    }
+    state Die {
+        taunt(0.99, "OOaoaoAaAoaAAOOAoaaoooaa!!!")
+        decay(1000)
+    }
+}
+

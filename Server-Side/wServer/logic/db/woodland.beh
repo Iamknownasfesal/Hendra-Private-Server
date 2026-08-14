@@ -1,0 +1,153 @@
+enemy "Woodland Weakness Turret" {
+    conditional_effect(invincible)
+    shoot(25, projectile: 0, count: 8, cooldown: 3000, cooldown_offset: 4000)
+}
+
+enemy "Woodland Silence Turret" {
+    conditional_effect(invincible)
+    shoot(25, projectile: 0, count: 8, cooldown: 3000, cooldown_offset: 4000)
+}
+
+enemy "Woodland Paralyze Turret" {
+    conditional_effect(invincible)
+    shoot(25, projectile: 0, count: 8, cooldown: 3000, cooldown_offset: 4000)
+}
+
+enemy "Wooland Armor Squirrel" {
+    prioritize() {
+        follow(0.52, 8, 2, cooldown: 500)
+        stay_back(0.7, 4)
+    }
+    shoot(25, projectile: 0, count: 3, shoot_angle: 30, cooldown: 700, cooldown_offset: 1000)
+}
+
+enemy "Woodland Ultimate Squirrel" {
+    prioritize() {
+        follow(0.3, 8, 1)
+        wander(0.3)
+    }
+    shoot(25, projectile: 0, count: 3, shoot_angle: 10, cooldown: 900, cooldown_offset: 1000)
+    shoot(25, projectile: 0, count: 3, shoot_angle: 35, cooldown: 900, cooldown_offset: 1000)
+    shoot(25, projectile: 0, count: 1, shoot_angle: 35, cooldown: 1100, cooldown_offset: 21000)
+}
+
+enemy "Woodland Goblin Mage" {
+    prioritize() {
+        follow(0.3, 8, 2, cooldown: 500)
+        stay_back(0.7, 4)
+    }
+    shoot(55, projectile: 0, count: 2, shoot_angle: 10, cooldown: 900, cooldown_offset: 1000)
+}
+
+enemy "Woodland Goblin" {
+    follow(0.46, 8, 1)
+    shoot(25, projectile: 0, count: 1, shoot_angle: 20, cooldown: 900, cooldown_offset: 1000)
+}
+
+enemy "Woodland Mini Megamoth" {
+    prioritize() {
+        protect(0.5, "Epic Mama Megamoth", protection_range: 15, reprotect_range: 3)
+        wander(0.35)
+    }
+    shoot(25, projectile: 0, count: 3, shoot_angle: 20, cooldown: 700, cooldown_offset: 1000)
+    loot {
+        threshold(0.5) { item("Magic Potion", 0.1) item("Magic Potion", 0.1) }
+    }
+}
+
+enemy "Mini Larva" {
+    prioritize() {
+        protect(0.5, "Murderous Megamoth", protection_range: 15, reprotect_range: 3)
+        wander(0.35)
+    }
+    shoot(25, projectile: 0, count: 6, cooldown: 3500, cooldown_offset: 1200)
+    loot {
+        threshold(0.5) { item("Health Potion", 0.01) item("Magic Potion", 0.01) }
+    }
+}
+
+enemy "Blood Ground Effector" {
+    conditional_effect(invincible)
+    apply_setpiece("Puke")
+    suicide()
+}
+
+enemy "Epic Larva" {
+    conditional_effect(armored)
+    follow(0.08, 8, 1)
+    shoot(8.4, count: 1, fixed_angle: 50, projectile: 0, cooldown: 1750)
+    shoot(8.4, count: 1, fixed_angle: 140, projectile: 0, cooldown: 1750)
+    shoot(8.4, count: 1, fixed_angle: 240, projectile: 0, cooldown: 1750)
+    shoot(8.4, count: 1, fixed_angle: 325, projectile: 0, cooldown: 1750)
+    shoot(8.4, count: 1, fixed_angle: 45, projectile: 0, cooldown: 1750)
+    shoot(8.4, count: 1, fixed_angle: 135, projectile: 0, cooldown: 1750)
+    shoot(8.4, count: 1, fixed_angle: 235, projectile: 0, cooldown: 1750)
+    shoot(8.4, count: 1, fixed_angle: 315, projectile: 0, cooldown: 1750)
+    toss_object("Blood Ground Effector", cooldown: 3750)
+    on damage_taken(12500) -> tran
+    state tran {
+        conditional_effect(invulnerable)
+        flash(16711680, 2, 2)
+        on timed(8750) -> home
+    }
+    state home {
+        transform_on_death("Epic Mama Megamoth", 1, 1)
+        conditional_effect(invulnerable)
+        flash(16711680, 2, 2)
+        suicide()
+    }
+}
+
+enemy "Epic Mama Megamoth" {
+    spawn("Woodland Mini Megamoth", 1, 10, cooldown: 90000)
+    spawn("Woodland Mini Megamoth", 1, 2, cooldown: 5500)
+    reproduce("Woodland Mini Megamoth", 2, 4, cooldown: 3000)
+    prioritize() {
+        charge(1, range: 4, cooldown: 2000)
+        wander(0.36)
+    }
+    shoot(8.4, count: 1, fixed_angle: 60, projectile: 0, cooldown: 2000)
+    shoot(8.4, count: 1, fixed_angle: 150, projectile: 0, cooldown: 2000)
+    shoot(8.4, count: 1, fixed_angle: 255, projectile: 0, cooldown: 2000)
+    shoot(8.4, count: 1, fixed_angle: 335, projectile: 0, cooldown: 2000)
+    shoot(8.4, count: 1, fixed_angle: 50, projectile: 0, cooldown: 2000)
+    shoot(8.4, count: 1, fixed_angle: 140, projectile: 0, cooldown: 2000)
+    shoot(8.4, count: 1, fixed_angle: 240, projectile: 0, cooldown: 2000)
+    shoot(8.4, count: 1, fixed_angle: 325, projectile: 0, cooldown: 2000)
+    shoot(8.4, count: 1, fixed_angle: 45, projectile: 0, cooldown: 2000)
+    shoot(8.4, count: 1, fixed_angle: 135, projectile: 0, cooldown: 2000)
+    shoot(8.4, count: 1, fixed_angle: 235, projectile: 0, cooldown: 2000)
+    shoot(8.4, count: 1, fixed_angle: 315, projectile: 0, cooldown: 2000)
+    on damage_taken(14000) -> tran
+    state tran {
+        conditional_effect(invulnerable)
+        flash(16711680, 2, 2)
+        on timed(8750) -> home
+    }
+    state home {
+        transform_on_death("Murderous Megamoth", 1, 1)
+        conditional_effect(invulnerable)
+        flash(16711680, 2, 2)
+        suicide()
+    }
+}
+
+enemy "Murderous Megamoth" {
+    realm_portal_drop()
+    spawn("Mini Larva", 1, 14, cooldown: 90000)
+    spawn("Mini Larva", 1, 2, cooldown: 5500)
+    prioritize() {
+        charge(1.25, range: 4, cooldown: 2000)
+        follow(0.4, 8, 1)
+    }
+    shoot(25, projectile: 1, count: 2, cooldown: 700, cooldown_offset: 1000)
+    shoot(8.4, count: 1, fixed_angle: 45, projectile: 0, cooldown: 2000, cooldown_offset: 3000)
+    shoot(8.4, count: 1, fixed_angle: 135, projectile: 0, cooldown: 2000, cooldown_offset: 3000)
+    shoot(8.4, count: 1, fixed_angle: 235, projectile: 0, cooldown: 2000, cooldown_offset: 3000)
+    shoot(8.4, count: 1, fixed_angle: 315, projectile: 0, cooldown: 2000, cooldown_offset: 3000)
+    loot {
+        threshold(0.05) {  }
+        threshold(0.03) { tier(10, weapon, 0.1) tier(4, ability, 0.1) tier(12, armor, 0.1) tier(4, ring, 0.05) tier(13, armor, 0.05) tier(12, weapon, 0.05) tier(5, ring, 0.025) item("Potion of Vitality", 1) item("Potion of Might", 0.33) item("Hairy Karambit", 0.03) item("Toad Bile Cannister", 0.03) item("Skinned Toad Hide", 0.03) item("Frog's Eye Ring", 0.03) }
+    }
+}
+

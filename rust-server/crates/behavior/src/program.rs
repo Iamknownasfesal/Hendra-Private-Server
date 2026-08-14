@@ -296,6 +296,20 @@ pub enum Primitive {
         speed: f32,
     },
 
+    /// Dart a short way in one of the eight compass directions, then pause and pick another.
+    ///
+    /// `Buzz`, and different from wandering in the way that matters to a player: a wanderer drifts
+    /// and can be led, and this darts and cannot. Insects and wisps move this way.
+    Buzz {
+        speed: f32,
+
+        /// How far one dart carries, in tiles.
+        distance: f32,
+
+        /// How long it waits between darts.
+        cooldown_ms: u32,
+    },
+
     Follow {
         speed: f32,
         acquire_range: f32,

@@ -1,0 +1,405 @@
+enemy "Oryx the Mad God 2" {
+    scale_h_p(50000)
+    state Attack {
+        wander(0.05)
+        shoot(25, projectile: 0, count: 8, shoot_angle: 45, cooldown: 1500, cooldown_offset: 1500)
+        shoot(25, projectile: 1, count: 3, shoot_angle: 10, cooldown: 1000, cooldown_offset: 1000)
+        shoot(25, projectile: 2, count: 3, shoot_angle: 10, predictive: 0.2, cooldown: 1000, cooldown_offset: 1000)
+        shoot(25, projectile: 3, count: 2, shoot_angle: 10, predictive: 0.4, cooldown: 1000, cooldown_offset: 1000)
+        shoot(25, projectile: 4, count: 3, shoot_angle: 10, predictive: 0.6, cooldown: 1000, cooldown_offset: 1000)
+        shoot(25, projectile: 5, count: 2, shoot_angle: 10, predictive: 0.8, cooldown: 1000, cooldown_offset: 1000)
+        shoot(25, projectile: 6, count: 3, shoot_angle: 10, predictive: 1, cooldown: 1000, cooldown_offset: 1000)
+        taunt(1, 6000, "Puny mortals! My {HP} HP will annihilate you!")
+        spawn("Henchman of Oryx", 5, cooldown: 5000)
+        on hp_below(0.2) -> prepareRage
+    }
+    state prepareRage {
+        follow(0.1, 15, 3)
+        taunt("Can't... keep... henchmen... alive... anymore! ARGHHH!!!")
+        conditional_effect(invulnerable)
+        shoot(25, 30, fixed_angle: 0, projectile: 7, cooldown: 4000, cooldown_offset: 4000)
+        shoot(25, 30, fixed_angle: 30, projectile: 8, cooldown: 4000, cooldown_offset: 4000)
+        on timed(10000) -> rage
+    }
+    state rage {
+        follow(0.1, 15, 3)
+        shoot(25, 30, projectile: 7, cooldown: 90000001, cooldown_offset: 8000)
+        shoot(25, 30, projectile: 8, cooldown: 90000001, cooldown_offset: 8500)
+        shoot(25, projectile: 0, count: 8, shoot_angle: 45, cooldown: 1500, cooldown_offset: 1500)
+        shoot(25, projectile: 1, count: 3, shoot_angle: 10, cooldown: 1000, cooldown_offset: 1000)
+        shoot(25, projectile: 2, count: 3, shoot_angle: 10, predictive: 0.2, cooldown: 1000, cooldown_offset: 1000)
+        shoot(25, projectile: 3, count: 2, shoot_angle: 10, predictive: 0.4, cooldown: 1000, cooldown_offset: 1000)
+        shoot(25, projectile: 4, count: 3, shoot_angle: 10, predictive: 0.6, cooldown: 1000, cooldown_offset: 1000)
+        shoot(25, projectile: 5, count: 2, shoot_angle: 10, predictive: 0.8, cooldown: 1000, cooldown_offset: 1000)
+        shoot(25, projectile: 6, count: 3, shoot_angle: 10, predictive: 1, cooldown: 1000, cooldown_offset: 1000)
+        toss_object("Monstrosity Scarab", 7, 0, cooldown: 1000)
+        taunt(1, 6000, "Puny mortals! My {HP} HP will annihilate you!")
+    }
+    loot {
+        threshold(0.05) {  }
+        threshold(0.05) {  }
+        threshold(0.29) { item("Potion of Vitality", 1) }
+        threshold(0.05) { item("Potion of Attack", 0.3) item("Potion of Defense", 0.3) item("Potion of Wisdom", 0.3) }
+        threshold(0.2) { item("Oryx's Arena Key", 0.01) }
+        threshold(0.1) { tier(10, weapon, 0.07) tier(11, weapon, 0.06) tier(12, weapon, 0.05) tier(5, ability, 0.07) tier(6, ability, 0.05) tier(11, armor, 0.07) tier(12, armor, 0.06) tier(13, armor, 0.05) tier(5, ring, 0.06) }
+    }
+}
+
+enemy "Oryx the Mad God 2OA" {
+    scale_h_p(50000)
+    state Attack {
+        wander(0.05)
+        shoot(25, projectile: 0, count: 8, shoot_angle: 45, cooldown: 1500, cooldown_offset: 1500)
+        shoot(25, projectile: 1, count: 3, shoot_angle: 10, cooldown: 1000, cooldown_offset: 1000)
+        shoot(25, projectile: 2, count: 3, shoot_angle: 10, predictive: 0.2, cooldown: 1000, cooldown_offset: 1000)
+        shoot(25, projectile: 3, count: 2, shoot_angle: 10, predictive: 0.4, cooldown: 1000, cooldown_offset: 1000)
+        shoot(25, projectile: 4, count: 3, shoot_angle: 10, predictive: 0.6, cooldown: 1000, cooldown_offset: 1000)
+        shoot(25, projectile: 5, count: 2, shoot_angle: 10, predictive: 0.8, cooldown: 1000, cooldown_offset: 1000)
+        shoot(25, projectile: 6, count: 3, shoot_angle: 10, predictive: 1, cooldown: 1000, cooldown_offset: 1000)
+        taunt(1, 6000, "Puny mortals! My {HP} HP will annihilate you!")
+        spawn("Henchman of Oryx", 5, cooldown: 5000)
+        on hp_below(0.2) -> prepareRage
+    }
+    state prepareRage {
+        follow(0.1, 15, 3)
+        taunt("Can't... keep... henchmen... alive... anymore! ARGHHH!!!")
+        conditional_effect(invulnerable)
+        shoot(25, 30, fixed_angle: 0, projectile: 7, cooldown: 4000, cooldown_offset: 4000)
+        shoot(25, 30, fixed_angle: 30, projectile: 8, cooldown: 4000, cooldown_offset: 4000)
+        on timed(10000) -> rage
+    }
+    state rage {
+        follow(0.1, 15, 3)
+        shoot(25, 30, projectile: 7, cooldown: 90000001, cooldown_offset: 8000)
+        shoot(25, 30, projectile: 8, cooldown: 90000001, cooldown_offset: 8500)
+        shoot(25, projectile: 0, count: 8, shoot_angle: 45, cooldown: 1500, cooldown_offset: 1500)
+        shoot(25, projectile: 1, count: 3, shoot_angle: 10, cooldown: 1000, cooldown_offset: 1000)
+        shoot(25, projectile: 2, count: 3, shoot_angle: 10, predictive: 0.2, cooldown: 1000, cooldown_offset: 1000)
+        shoot(25, projectile: 3, count: 2, shoot_angle: 10, predictive: 0.4, cooldown: 1000, cooldown_offset: 1000)
+        shoot(25, projectile: 4, count: 3, shoot_angle: 10, predictive: 0.6, cooldown: 1000, cooldown_offset: 1000)
+        shoot(25, projectile: 5, count: 2, shoot_angle: 10, predictive: 0.8, cooldown: 1000, cooldown_offset: 1000)
+        shoot(25, projectile: 6, count: 3, shoot_angle: 10, predictive: 1, cooldown: 1000, cooldown_offset: 1000)
+        toss_object("Monstrosity Scarab", 7, 0, cooldown: 1000)
+        taunt(1, 6000, "Puny mortals! My {HP} HP will annihilate you!")
+    }
+    loot {
+        threshold(0.05) {  }
+        threshold(0.29) { item("Potion of Vitality", 1) }
+        threshold(0.05) { item("Potion of Attack", 0.3) item("Potion of Defense", 0.3) item("Potion of Wisdom", 0.3) }
+        threshold(0.1) { tier(10, weapon, 0.07) tier(11, weapon, 0.06) tier(12, weapon, 0.05) tier(5, ability, 0.07) tier(6, ability, 0.05) tier(11, armor, 0.07) tier(12, armor, 0.06) tier(13, armor, 0.05) tier(5, ring, 0.06) }
+    }
+}
+
+enemy "Oryx the Mad God 1" {
+    drop_portal_on_death("Wine Cellar Portal", 100, timeout: 120)
+    on hp_below(0.2) -> rage
+    state Slow {
+        taunt("Fools! I still have {HP} hitpoints!")
+        spawn("Minion of Oryx", 5, 0, 350000)
+        reproduce("Minion of Oryx", 10, 5, 1500)
+        shoot(25, 4, 10, 4, cooldown: 1000)
+        on timed(20000, "Dance 1") -> Dance_1
+    }
+    state Dance_1 {
+        flash(255368723, 0.5, 60)
+        taunt("BE SILENT!!!")
+        conditional_effect(invulnerable)
+        shoot(50, 8, projectile: 6, cooldown: 700, cooldown_offset: 200)
+        toss_object("Ring Element", 9, 24, 320000)
+        toss_object("Ring Element", 9, 48, 320000)
+        toss_object("Ring Element", 9, 72, 320000)
+        toss_object("Ring Element", 9, 96, 320000)
+        toss_object("Ring Element", 9, 120, 320000)
+        toss_object("Ring Element", 9, 144, 320000)
+        toss_object("Ring Element", 9, 168, 320000)
+        toss_object("Ring Element", 9, 192, 320000)
+        toss_object("Ring Element", 9, 216, 320000)
+        toss_object("Ring Element", 9, 240, 320000)
+        toss_object("Ring Element", 9, 264, 320000)
+        toss_object("Ring Element", 9, 288, 320000)
+        toss_object("Ring Element", 9, 312, 320000)
+        toss_object("Ring Element", 9, 336, 320000)
+        toss_object("Ring Element", 9, 360, 320000)
+        conditional_effect(invulnerable)
+        on timed(25000) -> artifacts
+    }
+    state artifacts {
+        taunt("My Artifacts will protect me!")
+        flash(255368723, 0.5, 60)
+        shoot(50, 3, projectile: 9, cooldown: 1500, cooldown_offset: 200)
+        shoot(50, 10, projectile: 8, cooldown: 2000, cooldown_offset: 200)
+        shoot(50, 10, projectile: 7, cooldown: 500, cooldown_offset: 200)
+        toss_object("Guardian Element 1", 1, 0, 90000001, 1000)
+        toss_object("Guardian Element 1", 1, 90, 90000001, 1000)
+        toss_object("Guardian Element 1", 1, 180, 90000001, 1000)
+        toss_object("Guardian Element 1", 1, 270, 90000001, 1000)
+        toss_object("Guardian Element 2", 9, 0, 90000001, 1000)
+        toss_object("Guardian Element 2", 9, 90, 90000001, 1000)
+        toss_object("Guardian Element 2", 9, 180, 90000001, 1000)
+        toss_object("Guardian Element 2", 9, 270, 90000001, 1000)
+        on timed(25000) -> gaze
+    }
+    state gaze {
+        taunt("All who looks upon my face shall die.")
+        shoot(count: 2, cooldown: 1000, projectile: 1, radius: 7, shoot_angle: 10, cooldown_offset: 800)
+        on timed(10000, "Dance 2") -> Dance_2
+    }
+    state Dance_2 {
+        flash(255368723, 0.5, 60)
+        taunt("Time for more dancing!")
+        shoot(50, 8, projectile: 6, cooldown: 700, cooldown_offset: 200)
+        toss_object("Ring Element", 9, 24, 320000)
+        toss_object("Ring Element", 9, 48, 320000)
+        toss_object("Ring Element", 9, 72, 320000)
+        toss_object("Ring Element", 9, 96, 320000)
+        toss_object("Ring Element", 9, 120, 320000)
+        toss_object("Ring Element", 9, 144, 320000)
+        toss_object("Ring Element", 9, 168, 320000)
+        toss_object("Ring Element", 9, 192, 320000)
+        toss_object("Ring Element", 9, 216, 320000)
+        toss_object("Ring Element", 9, 240, 320000)
+        toss_object("Ring Element", 9, 264, 320000)
+        toss_object("Ring Element", 9, 288, 320000)
+        toss_object("Ring Element", 9, 312, 320000)
+        toss_object("Ring Element", 9, 336, 320000)
+        toss_object("Ring Element", 9, 360, 320000)
+        on timed(1000, "Dance2, 1") -> Dance2__1
+    }
+    state Dance2__1 {
+        conditional_effect(invulnerable)
+        shoot(0, projectile: 8, count: 4, shoot_angle: 90, fixed_angle: 0, cooldown: 170)
+        on timed(200, "Dance2, 2") -> Dance2__2
+    }
+    state Dance2__2 {
+        conditional_effect(invulnerable)
+        shoot(0, projectile: 8, count: 4, shoot_angle: 90, fixed_angle: 30, cooldown: 170)
+        on timed(200, "Dance2, 3") -> Dance2__3
+    }
+    state Dance2__3 {
+        conditional_effect(invulnerable)
+        shoot(0, projectile: 8, count: 4, shoot_angle: 90, fixed_angle: 15, cooldown: 170)
+        on timed(200, "Dance2, 4") -> Dance2__4
+    }
+    state Dance2__4 {
+        shoot(0, projectile: 8, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 170)
+        on timed(200, "Dance2, 1") -> Dance2__1
+    }
+    state rage {
+        change_size(10, 200)
+        taunt(0.3, "I HAVE HAD ENOUGH OF YOU!!!", "ENOUGH!!!", "DIE!!!")
+        spawn("Minion of Oryx", 10, 0, 350000)
+        reproduce("Minion of Oryx", 10, 5, 1500)
+        shoot(count: 2, cooldown: 1500, projectile: 1, radius: 7, shoot_angle: 10, cooldown_offset: 2000)
+        shoot(count: 5, cooldown: 1500, projectile: 16, radius: 7, shoot_angle: 10, cooldown_offset: 2000)
+        follow(0.85, range: 1, cooldown: 0)
+        flash(268369920, 0.5, 9000001)
+    }
+    loot {
+        threshold(0.05) {  }
+        threshold(0.2) { item("Oryx's Arena Key", 0.005) }
+        threshold(0.05) { item("Potion of Attack", 0.3) item("Potion of Defense", 0.3) item("The Zol Awakening (Token)", 0.001) item("Calling of the Titan (Token)", 0.001) }
+        threshold(0.1) { tier(10, weapon, 0.07) tier(11, weapon, 0.06) tier(5, ability, 0.07) tier(11, armor, 0.07) tier(5, ring, 0.06) }
+    }
+}
+
+enemy "Ring Element" {
+    shoot(50, 12, projectile: 0, cooldown: 700, cooldown_offset: 200)
+    conditional_effect(invulnerable)
+    on timed(20000) -> Despawn
+    state Despawn {
+        suicide()
+    }
+}
+
+enemy "Minion of Oryx" {
+    wander(0.4)
+    shoot(3, 3, 10, 0, cooldown: 1000)
+    shoot(3, 3, projectile: 1, shoot_angle: 10, cooldown: 1000)
+    loot {
+        tier(7, weapon, 0.2)
+        item("Magic Potion", 0.03)
+    }
+}
+
+enemy "Guardian Element 1" {
+    orbit(1, 1, target: "Oryx the Mad God 1", radius_variance: 0)
+    conditional_effect(invulnerable)
+    shoot(25, 3, 10, 0, cooldown: 1000)
+    on timed(10000) -> Grow
+    state Grow {
+        change_size(100, 200)
+        conditional_effect(invulnerable)
+        orbit(1, 1, target: "Oryx the Mad God 1", radius_variance: 0)
+        shoot(3, 1, 10, 0, cooldown: 700)
+        on timed(10000) -> Despawn
+    }
+    state Despawn {
+        conditional_effect(invulnerable)
+        orbit(1, 1, target: "Oryx the Mad God 1", radius_variance: 0)
+        change_size(100, 100)
+        suicide()
+    }
+}
+
+enemy "Guardian Element 2" {
+    orbit(1.3, 9, target: "Oryx the Mad God 1", radius_variance: 0)
+    conditional_effect(invulnerable)
+    shoot(25, 3, 10, 0, cooldown: 1000)
+    on timed(20000) -> Despawn
+    state Despawn {
+        suicide()
+    }
+}
+
+enemy "Henchman of Oryx" {
+    state Attack {
+        prioritize() {
+            orbit(0.2, 2, target: "Oryx the Mad God 2", radius_variance: 1)
+            wander(0.3)
+        }
+        shoot(15, predictive: 1, cooldown: 2500)
+        shoot(10, count: 3, shoot_angle: 10, projectile: 1, cooldown: 2500)
+        spawn("Vintner of Oryx", max_children: 1, initial_spawn: 1, cooldown: 5000)
+        spawn("Aberrant of Oryx", max_children: 1, initial_spawn: 1, cooldown: 5000)
+        spawn("Monstrosity of Oryx", max_children: 1, initial_spawn: 1, cooldown: 5000)
+        spawn("Abomination of Oryx", max_children: 1, initial_spawn: 1, cooldown: 5000)
+    }
+    state Suicide {
+        decay(0)
+    }
+}
+
+enemy "Monstrosity of Oryx" {
+    state Wait {
+        on player_within(15) -> Attack
+    }
+    state Attack {
+        on timed(10000) -> Wait
+        prioritize() {
+            orbit(0.1, 6, target: "Oryx the Mad God 2", radius_variance: 3)
+            follow(0.1, acquire_range: 15)
+            wander(0.2)
+        }
+        toss_object("Monstrosity Scarab", cooldown: 10000, range: 1, angle: 0, cooldown_offset: 1000)
+    }
+}
+
+enemy "Monstrosity Scarab" {
+    state Attack {
+        state Charge {
+            prioritize() {
+                charge(range: 25, cooldown: 1000)
+                wander(0.3)
+            }
+            on player_within(1) -> Boom
+        }
+        state Boom {
+            shoot(1, count: 16, shoot_angle: 360, fixed_angle: 0)
+            decay(0)
+        }
+    }
+}
+
+enemy "Vintner of Oryx" {
+    state Attack {
+        prioritize() {
+            protect(1, "Oryx the Mad God 2", protection_range: 4, reprotect_range: 3)
+            charge(speed: 1, range: 15, cooldown: 2000)
+            protect(1, "Henchman of Oryx")
+            stay_back(1, 15)
+            wander(1)
+        }
+        shoot(10, cooldown: 250)
+    }
+}
+
+enemy "Aberrant of Oryx" {
+    prioritize() {
+        protect(0.2, "Oryx the Mad God 2")
+        wander(0.7)
+    }
+    state Wait {
+        on player_within(15) -> Attack
+    }
+    state Attack {
+        on timed(10000) -> Wait
+        state Randomize {
+            on timed(100, randomized: true) -> Toss1
+            on timed(100, randomized: true) -> Toss2
+            on timed(100, randomized: true) -> Toss3
+            on timed(100, randomized: true) -> Toss4
+            on timed(100, randomized: true) -> Toss5
+            on timed(100, randomized: true) -> Toss6
+            on timed(100, randomized: true) -> Toss7
+            on timed(100, randomized: true) -> Toss8
+        }
+        state Toss1 {
+            toss_object("Aberrant Blaster", cooldown: 40000, range: 5, angle: 0)
+            on timed(4900) -> Randomize
+        }
+        state Toss2 {
+            toss_object("Aberrant Blaster", cooldown: 40000, range: 5, angle: 45)
+            on timed(4900) -> Randomize
+        }
+        state Toss3 {
+            toss_object("Aberrant Blaster", cooldown: 40000, range: 5, angle: 90)
+            on timed(4900) -> Randomize
+        }
+        state Toss4 {
+            toss_object("Aberrant Blaster", cooldown: 40000, range: 5, angle: 135)
+            on timed(4900) -> Randomize
+        }
+        state Toss5 {
+            toss_object("Aberrant Blaster", cooldown: 40000, range: 5, angle: 180)
+            on timed(4900) -> Randomize
+        }
+        state Toss6 {
+            toss_object("Aberrant Blaster", cooldown: 40000, range: 5, angle: 225)
+            on timed(4900) -> Randomize
+        }
+        state Toss7 {
+            toss_object("Aberrant Blaster", cooldown: 40000, range: 5, angle: 270)
+            on timed(4900) -> Randomize
+        }
+        state Toss8 {
+            toss_object("Aberrant Blaster", cooldown: 40000, range: 5, angle: 315)
+            on timed(4900) -> Randomize
+        }
+    }
+}
+
+enemy "Aberrant Blaster" {
+    state Wait {
+        on player_within(3) -> Boom
+    }
+    state Boom {
+        shoot(10, count: 5, shoot_angle: 7)
+        decay(0)
+    }
+}
+
+enemy "Bile of Oryx" {
+    prioritize() {
+        protect(0.4, "Oryx the Mad God 2", protection_range: 5, reprotect_range: 4)
+        wander(0.5)
+    }
+}
+
+enemy "Abomination of Oryx" {
+    state Shoot {
+        shoot(1, 3, shoot_angle: 5, projectile: 0)
+        shoot(1, 5, shoot_angle: 5, projectile: 1)
+        shoot(1, 7, shoot_angle: 5, projectile: 2)
+        shoot(1, 5, shoot_angle: 5, projectile: 3)
+        shoot(1, 3, shoot_angle: 5, projectile: 4)
+        on timed(1000) -> Wait
+    }
+    state Wait {
+        on player_within(2) -> Shoot
+    }
+    prioritize() {
+        charge(3, 10, 3000)
+        wander(0.5)
+    }
+}
+

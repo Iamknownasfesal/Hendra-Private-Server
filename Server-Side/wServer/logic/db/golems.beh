@@ -1,0 +1,221 @@
+enemy "Red Satellite" {
+    prioritize() {
+        orbit(1.7, 2, target: "Fire Golem", acquire_range: 15, speed_variance: 0, radius_variance: 0)
+        orbit(1.7, 2, target: "Metal Golem", acquire_range: 15, speed_variance: 0, radius_variance: 0)
+    }
+    decay(16000)
+}
+
+enemy "Green Satellite" {
+    prioritize() {
+        orbit(1.1, 2, target: "Darkness Golem", acquire_range: 15, speed_variance: 0, radius_variance: 0)
+        orbit(1.1, 2, target: "Earth Golem", acquire_range: 15, speed_variance: 0, radius_variance: 0)
+    }
+    decay(16000)
+}
+
+enemy "Blue Satellite" {
+    prioritize() {
+        orbit(1.1, 2, target: "Clockwork Golem", acquire_range: 15, speed_variance: 0, radius_variance: 0)
+        orbit(1.1, 2, target: "Paper Golem", acquire_range: 15, speed_variance: 0, radius_variance: 0)
+    }
+    decay(16000)
+}
+
+enemy "Gray Satellite 1" {
+    shoot(6, count: 3, shoot_angle: 34, predictive: 0.3, cooldown: 850)
+    prioritize() {
+        orbit(2.2, 0.75, target: "Red Satellite", acquire_range: 15, speed_variance: 0, radius_variance: 0)
+        orbit(2.2, 0.75, target: "Blue Satellite", acquire_range: 15, speed_variance: 0, radius_variance: 0)
+    }
+    decay(16000)
+}
+
+enemy "Gray Satellite 2" {
+    shoot(7, predictive: 0.3, cooldown: 600)
+    prioritize() {
+        orbit(2.2, 0.75, target: "Green Satellite", acquire_range: 15, speed_variance: 0, radius_variance: 0)
+        orbit(2.2, 0.75, target: "Blue Satellite", acquire_range: 15, speed_variance: 0, radius_variance: 0)
+    }
+    decay(16000)
+}
+
+enemy "Gray Satellite 3" {
+    shoot(7, count: 5, shoot_angle: 72, cooldown: 3200, cooldown_offset: 600)
+    shoot(7, count: 4, shoot_angle: 90, cooldown: 3200, cooldown_offset: 1400)
+    shoot(7, count: 5, shoot_angle: 72, default_angle: 36, cooldown: 3200, cooldown_offset: 2200)
+    shoot(7, count: 4, shoot_angle: 90, default_angle: 45, cooldown: 3200, cooldown_offset: 3000)
+    prioritize() {
+        orbit(2.2, 0.75, target: "Red Satellite", acquire_range: 15, speed_variance: 0, radius_variance: 0)
+        orbit(2.2, 0.75, target: "Green Satellite", acquire_range: 15, speed_variance: 0, radius_variance: 0)
+    }
+    decay(16000)
+}
+
+enemy "Earth Golem" {
+    state idle {
+        on player_within(11) -> player_nearby
+    }
+    state player_nearby {
+        shoot(8, count: 2, shoot_angle: 12, cooldown: 600)
+        state first_satellites {
+            spawn("Green Satellite", max_children: 1, cooldown: 200)
+            spawn("Gray Satellite 3", max_children: 1, cooldown: 200)
+            on timed(300) -> next_satellite
+        }
+        state next_satellite {
+            spawn("Gray Satellite 3", max_children: 1, cooldown: 200)
+            on timed(200) -> follow
+        }
+        state follow {
+            prioritize() {
+                stay_above(1.4, 65)
+                follow(1.4, range: 3)
+                wander(0.8)
+            }
+            on timed(2000) -> wander1
+        }
+        state wander1 {
+            prioritize() {
+                stay_above(1.55, 65)
+                wander(0.55)
+            }
+            on timed(4000) -> circle
+        }
+        state circle {
+            prioritize() {
+                stay_above(1.2, 65)
+                orbit(1.2, 5.4, acquire_range: 11)
+            }
+            on timed(4000) -> wander2
+        }
+        state wander2 {
+            prioritize() {
+                stay_above(0.55, 65)
+                wander(0.55)
+            }
+            on timed(3000) -> back_and_forth
+        }
+        state back_and_forth {
+            prioritize() {
+                stay_above(0.55, 65)
+                back_and_forth(0.8)
+            }
+            on timed(3000) -> first_satellites
+        }
+    }
+    reproduce(density_max: 1)
+    loot {
+        tier(2, ring, 0.02)
+        item("Health Potion", 0.03)
+    }
+}
+
+enemy "Paper Golem" {
+    state idle {
+        on player_within(11) -> player_nearby
+    }
+    state player_nearby {
+        spawn("Blue Satellite", max_children: 1, cooldown: 200)
+        spawn("Gray Satellite 1", max_children: 1, cooldown: 200)
+        shoot(10, predictive: 0.5, cooldown: 700)
+        prioritize() {
+            stay_above(1.4, 65)
+            follow(1, range: 3, duration: 3000, cooldown: 3000)
+            wander(0.4)
+        }
+        on timed(12000) -> idle
+    }
+    reproduce(density_max: 1)
+    loot {
+        tier(5, weapon, 0.02)
+        item("Health Potion", 0.03)
+    }
+}
+
+enemy "Fire Golem" {
+    state idle {
+        on player_within(11) -> player_nearby
+    }
+    state player_nearby {
+        prioritize() {
+            stay_above(1.4, 65)
+            follow(1, range: 3, duration: 3000, cooldown: 3000)
+            wander(0.4)
+        }
+        spawn("Red Satellite", max_children: 1, cooldown: 200)
+        spawn("Gray Satellite 1", max_children: 1, cooldown: 200)
+        state slowshot {
+            shoot(10, projectile: 0, predictive: 0.5, cooldown: 300, cooldown_offset: 600)
+            on timed(5000) -> megashot
+        }
+        state megashot {
+            flash(4294967295, 0.2, 5)
+            shoot(10, projectile: 1, predictive: 0.2, cooldown: 90, cooldown_offset: 1000)
+            on timed(1200) -> slowshot
+        }
+    }
+    reproduce(density_max: 1)
+    loot {
+        tier(6, armor, 0.015)
+        item("Health Potion", 0.03)
+    }
+}
+
+enemy "Darkness Golem" {
+    state idle {
+        on player_within(11) -> player_nearby
+    }
+    state player_nearby {
+        state first_satellites {
+            spawn("Green Satellite", max_children: 1, cooldown: 200)
+            spawn("Gray Satellite 2", max_children: 1, cooldown: 200)
+            on timed(200) -> next_satellite
+        }
+        state next_satellite {
+            spawn("Gray Satellite 2", max_children: 1, cooldown: 200)
+            on timed(200) -> follow
+        }
+        state follow {
+            shoot(6, projectile: 0, cooldown: 200)
+            prioritize() {
+                stay_above(1.2, 65)
+                follow(1.2, range: 1)
+                wander(0.5)
+            }
+            on timed(3000) -> wander1
+        }
+        state wander1 {
+            shoot(6, projectile: 0, cooldown: 200)
+            prioritize() {
+                stay_above(0.65, 65)
+                wander(0.65)
+            }
+            on timed(3800) -> back_up
+        }
+        state back_up {
+            flash(4294967295, 0.2, 25)
+            shoot(9, projectile: 1, cooldown: 1400, cooldown_offset: 1000)
+            prioritize() {
+                stay_above(0.4, 65)
+                stay_back(0.4, 4)
+                wander(0.4)
+            }
+            on timed(5400) -> wander2
+        }
+        state wander2 {
+            shoot(6, projectile: 0, cooldown: 200)
+            prioritize() {
+                stay_above(0.65, 65)
+                wander(0.65)
+            }
+            on timed(3800) -> first_satellites
+        }
+    }
+    reproduce(density_max: 1)
+    loot {
+        tier(2, ring, 0.02)
+        item("Magic Potion", 0.03)
+    }
+}
+

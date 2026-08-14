@@ -1,0 +1,358 @@
+enemy "Coral Gift" {
+    state Texture1 {
+        set_alt_texture(1)
+        on timed(500) -> Texture2
+    }
+    state Texture2 {
+        set_alt_texture(2)
+        on timed(500) -> Texture0
+    }
+    state Texture0 {
+        set_alt_texture(0)
+        on timed(500) -> Texture1
+    }
+    loot {
+        threshold(0.01) { item("Coral Juice", 0.3) item("Sea Slurp Egg", 0.25) item("Potion of Mana", 0.04) item("Coral Bow", 0.01) item("Coral Venom Trap", 0.03) item("Wine Cellar Incantation", 0.02) item("Coral Silk Armor", 0.04) item("Coral Ring", 0.04) }
+    }
+}
+
+enemy "Coral Bomb Big" {
+    state Spawning {
+        toss_object("Coral Bomb Small", 1, angle: 30, cooldown: 500)
+        toss_object("Coral Bomb Small", 1, angle: 90, cooldown: 500)
+        toss_object("Coral Bomb Small", 1, angle: 150, cooldown: 500)
+        toss_object("Coral Bomb Small", 1, angle: 210, cooldown: 500)
+        toss_object("Coral Bomb Small", 1, angle: 270, cooldown: 500)
+        toss_object("Coral Bomb Small", 1, angle: 330, cooldown: 500)
+        on timed(500) -> Attack
+    }
+    state Attack {
+        shoot(4.4, count: 5, fixed_angle: 0, shoot_angle: 70)
+        suicide()
+    }
+}
+
+enemy "Coral Bomb Small" {
+    shoot(3.8, count: 5, fixed_angle: 0, shoot_angle: 70)
+    suicide()
+}
+
+enemy "Deep Sea Beast" {
+    change_size(11, 100)
+    prioritize() {
+        stay_close_to_spawn(0.2, 2)
+        follow(0.2, acquire_range: 4, range: 1)
+    }
+    shoot(1.8, count: 1, projectile: 0, cooldown: 1000)
+    shoot(2.5, count: 1, projectile: 1, cooldown: 1000)
+    shoot(3.3, count: 1, projectile: 2, cooldown: 1000)
+    shoot(4.2, count: 1, projectile: 3, cooldown: 1000)
+}
+
+enemy "Thessal the Mermaid Goddess" {
+    transform_on_death("Thessal the Mermaid Goddess Wounded", probability: 0.1)
+    transform_on_death("Thessal Dropper")
+    state Start {
+        prioritize() {
+            wander(0.3)
+            follow(0.3, acquire_range: 10, range: 2)
+        }
+        on entity_not_exists("Deep Sea Beast", 20, "Spawning Deep") -> Spawning_Deep
+        on hp_below(1) -> Attack1
+    }
+    state Main {
+        prioritize() {
+            wander(0.3)
+            follow(0.3, acquire_range: 10, range: 2)
+        }
+        on timed(0) -> Attack1
+    }
+    state Main_2 {
+        prioritize() {
+            wander(0.3)
+            follow(0.3, acquire_range: 10, range: 2)
+        }
+        on timed(0) -> Attack2
+    }
+    state Spawning_Bomb {
+        toss_object("Coral Bomb Big", angle: 45)
+        toss_object("Coral Bomb Big", angle: 135)
+        toss_object("Coral Bomb Big", angle: 225)
+        toss_object("Coral Bomb Big", angle: 315)
+        on timed(1000) -> Main
+    }
+    state Spawning_Bomb_Attack2 {
+        toss_object("Coral Bomb Big", angle: 45)
+        toss_object("Coral Bomb Big", angle: 135)
+        toss_object("Coral Bomb Big", angle: 225)
+        toss_object("Coral Bomb Big", angle: 315)
+        on timed(1000) -> Attack2
+    }
+    state Spawning_Deep {
+        toss_object("Deep Sea Beast", 14, angle: 0, cooldown_offset: 0)
+        toss_object("Deep Sea Beast", 14, angle: 90, cooldown_offset: 0)
+        toss_object("Deep Sea Beast", 14, angle: 180, cooldown_offset: 0)
+        toss_object("Deep Sea Beast", 14, angle: 270, cooldown_offset: 0)
+        on timed(1000) -> Start
+    }
+    state Attack1 {
+        on hp_below(0.5) -> Attack2
+        on timed(3000, "Yellow Wall", randomized: true) -> Yellow_Wall
+        on timed(3000, "Super Trident", randomized: true) -> Super_Trident
+        on timed(3000, "Thunder Swirl", randomized: true) -> Thunder_Swirl
+        on timed(3000, "Spawning Bomb", randomized: true) -> Spawning_Bomb
+    }
+    state Thunder_Swirl {
+        shoot(8.8, count: 8, shoot_angle: 360, projectile: 0)
+        on timed(500, "Thunder Swirl 2") -> Thunder_Swirl_2
+    }
+    state Thunder_Swirl_2 {
+        shoot(8.8, count: 8, shoot_angle: 360, projectile: 0)
+        toss_object("Coral Bomb Big")
+        on timed(500, "Thunder Swirl 3") -> Thunder_Swirl_3
+    }
+    state Thunder_Swirl_3 {
+        shoot(8.8, count: 8, shoot_angle: 360, projectile: 0)
+        on timed(100) -> Main
+    }
+    state Thunder_Swirl_Attack2 {
+        shoot(8.8, count: 16, shoot_angle: 360, projectile: 0)
+        on timed(500, "Thunder Swirl 2 Attack2") -> Thunder_Swirl_2_Attack2
+    }
+    state Thunder_Swirl_2_Attack2 {
+        shoot(8.8, count: 16, shoot_angle: 360, projectile: 0)
+        toss_object("Coral Bomb Big")
+        on timed(500, "Thunder Swirl 3 Attack2") -> Thunder_Swirl_3_Attack2
+    }
+    state Thunder_Swirl_3_Attack2 {
+        shoot(8.8, count: 16, shoot_angle: 360, projectile: 0)
+        on timed(100, "Main 2") -> Main_2
+    }
+    state Super_Trident {
+        shoot(21, count: 2, shoot_angle: 25, projectile: 2, angle_offset: 0)
+        shoot(21, count: 2, shoot_angle: 25, projectile: 2, angle_offset: 90)
+        shoot(21, count: 2, shoot_angle: 25, projectile: 2, angle_offset: 180)
+        shoot(21, count: 2, shoot_angle: 25, projectile: 2, angle_offset: 270)
+        toss_object("Coral Bomb Big")
+        on timed(250, "Super Trident 2") -> Super_Trident_2
+    }
+    state Super_Trident_2 {
+        shoot(21, count: 2, shoot_angle: 25, projectile: 2, angle_offset: 45)
+        shoot(21, count: 2, shoot_angle: 25, projectile: 2, angle_offset: 135)
+        shoot(21, count: 2, shoot_angle: 25, projectile: 2, angle_offset: 225)
+        shoot(21, count: 2, shoot_angle: 25, projectile: 2, angle_offset: 315)
+        toss_object("Coral Bomb Big")
+        on timed(100) -> Main
+    }
+    state Super_Trident_Attack2 {
+        shoot(21, count: 2, shoot_angle: 25, projectile: 2, angle_offset: 0)
+        shoot(21, count: 2, shoot_angle: 25, projectile: 2, angle_offset: 90)
+        shoot(21, count: 2, shoot_angle: 25, projectile: 2, angle_offset: 180)
+        shoot(21, count: 2, shoot_angle: 25, projectile: 2, angle_offset: 270)
+        toss_object("Coral Bomb Big")
+        on timed(250, "Super Trident 2 Attack2") -> Super_Trident_2_Attack2
+    }
+    state Super_Trident_2_Attack2 {
+        shoot(21, count: 2, shoot_angle: 25, projectile: 2, angle_offset: 45)
+        shoot(21, count: 2, shoot_angle: 25, projectile: 2, angle_offset: 135)
+        shoot(21, count: 2, shoot_angle: 25, projectile: 2, angle_offset: 225)
+        shoot(21, count: 2, shoot_angle: 25, projectile: 2, angle_offset: 315)
+        on timed(250, "Super Trident 3 Attack2") -> Super_Trident_3_Attack2
+    }
+    state Super_Trident_3_Attack2 {
+        shoot(21, count: 2, shoot_angle: 25, projectile: 2, angle_offset: 0)
+        shoot(21, count: 2, shoot_angle: 25, projectile: 2, angle_offset: 90)
+        shoot(21, count: 2, shoot_angle: 25, projectile: 2, angle_offset: 180)
+        shoot(21, count: 2, shoot_angle: 25, projectile: 2, angle_offset: 270)
+        toss_object("Coral Bomb Big")
+        on timed(250, "Super Trident 4 Attack2") -> Super_Trident_4_Attack2
+    }
+    state Super_Trident_4_Attack2 {
+        shoot(21, count: 2, shoot_angle: 25, projectile: 2, angle_offset: 45)
+        shoot(21, count: 2, shoot_angle: 25, projectile: 2, angle_offset: 135)
+        shoot(21, count: 2, shoot_angle: 25, projectile: 2, angle_offset: 225)
+        shoot(21, count: 2, shoot_angle: 25, projectile: 2, angle_offset: 315)
+        on timed(100, "Main 2") -> Main_2
+    }
+    state Yellow_Wall {
+        flash(16776960, 0.1, 15)
+        prioritize() {
+            stay_close_to_spawn(0.3, 1)
+        }
+        shoot(18, count: 30, fixed_angle: 6, projectile: 3)
+        on timed(500, "Yellow Wall 2") -> Yellow_Wall_2
+    }
+    state Yellow_Wall_2 {
+        flash(16776960, 0.1, 15)
+        shoot(18, count: 30, fixed_angle: 6, projectile: 3)
+        on timed(500, "Yellow Wall 3") -> Yellow_Wall_3
+    }
+    state Yellow_Wall_3 {
+        flash(16776960, 0.1, 15)
+        shoot(18, count: 30, fixed_angle: 6, projectile: 3)
+        on timed(100) -> Main
+    }
+    state Yellow_Wall_Attack2 {
+        flash(16776960, 0.1, 15)
+        prioritize() {
+            stay_close_to_spawn(0.3, 1)
+        }
+        shoot(18, count: 30, fixed_angle: 6, projectile: 3)
+        on timed(500, "Yellow Wall 2 Attack2") -> Yellow_Wall_2_Attack2
+    }
+    state Yellow_Wall_2_Attack2 {
+        flash(16776960, 0.1, 15)
+        shoot(18, count: 30, fixed_angle: 6, projectile: 3)
+        on timed(500, "Yellow Wall 3 Attack2") -> Yellow_Wall_3_Attack2
+    }
+    state Yellow_Wall_3_Attack2 {
+        flash(16776960, 0.1, 15)
+        shoot(18, count: 30, fixed_angle: 6, projectile: 3)
+        on timed(100, "Main 2") -> Main_2
+    }
+    state Attack2 {
+        on timed(500, "Yellow Wall Attack2", randomized: true) -> Yellow_Wall_Attack2
+        on timed(500, "Super Trident Attack2", randomized: true) -> Super_Trident_Attack2
+        on timed(500, "Thunder Swirl Attack2", randomized: true) -> Thunder_Swirl_Attack2
+        on timed(500, "Spawning Bomb", randomized: true) -> Spawning_Bomb
+    }
+    loot {
+        threshold(0.32) { item("Potion of Mana", 1) }
+        threshold(0.1) { item("Coral Juice", 0.3) item("Sea Slurp Egg", 0.25) item("Coral Bow", 0.01) item("Coral Venom Trap", 0.03) item("Wine Cellar Incantation", 0.02) item("Coral Silk Armor", 0.04) item("Coral Ring", 0.04) }
+    }
+}
+
+enemy "Thessal Dropper" {
+    conditional_effect(invincible)
+    transform_on_death("Ocean Vent")
+    state Idle {
+        on entity_not_exists("Thessal the Mermaid Goddess", 100) -> Suicide
+    }
+    state Suicide {
+        suicide()
+    }
+}
+
+enemy "Thessal the Mermaid Goddess Wounded" {
+    conditional_effect(invincible)
+    taunt("Is King Alexander alive?")
+    on timed(12000) -> Fail
+    state Texture1 {
+        set_alt_texture(1)
+        on timed(250) -> Texture2
+    }
+    state Texture2 {
+        set_alt_texture(0)
+        on timed(250) -> Texture1
+    }
+    state Prize {
+        taunt("Thank you kind sailor.")
+        toss_object("Coral Gift", range: 5, angle: 45)
+        toss_object("Coral Gift", range: 5, angle: 135)
+        toss_object("Coral Gift", range: 5, angle: 235)
+        on timed(0) -> Suicide
+    }
+    state Fail {
+        taunt("You speak LIES!!")
+        on timed(0) -> Suicide
+    }
+    state Suicide {
+        suicide()
+    }
+}
+
+enemy "Fishman Warrior" {
+    state Start {
+        prioritize() {
+            follow(0.6, acquire_range: 9, range: 2)
+        }
+        orbit(0.6, 5, 9)
+        shoot(9, 3, projectile: 0, shoot_angle: 10, cooldown: 500)
+        shoot(9, count: 6, fixed_angle: 0, projectile: 2, cooldown: 2000)
+        on no_player_within(9, "Range Shoot") -> Range_Shoot
+    }
+    state Range_Shoot {
+        prioritize() {
+            stay_close_to_spawn(0.2, 3)
+            wander(0.3)
+        }
+        shoot(12, 1, projectile: 1, cooldown_offset: 250)
+        on player_within(9) -> Start
+    }
+}
+
+enemy "Fishman" {
+    prioritize() {
+        follow(0.7, acquire_range: 9, range: 1)
+    }
+    shoot(9, count: 1, projectile: 1, cooldown: 2000)
+    shoot(9, 1, projectile: 0, cooldown_offset: 250)
+    shoot(9, 3, projectile: 0, shoot_angle: 10, cooldown_offset: 500)
+}
+
+enemy "Sea Mare" {
+    charge(2, 8, 4000)
+    wander(0.4)
+    state Shoot_1 {
+        shoot(9, count: 3, projectile: 1, cooldown: 500)
+        on timed(5000, "Shoot 2") -> Shoot_2
+    }
+    state Shoot_2 {
+        shoot(10, count: 8, shoot_angle: 10, projectile: 0, cooldown_offset: 500)
+        shoot(10, count: 8, shoot_angle: 10, angle_offset: 45, projectile: 0, cooldown_offset: 1000)
+        shoot(10, count: 8, shoot_angle: 10, angle_offset: 135, projectile: 0, cooldown_offset: 1500)
+        on timed(3000, "Shoot 1") -> Shoot_1
+    }
+}
+
+enemy "Sea Horse" {
+    orbit(0.2, 2, acquire_range: 10, target: "Sea Mare")
+    wander(0.2)
+    state Shoot_1 {
+        shoot(9, count: 1, projectile: 0, cooldown_offset: 250)
+        shoot(9, count: 2, shoot_angle: 5, projectile: 0, cooldown_offset: 500)
+        shoot(9, count: 3, shoot_angle: 5, projectile: 0, cooldown_offset: 750)
+    }
+}
+
+enemy "Giant Squid" {
+    shoot(10, 1, projectile: 0, cooldown: 100)
+    follow(0.8, acquire_range: 12, range: 1)
+    state Toss {
+        toss_object("Ink Bubble")
+        on timed(100, "Toss 2") -> Toss_2
+    }
+    state Toss_2 {
+        toss_object("Ink Bubble")
+        on timed(100, "Attack 1") -> Attack_1
+    }
+    state Attack_1 {
+        shoot(10, 4, shoot_angle: 15, projectile: 1, cooldown: 250)
+        on timed(20000) -> Toss
+    }
+}
+
+enemy "Ink Bubble" {
+    shoot(10, 1, projectile: 0, cooldown: 100)
+}
+
+enemy "Sea Slurp Home" {
+    spawn("Grey Sea Slurp", max_children: 8, initial_spawn: 0.5)
+}
+
+enemy "Grey Sea Slurp" {
+    stay_close_to_spawn(0.5, 10)
+    state Shoot_and_Move {
+        prioritize() {
+            follow(0.3, acquire_range: 10, range: 4)
+            wander(0.2)
+        }
+        shoot(8, 1, projectile: 0, cooldown: 300)
+        on timed(900, "Wall Shoot") -> Wall_Shoot
+    }
+    state Wall_Shoot {
+        shoot(8, 6, projectile: 1, fixed_angle: 2, cooldown: 750)
+        on timed(1500, "Shoot and Move") -> Shoot_and_Move
+    }
+}
+

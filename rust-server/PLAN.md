@@ -840,8 +840,11 @@ category by category. It found thirteen things, one of them a mechanic that sile
 
   What it cost: Draconis' three dragon souls sat orbiting their altar with no way to be woken, since
   saying the colour is the only thing that starts that fight. Dropped transitions went from nine to
-  one, and the survivor is a genuine original bug (Son of Arachna transitions to a state it does not
-  have).
+  one.
+
+  The survivor was recorded here as a bug in the original and was not one. It came from a Son of
+  Arachna written inside a block comment, which the converter was reading as code; see 18.26. There
+  are now none.
 
   Implemented end to end: the world holds what was said for the tick it was said in, each listener
   measures its own distance to the speaker, and the word is matched whole rather than as a substring
@@ -1131,3 +1134,46 @@ category by category. It found thirteen things, one of them a mechanic that sile
   "Lair Ghost" where the content spells the group "Lair Ghosts", and "Mask Men" where the content
   says "Jungle Men". Neither heal has ever matched anything in either server. Both are named in a
   test, so they read as known bugs rather than as an unexplained silence.
+
+### 18.26 The behaviours reached no world at all — **L**
+
+- [x] The server loads them
+
+  Found by trying to write a census of unresolved names and discovering there was nowhere to load
+  them from. `hendra-behavior` was a declared dependency of the server that no line of the server
+  used: `set_behaviours` was called from tests and from nowhere else.
+
+  So every enemy in every running world stood where it was placed and did nothing. Eight and a half
+  thousand behaviour uses, two thousand conditions, a hundred and fourteen tests, all of it correct
+  and none of it reaching a single enemy. This is the same failure the whole audit keeps finding, at
+  the largest scale it can occur at.
+
+  Behaviours are read at boot from `content/behaviours`, compiled once, and given to each world as it
+  starts. Compile problems are logged rather than swallowed, because an enemy that does nothing looks
+  exactly like an enemy that is working.
+
+- [x] The census was measuring the top level only
+
+  It read the behaviours of each state and not their children, so anything written inside an `if` or
+  a `timed` group was invisible. The true count is 9,636 uses rather than 8,631, and the boot log
+  found two names the census called covered.
+
+  The percentage is printed to two decimal places now. Three unimplemented uses in nine thousand
+  rounds to a hundred per cent, and "100%" is exactly the reading that stops somebody looking.
+
+- [x] Commented-out C# is not C#
+
+  Two enemies in the database are written inside block comments and the converter was reading both.
+  One of them is a second definition of Son of Arachna, so a boss that exists had two behaviours and
+  whichever the host kept decided the fight.
+
+  Comments are stripped before conversion, respecting string literals so that a taunt with a web
+  address in it does not swallow the rest of its line. 748 enemies became 746, and the one transition
+  the converter still reported as a bug in the original turned out to be from the commented-out copy:
+  there are now none.
+
+- [x] `buzz`
+
+  A real behaviour the census had never counted. Darting a short way in one of the eight compass
+  directions and pausing, which is not the same as wandering in the way that matters to a player: a
+  wanderer drifts and can be led, and this darts and cannot.

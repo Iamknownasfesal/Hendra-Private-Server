@@ -1,0 +1,319 @@
+enemy "vlntns Botany Bella" {
+    realm_portal_drop()
+    transform_on_death("vlntns Loot Balloon Bella")
+    copy_damage_on_death("vlntns Loot Balloon Bella")
+    state Idle {
+        conditional_effect(invulnerable)
+        on player_within(3) -> Start
+    }
+    state Start {
+        taunt("You are nothing more than nutiment for my roots.")
+        shoot(10, count: 4, shoot_angle: 180, predictive: 0.7, cooldown: 1000)
+        shoot(10, count: 2, shoot_angle: 30, angle_offset: 45, projectile: 3, cooldown: 1000)
+        shoot(10, count: 2, shoot_angle: 30, angle_offset: -45, projectile: 3, cooldown: 1000)
+        on hp_below(0.9) -> Ring_Attack
+    }
+    state Ring_Attack {
+        prioritize() {
+            stay_close_to_spawn(0.5, 10)
+            wander(0.5)
+        }
+        shoot(10, count: 12, projectile: 1, cooldown: 5000)
+        shoot(10, count: 12, projectile: 1, cooldown: 3000)
+        on hp_below(0.7) -> Ring_Attack2
+    }
+    state Ring_Attack2 {
+        state Yo_man_I_show_you_what_I_can_do {
+            timed(600) {
+                shoot(10, count: 12)
+            }
+            on timed(800) -> Ring
+        }
+        state Ring {
+            shoot(0, count: 6, projectile: 2, fixed_angle: 0)
+            on timed(250) -> Ring1
+        }
+        state Ring1 {
+            shoot(0, count: 6, projectile: 2, fixed_angle: fixed_angle__ring_attack2)
+            on timed(250) -> Ring2
+        }
+        state Ring2 {
+            shoot(0, count: 6, projectile: 2, fixed_angle: fixed_angle__ring_attack2)
+            on timed(250) -> Ring3
+        }
+        state Ring3 {
+            shoot(10, count: 6, projectile: 2, fixed_angle: fixed_angle__ring_attack2)
+            on timed(250) -> Ring4
+        }
+        state Ring4 {
+            shoot(10, count: 6, projectile: 2, fixed_angle: fixed_angle__ring_attack2)
+            on timed(250) -> Ring5
+        }
+        state Ring5 {
+            shoot(10, count: 6, projectile: 2, fixed_angle: fixed_angle__ring_attack2)
+            on timed(250, "-Ring") -> _Ring
+        }
+        state _Ring {
+            shoot(10, count: 6, projectile: 2, fixed_angle: fixed_angle__ring_attack2)
+            on timed(250, "-Ring1") -> _Ring1
+        }
+        state _Ring1 {
+            shoot(10, count: 6, projectile: 2, fixed_angle: fixed_angle__ring_attack2)
+            on timed(250, "-Ring2") -> _Ring2
+        }
+        state _Ring2 {
+            shoot(10, count: 6, projectile: 2, fixed_angle: fixed_angle__ring_attack2)
+            on timed(250, "-Ring3") -> _Ring3
+        }
+        state _Ring3 {
+            shoot(10, count: 6, projectile: 2, fixed_angle: fixed_angle__ring_attack2)
+            on timed(250, "-Ring4") -> _Ring4
+        }
+        state _Ring4 {
+            shoot(10, count: 6, projectile: 2, fixed_angle: fixed_angle__ring_attack2)
+            on timed(250, "-Ring5") -> _Ring5
+        }
+        state _Ring5 {
+            shoot(10, count: 6, projectile: 2, fixed_angle: fixed_angle__ring_attack2)
+            on timed(250, "-Ring6") -> _Ring6
+        }
+        state _Ring6 {
+            shoot(10, count: 6, projectile: 2, fixed_angle: 0)
+            timed(200) {
+                shoot(10, count: 2, shoot_angle: 30, default_angle: 45, projectile: 3)
+            }
+            timed(200) {
+                shoot(10, count: 2, shoot_angle: 30, default_angle: 135, projectile: 3)
+            }
+            on timed(200) -> StartTheFun
+        }
+    }
+    state StartTheFun {
+        taunt(true, 0, "You will be as food for my children!")
+        flash(15787660, flash_period: 0.5, flash_repeats: 10)
+        return_to_spawn(speed: 1)
+        on timed(5000) -> RAGE_MODE
+    }
+    state RAGE_MODE {
+        state Everything_is_cool {
+            state spawn_minions {
+                on hp_below(0.2, "OMG_HALP_ME_BUDS!!!!!!!!!!!!!!1111111oneoneoneeleven") -> OMG_HALP_ME_BUDS______________1111111oneoneoneeleven
+                invisi_toss("vlntns Red", range: 9.9, angle: 15)
+                invisi_toss("vlntns White", range: 6.6, angle: 30)
+                invisi_toss("vlntns Yellow", range: 3.3, angle: 45)
+                invisi_toss("vlntns White", range: 9.9, angle: 60)
+                invisi_toss("vlntns Red", range: 6.6, angle: 75)
+                invisi_toss("vlntns White", range: 3.3, angle: 90)
+                invisi_toss("vlntns Yellow", range: 9.9, angle: 105)
+                invisi_toss("vlntns White", range: 6.6, angle: 120)
+                invisi_toss("vlntns Red", range: 3.3, angle: 135)
+                invisi_toss("vlntns White", range: 9.9, angle: 150)
+                invisi_toss("vlntns Yellow", range: 6.6, angle: 165)
+                invisi_toss("vlntns White", range: 3.3, angle: 180)
+                invisi_toss("vlntns Red", range: 9.9, angle: 195)
+                invisi_toss("vlntns White", range: 6.6, angle: 210)
+                invisi_toss("vlntns Yellow", range: 3.3, angle: 225)
+                invisi_toss("vlntns White", range: 9.9, angle: 240)
+                invisi_toss("vlntns Red", range: 6.6, angle: 255)
+                invisi_toss("vlntns White", range: 3.3, angle: 270)
+                invisi_toss("vlntns Yellow", range: 9.9, angle: 285)
+                invisi_toss("vlntns White", range: 6.6, angle: 300)
+                invisi_toss("vlntns Red", range: 3.3, angle: 315)
+                invisi_toss("vlntns White", range: 9.9, angle: 330)
+                invisi_toss("vlntns Yellow", range: 6.6, angle: 345)
+                invisi_toss("vlntns White", range: 3.3, angle: 360)
+                spawn("vlntns Bella Buds", max_children: 5, initial_spawn: 1)
+                on timed(0) -> shoot1
+            }
+            state shoot1_2 {
+                on hp_below(0.2, "OMG_HALP_ME_BUDS!!!!!!!!!!!!!!1111111oneoneoneeleven") -> OMG_HALP_ME_BUDS______________1111111oneoneoneeleven
+                shoot(0, projectile: 1, fixed_angle: 45)
+                shoot(0, projectile: 1, fixed_angle: 135)
+                shoot(0, projectile: 1, fixed_angle: 225)
+                shoot(0, projectile: 1, fixed_angle: 315)
+                on timed(800) -> shoot2
+            }
+            state shoot2_2 {
+                on hp_below(0.2, "OMG_HALP_ME_BUDS!!!!!!!!!!!!!!1111111oneoneoneeleven") -> OMG_HALP_ME_BUDS______________1111111oneoneoneeleven
+                shoot(0, 2, shoot_angle: 10, projectile: 1, fixed_angle: 45)
+                shoot(0, 2, shoot_angle: 10, projectile: 1, fixed_angle: 135)
+                shoot(0, 2, shoot_angle: 10, projectile: 1, fixed_angle: 225)
+                shoot(0, 2, shoot_angle: 10, projectile: 1, fixed_angle: 315)
+                on timed(800) -> shoot3
+            }
+            state shoot3 {
+                on hp_below(0.2, "OMG_HALP_ME_BUDS!!!!!!!!!!!!!!1111111oneoneoneeleven") -> OMG_HALP_ME_BUDS______________1111111oneoneoneeleven
+                shoot(0, 2, shoot_angle: 15, projectile: 1, fixed_angle: 45)
+                shoot(0, 2, shoot_angle: 15, projectile: 1, fixed_angle: 135)
+                shoot(0, 2, shoot_angle: 15, projectile: 1, fixed_angle: 225)
+                shoot(0, 2, shoot_angle: 15, projectile: 1, fixed_angle: 315)
+                on timed(800) -> shoot1
+            }
+        }
+    }
+    state OMG_HALP_ME_BUDS______________1111111oneoneoneeleven {
+        order(100, "vlntns Bella Buds", "CUTIES_PROTECT_ME")
+        taunt(1, true, "My children...Aid me...")
+        shoot(10, count: 6, projectile: 3)
+        shoot(10, count: 3, shoot_angle: 15, predictive: 0.7, cooldown: 1000)
+        state shoot1 {
+            shoot(0, projectile: 3, fixed_angle: 45)
+            shoot(0, projectile: 3, fixed_angle: 135)
+            shoot(0, projectile: 3, fixed_angle: 225)
+            shoot(0, projectile: 3, fixed_angle: 315)
+            on timed(1000) -> shoot2
+        }
+        state shoot2 {
+            shoot(0, 2, shoot_angle: 15, projectile: 3, fixed_angle: 45)
+            shoot(0, 2, shoot_angle: 15, projectile: 3, fixed_angle: 135)
+            shoot(0, 2, shoot_angle: 15, projectile: 3, fixed_angle: 225)
+            shoot(0, 2, shoot_angle: 15, projectile: 3, fixed_angle: 315)
+            on timed(1000) -> shoot1
+        }
+    }
+}
+
+enemy "vlntns Bella Buds" {
+    conditional_effect(invulnerable, true)
+    on entity_not_exists("vlntns Botany Bella", 100) -> Despawn
+    state I_WILL_HALP_YOU_BUD__3 {
+        state IMMA_MOVE_NAOW {
+            follow(1, range: 1)
+            on player_within(1) -> IMMA_DONT_MOVE_NAOW
+            state shoot1_2 {
+                shoot(10, fixed_angle: 145)
+                on timed(333) -> shoot2
+            }
+            state shoot2_2 {
+                shoot(10, fixed_angle: 265)
+                on timed(333) -> shoot3
+            }
+            state shoot3_2 {
+                shoot(10, fixed_angle: 385)
+                on timed(333) -> shoot1
+            }
+        }
+        state IMMA_DONT_MOVE_NAOW {
+            on timed(2000) -> IMMA_MOVE_NAOW
+            state shoot1 {
+                shoot(10, fixed_angle: 145)
+                on timed(333) -> shoot2
+            }
+            state shoot2 {
+                shoot(10, fixed_angle: 265)
+                on timed(333) -> shoot3
+            }
+            state shoot3 {
+                shoot(10, fixed_angle: 385)
+                on timed(333) -> shoot1
+            }
+        }
+    }
+    state CUTIES_PROTECT_ME {
+        orbit(0.7, 1, target: "vlntns Botany Bella", radius_variance: 1)
+        shoot(10, cooldown: 2000)
+    }
+    state Despawn {
+        timed(1000) {
+            suicide()
+        }
+    }
+}
+
+enemy "vlntns Red" {
+    on entity_not_exists("vlntns Botany Bella", 50) -> Despawn
+    state SleepForASec {
+        on entity_not_exists("vlntns White", 50) -> Imma_Full_of_POWAAA
+        on timed(1000) -> Imma_Full_of_POWAAA
+    }
+    state Imma_Full_of_POWAAA {
+        shoot(20, 6, cooldown: 1000)
+        transform_on_death("vlntns White")
+        state tex1 {
+            set_alt_texture(1)
+            on timed(1000) -> tex2
+        }
+        state tex2 {
+            set_alt_texture(2)
+            on timed(1000) -> tex2
+        }
+        state tex3 {
+            set_alt_texture(3)
+        }
+    }
+    state Despawn {
+        timed(1000) {
+            suicide()
+        }
+    }
+}
+
+enemy "vlntns White" {
+    on entity_not_exists("vlntns Botany Bella", 50) -> Despawn
+    state SleepForASec {
+        on entity_not_exists("vlntns Yellow", 50) -> Imma_Full_of_POWAAA
+        on timed(1000) -> Imma_Full_of_POWAAA
+    }
+    state Imma_Full_of_POWAAA {
+        shoot(20, 6, cooldown: 1000)
+        transform_on_death("vlntns Yellow")
+        state tex1 {
+            set_alt_texture(1)
+            on timed(1000) -> tex2
+        }
+        state tex2 {
+            set_alt_texture(2)
+            on timed(1000) -> tex2
+        }
+        state tex3 {
+            set_alt_texture(3)
+        }
+    }
+    state Despawn {
+        timed(1000) {
+            suicide()
+        }
+    }
+}
+
+enemy "vlntns Yellow" {
+    on entity_not_exists("vlntns Botany Bella", 50) -> Despawn
+    state SleepForASec {
+        on entity_not_exists("vlntns Red", 50) -> Imma_Full_of_POWAAA
+        on timed(1000) -> Imma_Full_of_POWAAA
+    }
+    state Imma_Full_of_POWAAA {
+        shoot(20, 6, cooldown: 1000)
+        transform_on_death("vlntns Red")
+        state tex1 {
+            set_alt_texture(1)
+            on timed(1000) -> tex2
+        }
+        state tex2 {
+            set_alt_texture(2)
+            on timed(1000) -> tex2
+        }
+        state tex3 {
+            set_alt_texture(3)
+        }
+    }
+    state Despawn {
+        timed(1000) {
+            suicide()
+        }
+    }
+}
+
+enemy "vlntns Loot Balloon Bella" {
+    drop_portal_on_death("Garden of Chaos Portal", 0.1)
+    state Idle {
+        conditional_effect(invulnerable)
+        on timed(5000) -> UnsetEffect
+    }
+    state UnsetEffect {
+    }
+    loot {
+        threshold(0.1) { item("Diamond Bladed Katana", 0.1) item("Cupid's Bow", 0.1) item("Staff of Adoration", 0.1) item("Wand of Budding Romance", 0.1) item("Heartfind Dagger", 0.1) item("Vinesword", 0.1) }
+    }
+}
+

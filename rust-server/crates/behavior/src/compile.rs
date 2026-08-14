@@ -34,6 +34,7 @@ impl std::fmt::Display for Diagnostic {
 const KNOWN_BEHAVIOURS: &[&str] = &[
     "shoot",
     "wander",
+    "buzz",
     "follow",
     "orbit",
     "stay_back",
@@ -458,6 +459,12 @@ fn behaviour(call: &Call, names: &mut Names, diagnostics: &mut Vec<Diagnostic>) 
                 .map(|degrees| degrees as f32),
             cooldown_ms: number(call, "cooldown", 8, 1000.0).max(0.0) as u32,
             projectile: number(call, "projectile", 7, 0.0).clamp(0.0, 255.0) as u8,
+        },
+
+        "buzz" => Primitive::Buzz {
+            speed: number(call, "speed", 0, 2.0) as f32,
+            distance: number(call, "dist", 1, 0.5) as f32,
+            cooldown_ms: number(call, "cooldown", 2, 0.0).max(0.0) as u32,
         },
 
         "wander" => Primitive::Wander {

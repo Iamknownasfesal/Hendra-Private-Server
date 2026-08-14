@@ -1,0 +1,104 @@
+enemy "West Tutorial Gun" {
+    shoot(32, fixed_angle: 180)
+}
+
+enemy "North Tutorial Gun" {
+    shoot(32, fixed_angle: 270)
+}
+
+enemy "East Tutorial Gun" {
+    shoot(32, fixed_angle: 0)
+}
+
+enemy "South Tutorial Gun" {
+    shoot(32, fixed_angle: 90)
+}
+
+enemy "Evil Chicken" {
+    wander(0.3)
+}
+
+enemy "Evil Chicken Minion" {
+    wander(0.3)
+    protect(0.3, "Evil Chicken God")
+}
+
+enemy "Evil Chicken God" {
+    prioritize() {
+        follow(0.4, range: 5)
+        wander(0.3)
+    }
+    reproduce("Evil Chicken Minion", density_max: 12)
+}
+
+enemy "Evil Hen" {
+    wander(0.3)
+    loot {
+        item("Magic Potion", 1)
+    }
+}
+
+enemy "Kitchen Guard" {
+    prioritize() {
+        follow(0.6, range: 6)
+        wander(0.4)
+    }
+    shoot(7)
+}
+
+enemy "Butcher" {
+    prioritize() {
+        follow(0.8, range: 1)
+        wander(0.4)
+    }
+    shoot(3)
+    loot {
+        item("Magic Potion", 0.1)
+        item("Magic Potion", 0.1)
+    }
+}
+
+enemy "Bonegrind the Butcher" {
+    state Begin {
+        wander(0.6)
+        on player_within(10) -> AttackX
+    }
+    state AttackX {
+        taunt("Ah, fresh meat for the minions!")
+        shoot(6, cooldown: 1400)
+        prioritize() {
+            follow(0.6, 9, 3)
+            wander(0.6)
+        }
+        on timed(4500) -> AttackY
+        on hp_below(0.3) -> Flee
+    }
+    state AttackY {
+        prioritize() {
+            follow(0.6, 9, 3)
+            wander(0.6)
+        }
+        sequence() {
+            shoot(7, 4, fixed_angle: 25)
+            shoot(7, 4, fixed_angle: 50)
+            shoot(7, 4, fixed_angle: 75)
+            shoot(7, 4, fixed_angle: 100)
+            shoot(7, 4, fixed_angle: 125)
+        }
+        on timed(5200) -> AttackX
+        on hp_below(0.3) -> Flee
+    }
+    state Flee {
+        taunt("The meat ain't supposed to bite back! Waaaaa!!")
+        flash(4278190080, 10, 100)
+        prioritize() {
+            stay_back(0.5, 6)
+            wander(0.5)
+        }
+    }
+    loot {
+        item("Magic Potion", 1)
+        item("Magic Potion", 1)
+    }
+}
+

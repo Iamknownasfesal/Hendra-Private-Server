@@ -1,0 +1,185 @@
+enemy "Arachna the Spider Queen" {
+    state idle {
+        conditional_effect(invulnerable)
+        on player_within(12, "WEB!") -> WEB_
+    }
+    state WEB_ {
+        conditional_effect(invulnerable)
+        toss_object("Arachna Web Spoke 7", 6, 0, 100000)
+        toss_object("Arachna Web Spoke 8", 6, 120, 100000)
+        toss_object("Arachna Web Spoke 9", 6, 240, 100000)
+        toss_object("Arachna Web Spoke 1", 10, 0, 100000)
+        toss_object("Arachna Web Spoke 2", 10, 60, 100000)
+        toss_object("Arachna Web Spoke 3", 10, 120, 100000)
+        toss_object("Arachna Web Spoke 4", 10, 180, 100000)
+        toss_object("Arachna Web Spoke 5", 10, 240, 100000)
+        toss_object("Arachna Web Spoke 6", 10, 300, 100000)
+        on timed(2000) -> attack
+    }
+    state attack {
+        wander(1)
+        shoot(3000, count: 12, projectile: 0, fixed_angle: 22.5)
+        shoot(10, 1, 0, default_angle: 0, angle_offset: 0, projectile: 0, predictive: 1, cooldown: 1000, cooldown_offset: 0)
+        shoot(10, 1, 0, default_angle: 0, angle_offset: 0, projectile: 1, predictive: 1, cooldown: 2000, cooldown_offset: 0)
+    }
+    loot {
+        item("Golden Dagger", 0.2)
+        item("Spider's Eye Ring", 0.2)
+        item("Poison Fang Dagger", 0.2)
+        threshold(0.32) { item("Healing Ichor", 1) }
+    }
+}
+
+enemy "Arachna Web Spoke 1" {
+    state _D {
+        conditional_effect(invulnerable)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 120, fixed_angle: 120, cooldown: 5)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 180, fixed_angle: 180, cooldown: 5)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 240, fixed_angle: 240, cooldown: 5)
+    }
+}
+
+enemy "Arachna Web Spoke 2" {
+    state _D {
+        conditional_effect(invulnerable)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 240, fixed_angle: 240, cooldown: 5)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 180, fixed_angle: 180, cooldown: 5)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 300, fixed_angle: 300, cooldown: 5)
+    }
+}
+
+enemy "Arachna Web Spoke 3" {
+    state _D {
+        conditional_effect(invulnerable)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 300, fixed_angle: 300, cooldown: 5)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 240, fixed_angle: 240, cooldown: 5)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 0, fixed_angle: 0, cooldown: 5)
+    }
+}
+
+enemy "Arachna Web Spoke 4" {
+    state _D {
+        conditional_effect(invulnerable)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 0, fixed_angle: 0, cooldown: 5)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 60, fixed_angle: 60, cooldown: 5)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 300, fixed_angle: 300, cooldown: 5)
+    }
+}
+
+enemy "Arachna Web Spoke 5" {
+    state _D {
+        conditional_effect(invulnerable)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 60, fixed_angle: 60, cooldown: 5)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 0, fixed_angle: 0, cooldown: 5)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 120, fixed_angle: 120, cooldown: 5)
+    }
+}
+
+enemy "Arachna Web Spoke 6" {
+    state _D {
+        conditional_effect(invulnerable)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 120, fixed_angle: 120, cooldown: 5)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 60, fixed_angle: 60, cooldown: 5)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 180, fixed_angle: 180, cooldown: 5)
+    }
+}
+
+enemy "Arachna Web Spoke 7" {
+    state _D {
+        conditional_effect(invulnerable)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 180, fixed_angle: 180, cooldown: 5)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 120, fixed_angle: 120, cooldown: 5)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 240, fixed_angle: 240, cooldown: 5)
+    }
+}
+
+enemy "Arachna Web Spoke 8" {
+    state _D {
+        conditional_effect(invulnerable)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 360, fixed_angle: 360, cooldown: 5)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 240, fixed_angle: 240, cooldown: 5)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 300, fixed_angle: 300, cooldown: 5)
+    }
+}
+
+enemy "Arachna Web Spoke 9" {
+    state _D {
+        conditional_effect(invulnerable)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 0, fixed_angle: 0, cooldown: 5)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 60, fixed_angle: 60, cooldown: 5)
+        shoot(0, projectile: 0, count: 1, shoot_angle: 120, fixed_angle: 120, cooldown: 5)
+    }
+}
+
+enemy "Black Den Spider" {
+    state idle {
+        wander(0.8)
+        charge(0.9, 20, 2000)
+        shoot(10, 1, 0, default_angle: 0, angle_offset: 0, projectile: 0, predictive: 1, cooldown: 500, cooldown_offset: 0)
+    }
+    loot {
+        item("Healing Ichor", 0.2)
+    }
+}
+
+enemy "Black Spotted Den Spider" {
+    state idle {
+        wander(0.8)
+        charge(0.9, 40, 2000)
+        shoot(10, 1, 0, default_angle: 0, angle_offset: 0, projectile: 0, predictive: 1, cooldown: 500, cooldown_offset: 0)
+    }
+    loot {
+        item("Healing Ichor", 0.2)
+    }
+}
+
+enemy "Brown Den Spider" {
+    state idle {
+        wander(0.8)
+        follow(0.8, 0.3, 0)
+        shoot(10, 3, 20, angle_offset: 0, projectile: 0, cooldown: 500)
+    }
+    loot {
+        item("Healing Ichor", 0.2)
+    }
+}
+
+enemy "Green Den Spider Hatchling" {
+    state idle {
+        wander(0)
+        follow(0.8, 0.8, 0)
+        shoot(10, 1, 0, default_angle: 0, angle_offset: 0, projectile: 0, predictive: 1, cooldown: 1000, cooldown_offset: 0)
+    }
+}
+
+enemy "Spider Egg Sac" {
+    transform_on_death("Green Den Spider Hatchling", 2, 7)
+    state idle {
+        on player_within(0.5) -> suicide
+    }
+    state suicide {
+        suicide()
+    }
+}
+
+enemy "Red Spotted Den Spider" {
+    state idle {
+        wander(0)
+        follow(1, 0.8, 0)
+        shoot(10, 1, 0, default_angle: 0, angle_offset: 0, projectile: 0, predictive: 1, cooldown: 500, cooldown_offset: 0)
+    }
+    loot {
+        item("Healing Ichor", 0.2)
+    }
+}
+
+enemy "Arachna Summoner" {
+    conditional_effect(invincible, true)
+    state idle {
+        on entities_not_exists(300, "Arachna the Spider Queen") -> Death
+    }
+    state Death {
+        suicide()
+    }
+}
+

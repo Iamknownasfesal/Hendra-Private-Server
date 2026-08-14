@@ -1,0 +1,296 @@
+enemy "Lich" {
+    state Idle {
+        stay_close_to_spawn(0.5, range: 5)
+        wander(0.5)
+        on hp_below(0.99999) -> EvaluationStart1
+    }
+    state EvaluationStart1 {
+        taunt("New recruits for my undead army? How delightful!")
+        conditional_effect(invulnerable)
+        prioritize() {
+            stay_close_to_spawn(0.35, range: 5)
+            wander(0.35)
+        }
+        on timed(2500) -> EvaluationStart2
+    }
+    state EvaluationStart2 {
+        flash(255, 0.1, 60)
+        prioritize() {
+            stay_close_to_spawn(0.35, range: 5)
+            wander(0.35)
+        }
+        shoot(10, projectile: 1, count: 3, shoot_angle: 120, cooldown: 100000, cooldown_offset: 200)
+        shoot(10, projectile: 1, count: 3, shoot_angle: 120, cooldown: 100000, cooldown_offset: 400)
+        shoot(10, projectile: 1, count: 3, shoot_angle: 120, cooldown: 100000, cooldown_offset: 2200)
+        shoot(10, projectile: 1, count: 3, shoot_angle: 120, cooldown: 100000, cooldown_offset: 2400)
+        shoot(10, projectile: 1, count: 3, shoot_angle: 120, cooldown: 100000, cooldown_offset: 4200)
+        shoot(10, projectile: 1, count: 3, shoot_angle: 120, cooldown: 100000, cooldown_offset: 4400)
+        on hp_below(0.87) -> EvaluationEnd
+        on timed(6000) -> EvaluationEnd
+    }
+    state EvaluationEnd {
+        taunt("Time to meet your future brothers and sisters...")
+        on hp_below(0.875) -> HugeMob
+        on hp_below(0.952) -> Mob
+        on hp_below(0.985) -> SmallGroup
+        on hp_below(0.99999) -> Solo
+    }
+    state HugeMob {
+        taunt("...there's an ARMY of them! HahaHahaaaa!!!")
+        flash(65280, 0.2, 300)
+        spawn("Haunted Spirit", max_children: 5, initial_spawn: 0, cooldown: 3000)
+        toss_object("Phylactery Bearer", range: 5.5, angle: 0, cooldown: 100000)
+        toss_object("Phylactery Bearer", range: 5.5, angle: 120, cooldown: 100000)
+        toss_object("Phylactery Bearer", range: 5.5, angle: 240, cooldown: 100000)
+        toss_object("Phylactery Bearer", range: 3, angle: 60, cooldown: 100000)
+        toss_object("Phylactery Bearer", range: 3, angle: 180, cooldown: 100000)
+        prioritize() {
+            protect(0.9, "Phylactery Bearer", acquire_range: 15, protection_range: 2, reprotect_range: 2)
+            wander(0.9)
+        }
+        on timed(25000) -> HugeMob2
+    }
+    state HugeMob2 {
+        taunt("My minions have stolen your life force and fed it to me!")
+        flash(65280, 0.2, 300)
+        spawn("Haunted Spirit", max_children: 5, initial_spawn: 0, cooldown: 3000)
+        toss_object("Phylactery Bearer", range: 5.5, angle: 0, cooldown: 100000)
+        toss_object("Phylactery Bearer", range: 5.5, angle: 120, cooldown: 100000)
+        toss_object("Phylactery Bearer", range: 5.5, angle: 240, cooldown: 100000)
+        prioritize() {
+            protect(0.9, "Phylactery Bearer", acquire_range: 15, protection_range: 2, reprotect_range: 2)
+            wander(0.9)
+        }
+        on timed(5000) -> Wait
+    }
+    state Mob {
+        taunt("...there's a lot of them! Hahaha!!")
+        flash(65280, 0.2, 300)
+        spawn("Haunted Spirit", max_children: 2, initial_spawn: 0, cooldown: 2000)
+        toss_object("Phylactery Bearer", range: 5.5, angle: 0, cooldown: 100000)
+        toss_object("Phylactery Bearer", range: 5.5, angle: 120, cooldown: 100000)
+        toss_object("Phylactery Bearer", range: 5.5, angle: 240, cooldown: 100000)
+        prioritize() {
+            protect(0.9, "Phylactery Bearer", acquire_range: 15, protection_range: 2, reprotect_range: 2)
+            wander(0.9)
+        }
+        on timed(22000) -> Mob2
+    }
+    state Mob2 {
+        taunt("My minions have stolen your life force and fed it to me!")
+        spawn("Haunted Spirit", max_children: 2, initial_spawn: 0, cooldown: 2000)
+        toss_object("Phylactery Bearer", range: 5.5, angle: 0, cooldown: 100000)
+        toss_object("Phylactery Bearer", range: 5.5, angle: 120, cooldown: 100000)
+        toss_object("Phylactery Bearer", range: 5.5, angle: 240, cooldown: 100000)
+        prioritize() {
+            protect(0.9, "Phylactery Bearer", acquire_range: 15, protection_range: 2, reprotect_range: 2)
+            wander(0.9)
+        }
+        on timed(5000) -> Wait
+    }
+    state SmallGroup {
+        taunt("...and there's more where they came from!")
+        flash(65280, 0.2, 300)
+        toss_object("Phylactery Bearer", range: 5.5, angle: 0, cooldown: 100000)
+        toss_object("Phylactery Bearer", range: 5.5, angle: 240, cooldown: 100000)
+        prioritize() {
+            protect(0.9, "Phylactery Bearer", acquire_range: 15, protection_range: 2, reprotect_range: 2)
+            wander(0.9)
+        }
+        on timed(15000) -> SmallGroup2
+    }
+    state SmallGroup2 {
+        taunt("My minions have stolen your life force and fed it to me!")
+        spawn("Haunted Spirit", max_children: 1, initial_spawn: 1, cooldown: 9000)
+        prioritize() {
+            protect(0.9, "Phylactery Bearer", acquire_range: 15, protection_range: 2, reprotect_range: 2)
+            wander(0.9)
+        }
+        on timed(5000) -> Wait
+    }
+    state Solo {
+        taunt("...it's a small family, but you'll enjoy being part of it!")
+        flash(65280, 0.2, 10)
+        wander(0.5)
+        on timed(3000) -> Wait
+    }
+    state Wait {
+        taunt("Kneel before me! I am the master of life and death!")
+        transform("Actual Lich")
+    }
+}
+
+enemy "Actual Lich" {
+    prioritize() {
+        protect(0.9, "Phylactery Bearer", acquire_range: 15, protection_range: 2, reprotect_range: 2)
+        wander(0.5)
+    }
+    spawn("Mummy", max_children: 4, cooldown: 4000, gives_no_xp: false)
+    spawn("Mummy King", max_children: 2, cooldown: 4000, gives_no_xp: false)
+    spawn("Mummy Pharaoh", max_children: 1, cooldown: 4000, gives_no_xp: false)
+    state typeA {
+        shoot(10, projectile: 0, count: 2, shoot_angle: 7, cooldown: 800)
+        on timed(8000) -> typeB
+    }
+    state typeB {
+        taunt(0.7, "All that I touch turns to dust!", "You will drown in a sea of undead!")
+        shoot(10, projectile: 1, count: 4, shoot_angle: 7, cooldown: 1000)
+        shoot(10, projectile: 0, count: 2, shoot_angle: 7, cooldown: 800)
+        on timed(6000) -> typeA
+    }
+    loot {
+        tier(2, ring, 0.11)
+        tier(3, ring, 0.01)
+        tier(5, weapon, 0.3)
+        tier(6, weapon, 0.2)
+        tier(7, weapon, 0.05)
+        tier(5, armor, 0.3)
+        tier(6, armor, 0.2)
+        tier(7, armor, 0.05)
+        tier(1, ability, 0.9)
+        tier(2, ability, 0.15)
+        tier(3, ability, 0.02)
+        item("Health Potion", 0.4)
+        item("Magic Potion", 0.4)
+    }
+}
+
+enemy "Phylactery Bearer" {
+    heal_group(15, "Heros", cooldown: 200)
+    state Attack1 {
+        shoot(10, projectile: 0, count: 3, shoot_angle: 120, cooldown: 900, cooldown_offset: 400)
+        state AttackX_2 {
+            prioritize() {
+                stay_close_to_spawn(0.55, range: 5)
+                orbit(0.55, 4, acquire_range: 5)
+            }
+            on timed(1500) -> AttackY
+        }
+        state AttackY_2 {
+            taunt(0.05, "We feed the master!")
+            prioritize() {
+                stay_close_to_spawn(0.55, range: 5)
+                stay_back(0.55, distance: 2)
+                wander(0.55)
+            }
+            on timed(1500) -> AttackX
+        }
+        on hp_below(0.65) -> Attack2
+    }
+    state Attack2 {
+        shoot(10, projectile: 0, count: 3, shoot_angle: 15, predictive: 0.1, cooldown: 600, cooldown_offset: 200)
+        state AttackX_3 {
+            prioritize() {
+                stay_close_to_spawn(0.65, range: 5)
+                orbit(0.65, 4, acquire_range: 10)
+            }
+            on timed(1500) -> AttackY
+        }
+        state AttackY_3 {
+            taunt(0.05, "We feed the master!")
+            prioritize() {
+                stay_close_to_spawn(0.65, range: 5)
+                buzz()
+                wander(0.65)
+            }
+            on timed(1500) -> AttackX
+        }
+        on hp_below(0.3) -> Attack3
+    }
+    state Attack3 {
+        shoot(10, projectile: 1, cooldown: 800)
+        state AttackX {
+            conditional_effect(invulnerable)
+            prioritize() {
+                stay_close_to_spawn(1.3, range: 5)
+                wander(1.3)
+            }
+            on timed(2500) -> AttackY
+        }
+        state AttackY {
+            taunt(0.02, "We feed the master!")
+            prioritize() {
+                stay_close_to_spawn(1, range: 5)
+                wander(1)
+            }
+            on timed(2500) -> AttackX
+        }
+    }
+    decay(130000)
+    loot {
+        item("Tincture of Defense", 0.02)
+        item("Orange Drake Egg", 0.06)
+        item("Magic Potion", 0.03)
+    }
+}
+
+enemy "Haunted Spirit" {
+    state NewLocation {
+        taunt(0.1, "XxxXxxxXxXxXxxx...")
+        conditional_effect(invulnerable)
+        shoot(10, predictive: 0.2, cooldown: 700)
+        prioritize() {
+            stay_close_to_spawn(1, range: 11)
+            wander(1)
+        }
+        on timed(7000) -> Attack
+    }
+    state Attack {
+        taunt(0.1, "Hungry...")
+        shoot(10, predictive: 0.3, cooldown: 700)
+        shoot(10, count: 2, shoot_angle: 70, cooldown: 700, cooldown_offset: 200)
+        on timed(3000) -> NewLocation
+    }
+    decay(90000)
+    loot {
+        tier(8, weapon, 0.02)
+        item("Magic Potion", 0.02)
+        item("Ring of Magic", 0.02)
+        item("Ring of Attack", 0.02)
+        item("Tincture of Dexterity", 0.06)
+        item("Tincture of Mana", 0.09)
+        item("Tincture of Life", 0.04)
+    }
+}
+
+enemy "Mummy" {
+    prioritize() {
+        protect(1, "Lich", protection_range: 10)
+        follow(1.2, range: 7)
+        wander(0.4)
+    }
+    shoot(10)
+    loot {
+        item("Magic Potion", 0.02)
+        item("Spirit Salve Tome", 0.02)
+    }
+}
+
+enemy "Mummy King" {
+    prioritize() {
+        protect(1, "Lich", protection_range: 10)
+        follow(1.2, range: 7)
+        wander(0.4)
+    }
+    shoot(10)
+    loot {
+        item("Magic Potion", 0.02)
+        item("Spirit Salve Tome", 0.02)
+    }
+}
+
+enemy "Mummy Pharaoh" {
+    prioritize() {
+        protect(1, "Lich", protection_range: 10)
+        follow(1.2, range: 7)
+        wander(0.4)
+    }
+    shoot(10)
+    loot {
+        item("Hell's Fire Wand", 0.02)
+        item("Slayer Staff", 0.02)
+        item("Golden Sword", 0.02)
+        item("Golden Dagger", 0.02)
+    }
+}
+

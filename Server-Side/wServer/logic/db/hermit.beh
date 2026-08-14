@@ -1,0 +1,139 @@
+enemy "Hermit God" {
+    transfer_damage_on_death("Hermit God Drop")
+    order_on_death(20, "Hermit God Tentacle Spawner", "Die", 1)
+    order_on_death(20, "Hermit God Drop", "Die", 1)
+    state Spawn_Tentacle {
+        conditional_effect(invincible)
+        set_alt_texture(2)
+        order(20, "Hermit God Tentacle Spawner", "Tentacle")
+        on entity_exists("Hermit God Tentacle", 20) -> Sleep
+    }
+    state Sleep {
+        conditional_effect(invincible)
+        order(20, "Hermit God Tentacle Spawner", "Minions")
+        on timed(1000) -> Waiting
+    }
+    state Waiting {
+        set_alt_texture(3)
+        conditional_effect(invincible)
+        on entity_not_exists("Hermit God Tentacle", 20) -> Wake
+    }
+    state Wake {
+        set_alt_texture(2)
+        conditional_effect(invincible)
+        toss_object("Hermit Minion", 10, angle: 0)
+        toss_object("Hermit Minion", 10, angle: 45)
+        toss_object("Hermit Minion", 10, angle: 90)
+        toss_object("Hermit Minion", 10, angle: 135)
+        toss_object("Hermit Minion", 10, angle: 180)
+        toss_object("Hermit Minion", 10, angle: 225)
+        toss_object("Hermit Minion", 10, angle: 270)
+        toss_object("Hermit Minion", 10, angle: 315)
+        on timed(100, "Spawn Whirlpool") -> Spawn_Whirlpool
+    }
+    state Spawn_Whirlpool {
+        conditional_effect(invincible)
+        order(20, "Hermit God Tentacle Spawner", "Whirlpool")
+        on entity_exists("Whirlpool", 20) -> Attack1
+    }
+    state Attack1 {
+        set_alt_texture(0)
+        prioritize() {
+            wander(0.3)
+            stay_close_to_spawn(0.5, 5)
+        }
+        shoot(20, count: 3, shoot_angle: 5, cooldown: 300)
+        on timed(6000) -> Attack2
+    }
+    state Attack2 {
+        prioritize() {
+            wander(0.3)
+            stay_close_to_spawn(0.5, 5)
+        }
+        order(20, "Whirlpool", "Die")
+        shoot(20, count: 1, default_angle: 0, fixed_angle: 0, rotate_angle: 45, projectile: 1, cooldown: 1000)
+        shoot(20, count: 1, default_angle: 0, fixed_angle: 180, rotate_angle: 45, projectile: 1, cooldown: 1000)
+        on timed(6000, "Spawn Tentacle") -> Spawn_Tentacle
+    }
+}
+
+enemy "Hermit Minion" {
+    prioritize() {
+        follow(0.6, 4, 1)
+        orbit(0.6, 10, 15, "Hermit God", speed_variance: 0.2, radius_variance: 1.5)
+        wander(0.6)
+    }
+    shoot(6, count: 3, shoot_angle: 10, cooldown: 1000)
+    shoot(6, count: 2, shoot_angle: 20, projectile: 1, cooldown: 2600, predictive: 0.8)
+    loot {
+        item("Health Potion", 0.1)
+        item("Magic Potion", 0.1)
+    }
+}
+
+enemy "Whirlpool" {
+    state Attack {
+        on entity_not_exists("Hermit God", 100) -> Die
+        prioritize() {
+            orbit(0.3, 6, 10, "Hermit God")
+        }
+        shoot(0, 1, fixed_angle: 0, rotate_angle: 30, cooldown: 400)
+    }
+    state Die {
+        shoot(0, 8, fixed_angle: 360)
+        suicide()
+    }
+}
+
+enemy "Hermit God Tentacle" {
+    prioritize() {
+        follow(0.6, 4, 1)
+        orbit(0.6, 6, 15, "Hermit God", speed_variance: 0.2, radius_variance: 0.5)
+    }
+    shoot(3, count: 8, shoot_angle: 360, cooldown: 500)
+}
+
+enemy "Hermit God Tentacle Spawner" {
+    conditional_effect(invincible, true)
+    state Waiting_Order {
+    }
+    state Tentacle {
+        reproduce("Hermit God Tentacle", 3, 1, cooldown: 2000)
+        on entity_exists("Hermit God Tentacle", 1, "Waiting Order") -> Waiting_Order
+    }
+    state Whirlpool {
+        reproduce("Whirlpool", 3, 1, cooldown: 2000)
+        on entity_exists("Whirlpool", 1, "Waiting Order") -> Waiting_Order
+    }
+    state Minions {
+        reproduce("Hermit Minion", 40, 20, cooldown: 1000)
+        on timed(2000, "Waiting Order") -> Waiting_Order
+    }
+    state Die {
+        suicide()
+    }
+}
+
+enemy "Hermit God Drop" {
+    conditional_effect(invincible, true)
+    state Waiting {
+    }
+    state Die {
+        suicide()
+    }
+    loot {
+        threshold(0.01) { item("Potion of Vitality", 0.1, 1) item("Potion of Dexterity", 0.1, 1) item("Helm of the Juggernaut", 0.004) }
+    }
+}
+
+enemy "Hermit portal maker" {
+    conditional_effect(invincible, true)
+    drop_portal_on_death("Ocean Trench Portal", 1)
+    state Wait {
+        on entity_not_exists("Hermit God", 50) -> Transform
+    }
+    state Transform {
+        suicide()
+    }
+}
+

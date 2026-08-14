@@ -1,0 +1,15 @@
+enemy "White Fountain" {
+    heal_player(5, 1000, 100)
+}
+
+enemy "Sheep" {
+    on player_within(15) -> player_nearby
+    state player_nearby {
+        prioritize() {
+            stay_close_to_spawn(0.1, 2)
+            wander(0.1)
+        }
+        taunt(0.001, 1000, "baa", "baa baa")
+    }
+}
+

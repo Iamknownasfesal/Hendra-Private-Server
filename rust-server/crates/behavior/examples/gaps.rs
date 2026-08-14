@@ -9,6 +9,48 @@ use std::collections::BTreeMap;
 /// compiler, and two hundred of the content's soulbound drops went nowhere in silence.
 const LOOT_KINDS: &[(&str, bool)] = &[("item", true), ("tier", true), ("threshold", true)];
 
+/// Counts one behaviour and everything inside it.
+///
+/// The recursion is the point. A behaviour written inside an `if` or a `timed` group is a child of
+/// the group rather than a statement of the state, and counting only the statements of each state
+/// missed every one of them: two names this runtime does not know sat inside groups and the census
+/// read as a hundred per cent covered while the server warned about them at boot.
+fn walk(
+    behaviour: &hendra_behavior::Primitive,
+    total_b: &mut usize,
+    behaviours: &mut BTreeMap<String, usize>,
+    total_c: &mut usize,
+    conditions: &mut BTreeMap<String, usize>,
+) {
+    use hendra_behavior::Primitive;
+
+    *total_b += 1;
+    if let Primitive::Unsupported { name } = behaviour {
+        *behaviours.entry(name.clone()).or_default() += 1;
+    }
+
+    // A condition written as a guard is a condition, and one this runtime does not know makes the
+    // guard never open, which is the whole group doing nothing.
+    if let Primitive::When { condition, .. } = behaviour {
+        *total_c += 1;
+        if let hendra_behavior::Condition::Unsupported { name } = &**condition {
+            *conditions.entry(name.clone()).or_default() += 1;
+        }
+    }
+
+    let children: &[Primitive] = match behaviour {
+        Primitive::Every { children, .. }
+        | Primitive::When { children, .. }
+        | Primitive::Sequence { children }
+        | Primitive::Prioritize(children) => children,
+        _ => &[],
+    };
+
+    for child in children {
+        walk(child, total_b, behaviours, total_c, conditions);
+    }
+}
+
 fn main() {
     let source = std::path::PathBuf::from("../Server-Side/wServer/logic/db");
     let mut files: Vec<_> = std::fs::read_dir(&source)
@@ -40,10 +82,13 @@ fn main() {
         for program in &programs.programs {
             for state in &program.states {
                 for b in &state.behaviours {
-                    total_b += 1;
-                    if let hendra_behavior::Primitive::Unsupported { name } = b {
-                        *behaviours.entry(name.clone()).or_default() += 1;
-                    }
+                    walk(
+                        b,
+                        &mut total_b,
+                        &mut behaviours,
+                        &mut total_c,
+                        &mut conditions,
+                    );
                 }
                 for t in &state.transitions {
                     total_c += 1;
@@ -59,7 +104,7 @@ fn main() {
     b.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
     let missing_b: usize = b.iter().map(|(_, n)| n).sum();
     println!(
-        "BEHAVIOURS: {missing_b} of {total_b} uses unimplemented ({:.0}% covered)",
+        "BEHAVIOURS: {missing_b} of {total_b} uses unimplemented ({:.2}% covered)",
         100.0 * (total_b - missing_b) as f64 / total_b as f64
     );
     for (name, n) in &b {
@@ -86,7 +131,7 @@ fn main() {
     c.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
     let missing_c: usize = c.iter().map(|(_, n)| n).sum();
     println!(
-        "\nCONDITIONS: {missing_c} of {total_c} uses unimplemented ({:.0}% covered)",
+        "\nCONDITIONS: {missing_c} of {total_c} uses unimplemented ({:.2}% covered)",
         100.0 * (total_c - missing_c) as f64 / total_c as f64
     );
     for (name, n) in &c {

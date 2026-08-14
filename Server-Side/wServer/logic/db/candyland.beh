@@ -1,0 +1,304 @@
+enemy "Candy Gnome" {
+    state Ini {
+        wander(speed: 0.4)
+        on player_within(dist: 14, see_invis: true) -> Main
+    }
+    state Main {
+        follow(speed: 1.4, acquire_range: 17, range: 6)
+        on timed(time: 1600) -> Flee
+    }
+    state Flee {
+        on player_within(dist: 11, see_invis: true) -> RunAwayMed
+        on player_within(dist: 8, see_invis: true) -> RunAwayMedFast
+        on player_within(dist: 5, see_invis: true) -> RunAwayFast
+        on player_within(dist: 16, see_invis: true) -> RunAwaySlow
+    }
+    state RunAwayFast {
+        stay_back(speed: 1.9, distance: 30)
+        on timed_random(1000, false, "RunAwayMed", "RunAwaySlow") -> RunAwayMedFast
+    }
+    state RunAwayMedFast {
+        stay_back(speed: 1.45, distance: 30)
+        on timed_random(1000, false, "RunAwaySlow") -> RunAwayMed
+    }
+    state RunAwayMed {
+        stay_back(speed: 1.1, distance: 30)
+        on timed_random(1000, false, "RunAwaySlow") -> RunAwayMedFast
+    }
+    state RunAwaySlow {
+        stay_back(speed: 0.8, distance: 30)
+        on timed_random(1000, false, "RunAwayMed") -> RunAwayMedFast
+    }
+    drop_portal_on_death(target: "Candyland Portal", probability: 0.5, timeout: 30)
+    loot {
+        threshold(0.01) { item(item: "Rock Candy", probability: 0.15) item(item: "Red Gumball", probability: 0.15) item(item: "Purple Gumball", probability: 0.15) item(item: "Blue Gumball", probability: 0.15) item(item: "Green Gumball", probability: 0.15) item(item: "Yellow Gumball", probability: 0.15) }
+    }
+}
+
+enemy "MegaRototo" {
+    reproduce(children: "Tiny Rototo", density_radius: 12, density_max: 7, cooldown: 7000)
+    state Follow {
+        shoot(radius: 0, count: 4, shoot_angle: 90, default_angle: 45, cooldown: 1400)
+        shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, cooldown: 1400)
+        follow(speed: 0.45, acquire_range: 11, range: 5)
+        on timed_random(4300, false, "StayBack") -> FlameThrower
+    }
+    state StayBack {
+        shoot(radius: 0, count: 3, shoot_angle: 16, projectile: 1, predictive: 0.6, cooldown: 1200)
+        shoot(radius: 0, count: 3, shoot_angle: 16, projectile: 0, predictive: 0.9, cooldown: 600)
+        stay_back(speed: 0.5, distance: 10)
+        on timed(time: 2400) -> Follow
+    }
+    state FlameThrower {
+        state FB1ORFB2 {
+            on timed_random(0, false, "FB2") -> FB1
+        }
+        state FB1 {
+            shoot(radius: 12, count: 2, shoot_angle: 16, projectile: 2, cooldown: 400)
+            shoot(radius: 12, count: 1, projectile: 3, cooldown: 200)
+        }
+        state FB2 {
+            shoot(radius: 12, count: 2, shoot_angle: 16, projectile: 3, cooldown: 400)
+            shoot(radius: 12, count: 1, projectile: 2, cooldown: 200)
+        }
+        on timed(time: 4000) -> Follow
+    }
+    loot {
+        threshold(0.01) { item(item: "Ring Pop", probability: 0.02) item(item: "Wine Cellar Incantation", probability: 0.02) item(item: "Rock Candy", probability: 0.08) item(item: "Candy-Coated Armor", probability: 0.01) item(item: "Red Gumball", probability: 0.15) item(item: "Purple Gumball", probability: 0.15) item(item: "Blue Gumball", probability: 0.15) item(item: "Green Gumball", probability: 0.15) item(item: "Yellow Gumball", probability: 0.15) tier(tier: 7, type: weapon, probability: 0.04) tier(tier: 6, type: weapon, probability: 0.06) tier(tier: 8, type: armor, probability: 0.04) tier(tier: 7, type: armor, probability: 0.06) tier(tier: 3, type: ability, probability: 0.05) tier(tier: 4, type: ability, probability: 0.03) tier(tier: 3, type: ring, probability: 0.05) tier(tier: 4, type: ability, probability: 0.03) }
+    }
+}
+
+enemy "Spoiled Creampuff" {
+    spawn(children: "Big Creampuff", max_children: 2, initial_spawn: 0, gives_no_xp: false)
+    reproduce(children: "Big Creampuff", density_radius: 24, density_max: 2, cooldown: 25000)
+    shoot(radius: 10, count: 1, projectile: 0, predictive: 1, cooldown: 1400)
+    shoot(radius: 4.4, count: 5, shoot_angle: 12, projectile: 1, predictive: 0.6, cooldown: 800)
+    prioritize() {
+        charge(speed: 1.4, range: 11, cooldown: 4200)
+        stay_back(speed: 1, distance: 4)
+        stay_back(speed: 0.5, distance: 7)
+    }
+    stay_close_to_spawn(speed: 1.35, range: 13)
+    wander(speed: 0.4)
+    loot {
+        threshold(0.01) { item(item: "Potion of Attack", probability: 0.03) item(item: "Potion of Defense", probability: 0.03) item(item: "Ring Pop", probability: 0.015) item(item: "Wine Cellar Incantation", probability: 0.02) item(item: "Rock Candy", probability: 0.08) item(item: "Candy-Coated Armor", probability: 0.01) item(item: "Red Gumball", probability: 0.15) item(item: "Purple Gumball", probability: 0.15) item(item: "Blue Gumball", probability: 0.15) item(item: "Green Gumball", probability: 0.15) item(item: "Yellow Gumball", probability: 0.15) tier(tier: 7, type: weapon, probability: 0.04) tier(tier: 6, type: weapon, probability: 0.06) tier(tier: 8, type: armor, probability: 0.04) tier(tier: 7, type: armor, probability: 0.06) tier(tier: 3, type: ability, probability: 0.05) tier(tier: 4, type: ability, probability: 0.03) tier(tier: 3, type: ring, probability: 0.05) tier(tier: 4, type: ability, probability: 0.03) }
+    }
+}
+
+enemy "Desire Troll" {
+    state BaseAttack {
+        shoot(radius: 10, count: 3, shoot_angle: 15, projectile: 0, predictive: 1, cooldown: 1400)
+        grenade(radius: 5, damage: 200, range: 8, cooldown: 3000)
+        shoot(radius: 10, count: 1, projectile: 1, predictive: 1, cooldown: 2000)
+        state Choose {
+            on timed_random(3800, false, "Attack") -> Run
+        }
+        state Run {
+            stay_back(speed: 1.1, distance: 10)
+            on timed(time: 1200) -> Choose
+        }
+        state Attack {
+            charge(speed: 1.2, range: 11, cooldown: 1000)
+            on timed(time: 1000) -> Choose
+        }
+        on hp_below(threshold: 0.6) -> NextAttack
+    }
+    state NextAttack {
+        shoot(radius: 10, count: 5, shoot_angle: 10, projectile: 2, predictive: 0.5, angle_offset: 0.4, cooldown: 2000)
+        shoot(radius: 10, count: 1, projectile: 1, predictive: 1, cooldown: 2000)
+        shoot(radius: 10, count: 3, shoot_angle: 15, projectile: 0, predictive: 1, angle_offset: 1, cooldown: 4000)
+        grenade(radius: 5, damage: 200, range: 8, cooldown: 3000)
+        state Choose2 {
+            on timed_random(3800, false, "Attack2") -> Run2
+        }
+        state Run2 {
+            stay_back(speed: 1.5, distance: 10)
+            on timed(time: 1500) -> Choose2
+            on player_within(dist: 3.5, see_invis: false) -> Boom
+        }
+        state Attack2 {
+            charge(speed: 1.2, range: 11, cooldown: 1000)
+            on timed(time: 1000) -> Choose2
+            on player_within(dist: 3.5, see_invis: false) -> Boom
+        }
+        state Boom {
+            shoot(radius: 0, count: 20, shoot_angle: 18, projectile: 3, cooldown: 2000)
+            on timed(time: 200) -> Choose2
+        }
+    }
+    stay_close_to_spawn(speed: 1.5, range: 15)
+    prioritize() {
+        follow(speed: 1, acquire_range: 11, range: 5)
+    }
+    wander(speed: 0.4)
+    loot {
+        threshold(0.01) { item(item: "Potion of Attack", probability: 0.05) item(item: "Potion of Wisdom", probability: 0.05) item(item: "Ring Pop", probability: 0.015) item(item: "Wine Cellar Incantation", probability: 0.02) item(item: "Rock Candy", probability: 0.08) item(item: "Candy-Coated Armor", probability: 0.01) item(item: "Red Gumball", probability: 0.15) item(item: "Purple Gumball", probability: 0.15) item(item: "Blue Gumball", probability: 0.15) item(item: "Green Gumball", probability: 0.15) item(item: "Yellow Gumball", probability: 0.15) tier(tier: 7, type: weapon, probability: 0.04) tier(tier: 6, type: weapon, probability: 0.06) tier(tier: 8, type: armor, probability: 0.04) tier(tier: 7, type: armor, probability: 0.06) tier(tier: 3, type: ability, probability: 0.05) tier(tier: 4, type: ability, probability: 0.03) tier(tier: 3, type: ring, probability: 0.05) tier(tier: 4, type: ability, probability: 0.03) }
+    }
+}
+
+enemy "Swoll Fairy" {
+    spawn(children: "Fairy", max_children: 6, initial_spawn: 0, cooldown: 10000, gives_no_xp: false)
+    stay_close_to_spawn(speed: 0.6, range: 13)
+    prioritize() {
+        follow(speed: 0.3, acquire_range: 10, range: 5)
+    }
+    state Shoot {
+        shoot(radius: 11, count: 2, shoot_angle: 30, projectile: 0, predictive: 1, cooldown: 600)
+        on timed(time: 3000) -> Pause
+    }
+    state ShootB {
+        shoot(radius: 11, count: 8, shoot_angle: 45, projectile: 1, cooldown: 1000)
+        on timed(time: 3000) -> Pause
+    }
+    state Pause {
+        on timed_random(3000, false, "ShootB") -> Shoot
+    }
+    loot {
+        threshold(0.01) { item(item: "Potion of Defense", probability: 0.05) item(item: "Potion of Wisdom", probability: 0.05) item(item: "Ring Pop", probability: 0.015) item(item: "Wine Cellar Incantation", probability: 0.02) item(item: "Rock Candy", probability: 0.08) item(item: "Candy-Coated Armor", probability: 0.01) item(item: "Red Gumball", probability: 0.15) item(item: "Purple Gumball", probability: 0.15) item(item: "Blue Gumball", probability: 0.15) item(item: "Green Gumball", probability: 0.15) item(item: "Yellow Gumball", probability: 0.15) tier(tier: 7, type: weapon, probability: 0.04) tier(tier: 6, type: weapon, probability: 0.06) tier(tier: 8, type: armor, probability: 0.04) tier(tier: 7, type: armor, probability: 0.06) tier(tier: 3, type: ability, probability: 0.05) tier(tier: 4, type: ability, probability: 0.03) tier(tier: 3, type: ring, probability: 0.05) tier(tier: 4, type: ability, probability: 0.03) }
+    }
+}
+
+enemy "Gigacorn" {
+    stay_close_to_spawn(speed: 1, range: 13)
+    prioritize() {
+        charge(speed: 1.4, range: 11, cooldown: 3800)
+        stay_back(speed: 0.8, distance: 6)
+    }
+    state Start {
+        state Shoot {
+            shoot(radius: 10, count: 1, projectile: 0, predictive: 1, cooldown: 200)
+            on timed(time: 2850) -> ShootPause
+        }
+        state ShootPause {
+            shoot(radius: 4.5, count: 3, shoot_angle: 10, projectile: 1, predictive: 0.4, cooldown: 3000, cooldown_offset: 500)
+            shoot(radius: 4.5, count: 3, shoot_angle: 10, projectile: 1, predictive: 0.4, cooldown: 3000, cooldown_offset: 1000)
+            shoot(radius: 4.5, count: 3, shoot_angle: 10, projectile: 1, predictive: 0.4, cooldown: 3000, cooldown_offset: 1500)
+            on timed(time: 5700) -> Shoot
+        }
+    }
+    loot {
+        threshold(0.01) { item(item: "Potion of Attack", probability: 0.05) item(item: "Potion of Wisdom", probability: 0.05) item(item: "Ring Pop", probability: 0.015) item(item: "Wine Cellar Incantation", probability: 0.02) item(item: "Rock Candy", probability: 0.08) item(item: "Candy-Coated Armor", probability: 0.01) item(item: "Red Gumball", probability: 0.15) item(item: "Purple Gumball", probability: 0.15) item(item: "Blue Gumball", probability: 0.15) item(item: "Green Gumball", probability: 0.15) item(item: "Yellow Gumball", probability: 0.15) tier(tier: 7, type: weapon, probability: 0.04) tier(tier: 6, type: weapon, probability: 0.06) tier(tier: 8, type: armor, probability: 0.04) tier(tier: 7, type: armor, probability: 0.06) tier(tier: 3, type: ability, probability: 0.05) tier(tier: 4, type: ability, probability: 0.03) tier(tier: 3, type: ring, probability: 0.05) tier(tier: 4, type: ability, probability: 0.03) }
+    }
+}
+
+enemy "Candyland Boss Spawner" {
+    conditional_effect(invincible)
+    state Ini {
+        on no_player_within(dist: 16) -> Ini2
+    }
+    state Ini2 {
+        on timed_random(0, false, "Unicorn", "Troll", "Rototo", "Fairy", "Gumball Machine") -> Creampuff
+    }
+    state Ini3 {
+        on entities_not_exists(16, "Spoiled Creampuff", "Gigacorn", "Desire Troll", "MegaRototo", "Swoll Fairy", "Gumball Machine") -> Ini
+    }
+    state Creampuff {
+        spawn(children: "Spoiled Creampuff", max_children: 1, initial_spawn: 0, gives_no_xp: false)
+        on timed(time: 3000) -> Ini3
+    }
+    state Unicorn {
+        spawn(children: "Gigacorn", max_children: 1, initial_spawn: 0, gives_no_xp: false)
+        on timed(time: 3000) -> Ini3
+    }
+    state Troll {
+        spawn(children: "Desire Troll", max_children: 1, initial_spawn: 0, gives_no_xp: false)
+        on timed(time: 3000) -> Ini3
+    }
+    state Rototo {
+        spawn(children: "MegaRototo", max_children: 1, initial_spawn: 0, gives_no_xp: false)
+        on timed(time: 3000) -> Ini3
+    }
+    state Fairy {
+        spawn(children: "Swoll Fairy", max_children: 1, initial_spawn: 0, gives_no_xp: false)
+        on timed(time: 3000) -> Ini3
+    }
+    state Gumball_Machine {
+        spawn(children: "Gumball Machine", max_children: 1, initial_spawn: 0, gives_no_xp: false)
+        on timed(time: 3000) -> Ini3
+    }
+}
+
+enemy "Gumball Machine" {
+    loot {
+        threshold(0.01) { item(item: "Ring Pop", probability: 0.015) item(item: "Rock Candy", probability: 0.15) item(item: "Red Gumball", probability: 0.15) item(item: "Purple Gumball", probability: 0.15) item(item: "Blue Gumball", probability: 0.15) item(item: "Green Gumball", probability: 0.15) item(item: "Yellow Gumball", probability: 0.15) }
+    }
+}
+
+enemy "Fairy" {
+    stay_close_to_spawn(speed: 1, range: 13)
+    prioritize() {
+        protect(speed: 1.2, protectee: "Beefy Fairy", acquire_range: 15, protection_range: 8, reprotect_range: 6)
+        orbit(speed: 1.2, radius: 4, acquire_range: 7)
+    }
+    wander(speed: 0.6)
+    shoot(radius: 10, count: 2, shoot_angle: 30, projectile: 0, predictive: 1, cooldown: 2000)
+    shoot(radius: 10, count: 1, projectile: 0, predictive: 1, cooldown: 2000, cooldown_offset: 1000)
+}
+
+enemy "Big Creampuff" {
+    spawn(children: "Small Creampuff", max_children: 4, initial_spawn: 0, gives_no_xp: false)
+    shoot(radius: 10, count: 1, projectile: 0, predictive: 1, cooldown: 1400)
+    shoot(radius: 4.4, count: 5, shoot_angle: 12, projectile: 1, predictive: 0.6, cooldown: 800)
+    prioritize() {
+        charge(speed: 1.4, range: 11, cooldown: 4200)
+        stay_back(speed: 1, distance: 4)
+        stay_back(speed: 0.5, distance: 7)
+    }
+    stay_close_to_spawn(speed: 1.35, range: 13)
+    wander(speed: 0.4)
+}
+
+enemy "Small Creampuff" {
+    shoot(radius: 5, count: 3, shoot_angle: 12, projectile: 1, predictive: 0.6, cooldown: 1000)
+    stay_close_to_spawn(speed: 1.3, range: 13)
+    prioritize() {
+        charge(speed: 1.3, range: 13, cooldown: 2500)
+        protect(speed: 0.8, protectee: "Big Creampuff", acquire_range: 15, protection_range: 7, reprotect_range: 6)
+    }
+    wander(speed: 0.6)
+}
+
+enemy "Tiny Rototo" {
+    prioritize() {
+        orbit(speed: 1.2, radius: 4, acquire_range: 10, target: "MegaRototo")
+        protect(speed: 0.8, protectee: "Rototo", acquire_range: 15, protection_range: 7, reprotect_range: 6)
+    }
+    state Main {
+        state Unaware {
+            prioritize() {
+                orbit(speed: 0.4, radius: 2.6, acquire_range: 8, target: "Rototo", speed_variance: 0.2, radius_variance: 0.2, orbit_clockwise: true)
+                wander(speed: 0.35)
+            }
+            on player_within(dist: 3.4) -> Attack
+            on hp_below(threshold: 0.999) -> Attack
+        }
+        state Attack {
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 1, default_angle: 45, cooldown: 1400)
+            shoot(radius: 0, count: 4, shoot_angle: 90, projectile: 0, cooldown: 1400)
+            prioritize() {
+                follow(speed: 0.8, acquire_range: 8, range: 3, duration: 3000, cooldown: 2000)
+                charge(speed: 1.35, range: 11, cooldown: 1000)
+                wander(speed: 0.35)
+            }
+        }
+    }
+}
+
+enemy "Butterfly" {
+    conditional_effect(invincible)
+    stay_close_to_spawn(speed: 0.3, range: 6)
+    state Moving {
+        wander(speed: 0.25)
+        on player_within(dist: 6) -> Follow
+    }
+    state Follow {
+        prioritize() {
+            stay_back(speed: 0.23, distance: 1.2)
+            orbit(speed: 0.2, radius: 1.6, acquire_range: 3)
+        }
+        follow(speed: 0.2, acquire_range: 7, range: 3)
+        wander(speed: 0.2)
+        on no_player_within(dist: 4) -> Moving
+    }
+}
+

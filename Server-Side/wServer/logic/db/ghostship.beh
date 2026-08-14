@@ -1,0 +1,346 @@
+enemy "Ghost Ship" {
+    state Waiting_Player {
+        set_alt_texture(1)
+        prioritize() {
+            orbit(0.2, 2, 10, "Ghost Ship Anchor")
+        }
+        on hp_below(0.98) -> Start
+    }
+    state Start {
+        conditional_effect(invulnerable)
+        return_to_spawn(0.5, 0)
+        set_alt_texture(0)
+        on timed(3000) -> PreAttack
+    }
+    state PreAttack {
+        return_to_spawn(0.5, 0)
+        conditional_effect(invulnerable)
+        set_alt_texture(2)
+        order_once(100, "Beach Spectre Spawner", "Active")
+        on timed(300, "Phase1+2") -> Phase1_2
+    }
+    state Phase1_2 {
+        set_alt_texture(0)
+        reproduce("Vengeful Spirit", 20, 4, cooldown: 4000)
+        toss_object("Water Mine", angle: 1, cooldown: 5000, min_range: 3, max_range: 7, min_angle: 1, max_angle: 359)
+        state Attack {
+            prioritize() {
+                follow(0.2, 10, 3)
+                wander(0.3)
+                stay_close_to_spawn(0.4, 7)
+            }
+            taunt(0.3, "Fire at will!")
+            shoot(10, count: 3, shoot_angle: 6, cooldown: 2000)
+            shoot(10, count: 1, cooldown: 800)
+            on hp_below(0.9) -> TransAttack
+        }
+        state TransAttack {
+            conditional_effect(invulnerable)
+            state TransAttack1 {
+                taunt(0.99, "Ready...")
+                return_to_spawn(0.3)
+                on timed(1000, "TransAttack1.1") -> TransAttack1_1
+            }
+            state TransAttack1_1 {
+                wander(0.3)
+                taunt(0.99, "Aim...")
+                on timed(1000) -> Phase2
+            }
+            state Phase2 {
+                on hp_below(0.7) -> Phase3
+                prioritize() {
+                    follow(0.2, 10, 3)
+                    wander(0.3)
+                    stay_close_to_spawn(0.4, 7)
+                }
+                state Attack1_1 {
+                    taunt(0.99, "FIRE!")
+                    shoot(0, count: 3, shoot_angle: 20, fixed_angle: 270, cooldown: 3000)
+                    shoot(0, count: 3, shoot_angle: 20, fixed_angle: 90, cooldown: 3000)
+                    on timed(1000, "Attack1.2") -> Attack1_2
+                }
+                state Attack1_2 {
+                    shoot(0, count: 3, shoot_angle: 20, fixed_angle: 0, cooldown: 3000)
+                    shoot(0, count: 3, shoot_angle: 20, fixed_angle: 180, cooldown: 3000)
+                    on timed(1000, "Attack1.3") -> Attack1_3
+                }
+                state Attack1_3 {
+                    conditional_effect(invulnerable)
+                    shoot(0, count: 3, shoot_angle: 20, fixed_angle: 270, cooldown: 3000)
+                    shoot(0, count: 3, shoot_angle: 20, fixed_angle: 90, cooldown: 3000)
+                    on timed(1000, "Attack1.4") -> Attack1_4
+                }
+                state Attack1_4 {
+                    conditional_effect(invulnerable)
+                    shoot(0, count: 12, fixed_angle: 360, cooldown: 3000)
+                    on timed(1500, "Attack1.5") -> Attack1_5
+                }
+                state Attack1_5 {
+                    shoot(0, count: 1, fixed_angle: 0, projectile: 1, cooldown: 3000)
+                    shoot(0, count: 1, fixed_angle: 90, projectile: 1, cooldown: 3000)
+                    shoot(0, count: 1, fixed_angle: 180, projectile: 1, cooldown: 3000)
+                    shoot(0, count: 1, fixed_angle: 270, projectile: 1, cooldown: 3000)
+                    on timed(1000, "Attack1.6") -> Attack1_6
+                }
+                state Attack1_6 {
+                    conditional_effect(invulnerable)
+                    shoot(0, count: 1, fixed_angle: 45, projectile: 1, cooldown: 3000)
+                    shoot(0, count: 1, fixed_angle: 135, projectile: 1, cooldown: 3000)
+                    shoot(0, count: 1, fixed_angle: 225, projectile: 1, cooldown: 3000)
+                    shoot(0, count: 1, fixed_angle: 315, projectile: 1, cooldown: 3000)
+                    on timed(1000, "Attack1.7") -> Attack1_7
+                }
+                state Attack1_7 {
+                    shoot(0, count: 1, fixed_angle: 0, projectile: 1, cooldown: 5000)
+                    shoot(0, count: 1, fixed_angle: 90, projectile: 1, cooldown: 5000)
+                    shoot(0, count: 1, fixed_angle: 180, projectile: 1, cooldown: 5000)
+                    shoot(0, count: 1, fixed_angle: 270, projectile: 1, cooldown: 5000)
+                    on timed(3000) -> TransAttack
+                }
+            }
+        }
+    }
+    state Phase3 {
+        shoot(0, 4, fixed_angle: 360, rotate_angle: 35, cooldown: 1000)
+        shoot(10, count: 1, projectile: 1, cooldown: 1400, predictive: 1)
+        reproduce("Vengeful Spirit", 20, 4, cooldown: 4000)
+        reproduce("Water Mine", 20, 5, cooldown: 3000)
+        on hp_below(0.5) -> Phase4
+        return_to_spawn(0.4)
+        state Invul {
+            conditional_effect(invulnerable)
+            on timed(2000) -> Vul
+        }
+        state Vul {
+            on timed(3000) -> Invul
+        }
+    }
+    state Phase4 {
+        prioritize() {
+            follow(0.2, 10, 3)
+            wander(0.4)
+            stay_close_to_spawn(0.4, 7)
+        }
+        toss_object("Water Mine", angle: 1, cooldown: 5000, min_range: 3, max_range: 7, min_angle: 1, max_angle: 359)
+        shoot(20, count: 2, shoot_angle: 8, cooldown: 800)
+        shoot(20, count: 3, shoot_angle: 8, cooldown: 1300)
+        shoot(20, count: 2, shoot_angle: 8, cooldown: 2000, projectile: 1)
+        on hp_below(0.4) -> PrePhase5
+        state Invul1 {
+            conditional_effect(invulnerable)
+            on timed(2000) -> Vul1
+        }
+        state Vul1 {
+            on timed(3000) -> Invul1
+        }
+    }
+    state PrePhase5 {
+        toss_object("Tempest Cloud", 8, 0, toss_invis: true, cooldown: 10000)
+        toss_object("Tempest Cloud", 8, 36, toss_invis: true, cooldown: 10000)
+        toss_object("Tempest Cloud", 8, 72, toss_invis: true, cooldown: 10000)
+        toss_object("Tempest Cloud", 8, 108, toss_invis: true, cooldown: 10000)
+        toss_object("Tempest Cloud", 8, 144, toss_invis: true, cooldown: 10000)
+        toss_object("Tempest Cloud", 8, 180, toss_invis: true, cooldown: 10000)
+        toss_object("Tempest Cloud", 8, 216, toss_invis: true, cooldown: 10000)
+        toss_object("Tempest Cloud", 8, 252, toss_invis: true, cooldown: 10000)
+        toss_object("Tempest Cloud", 8, 288, toss_invis: true, cooldown: 10000)
+        toss_object("Tempest Cloud", 8, 324, toss_invis: true, cooldown: 10000)
+        on entity_exists("Tempest Cloud", 10) -> Phase5
+    }
+    state Phase5 {
+        order_once(100, "Beach Spectre Spawner", "Active")
+        shoot(0, 4, fixed_angle: 360, rotate_angle: 35, cooldown: 1000)
+        shoot(10, count: 1, projectile: 1, cooldown: 1400, predictive: 1)
+        reproduce("Vengeful Spirit", 20, 4, cooldown: 4000)
+        reproduce("Water Mine", 20, 5, cooldown: 3000)
+        on hp_below(0.2) -> PrePhase6
+        return_to_spawn(0.4)
+        state Invul2 {
+            conditional_effect(invulnerable)
+            on timed(2000) -> Vul2
+        }
+        state Vul2 {
+            on timed(3000) -> Invul2
+        }
+    }
+    state PrePhase6 {
+        taunt(0.99, "Fire at will!!!")
+        on timed(100) -> Phase6
+    }
+    state Phase6 {
+        prioritize() {
+            follow(0.2, 10, 3)
+            wander(0.4)
+            stay_close_to_spawn(0.4, 7)
+        }
+        toss_object("Water Mine", angle: 1, cooldown: 5000, min_range: 3, max_range: 7, min_angle: 1, max_angle: 359)
+        shoot(20, count: 2, shoot_angle: 8, cooldown: 800)
+        shoot(20, count: 3, shoot_angle: 8, cooldown: 1300)
+        shoot(20, count: 2, shoot_angle: 8, cooldown: 2000, projectile: 1)
+        state Invul3 {
+            conditional_effect(invulnerable)
+            on timed(2000) -> Vul3
+        }
+        state Vul3 {
+            on timed(3000) -> Invul3
+        }
+    }
+    loot {
+        item("Ghost Pirate Rum", 0.2)
+        threshold(0.01) { item("Potion of Wisdom", 0.1) tier(8, weapon, 0.12) tier(9, weapon, 0.1) tier(8, armor, 0.12) tier(9, armor, 0.1) tier(3, ability, 0.12) tier(4, ability, 0.1) tier(4, ring, 0.07) tier(10, weapon, 0.06) tier(11, weapon, 0.04) tier(10, armor, 0.06) tier(11, armor, 0.04) tier(5, ability, 0.04) tier(5, ring, 0.04) item("Wine Cellar Incantation", 0.001) }
+    }
+}
+
+enemy "Ghost Ship Anchor" {
+    conditional_effect(invincible, true)
+    state Waiting {
+        on entity_not_exists("Ghost Ship", 20, "Davy Or No ?") -> Davy_Or_No__
+    }
+    state Davy_Or_No__ {
+        on timed_random(10, false, "nah") -> Davy
+    }
+    state nah {
+        suicide()
+    }
+    state nah2 {
+        drop_portal_on_death("Davy Jones's Locker Portal", 1)
+        suicide()
+    }
+    state Davy {
+        ground_transform("Ghost Water Beach", relative_x: 1, relative_y: 0, persist: true)
+        ground_transform("Ghost Water Beach", relative_x: 0, relative_y: 0, persist: true)
+        ground_transform("Ghost Water Beach", relative_x: -1, relative_y: 0, persist: true)
+        ground_transform("Ghost Water Beach", relative_x: 0, relative_y: 1, persist: true)
+        ground_transform("Ghost Water Beach", relative_x: 0, relative_y: -1, persist: true)
+        toss_object("Palm Tree", 1, angle: 0, cooldown: 10000, toss_invis: true)
+        toss_object("Palm Tree", 1, angle: 180, cooldown: 10000, toss_invis: true)
+        on timed(1000) -> nah2
+    }
+}
+
+enemy "Vengeful Spirit" {
+    change_size(20, 100)
+    state Charge {
+        prioritize() {
+            charge(3)
+            wander(0.1)
+        }
+        shoot(5, count: 3, shoot_angle: 8, cooldown: 1000)
+        on entity_not_exists("Ghost Ship", 20) -> Die
+    }
+    state Die {
+        suicide()
+    }
+}
+
+enemy "Tempest Cloud" {
+    conditional_effect(invincible, true)
+    state Texture {
+        change_size(10, 140)
+        state Texture1 {
+            set_alt_texture(1, 9, cooldown: 200)
+            on timed(2000) -> Attack
+        }
+    }
+    state Attack {
+        prioritize() {
+            orbit(0.4, 8, 20, "Ghost Ship")
+        }
+        shoot(0, count: 10, fixed_angle: 360, cooldown: 700)
+        on entity_not_exists("Ghost Ship", 30) -> Die
+    }
+    state Die {
+        state Tex {
+            set_alt_texture(9)
+            on timed(200) -> Tex1
+        }
+        state Tex1 {
+            set_alt_texture(8)
+            on timed(200) -> Tex2
+        }
+        state Tex2 {
+            set_alt_texture(7)
+            on timed(200) -> Tex3
+        }
+        state Tex3 {
+            set_alt_texture(6)
+            on timed(200) -> Tex4
+        }
+        state Tex4 {
+            set_alt_texture(5)
+            on timed(200) -> Tex5
+        }
+        state Tex5 {
+            set_alt_texture(4)
+            on timed(200) -> Tex6
+        }
+        state Tex6 {
+            set_alt_texture(3)
+            on timed(200) -> Tex7
+        }
+        state Tex7 {
+            set_alt_texture(2)
+            on timed(200) -> Tex8
+        }
+        state Tex8 {
+            set_alt_texture(1)
+            on timed(200) -> Tex9
+        }
+        state Tex9 {
+            set_alt_texture(0)
+            on timed(200) -> Tex10
+        }
+        state Tex10 {
+            suicide()
+        }
+    }
+}
+
+enemy "Water Mine" {
+    decay(10000)
+    state GRAB_IT {
+        on entity_not_exists("Ghost Ship", 20) -> BOOOM
+        prioritize() {
+            follow(0.2, 10, 0)
+        }
+        on player_within(3) -> BOOOM
+    }
+    state BOOOM {
+        shoot(0, count: 10, fixed_angle: 360)
+        suicide()
+    }
+}
+
+enemy "Beach Spectre Spawner" {
+    conditional_effect(invincible, true)
+    on entity_not_exists("Ghost Ship", 60) -> Die
+    state Waiting_Order {
+    }
+    state Active {
+        on player_within(7) -> Spawn
+    }
+    state Spawn {
+        reproduce("Beach Spectre", 3, 1, cooldown: 1000)
+        on no_player_within(8) -> Active
+    }
+    state Die {
+        suicide()
+    }
+}
+
+enemy "Beach Spectre" {
+    change_size(20, 100)
+    state Attack {
+        prioritize() {
+            wander(0.1)
+        }
+        shoot(5, count: 3, shoot_angle: 12, cooldown: 1300)
+        on no_player_within(7) -> Die
+    }
+    state Die {
+        conditional_effect(invincible)
+        change_size(20, 0)
+        decay(3000)
+    }
+}
+

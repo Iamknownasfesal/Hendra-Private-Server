@@ -1,0 +1,241 @@
+enemy "Big Yeti" {
+    state geticey {
+        conditional_effect(invulnerable)
+        on player_within(8) -> leggo
+    }
+    state leggo {
+        follow(0.3, 8, 1)
+        conditional_effect(armored)
+        taunt(0.5, "MRRRRRRTTTTTT!")
+        taunt(0.25, "Mwruuuu!")
+        flash(16711680, 2, 18)
+        spawn("Mini Yeti", 1, 4, cooldown: 10000)
+    }
+}
+
+enemy "Mini Yeti" {
+    flash(16711680, 2, 6)
+    orbit(0.3, 3, 20, "Big Yeti", speed_variance: 0.1)
+    shoot(8.4, count: 1, projectile: 0, predictive: 1, cooldown: 1750)
+    shoot(8.4, count: 1, projectile: 0, cooldown: 1200)
+}
+
+enemy "Snow Bat Mama" {
+    state geticey {
+        conditional_effect(invulnerable)
+        on player_within(8) -> leggo
+    }
+    state leggo {
+        follow(0.4, 8, 1)
+        shoot(8.4, count: 1, projectile: 0, predictive: 1, cooldown: 2750)
+        shoot(8.4, count: 1, projectile: 1, cooldown: 2300)
+        shoot(8.4, count: 1, projectile: 2, cooldown: 1000)
+        shoot(8.4, count: 1, projectile: 3, cooldown: 1250)
+        spawn("Snow Bat", 1, 4, cooldown: 10000)
+    }
+}
+
+enemy "Snow Bat" {
+    wander(0.4)
+    shoot(8.4, count: 6, projectile: 0, cooldown: 25)
+}
+
+enemy "ic shielded king" {
+    taunt(0.4, "GRUUUUUUUUUUUUUU!")
+    taunt(0.25, "Ssssshrrrrrrrrrrr!")
+    taunt(0.1, "BRRRRRR!")
+    follow(0.55, 8, 1)
+    shoot(8.4, count: 1, projectile: 0, cooldown: 1100)
+}
+
+enemy "ic CreepyTime" {
+    follow(0.4, 8, 1)
+}
+
+enemy "ic Whirlwind" {
+    follow(0.32, 8, 1)
+    shoot(8.4, count: 7, projectile: 1, cooldown: 2500)
+}
+
+enemy "ic boss purifier" {
+    transform_on_death("ic boss purifier generator", 1, 1, 1)
+    spawn("ic Whirlwind", 1, 1, cooldown: 3500)
+    shoot(8.4, count: 1, predictive: 1, projectile: 0, cooldown: 2000)
+}
+
+enemy "ic boss purifier generator" {
+    state StagesStart {
+        conditional_effect(invincible)
+        on entities_not_exists(9999, "ic boss manager") -> leggo
+        on entities_not_exists(9999, "ic Esben the Unwilling") -> TheKingIsDead
+    }
+    state leggo {
+        conditional_effect(invincible)
+        spawn("ic shielded king", 1, 1, cooldown: 10000)
+        on entity_exists("ic boss manager", 9999) -> StagesBegin
+        on entities_not_exists(9999, "ic Esben the Unwilling") -> TheKingIsDead
+    }
+    state StagesBegin {
+        transform_on_death("ic boss purifier", 1, 1, 1)
+        conditional_effect(invincible)
+        on entities_not_exists(9999, "ic boss manager") -> leggo
+        on entities_not_exists(9999, "ic Esben the Unwilling") -> TheKingIsDead
+        suicide()
+    }
+    state TheKingIsDead {
+        transform_on_death("ic CreepyTime", 1, 1, 1)
+        conditional_effect(invincible)
+        suicide()
+    }
+}
+
+enemy "InnerSanctum Task Master" {
+    state Spook {
+        conditional_effect(invincible)
+        on entities_not_exists(9999, "Snow Bat Mama") -> Commence
+    }
+    state Commence {
+        drop_portal_on_death("Inner Sanctum Portal", 100, timeout: 99999)
+        taunt(true, "Innocent souls. So delicious. You have sated me. Now come, I shall give you your reward.")
+        suicide()
+    }
+}
+
+enemy "ic Esben the Unwilling" {
+    realm_portal_drop()
+    transform_on_death("ic Loot Balloon", 1, 1, 1)
+    state Esben1 {
+        taunt(0.4, "Your souls will soon nourish me.")
+        taunt(0.35, "Icicles, rend their flesh.")
+        conditional_effect(invulnerable)
+        shoot(10, 8, 7, projectile: 3, cooldown: 1350)
+        shoot(10, 6, 7, projectile: 3, cooldown: 4250)
+        shoot(10, 4, 7, projectile: 3, cooldown: 3250)
+        shoot(10, 2, 7, projectile: 3, predictive: 2, cooldown: 2250)
+        on entities_not_exists(9999, "ic boss purifier") -> spooked
+        spawn("ic boss manager", initial_spawn: 1, max_children: 1, cooldown: 10000)
+        on timed(8750) -> Esben2
+    }
+    state Esben2 {
+        taunt(0.5, "Ice is cold, blood is think, you being alive makes me sick!")
+        taunt(0.35, "The ice I throw is of my construction, but when it hits you it means destruction!")
+        conditional_effect(invulnerable)
+        shoot(8.4, count: 69, shoot_angle: 6, projectile: 0, cooldown: 3250)
+        shoot(8.4, count: 2, fixed_angle: 0, projectile: 2, cooldown: 1000)
+        shoot(8.4, count: 2, fixed_angle: 90, projectile: 2, cooldown: 1000)
+        shoot(8.4, count: 2, fixed_angle: 180, projectile: 2, cooldown: 1000)
+        shoot(8.4, count: 2, fixed_angle: 270, projectile: 2, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 40, projectile: 2, cooldown: 1000)
+        shoot(8.4, count: 1, fixed_angle: 135, projectile: 2, cooldown: 1200)
+        shoot(8.4, count: 1, fixed_angle: 225, projectile: 2, cooldown: 1200)
+        shoot(8.4, count: 1, fixed_angle: 315, projectile: 2, cooldown: 1200)
+        on entities_not_exists(9999, "ic boss purifier") -> spooked
+        on timed(8750) -> Esben3
+    }
+    state Esben3 {
+        taunt(0.6, "I will cut you to shreds.")
+        taunt(0.3, "Bad puns I may use to cause offense, but the pain you feel shall be immense!")
+        conditional_effect(invulnerable)
+        shoot(18, 2, 7, projectile: 1, cooldown: 700)
+        shoot(10, 6, 7, projectile: 1, predictive: 2, cooldown: 800)
+        shoot(18, 1, 7, projectile: 1, cooldown: 14)
+        on entities_not_exists(9999, "ic boss purifier") -> spooked
+        on timed(8750) -> Esben1
+    }
+    state spooked {
+        wander(0.1)
+        set_alt_texture(1)
+        conditional_effect(invincible)
+        shoot(8.4, count: 16, shoot_angle: 60, projectile: 1, cooldown: 1000)
+        taunt(1, "H..help me....")
+        remove_entity(9999, "ic boss manager")
+        on timed(6200) -> spookedwaitforkill
+    }
+    state spookedwaitforkill {
+        wander(0.1)
+        conditional_effect(invincible)
+        on entities_not_exists(9999, "ic shielded king") -> spooked1
+    }
+    state spooked1 {
+        wander(0.1)
+        set_alt_texture(2)
+        taunt(1, "Help..help me....PLEASE!")
+        on timed(6570) -> transformationstart
+    }
+    state transformationstart {
+        prioritize() {
+            stay_close_to_spawn(0.5, 10)
+            wander(1)
+        }
+        conditional_effect(invulnerable)
+        taunt(1, "NO, NO I DON'T WANNA GO BACK TooOooo..AAHHH!!!!")
+        taunt(0.3, "LET ME GOOOOOOO!")
+        set_alt_texture(4)
+        on timed(250) -> transformation1
+    }
+    state transformation1 {
+        conditional_effect(invulnerable)
+        set_alt_texture(2)
+        on timed(10) -> transformation2
+    }
+    state transformation2 {
+        conditional_effect(invulnerable)
+        set_alt_texture(4)
+        on timed(1) -> transformation3
+    }
+    state transformation3 {
+        conditional_effect(invulnerable)
+        set_alt_texture(2)
+        on timed(1) -> transformation4
+    }
+    state transformation4 {
+        conditional_effect(invulnerable)
+        set_alt_texture(4)
+        on timed(1) -> transformation5
+    }
+    state transformation5 {
+        conditional_effect(invulnerable)
+        set_alt_texture(2)
+        on timed(1) -> transformation6
+    }
+    state transformation6 {
+        conditional_effect(invulnerable)
+        set_alt_texture(4)
+        on timed(1) -> transformation7
+    }
+    state transformation7 {
+        conditional_effect(invulnerable)
+        set_alt_texture(2)
+        on timed(1) -> transformation8
+    }
+    state transformation8 {
+        conditional_effect(invulnerable)
+        set_alt_texture(4)
+        on timed(1) -> transformation9
+    }
+    state transformation9 {
+        conditional_effect(invulnerable)
+        set_alt_texture(2)
+        on timed(1) -> transformation10
+    }
+    state transformation10 {
+        conditional_effect(invulnerable)
+        set_alt_texture(0)
+        spawn("ic boss manager", initial_spawn: 1, max_children: 1, cooldown: 10000)
+        on timed(10) -> Esben1
+    }
+}
+
+enemy "ic Loot Balloon" {
+    state Idle {
+        conditional_effect(invulnerable)
+        on timed(5000) -> UnsetEffect
+    }
+    state UnsetEffect {
+    }
+    loot {
+        threshold(0.05) {  }
+        threshold(0.15) { tier(11, weapon, 0.015) tier(10, weapon, 0.02) tier(13, armor, 0.015) tier(12, armor, 0.02) item("Potion of Mana", 1) item("Staff of Esben", 0.03) item("Winter Bow", 0.005) item("Winter Armor", 0.005) item("Winter Trap", 0.005) item("Winter Ring", 0.005) item("Frost Wand", 0.04) item("Skullish Remains of Esben", 0.04) }
+    }
+}
+

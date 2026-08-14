@@ -1,0 +1,841 @@
+enemy "Fire Sprite" {
+    reproduce(density_max: 2)
+    shoot(10, count: 2, shoot_angle: 7, cooldown: 300)
+    prioritize() {
+        stay_above(1.4, 55)
+        wander(1.4)
+    }
+    loot {
+        tier(5, weapon, 0.02)
+        item("Magic Potion", 0.05)
+    }
+}
+
+enemy "Ice Sprite" {
+    reproduce(density_max: 2)
+    shoot(10, count: 3, shoot_angle: 7)
+    prioritize() {
+        stay_above(1.4, 60)
+        wander(1.4)
+    }
+    loot {
+        tier(2, ability, 0.04)
+        item("Magic Potion", 0.05)
+    }
+}
+
+enemy "Magic Sprite" {
+    reproduce(density_max: 2)
+    shoot(10, count: 4, shoot_angle: 7)
+    prioritize() {
+        stay_above(1.4, 60)
+        wander(1.4)
+    }
+    loot {
+        tier(6, armor, 0.01)
+        item("Magic Potion", 0.05)
+    }
+}
+
+enemy "Orc King" {
+    drop_portal_on_death("Spider Den Portal", 0.1)
+    shoot(3)
+    spawn("Orc Queen", max_children: 2, cooldown: 60000, gives_no_xp: false)
+    prioritize() {
+        stay_above(1.4, 60)
+        follow(0.6, range: 1, duration: 3000, cooldown: 3000)
+        wander(0.6)
+    }
+    loot {
+        tier(4, weapon, 0.18)
+        tier(5, weapon, 0.05)
+        tier(5, armor, 0.21)
+        tier(6, armor, 0.035)
+        item("Magic Potion", 0.03)
+        tier(2, ring, 0.07)
+        tier(2, ability, 0.17)
+    }
+}
+
+enemy "Orc Queen" {
+    spawn("Orc Mage", max_children: 2, cooldown: 8000, gives_no_xp: false)
+    spawn("Orc Warrior", max_children: 3, cooldown: 8000, gives_no_xp: false)
+    prioritize() {
+        stay_above(1.4, 60)
+        protect(0.8, "Orc King", acquire_range: 11, protection_range: 7, reprotect_range: 5.4)
+        wander(0.8)
+    }
+    heal_group(10, "OrcKings", 300)
+    loot {
+        item("Health Potion", 0.03)
+    }
+}
+
+enemy "Orc Mage" {
+    state circle_player {
+        shoot(8, predictive: 0.3, cooldown: 1000, cooldown_offset: 500)
+        prioritize() {
+            stay_above(1.4, 60)
+            protect(0.7, "Orc Queen", acquire_range: 11, protection_range: 10, reprotect_range: 3)
+            orbit(0.7, 3.5, acquire_range: 11)
+        }
+        on timed(3500) -> circle_queen
+    }
+    state circle_queen {
+        shoot(8, count: 3, predictive: 0.3, shoot_angle: 120, cooldown: 1000, cooldown_offset: 500)
+        prioritize() {
+            stay_above(1.4, 60)
+            orbit(1.2, 2.5, target: "Orc Queen", acquire_range: 12, speed_variance: 0.1, radius_variance: 0.1)
+        }
+        on timed(3500) -> circle_player
+    }
+    loot {
+        item("Magic Potion", 0.03)
+    }
+}
+
+enemy "Orc Warrior" {
+    shoot(3, predictive: 1, cooldown: 500)
+    prioritize() {
+        stay_above(1.4, 60)
+        orbit(1.35, 2.5, target: "Orc Queen", acquire_range: 12, speed_variance: 0.1, radius_variance: 0.1)
+    }
+    loot {
+        item("Health Potion", 0.03)
+    }
+}
+
+enemy "Pink Blob" {
+    stay_above(0.4, 50)
+    shoot(6, count: 3, shoot_angle: 7)
+    prioritize() {
+        follow(0.8, acquire_range: 15, range: 5)
+        wander(0.4)
+    }
+    reproduce(density_max: 5, density_radius: 10)
+    loot {
+        item("Health Potion", 0.03)
+        item("Magic Potion", 0.03)
+    }
+}
+
+enemy "Gray Blob" {
+    state searching {
+        stay_above(0.2, 50)
+        prioritize() {
+            charge(2)
+            wander(0.4)
+        }
+        reproduce(density_max: 5, density_radius: 10)
+        on player_within(2) -> creeping
+    }
+    state creeping {
+        shoot(0, count: 10, shoot_angle: 36, fixed_angle: 0)
+        decay(0)
+    }
+    loot {
+        item("Health Potion", 0.03)
+        item("Magic Potion", 0.03)
+        item("Magic Mushroom", 0.005)
+    }
+}
+
+enemy "Big Green Slime" {
+    stay_above(0.4, 50)
+    shoot(9)
+    wander(0.4)
+    reproduce(density_max: 5, density_radius: 10)
+    transform_on_death("Little Green Slime")
+    transform_on_death("Little Green Slime")
+    transform_on_death("Little Green Slime")
+    transform_on_death("Little Green Slime")
+}
+
+enemy "Little Green Slime" {
+    stay_above(0.4, 50)
+    shoot(6)
+    wander(0.4)
+    protect(0.4, "Big Green Slime")
+    loot {
+        item("Health Potion", 0.03)
+        item("Magic Potion", 0.03)
+    }
+}
+
+enemy "Wasp Queen" {
+    spawn("Worker Wasp", max_children: 5, cooldown: 3400, gives_no_xp: false)
+    spawn("Warrior Wasp", max_children: 2, cooldown: 4400, gives_no_xp: false)
+    state idle {
+        stay_above(0.4, 60)
+        wander(0.55)
+        on player_within(10) -> froth
+    }
+    state froth {
+        shoot(8, predictive: 0.1, cooldown: 1600)
+        prioritize() {
+            stay_above(0.4, 60)
+            wander(0.55)
+        }
+    }
+    loot {
+        tier(5, weapon, 0.14)
+        tier(6, weapon, 0.05)
+        tier(5, armor, 0.19)
+        tier(6, armor, 0.02)
+        tier(2, ring, 0.07)
+        tier(3, ring, 0.001)
+        tier(2, ability, 0.28)
+        tier(3, ability, 0.01)
+        item("Health Potion", 0.15)
+        item("Magic Potion", 0.07)
+    }
+}
+
+enemy "Worker Wasp" {
+    shoot(8, cooldown: 4000)
+    prioritize() {
+        orbit(1, 2, target: "Wasp Queen", radius_variance: 0.5)
+        wander(0.75)
+    }
+}
+
+enemy "Warrior Wasp" {
+    shoot(8, predictive: 200, cooldown: 1000)
+    state protecting {
+        prioritize() {
+            orbit(1, 2, target: "Wasp Queen", radius_variance: 0)
+            wander(0.75)
+        }
+        on timed(3000) -> attacking
+    }
+    state attacking {
+        prioritize() {
+            follow(0.8, acquire_range: 9, range: 3.4)
+            orbit(1, 2, target: "Wasp Queen", radius_variance: 0)
+            wander(0.75)
+        }
+        on timed(2200) -> protecting
+    }
+}
+
+enemy "Shambling Sludge" {
+    state idle {
+        stay_above(0.5, 55)
+        on player_within(10) -> toss_sludge
+    }
+    state toss_sludge {
+        prioritize() {
+            stay_above(0.5, 55)
+            wander(0.5)
+        }
+        shoot(8, cooldown: 1200)
+        toss_object("Sludget", range: 3, angle: 20, cooldown: 100000)
+        toss_object("Sludget", range: 3, angle: 92, cooldown: 100000)
+        toss_object("Sludget", range: 3, angle: 164, cooldown: 100000)
+        toss_object("Sludget", range: 3, angle: 236, cooldown: 100000)
+        toss_object("Sludget", range: 3, angle: 308, cooldown: 100000)
+        on timed(8000) -> pause
+    }
+    state pause {
+        prioritize() {
+            stay_above(0.5, 55)
+            wander(0.5)
+        }
+        on timed(1000) -> idle
+    }
+    loot {
+        tier(4, weapon, 0.14)
+        tier(5, weapon, 0.05)
+        tier(5, armor, 0.2)
+        tier(6, armor, 0.02)
+        tier(2, ring, 0.07)
+        tier(2, ability, 0.27)
+        item("Health Potion", 0.15)
+        item("Magic Potion", 0.1)
+    }
+}
+
+enemy "Sludget" {
+    state idle {
+        shoot(8, predictive: 0.5, cooldown: 600)
+        prioritize() {
+            protect(0.5, "Shambling Sludge", 11, 7.5, 7.4)
+            wander(0.5)
+        }
+        on timed(1400) -> wander
+    }
+    state wander {
+        prioritize() {
+            protect(0.5, "Shambling Sludge", 11, 7.5, 7.4)
+            wander(0.5)
+        }
+        on timed(5400) -> jump
+    }
+    state jump {
+        prioritize() {
+            protect(0.5, "Shambling Sludge", 11, 7.5, 7.4)
+            follow(7, acquire_range: 6, range: 1)
+            wander(0.5)
+        }
+        on timed(200) -> attack
+    }
+    state attack {
+        shoot(8, predictive: 0.5, cooldown: 600, cooldown_offset: 300)
+        prioritize() {
+            protect(0.5, "Shambling Sludge", 11, 7.5, 7.4)
+            follow(0.5, acquire_range: 6, range: 1)
+            wander(0.5)
+        }
+        on timed(4000) -> idle
+    }
+    decay(9000)
+}
+
+enemy "Swarm" {
+    state circle {
+        prioritize() {
+            stay_above(0.4, 60)
+            follow(4, acquire_range: 11, range: 3.5, duration: 1000, cooldown: 5000)
+            orbit(1.9, 3.5, acquire_range: 12)
+            wander(0.4)
+        }
+        shoot(4, predictive: 0.1, cooldown: 500)
+        on timed(3000) -> dart_away
+    }
+    state dart_away {
+        prioritize() {
+            stay_above(0.4, 60)
+            stay_back(2, distance: 5)
+            wander(0.4)
+        }
+        shoot(8, count: 5, shoot_angle: 72, fixed_angle: 20, cooldown: 100000, cooldown_offset: 800)
+        shoot(8, count: 5, shoot_angle: 72, fixed_angle: 56, cooldown: 100000, cooldown_offset: 1400)
+        on timed(1600) -> circle
+    }
+    reproduce(density_max: 1, density_radius: 100)
+    loot {
+        tier(3, weapon, 0.22)
+        tier(4, weapon, 0.05)
+        tier(3, armor, 0.22)
+        tier(4, armor, 0.12)
+        tier(5, armor, 0.02)
+        tier(1, ring, 0.1)
+        tier(1, ability, 0.21)
+        item("Health Potion", 0.24)
+        item("Magic Potion", 0.07)
+    }
+}
+
+enemy "Black Bat" {
+    prioritize() {
+        charge()
+        wander(0.4)
+    }
+    shoot(1)
+    reproduce(density_max: 5, density_radius: 20, cooldown: 20000)
+    loot {
+        item("Health Potion", 0.01)
+        item("Magic Potion", 0.01)
+        tier(2, armor, 0.01)
+    }
+}
+
+enemy "Red Spider" {
+    wander(0.8)
+    shoot(9)
+    reproduce(density_max: 3, density_radius: 15, cooldown: 45000)
+    loot {
+        item("Health Potion", 0.03)
+        item("Magic Potion", 0.03)
+    }
+}
+
+enemy "Dwarf Axebearer" {
+    shoot(3.4)
+    state Default {
+        wander(0.4)
+    }
+    state Circling {
+        prioritize() {
+            orbit(0.4, 2.7, acquire_range: 11)
+            protect(1.2, "Dwarf King", acquire_range: 15, protection_range: 6, reprotect_range: 3)
+            wander(0.4)
+        }
+        on timed(3300) -> Default
+        on entity_not_exists("Dwarf King", 8) -> Default
+    }
+    state Engaging {
+        prioritize() {
+            follow(1, acquire_range: 15, range: 1)
+            protect(1.2, "Dwarf King", acquire_range: 15, protection_range: 6, reprotect_range: 3)
+            wander(0.4)
+        }
+        on timed(2500) -> Circling
+        on entity_not_exists("Dwarf King", 8) -> Default
+    }
+    loot {
+        item("Health Potion", 0.04)
+    }
+}
+
+enemy "Dwarf Mage" {
+    state Default {
+        prioritize() {
+            protect(1.2, "Dwarf King", acquire_range: 15, protection_range: 6, reprotect_range: 3)
+            wander(0.6)
+        }
+        state fire1_def {
+            shoot(10, predictive: 0.2, cooldown: 100000)
+            on timed(1500) -> fire2_def
+        }
+        state fire2_def {
+            shoot(5, predictive: 0.2, cooldown: 100000)
+            on timed(1500) -> fire1_def
+        }
+    }
+    state Circling {
+        prioritize() {
+            orbit(0.4, 2.7, acquire_range: 11)
+            protect(1.2, "Dwarf King", acquire_range: 15, protection_range: 6, reprotect_range: 3)
+            wander(0.6)
+        }
+        state fire1_cir {
+            shoot(10, predictive: 0.2, cooldown: 100000)
+            on timed(1500) -> fire2_cir
+        }
+        state fire2_cir {
+            shoot(5, predictive: 0.2, cooldown: 100000)
+            on timed(1500) -> fire1_cir
+        }
+        on timed(3300) -> Default
+        on entity_not_exists("Dwarf King", 8) -> Default
+    }
+    state Engaging {
+        prioritize() {
+            follow(1, acquire_range: 15, range: 1)
+            protect(1.2, "Dwarf King", acquire_range: 15, protection_range: 6, reprotect_range: 3)
+            wander(0.4)
+        }
+        state fire1_eng {
+            shoot(10, predictive: 0.2, cooldown: 100000)
+            on timed(1500) -> fire2_eng
+        }
+        state fire2_eng {
+            shoot(5, predictive: 0.2, cooldown: 100000)
+            on timed(1500) -> fire1_eng
+        }
+        on timed(2500) -> Circling
+        on entity_not_exists("Dwarf King", 8) -> Default
+    }
+    loot {
+        item("Magic Potion", 0.03)
+    }
+}
+
+enemy "Dwarf Veteran" {
+    shoot(4)
+    state Default {
+        prioritize() {
+            follow(1, acquire_range: 9, range: 2, duration: 3000, cooldown: 1000)
+            wander(0.4)
+        }
+    }
+    state Circling {
+        prioritize() {
+            orbit(0.4, 2.7, acquire_range: 11)
+            protect(1.2, "Dwarf King", acquire_range: 15, protection_range: 6, reprotect_range: 3)
+            wander(0.4)
+        }
+        on timed(3300) -> Default
+        on entity_not_exists("Dwarf King", 8) -> Default
+    }
+    state Engaging {
+        prioritize() {
+            follow(1, acquire_range: 15, range: 1)
+            protect(1.2, "Dwarf King", acquire_range: 15, protection_range: 6, reprotect_range: 3)
+            wander(0.4)
+        }
+        on timed(2500) -> Circling
+        on entity_not_exists("Dwarf King", 8) -> Default
+    }
+    loot {
+        item("Health Potion", 0.04)
+    }
+}
+
+enemy "Dwarf King" {
+    spawn_group("Dwarves", max_children: 10, cooldown: 8000)
+    shoot(4, cooldown: 2000)
+    state Circling {
+        prioritize() {
+            orbit(0.4, 2.7, acquire_range: 11)
+            wander(0.4)
+        }
+        on timed(3400) -> Engaging
+    }
+    state Engaging {
+        taunt(0.2, "You'll taste my axe!")
+        prioritize() {
+            follow(1, acquire_range: 15, range: 1)
+            wander(0.4)
+        }
+        on timed(2600) -> Circling
+    }
+    loot {
+        tier(3, weapon, 0.2)
+        tier(4, weapon, 0.12)
+        tier(3, armor, 0.2)
+        tier(4, armor, 0.15)
+        tier(5, armor, 0.02)
+        tier(1, ring, 0.11)
+        tier(1, ability, 0.38)
+        item("Magic Potion", 0.03)
+    }
+}
+
+enemy "Werelion" {
+    drop_portal_on_death("Spider Den Portal", 0.1)
+    spawn("Weretiger", max_children: 1, cooldown: 23000, gives_no_xp: false)
+    spawn("Wereleopard", max_children: 2, cooldown: 9000, gives_no_xp: false)
+    spawn("Werepanther", max_children: 3, cooldown: 15000, gives_no_xp: false)
+    shoot(4, cooldown: 2000)
+    state idle {
+        prioritize() {
+            stay_above(0.6, 60)
+            wander(0.6)
+        }
+        on player_within(11) -> player_nearby
+    }
+    state player_nearby {
+        state normal_attack {
+            shoot(10, count: 3, shoot_angle: 15, predictive: 1, cooldown: 10000)
+            on timed(900) -> if_cloaked
+        }
+        state if_cloaked {
+            shoot(10, count: 8, shoot_angle: 45, default_angle: 20, cooldown: 1600, cooldown_offset: 400)
+            shoot(10, count: 8, shoot_angle: 45, default_angle: 42, cooldown: 1600, cooldown_offset: 1200)
+            on player_within(10) -> normal_attack
+        }
+        prioritize() {
+            stay_above(0.6, 60)
+            follow(0.4, acquire_range: 7, range: 3)
+            wander(0.6)
+        }
+        on timed(30000) -> idle
+    }
+    loot {
+        tier(4, weapon, 0.18)
+        tier(5, weapon, 0.05)
+        tier(5, armor, 0.24)
+        tier(6, armor, 0.03)
+        tier(2, ring, 0.07)
+        tier(2, ability, 0.2)
+        item("Health Potion", 0.04)
+        item("Magic Potion", 0.05)
+    }
+}
+
+enemy "Weretiger" {
+    shoot(8, predictive: 0.3, cooldown: 1000)
+    prioritize() {
+        stay_above(0.6, 60)
+        protect(1.1, "Werelion", acquire_range: 12, protection_range: 10, reprotect_range: 5)
+        follow(0.8, range: 6.3)
+        wander(0.6)
+    }
+    loot {
+        item("Health Potion", 0.03)
+    }
+}
+
+enemy "Wereleopard" {
+    shoot(4.5, predictive: 0.4, cooldown: 900)
+    prioritize() {
+        protect(1.1, "Werelion", acquire_range: 12, protection_range: 10, reprotect_range: 5)
+        follow(1.1, range: 3)
+        wander(1)
+    }
+    loot {
+        item("Health Potion", 0.03)
+    }
+}
+
+enemy "Werepanther" {
+    state idle {
+        protect(0.65, "Werelion", acquire_range: 11, protection_range: 7.5, reprotect_range: 7.4)
+        on player_within(9.5) -> wander
+    }
+    state wander {
+        prioritize() {
+            protect(0.65, "Werelion", acquire_range: 11, protection_range: 7.5, reprotect_range: 7.4)
+            follow(0.65, range: 5, acquire_range: 10)
+            wander(0.65)
+        }
+        on player_within(4) -> jump
+    }
+    state jump {
+        prioritize() {
+            protect(0.65, "Werelion", acquire_range: 11, protection_range: 7.5, reprotect_range: 7.4)
+            follow(7, range: 1, acquire_range: 6)
+            wander(0.55)
+        }
+        on timed(200) -> attack
+    }
+    state attack {
+        prioritize() {
+            protect(0.65, "Werelion", acquire_range: 11, protection_range: 7.5, reprotect_range: 7.4)
+            follow(0.5, range: 1, acquire_range: 6)
+            wander(0.5)
+        }
+        shoot(4, predictive: 0.5, cooldown: 800, cooldown_offset: 300)
+        on timed(4000) -> idle
+    }
+    loot {
+        item("Magic Potion", 0.03)
+    }
+}
+
+enemy "Horned Drake" {
+    spawn("Drake Baby", max_children: 1, initial_spawn: 1, cooldown: 50000, gives_no_xp: false)
+    state idle {
+        stay_above(0.8, 60)
+        on player_within(10) -> get_player
+    }
+    state get_player {
+        prioritize() {
+            stay_above(0.8, 60)
+            follow(0.8, range: 2.7, acquire_range: 10, duration: 5000, cooldown: 1800)
+            wander(0.8)
+        }
+        state one_shot_2 {
+            shoot(8, predictive: 0.1, cooldown: 800)
+            on timed(900) -> three_shot
+        }
+        state three_shot_2 {
+            shoot(8, count: 3, shoot_angle: 40, predictive: 0.1, cooldown: 100000, cooldown_offset: 800)
+            on timed(2000) -> one_shot
+        }
+    }
+    state protect_me {
+        protect(0.8, "Drake Baby", acquire_range: 12, protection_range: 2.5, reprotect_range: 1.5)
+        state one_shot {
+            shoot(8, predictive: 0.1, cooldown: 700)
+            on timed(800) -> three_shot
+        }
+        state three_shot {
+            shoot(8, count: 3, shoot_angle: 40, predictive: 0.1, cooldown: 100000, cooldown_offset: 700)
+            on timed(1800) -> one_shot
+        }
+        on entity_not_exists("Drake Baby", 8) -> idle
+    }
+    loot {
+        tier(5, weapon, 0.14)
+        tier(6, weapon, 0.05)
+        tier(5, armor, 0.19)
+        tier(6, armor, 0.02)
+        tier(2, ring, 0.07)
+        tier(3, ring, 0.001)
+        tier(2, ability, 0.28)
+        tier(3, ability, 0.001)
+        item("Health Potion", 0.09)
+        item("Magic Potion", 0.12)
+    }
+}
+
+enemy "Drake Baby" {
+    state unharmed {
+        shoot(8, cooldown: 1500)
+        state wander {
+            prioritize() {
+                stay_above(0.8, 60)
+                wander(0.8)
+            }
+            on timed(2000) -> find_mama
+        }
+        state find_mama {
+            prioritize() {
+                stay_above(0.8, 60)
+                protect(1.4, "Horned Drake", acquire_range: 15, protection_range: 4, reprotect_range: 4)
+            }
+            on timed(2000) -> wander
+        }
+        on hp_below(0.65) -> call_mama
+    }
+    state call_mama {
+        flash(4282927176, 0.6, 5000)
+        state get_close_to_mama {
+            taunt("Awwwk! Awwwk!")
+            protect(1.4, "Horned Drake", acquire_range: 15, protection_range: 1, reprotect_range: 1)
+            on timed(1500) -> cry_for_mama
+        }
+        state cry_for_mama {
+            stay_back(0.65, 8)
+            order(8, "Horned Drake", "protect_me")
+        }
+    }
+}
+
+enemy "Nomadic Shaman" {
+    prioritize() {
+        stay_above(0.8, 55)
+        wander(0.7)
+    }
+    state fire1 {
+        shoot(10, projectile: 0, count: 3, shoot_angle: 11, cooldown: 500, cooldown_offset: 500)
+        on timed(3100) -> fire2
+    }
+    state fire2 {
+        shoot(10, projectile: 1, cooldown: 700, cooldown_offset: 700)
+        on timed(2200) -> fire1
+    }
+    loot {
+        item("Magic Potion", 0.04)
+    }
+}
+
+enemy "Sand Phantom" {
+    prioritize() {
+        stay_above(0.85, 60)
+        follow(0.85, acquire_range: 10.5, range: 1)
+        wander(0.85)
+    }
+    shoot(8, predictive: 0.4, cooldown: 400, cooldown_offset: 600)
+    state follow_player {
+        on player_within(4.4) -> sneak_away_from_player
+    }
+    state sneak_away_from_player {
+        transform("Sand Phantom Wisp")
+    }
+}
+
+enemy "Sand Phantom Wisp" {
+    shoot(8, predictive: 0.4, cooldown: 400, cooldown_offset: 600)
+    state move_away_from_player {
+        state keep_back {
+            prioritize() {
+                stay_back(0.6, distance: 5)
+                wander(0.9)
+            }
+            on timed(800) -> wander
+        }
+        state wander {
+            wander(0.9)
+            on timed(800) -> keep_back
+        }
+        on timed(6500) -> wisp_finished
+    }
+    state wisp_finished {
+        transform("Sand Phantom")
+    }
+}
+
+enemy "Great Lizard" {
+    state idle {
+        stay_above(0.6, 60)
+        wander(0.6)
+        on player_within(10) -> charge
+    }
+    state charge {
+        prioritize() {
+            stay_above(0.6, 60)
+            follow(6, acquire_range: 11, range: 1.5)
+        }
+        on timed(200) -> spit
+    }
+    state spit {
+        shoot(8, projectile: 0, count: 1, cooldown: 100000, cooldown_offset: 1000)
+        shoot(8, projectile: 0, count: 2, shoot_angle: 16, cooldown: 100000, cooldown_offset: 1200)
+        shoot(8, projectile: 0, count: 1, predictive: 0.2, cooldown: 100000, cooldown_offset: 1600)
+        shoot(8, projectile: 0, count: 2, shoot_angle: 24, cooldown: 100000, cooldown_offset: 2200)
+        shoot(8, projectile: 0, count: 1, predictive: 0.2, cooldown: 100000, cooldown_offset: 2800)
+        shoot(8, projectile: 0, count: 2, shoot_angle: 16, cooldown: 100000, cooldown_offset: 3200)
+        shoot(8, projectile: 0, count: 1, predictive: 0.1, cooldown: 100000, cooldown_offset: 3800)
+        prioritize() {
+            stay_above(0.6, 60)
+            wander(0.6)
+        }
+        on timed(5000) -> flame_ring
+    }
+    state flame_ring {
+        shoot(7, projectile: 1, count: 30, shoot_angle: 12, cooldown: 400, cooldown_offset: 600)
+        prioritize() {
+            stay_above(0.6, 60)
+            follow(0.6, acquire_range: 9, range: 1)
+            wander(0.6)
+        }
+        on timed(3500) -> pause
+    }
+    state pause {
+        prioritize() {
+            stay_above(0.6, 60)
+            wander(0.6)
+        }
+        on timed(1000) -> idle
+    }
+    loot {
+        tier(4, weapon, 0.14)
+        tier(5, weapon, 0.05)
+        tier(5, armor, 0.19)
+        tier(6, armor, 0.02)
+        tier(2, ring, 0.07)
+        tier(2, ability, 0.27)
+        item("Health Potion", 0.12)
+        item("Magic Potion", 0.1)
+    }
+}
+
+enemy "Tawny Warg" {
+    shoot(3.4)
+    prioritize() {
+        protect(1.2, "Desert Werewolf", acquire_range: 14, protection_range: 8, reprotect_range: 5)
+        follow(0.7, acquire_range: 9, range: 2)
+        wander(0.8)
+    }
+    loot {
+        item("Health Potion", 0.04)
+    }
+}
+
+enemy "Demon Warg" {
+    shoot(4.5)
+    prioritize() {
+        protect(1.2, "Desert Werewolf", acquire_range: 14, protection_range: 8, reprotect_range: 5)
+        wander(0.8)
+    }
+    loot {
+        item("Health Potion", 0.04)
+    }
+}
+
+enemy "Desert Werewolf" {
+    spawn_group("Wargs", max_children: 8, cooldown: 8000)
+    state unharmed {
+        shoot(8, projectile: 0, predictive: 0.3, cooldown: 1000, cooldown_offset: 500)
+        prioritize() {
+            follow(0.5, acquire_range: 10.5, range: 2.5)
+            wander(0.5)
+        }
+        on hp_below(0.75) -> enraged
+    }
+    state enraged {
+        shoot(8, projectile: 0, predictive: 0.3, cooldown: 1000, cooldown_offset: 500)
+        taunt(0.7, "GRRRRAAGH!")
+        change_size(20, 170)
+        flash(4294901760, 0.4, 5000)
+        prioritize() {
+            follow(0.65, acquire_range: 9, range: 2)
+            wander(0.65)
+        }
+    }
+    loot {
+        tier(3, weapon, 0.2)
+        tier(4, weapon, 0.12)
+        tier(3, armor, 0.2)
+        tier(4, armor, 0.15)
+        tier(5, armor, 0.02)
+        tier(1, ring, 0.11)
+        tier(1, ability, 0.38)
+        item("Magic Potion", 0.03)
+    }
+}
+

@@ -220,6 +220,18 @@ enemy "lod Red Loot Balloon" {
     }
 }
 
+enemy "lod Ivory Loot" {
+    state Idle {
+        conditional_effect(invulnerable)
+        on timed(5000) -> UnsetEffect
+    }
+    state UnsetEffect {
+    }
+    loot {
+        threshold(0.15) { tier(12, weapon, 0.065) tier(12, weapon, 0.055) tier(6, ability, 0.065) tier(5, ability, 0.0685) tier(13, armor, 0.0525) item("Midnight Star", 0.04) item("Ivory Ring", 0.055) item("Large Ivory Dragon Scale Cloth", 0.045) item("Small Ivory Dragon Scale Cloth", 0.047) item("The World Tarot Card", 0.05) item("Dragon Pearl", 0.1) }
+    }
+}
+
 enemy "NM Blue Dragon Minion" {
     prioritize() {
         orbit(0.48, 2.5, 20, "NM Blue Dragon God", speed_variance: 0.1)

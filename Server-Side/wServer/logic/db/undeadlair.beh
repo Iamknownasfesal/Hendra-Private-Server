@@ -1,0 +1,413 @@
+enemy "Septavius the Ghost God" {
+    on player_within(8) -> transition1
+    conditional_effect(invulnerable)
+    flash(65280, 0.25, 12)
+    wander(0.1)
+    state transition1 {
+        on timed(3000) -> spiral
+    }
+    state transition2 {
+        on timed(3000) -> ring
+    }
+    state transition3 {
+        on timed(3000) -> quiet
+    }
+    state transition4 {
+        on timed(3000) -> spawn
+    }
+    state spiral {
+        spawn("Lair Ghost Archer", 1, 1)
+        spawn("Lair Ghost Knight", 2, 2)
+        spawn("Lair Ghost Mage", 1, 1)
+        spawn("Lair Ghost Rogue", 2, 2)
+        spawn("Lair Ghost Paladin", 1, 1)
+        spawn("Lair Ghost Warrior", 2, 2)
+        shoot(10, 3, fixed_angle: 0, cooldown_offset: 0, cooldown: 1000)
+        shoot(10, 3, fixed_angle: 24, cooldown_offset: 200, cooldown: 1000)
+        shoot(10, 3, fixed_angle: 48, cooldown_offset: 400, cooldown: 1000)
+        shoot(10, 3, fixed_angle: 72, cooldown_offset: 600, cooldown: 1000)
+        shoot(10, 3, fixed_angle: 96, cooldown_offset: 800, cooldown: 1000)
+        on timed(10000) -> transition2
+    }
+    state ring {
+        wander(0.1)
+        shoot(10, 12, projectile: 4, cooldown: 2000)
+        on timed(10000) -> transition3
+    }
+    state quiet {
+        wander(0.1)
+        shoot(10, 8, projectile: 1, cooldown: 1000)
+        shoot(10, 8, projectile: 1, cooldown_offset: 500, angle_offset: 22.5, cooldown: 1000)
+        shoot(8, 3, shoot_angle: 20, projectile: 2, cooldown: 2000)
+        on timed(10000) -> transition4
+    }
+    state spawn {
+        wander(0.1)
+        spawn("Ghost Mage of Septavius", 2, 2)
+        spawn("Ghost Rogue of Septavius", 2, 2)
+        spawn("Ghost Warrior of Septavius", 2, 2)
+        reproduce("Ghost Mage of Septavius", density_max: 2, cooldown: 1000)
+        reproduce("Ghost Rogue of Septavius", density_max: 2, cooldown: 1000)
+        reproduce("Ghost Warrior of Septavius", density_max: 2, cooldown: 1000)
+        shoot(8, 3, shoot_angle: 10, projectile: 1, cooldown: 1000)
+        on timed(10000) -> transition1
+    }
+    loot {
+        threshold(0.32) { item("Potion of Wisdom", 1) }
+        threshold(0.1) { item("Doom Bow", 0.012) item("Wine Cellar Incantation", 0.005) tier(3, ring, 0.2) tier(4, ring, 0.1) tier(7, weapon, 0.2) tier(8, weapon, 0.1) tier(3, ability, 0.2) tier(4, ability, 0.15) tier(5, ability, 0.1) }
+        threshold(0.2) {  }
+    }
+}
+
+enemy "Ghost Mage of Septavius" {
+    prioritize() {
+        protect(0.625, "Septavius the Ghost God", protection_range: 6)
+        follow(0.75, range: 7)
+    }
+    wander(0.25)
+    shoot(8, 1, cooldown: 1000)
+    loot {
+        item("Health Potion", 0.25)
+        item("Magic Potion", 0.25)
+    }
+}
+
+enemy "Ghost Rogue of Septavius" {
+    follow(0.75, range: 1)
+    wander(0.25)
+    shoot(8, 1, cooldown: 1000)
+    loot {
+        item("Health Potion", 0.25)
+        item("Magic Potion", 0.25)
+    }
+}
+
+enemy "Ghost Warrior of Septavius" {
+    follow(0.75, range: 1)
+    wander(0.25)
+    shoot(8, 1, cooldown: 1000)
+    loot {
+        item("Health Potion", 0.25)
+        item("Magic Potion", 0.25)
+    }
+}
+
+enemy "Lair Ghost Archer" {
+    prioritize() {
+        protect(0.625, "Septavius the Ghost God", protection_range: 6)
+        follow(0.75, range: 7)
+    }
+    wander(0.25)
+    shoot(8, 1, cooldown: 1000)
+    loot {
+        item("Health Potion", 0.25)
+        item("Magic Potion", 0.25)
+    }
+}
+
+enemy "Lair Ghost Knight" {
+    follow(0.75, range: 1)
+    wander(0.25)
+    shoot(8, 1, cooldown: 1000)
+    loot {
+        item("Health Potion", 0.25)
+        item("Magic Potion", 0.25)
+    }
+}
+
+enemy "Lair Ghost Mage" {
+    prioritize() {
+        protect(0.625, "Septavius the Ghost God", protection_range: 6)
+        follow(0.75, range: 7)
+    }
+    wander(0.25)
+    shoot(8, 1, cooldown: 1000)
+    loot {
+        item("Health Potion", 0.25)
+        item("Magic Potion", 0.25)
+    }
+}
+
+enemy "Lair Ghost Paladin" {
+    follow(0.75, range: 1)
+    wander(0.25)
+    shoot(8, 1, cooldown: 1000)
+    heal_group(5, "Lair Ghost", cooldown: 5000)
+    loot {
+        item("Health Potion", 0.25)
+        item("Magic Potion", 0.25)
+    }
+}
+
+enemy "Lair Ghost Rogue" {
+    follow(0.75, range: 1)
+    wander(0.25)
+    shoot(8, 1, cooldown: 1000)
+    loot {
+        item("Health Potion", 0.25)
+        item("Magic Potion", 0.25)
+    }
+}
+
+enemy "Lair Ghost Warrior" {
+    follow(0.75, range: 1)
+    wander(0.25)
+    shoot(8, 1, cooldown: 1000)
+    loot {
+        item("Health Potion", 0.25)
+        item("Magic Potion", 0.25)
+    }
+}
+
+enemy "Lair Skeleton" {
+    shoot(6)
+    prioritize() {
+        follow(1, range: 1)
+        wander(0.4)
+    }
+    loot {
+        item("Health Potion", 0.05)
+        item("Magic Potion", 0.05)
+    }
+}
+
+enemy "Lair Skeleton King" {
+    shoot(10, 3, shoot_angle: 10)
+    prioritize() {
+        follow(1, range: 7)
+        wander(0.4)
+    }
+    loot {
+        tier(5, armor, 0.2)
+        threshold(0.5) { tier(6, weapon, 0.2) tier(7, weapon, 0.1) tier(8, weapon, 0.05) tier(6, armor, 0.1) tier(7, armor, 0.05) tier(3, ring, 0.1) tier(3, ability, 0.1) }
+    }
+}
+
+enemy "Lair Skeleton Mage" {
+    shoot(10)
+    prioritize() {
+        follow(1, range: 7)
+        wander(0.4)
+    }
+    loot {
+        item("Health Potion", 0.05)
+        item("Magic Potion", 0.05)
+    }
+}
+
+enemy "Lair Skeleton Swordsman" {
+    shoot(5)
+    prioritize() {
+        follow(1, range: 1)
+        wander(0.4)
+    }
+    loot {
+        item("Health Potion", 0.05)
+        item("Magic Potion", 0.05)
+    }
+}
+
+enemy "Lair Skeleton Veteran" {
+    shoot(5)
+    prioritize() {
+        follow(1, range: 1)
+        wander(0.4)
+    }
+    loot {
+        item("Health Potion", 0.05)
+        item("Magic Potion", 0.05)
+    }
+}
+
+enemy "Lair Mummy" {
+    shoot(10)
+    prioritize() {
+        follow(0.9, range: 7)
+        wander(0.4)
+    }
+    loot {
+        item("Health Potion", 0.05)
+        item("Magic Potion", 0.05)
+    }
+}
+
+enemy "Lair Mummy King" {
+    shoot(10)
+    prioritize() {
+        follow(0.9, range: 7)
+        wander(0.4)
+    }
+    loot {
+        item("Health Potion", 0.05)
+        item("Magic Potion", 0.05)
+    }
+}
+
+enemy "Lair Mummy Pharaoh" {
+    shoot(10)
+    prioritize() {
+        follow(0.9, range: 7)
+        wander(0.4)
+    }
+    loot {
+        tier(5, armor, 0.2)
+        threshold(0.5) { tier(6, weapon, 0.2) tier(7, weapon, 0.1) tier(8, weapon, 0.05) tier(6, armor, 0.1) tier(7, armor, 0.05) tier(3, ring, 0.1) tier(3, ability, 0.1) }
+    }
+}
+
+enemy "Lair Big Brown Slime" {
+    shoot(10, 3, shoot_angle: 10, cooldown: 500)
+    wander(0.1)
+    transform_on_death("Lair Little Brown Slime", 1, 6, 1)
+}
+
+enemy "Lair Little Brown Slime" {
+    shoot(10, 3, shoot_angle: 10, cooldown: 500)
+    protect(0.1, "Lair Big Brown Slime", acquire_range: 5, protection_range: 2)
+    wander(0.1)
+    loot {
+        item("Health Potion", 0.05)
+        item("Magic Potion", 0.05)
+    }
+}
+
+enemy "Lair Big Black Slime" {
+    shoot(10, cooldown: 1000)
+    wander(0.1)
+    transform_on_death("Lair Little Black Slime", 1, 4, 1)
+}
+
+enemy "Lair Medium Black Slime" {
+    shoot(10, cooldown: 1000)
+    wander(0.1)
+    transform_on_death("Lair Little Black Slime", 1, 4, 1)
+}
+
+enemy "Lair Little Black Slime" {
+    shoot(10, cooldown: 1000)
+    wander(0.1)
+    loot {
+        item("Health Potion", 0.05)
+        item("Magic Potion", 0.05)
+    }
+}
+
+enemy "Lair Construct Giant" {
+    prioritize() {
+        follow(0.8, range: 7)
+        wander(0.4)
+    }
+    shoot(10, 3, shoot_angle: 20, cooldown: 1000)
+    shoot(10, projectile: 1, cooldown: 1000)
+    loot {
+        tier(5, armor, 0.2)
+        threshold(0.5) { tier(6, weapon, 0.2) tier(7, weapon, 0.1) tier(8, weapon, 0.05) tier(6, armor, 0.1) tier(7, armor, 0.05) tier(3, ring, 0.1) tier(3, ability, 0.1) }
+    }
+}
+
+enemy "Lair Construct Titan" {
+    prioritize() {
+        follow(0.8, range: 7)
+        wander(0.4)
+    }
+    shoot(10, 3, shoot_angle: 20, cooldown: 1000)
+    shoot(10, 3, shoot_angle: 20, projectile: 1, cooldown_offset: 100, cooldown: 2000)
+    loot {
+        tier(5, armor, 0.2)
+        threshold(0.5) { tier(6, weapon, 0.2) tier(7, weapon, 0.1) tier(8, weapon, 0.05) tier(6, armor, 0.1) tier(7, armor, 0.05) tier(3, ring, 0.1) tier(3, ability, 0.1) }
+    }
+}
+
+enemy "Lair Brown Bat" {
+    wander(0.1)
+    charge(3, 8, 2000)
+    shoot(3, cooldown: 1000)
+    loot {
+        item("Health Potion", 0.05)
+        item("Magic Potion", 0.05)
+    }
+}
+
+enemy "Lair Ghost Bat" {
+    wander(0.1)
+    charge(3, 8, 2000)
+    shoot(3, cooldown: 1000)
+    loot {
+        item("Health Potion", 0.05)
+        item("Magic Potion", 0.05)
+    }
+}
+
+enemy "Lair Reaper" {
+    shoot(3)
+    follow(1.3, range: 1)
+    wander(0.1)
+    loot {
+        tier(5, armor, 0.2)
+        threshold(0.5) { tier(6, weapon, 0.2) tier(7, weapon, 0.1) tier(8, weapon, 0.05) tier(6, armor, 0.1) tier(7, armor, 0.05) tier(3, ring, 0.1) tier(3, ability, 0.1) }
+    }
+}
+
+enemy "Lair Vampire" {
+    shoot(10, cooldown: 500)
+    shoot(3, cooldown: 1000)
+    follow(1.3, range: 1)
+    wander(0.1)
+    loot {
+        item("Health Potion", 0.05)
+        item("Magic Potion", 0.05)
+    }
+}
+
+enemy "Lair Vampire King" {
+    shoot(10, cooldown: 500)
+    shoot(3, cooldown: 1000)
+    follow(1.3, range: 1)
+    wander(0.1)
+    loot {
+        tier(5, armor, 0.2)
+        threshold(0.5) { tier(6, weapon, 0.2) tier(7, weapon, 0.1) tier(8, weapon, 0.05) tier(6, armor, 0.1) tier(7, armor, 0.05) tier(3, ring, 0.1) tier(3, ability, 0.1) }
+    }
+}
+
+enemy "Lair Grey Spectre" {
+    wander(0.1)
+    shoot(10, cooldown: 1000)
+    grenade(2.5, 50, 8, cooldown: 1000)
+}
+
+enemy "Lair Blue Spectre" {
+    wander(0.1)
+    shoot(10, cooldown: 1000)
+    grenade(2.5, 70, 8, cooldown: 1000)
+}
+
+enemy "Lair White Spectre" {
+    wander(0.1)
+    shoot(10, cooldown: 1000)
+    grenade(2.5, 90, 8, cooldown: 1000)
+    loot {
+        threshold(0.5) { tier(4, ability, 0.15) }
+    }
+}
+
+enemy "Lair Burst Trap" {
+    state FinnaBustANut {
+        on player_within(3) -> Aaa
+    }
+    state Aaa {
+        shoot(8.4, count: 12, projectile: 0)
+        suicide()
+    }
+}
+
+enemy "Lair Blast Trap" {
+    state FinnaBustANut {
+        on player_within(3) -> Aaa
+    }
+    state Aaa {
+        shoot(25, projectile: 0, count: 12, cooldown: 3000)
+        suicide()
+    }
+}
+

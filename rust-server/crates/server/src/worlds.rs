@@ -37,6 +37,14 @@ pub const REALM: &str = "Realm";
 /// Everything needed to bring a world into being.
 pub struct Worlds {
     catalog: Arc<Catalog>,
+
+    /// Every enemy's compiled behaviour, given to each world as it starts.
+    ///
+    /// Compiled once and cloned per world rather than shared, because a world resolves the names in
+    /// them against the catalog and holds the result: the programs are read every tick and lifted
+    /// in and out of the world while it runs, which a shared reference cannot allow.
+    behaviours: Arc<hendra_behavior::Programs>,
+
     loadout: Loadout,
     directory: PathBuf,
 
@@ -54,7 +62,12 @@ pub struct Worlds {
 
 impl Worlds {
     /// Reads every world definition in a directory.
-    pub fn load(directory: &Path, catalog: Arc<Catalog>, loadout: Loadout) -> Worlds {
+    pub fn load(
+        directory: &Path,
+        catalog: Arc<Catalog>,
+        behaviours: Arc<hendra_behavior::Programs>,
+        loadout: Loadout,
+    ) -> Worlds {
         let mut definitions = HashMap::new();
         let mut destinations = HashMap::new();
 
@@ -100,6 +113,7 @@ impl Worlds {
 
         Worlds {
             catalog,
+            behaviours,
             loadout,
             directory: directory.to_path_buf(),
             definitions,
@@ -247,6 +261,9 @@ impl Worlds {
         );
 
         let mut world = World::new(name.to_string(), terrain, &self.catalog);
+
+        // Without this every enemy in the world stands where it was placed and waits to be shot.
+        world.set_behaviours(&self.catalog, (*self.behaviours).clone());
 
         // The nexus and the shops forbid it, in their own definitions. Without this a player could
         // teleport into a room the map author meant to be walked into.

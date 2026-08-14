@@ -1,0 +1,352 @@
+enemy "Ghost King" {
+    state Idle {
+        back_and_forth(0.3, 3)
+        on hp_below(0.99999) -> EvaluationStart1
+    }
+    state EvaluationStart1 {
+        taunt("No corporeal creature can kill my sorrow")
+        conditional_effect(invulnerable)
+        prioritize() {
+            stay_close_to_spawn(0.4, range: 3)
+            wander(0.4)
+        }
+        on timed(2500) -> EvaluationStart2
+    }
+    state EvaluationStart2 {
+        flash(255, 0.1, 60)
+        change_size(20, 140)
+        shoot(10, count: 4, shoot_angle: 30, default_angle: 0, cooldown: 1000)
+        prioritize() {
+            stay_close_to_spawn(0.4, range: 3)
+            wander(0.4)
+        }
+        on hp_below(0.87) -> EvaluationEnd
+        on timed(6000) -> EvaluationEnd
+    }
+    state EvaluationEnd {
+        taunt(0.5, "Aye, let's be miserable together")
+        on hp_below(0.875) -> HugeMob
+        on hp_below(0.952) -> Mob
+        on hp_below(0.985) -> SmallGroup
+        on hp_below(0.99999) -> Solo
+    }
+    state HugeMob {
+        taunt("What a HUGE MOB!")
+        conditional_effect(invulnerable)
+        flash(65280, 0.2, 300)
+        toss_object("Small Ghost", range: 4, angle: 0, cooldown: 100000)
+        toss_object("Small Ghost", range: 4, angle: 60, cooldown: 100000)
+        toss_object("Small Ghost", range: 4, angle: 120, cooldown: 100000)
+        toss_object("Large Ghost", range: 4, angle: 180, cooldown: 100000)
+        toss_object("Large Ghost", range: 4, angle: 240, cooldown: 100000)
+        toss_object("Large Ghost", range: 4, angle: 300, cooldown: 100000)
+        on timed(30000) -> HugeMob2
+    }
+    state HugeMob2 {
+        taunt("I feel almost manic!")
+        conditional_effect(invulnerable)
+        flash(65280, 0.2, 300)
+        toss_object("Small Ghost", range: 4, angle: 0, cooldown: 100000)
+        toss_object("Small Ghost", range: 4, angle: 60, cooldown: 100000)
+        toss_object("Small Ghost", range: 4, angle: 120, cooldown: 100000)
+        toss_object("Large Ghost", range: 4, angle: 180, cooldown: 100000)
+        toss_object("Large Ghost", range: 4, angle: 240, cooldown: 100000)
+        toss_object("Large Ghost", range: 4, angle: 300, cooldown: 100000)
+        on timed(30000) -> Company
+    }
+    state Mob {
+        taunt("There's a MOB of you.")
+        conditional_effect(invulnerable)
+        flash(65280, 0.2, 300)
+        toss_object("Small Ghost", range: 4, angle: 0, cooldown: 100000)
+        toss_object("Small Ghost", range: 4, angle: 60, cooldown: 100000)
+        toss_object("Small Ghost", range: 4, angle: 120, cooldown: 100000)
+        toss_object("Large Ghost", range: 4, angle: 180, cooldown: 100000)
+        toss_object("Large Ghost", range: 4, angle: 240, cooldown: 100000)
+        toss_object("Large Ghost", range: 4, angle: 300, cooldown: 100000)
+        on timed(30000) -> Company
+    }
+    state Company {
+        taunt("Misery loves company!")
+        toss_object("Ghost Master", range: 4, angle: 0, cooldown: 100000)
+        toss_object("Medium Ghost", range: 4, angle: 60, cooldown: 100000)
+        toss_object("Medium Ghost", range: 4, angle: 120, cooldown: 100000)
+        toss_object("Large Ghost", range: 4, angle: 180, cooldown: 100000)
+        toss_object("Large Ghost", range: 4, angle: 240, cooldown: 100000)
+        toss_object("Large Ghost", range: 4, angle: 300, cooldown: 100000)
+        on timed(2000) -> Wait
+    }
+    state SmallGroup {
+        taunt("Such a small party.")
+        conditional_effect(invulnerable)
+        flash(65280, 0.2, 300)
+        toss_object("Small Ghost", range: 4, angle: 0, cooldown: 100000)
+        toss_object("Small Ghost", range: 4, angle: 60, cooldown: 100000)
+        toss_object("Small Ghost", range: 4, angle: 120, cooldown: 100000)
+        toss_object("Medium Ghost", range: 4, angle: 180, cooldown: 100000)
+        toss_object("Medium Ghost", range: 4, angle: 240, cooldown: 100000)
+        toss_object("Medium Ghost", range: 4, angle: 300, cooldown: 100000)
+        on timed(30000) -> SmallGroup2
+    }
+    state SmallGroup2 {
+        taunt("Misery loves company!")
+        toss_object("Ghost Master", range: 4, angle: 0, cooldown: 100000)
+        toss_object("Small Ghost", range: 4, angle: 60, cooldown: 100000)
+        toss_object("Small Ghost", range: 4, angle: 120, cooldown: 100000)
+        toss_object("Medium Ghost", range: 4, angle: 180, cooldown: 100000)
+        toss_object("Medium Ghost", range: 4, angle: 240, cooldown: 100000)
+        toss_object("Medium Ghost", range: 4, angle: 300, cooldown: 100000)
+        on timed(2000) -> Wait
+    }
+    state Solo {
+        taunt("Just you?  I guess you don't have any friends to play with.")
+        conditional_effect(invulnerable)
+        flash(65280, 0.2, 10)
+        toss_object("Ghost Master", range: 4, angle: 0, cooldown: 100000)
+        toss_object("Small Ghost", range: 4, angle: 70, cooldown: 100000)
+        toss_object("Small Ghost", range: 4, angle: 140, cooldown: 100000)
+        toss_object("Small Ghost", range: 4, angle: 210, cooldown: 100000)
+        toss_object("Small Ghost", range: 4, angle: 280, cooldown: 100000)
+        on timed(1000) -> Wait
+    }
+    state Wait {
+        conditional_effect(invulnerable)
+        flash(65280, 0.2, 10000)
+        prioritize() {
+            stay_close_to_spawn(1, range: 8)
+            follow(0.6, range: 2, duration: 2000, cooldown: 2000)
+        }
+        shoot(10, cooldown: 1000)
+        state Speak {
+            taunt("I cannot be defeated while my loyal subjects sustain me!")
+            on timed(1000) -> Quiet
+        }
+        state Quiet {
+            on timed(22000) -> Speak
+        }
+        on timed(140000) -> Overly_long_combat
+    }
+    state Overly_long_combat {
+        taunt("You have sapped my energy. A curse on you!")
+        prioritize() {
+            stay_close_to_spawn(1, range: 8)
+            follow(0.6, range: 2, duration: 2000, cooldown: 2000)
+        }
+        shoot(10, cooldown: 1000)
+        order(30, "Ghost Master", "Decay")
+        order(30, "Small Ghost", "Decay")
+        order(30, "Medium Ghost", "Decay")
+        order(30, "Large Ghost", "Decay")
+        transform("Actual Ghost King")
+    }
+    state Killed {
+        taunt("I feel my flesh again! For the first time in a 1000 years I LIVE!")
+        taunt(0.5, "Will you release me?")
+        transform("Actual Ghost King")
+    }
+}
+
+enemy "Ghost Master" {
+    state Attack1 {
+        state NewLocation1 {
+            conditional_effect(invulnerable)
+            flash(4278255360, 0.2, 10)
+            prioritize() {
+                stay_close_to_spawn(2, range: 7)
+                wander(2)
+            }
+            on timed(1000) -> Att1
+        }
+        state Att1 {
+            shoot(10, count: 4, shoot_angle: 90, fixed_angle: 0, cooldown: 400)
+            on timed(9000) -> NewLocation1
+        }
+        on hp_below(0.99) -> Attack2
+    }
+    state Attack2 {
+        state Intro_2 {
+            conditional_effect(invulnerable)
+            flash(4278255360, 0.2, 10)
+            change_size(20, 140)
+            on timed(1000) -> NewLocation2
+        }
+        state NewLocation2 {
+            conditional_effect(invulnerable)
+            flash(4278255360, 0.2, 10)
+            prioritize() {
+                stay_close_to_spawn(2, range: 7)
+                wander(2)
+            }
+            on timed(1000) -> Att2
+        }
+        state Att2 {
+            shoot(10, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 400)
+            on timed(6000) -> NewLocation2
+        }
+        on hp_below(0.98) -> Attack3
+    }
+    state Attack3 {
+        state Intro {
+            conditional_effect(invulnerable)
+            flash(4278255360, 0.2, 10)
+            change_size(20, 180)
+            on timed(1000) -> NewLocation3
+        }
+        state NewLocation3 {
+            conditional_effect(invulnerable)
+            flash(4278255360, 0.2, 10)
+            prioritize() {
+                stay_close_to_spawn(2, range: 7)
+                wander(2)
+            }
+            on timed(1000) -> Att3
+        }
+        state Att3 {
+            shoot(10, count: 4, shoot_angle: 90, fixed_angle: 22.5, cooldown: 400)
+            on timed(3000) -> NewLocation3
+        }
+        on hp_below(0.94) -> KillKing
+    }
+    state KillKing {
+        taunt("Your secret soul master is dying, Your Majesty")
+        order(30, "Ghost King", "Killed")
+        on timed(3000) -> Suicide
+    }
+    state Suicide {
+        taunt("I cannot live with my betrayal...")
+        shoot(0, count: 8, shoot_angle: 45, fixed_angle: 22.5)
+        decay(0)
+    }
+    state Decay {
+        decay(0)
+    }
+    loot {
+        item("Purple Drake Egg", 0.03)
+        item("White Drake Egg", 0.001)
+        item("Tincture of Dexterity", 0.02)
+    }
+}
+
+enemy "Actual Ghost King" {
+    taunt(0.9, "I am still so very alone")
+    change_size(-20, 95)
+    flash(4278190080, 0.4, 100)
+    back_and_forth(0.5, distance: 3)
+    loot {
+        tier(2, ring, 0.25)
+        tier(3, ring, 0.08)
+        tier(7, weapon, 0.3)
+        tier(8, weapon, 0.1)
+        tier(7, armor, 0.3)
+        tier(8, armor, 0.1)
+        tier(2, ability, 0.7)
+        tier(3, ability, 0.16)
+        tier(4, ability, 0.02)
+        item("Health Potion", 0.7)
+        item("Magic Potion", 0.7)
+    }
+}
+
+enemy "Small Ghost" {
+    transform_on_death("Medium Ghost")
+    state NewLocation {
+        taunt(0.1, "Switch!")
+        conditional_effect(invulnerable)
+        flash(4278255360, 0.2, 10)
+        prioritize() {
+            stay_close_to_spawn(2, range: 7)
+            wander(2)
+        }
+        on timed(1000) -> Attack
+    }
+    state Attack {
+        taunt(0.1, "Save the King's Soul!")
+        shoot(10, count: 4, shoot_angle: 90, fixed_angle: 0, cooldown: 400)
+        on timed(9000) -> NewLocation
+    }
+    state Decay {
+        decay(0)
+    }
+    decay(160000)
+    loot {
+        item("Magic Potion", 0.02)
+        item("Ring of Magic", 0.02)
+        item("Ring of Attack", 0.02)
+    }
+}
+
+enemy "Medium Ghost" {
+    transform_on_death("Large Ghost")
+    state Intro {
+        conditional_effect(invulnerable)
+        flash(4278255360, 0.2, 10)
+        change_size(20, 140)
+        on timed(1000) -> NewLocation
+    }
+    state NewLocation {
+        conditional_effect(invulnerable)
+        flash(4278255360, 0.2, 10)
+        prioritize() {
+            stay_close_to_spawn(2, range: 7)
+            wander(2)
+        }
+        on timed(1000) -> Attack
+    }
+    state Attack {
+        taunt(0.02, "I come back more powerful than you could ever imagine")
+        shoot(10, count: 4, shoot_angle: 90, fixed_angle: 45, cooldown: 800)
+        on timed(6000) -> NewLocation
+    }
+    state Decay {
+        decay(0)
+    }
+    decay(160000)
+    loot {
+        item("Magic Potion", 0.02)
+        item("Ring of Speed", 0.02)
+        item("Ring of Attack", 0.02)
+        item("Iron Quiver", 0.02)
+    }
+}
+
+enemy "Large Ghost" {
+    state Intro {
+        conditional_effect(invulnerable)
+        flash(4278255360, 0.2, 10)
+        change_size(20, 180)
+        on timed(1000) -> NewLocation
+    }
+    state NewLocation {
+        taunt(0.01, "The Ghost King protects this sacred ground", "The Ghost King gave his heart to the Ghost Master.  He cannot die.", "Only the Secret Ghost Master can kill the King.")
+        conditional_effect(invulnerable)
+        flash(4278255360, 0.2, 10)
+        prioritize() {
+            stay_close_to_spawn(2, range: 7)
+            wander(2)
+        }
+        on timed(1000) -> Attack
+    }
+    state Attack {
+        taunt(0.01, "The King's wife died here.  For her memory.")
+        shoot(10, count: 8, shoot_angle: 45, fixed_angle: 22.5, cooldown: 800)
+        on timed(3000) -> NewLocation
+        on entity_not_exists("Ghost King", 30) -> AttackKingGone
+    }
+    state AttackKingGone {
+        taunt(0.01, "The King's wife died here.  For her memory.")
+        shoot(10, count: 8, shoot_angle: 45, fixed_angle: 22.5, cooldown: 800, cooldown_offset: 800)
+        transform_on_death("Imp", min: 2, max: 3)
+        on timed(3000) -> NewLocation
+    }
+    state Decay {
+        decay(0)
+    }
+    decay(160000)
+    loot {
+        item("Magic Potion", 0.02)
+        item("Tincture of Defense", 0.02)
+        item("Blue Drake Egg", 0.02)
+        item("Yellow Drake Egg", 0.02)
+    }
+}
+

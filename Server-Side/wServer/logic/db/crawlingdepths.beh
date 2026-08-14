@@ -1,5 +1,58 @@
 enemy "Son of Arachna" {
     realm_portal_drop()
+    state default {
+        on player_within(7.2) -> fight
+    }
+    state fight {
+        if() {
+            entity_count_greater_than("Yellow Son of Arachna Giant Egg Sac", 9999, 0)
+            shoot(25, projectile: 0, count: 8, cooldown: 3000, cooldown_offset: 4000)
+        }
+    }
+    state shrink {
+        wander(0.4)
+        conditional_effect(invulnerable)
+        change_size(-15, 25)
+        on timed(1000) -> smallAttack
+    }
+    state smallAttack {
+        prioritize() {
+            follow(1, acquire_range: 15, range: 8)
+            wander(1)
+        }
+        shoot(10, predictive: 1, cooldown: 750)
+        shoot(10, 6, projectile: 1, predictive: 1, cooldown: 1000)
+        on timed(10000) -> grow
+    }
+    state grow {
+        wander(0.1)
+        conditional_effect(invulnerable)
+        change_size(35, 200)
+        on timed(1050) -> bigAttack
+    }
+    state bigAttack {
+        prioritize() {
+            follow(0.2)
+            wander(0.1)
+        }
+        shoot(10, projectile: 2, predictive: 1, cooldown: 2000)
+        shoot(10, projectile: 2, predictive: 1, cooldown_offset: 300, cooldown: 2000)
+        shoot(10, 3, projectile: 3, predictive: 1, cooldown_offset: 100, cooldown: 2000)
+        shoot(10, 3, projectile: 3, predictive: 1, cooldown_offset: 400, cooldown: 2000)
+        on timed(10000) -> normalize
+    }
+    state normalize {
+        wander(0.3)
+        conditional_effect(invulnerable)
+        change_size(-20, 100)
+    }
+    loot {
+        threshold(0.03) { tier(10, weapon, 0.06) tier(11, weapon, 0.05) tier(12, weapon, 0.04) tier(5, ability, 0.06) tier(6, ability, 0.04) tier(11, armor, 0.06) tier(12, armor, 0.05) tier(13, armor, 0.04) tier(5, ring, 0.05) item("Potion of Mana", 1) item("Doku No Ken", 0.01) }
+    }
+}
+
+enemy "Son of Arachna" {
+    realm_portal_drop()
     state Idle {
         conditional_effect(invulnerable)
         on player_within(9) -> MakeWeb

@@ -1,0 +1,460 @@
+enemy "Oryx Stone Guardian Right" {
+    state Idle {
+        conditional_effect(invulnerable, true)
+        on player_within(2) -> Order
+    }
+    state Order {
+        order(10, "Oryx Stone Guardian Left", "Start")
+        on timed(0) -> Start
+    }
+    state Start {
+        conditional_effect(invulnerable)
+        flash(12632256, 0.5, 3)
+        on timed(1500, "Lets go") -> Lets_go
+    }
+    state Together_is_better {
+        on entity_not_exists("Oryx Stone Guardian Left", 100, "Forever Alone") -> Forever_Alone
+        state Lets_go {
+            on timed(10000) -> Circle
+            state Imma_Follow {
+                follow(1, 2, 0.3)
+                shoot(5, 5, shoot_angle: 5, cooldown: 1000)
+                on timed(5000, "Imma chill") -> Imma_chill
+            }
+            state Imma_chill {
+                prioritize() {
+                    stay_close_to_spawn(0.5, 3)
+                    wander(0.5)
+                }
+                shoot(0, 10, projectile: 2, fixed_angle: 0, cooldown: 1000)
+                on timed(5000, "Imma Follow") -> Imma_Follow
+            }
+        }
+        state Circle {
+            state Prepare {
+                move_to(speed: 1, x: 127.5, y: 39.5)
+                on entity_exists("Oryx Stone Guardian Left", 1) -> Prepare2
+            }
+            state Prepare2 {
+                move_to(speed: 1, x: 130.5, y: 39.5)
+                on timed(1000) -> PrepareEnd
+            }
+            state PrepareEnd {
+                orbit(1, 5, target: "Oryx Guardian TaskMaster")
+                state cpe_1 {
+                    shoot(0, 2, fixed_angle: 0, projectile: 1)
+                    on timed(200) -> cpe_2
+                }
+                state cpe_2 {
+                    shoot(0, 2, fixed_angle: 36, projectile: 1)
+                    on timed(200) -> cpe_3
+                }
+                state cpe_3 {
+                    shoot(0, 2, fixed_angle: 72, projectile: 1)
+                    on timed(200) -> cpe_4
+                }
+                state cpe_4 {
+                    shoot(0, 2, fixed_angle: 108, projectile: 1)
+                    on timed(200) -> cpe_5
+                }
+                state cpe_5 {
+                    shoot(0, 2, fixed_angle: 144, projectile: 1)
+                    on timed(200) -> cpe_6
+                }
+                state cpe_6 {
+                    shoot(0, 2, fixed_angle: 180, projectile: 1)
+                    on timed(200) -> cpe_7
+                }
+                state cpe_7 {
+                    shoot(0, 2, fixed_angle: 216, projectile: 1)
+                    on timed(200) -> cpe_8
+                }
+                state cpe_8 {
+                    shoot(0, 2, fixed_angle: 252, projectile: 1)
+                    on timed(200) -> cpe_9
+                }
+                state cpe_9 {
+                    shoot(0, 2, fixed_angle: 288, projectile: 1)
+                    on timed(200) -> cpe_10
+                }
+                state cpe_10 {
+                    shoot(0, 2, fixed_angle: 324, projectile: 1)
+                    on timed(200) -> checkEntities
+                }
+                state checkEntities {
+                    on player_within(3, "cpe_Imma Follow") -> cpe_Imma_Follow
+                    on no_player_within(3, "cpe_Imma chill") -> cpe_Imma_chill
+                }
+                state cpe_x {
+                    on timed(5000, "Move Sideways") -> Move_Sideways
+                    state cpe_Imma_Follow {
+                        follow(1, 3, 0.3)
+                        shoot(5, 5, cooldown: 1000)
+                        on timed(2500, "cpe_Imma chill") -> cpe_Imma_chill
+                    }
+                    state cpe_Imma_chill {
+                        prioritize() {
+                            stay_close_to_spawn(0.5, 3)
+                            wander(0.5)
+                        }
+                        shoot(0, 10, projectile: 2, fixed_angle: 0, cooldown: 1000)
+                        on timed(2500, "cpe_Imma Follow") -> cpe_Imma_Follow
+                    }
+                }
+            }
+        }
+        state Move_Sideways {
+            state msw_prepare {
+                move_to(speed: 1, x: 141.5, y: 39.5)
+                on timed(1500) -> msw_shoot
+            }
+            state msw_shoot {
+                shoot(0, 2, fixed_angle: 90, cooldown_offset: 0)
+                shoot(0, 2, fixed_angle: 85.5, cooldown_offset: 100)
+                shoot(0, 2, fixed_angle: 81, cooldown_offset: 200)
+                shoot(0, 2, fixed_angle: 76.5, cooldown_offset: 300)
+                shoot(0, 2, fixed_angle: 72, cooldown_offset: 400)
+                shoot(0, 2, fixed_angle: 67.5, cooldown_offset: 500)
+                shoot(0, 2, fixed_angle: 63, cooldown_offset: 600)
+                shoot(0, 2, fixed_angle: 58.5, cooldown_offset: 700)
+                shoot(0, 2, fixed_angle: 54, cooldown_offset: 800)
+                shoot(0, 2, fixed_angle: 49.5, cooldown_offset: 900)
+                shoot(0, 2, fixed_angle: 45, cooldown_offset: 1000)
+                shoot(0, 2, fixed_angle: 40.5, cooldown_offset: 1100)
+                shoot(0, 2, fixed_angle: 36, cooldown_offset: 1200)
+                shoot(0, 2, fixed_angle: 31.5, cooldown_offset: 1300)
+                shoot(0, 2, fixed_angle: 27, cooldown_offset: 1400)
+                shoot(0, 2, fixed_angle: 22.5, cooldown_offset: 1500)
+                shoot(0, 2, fixed_angle: 18, cooldown_offset: 1600)
+                shoot(0, 2, fixed_angle: 13.5, cooldown_offset: 1700)
+                shoot(0, 2, fixed_angle: 9, cooldown_offset: 1800)
+                shoot(0, 2, fixed_angle: 4.5, cooldown_offset: 1900)
+            }
+        }
+    }
+    state Forever_Alone {
+    }
+    loot {
+        threshold(0.1) { item("Ancient Stone Sword", 0.02) item("Potion of Defense", 1) item("Gauntlet Chaos", 0.001) tier(8, weapon, 0.1) tier(7, armor, 0.1) tier(3, ring, 0.1) }
+    }
+}
+
+enemy "Oryx Stone Guardian Left" {
+    state Idle {
+        conditional_effect(invulnerable, true)
+        on player_within(2) -> Order
+    }
+    state Order {
+        order(10, "Oryx Stone Guardian Right", "Start")
+        on timed(0) -> Start
+    }
+    state Start {
+        conditional_effect(invulnerable)
+        flash(12632256, 0.5, 3)
+        on timed(1500, "Together is better") -> Together_is_better
+    }
+    state Together_is_better {
+        on entity_not_exists("Oryx Stone Guardian Right", 100, "Forever Alone") -> Forever_Alone
+        state Lets_go {
+            on timed(10000) -> Circle
+            state Imma_Follow {
+                follow(1, 2, 0.3)
+                shoot(5, 5, shoot_angle: 5, cooldown: 1000)
+                on timed(5000, "Imma chill") -> Imma_chill
+            }
+            state Imma_chill {
+                prioritize() {
+                    stay_close_to_spawn(0.5, 3)
+                    wander(0.5)
+                }
+                shoot(0, 10, projectile: 2, fixed_angle: 0, cooldown: 1000)
+                on timed(5000, "Imma Follow") -> Imma_Follow
+            }
+        }
+        state Circle {
+            state Prepare {
+                move_to(speed: 1, x: 127.5, y: 39.5)
+                on entity_exists("Oryx Stone Guardian Right", 1) -> Prepare2
+            }
+            state Prepare2 {
+                move_to(speed: 1, x: 124.5, y: 39.5)
+                on timed(1000) -> PrepareEnd
+            }
+            state PrepareEnd {
+                orbit(1, 5, target: "Oryx Guardian TaskMaster")
+                state cpe_1 {
+                    shoot(0, 2, fixed_angle: 0, projectile: 1)
+                    on timed(200) -> cpe_2
+                }
+                state cpe_2 {
+                    shoot(0, 2, fixed_angle: 36, projectile: 1)
+                    on timed(200) -> cpe_3
+                }
+                state cpe_3 {
+                    shoot(0, 2, fixed_angle: 72, projectile: 1)
+                    on timed(200) -> cpe_4
+                }
+                state cpe_4 {
+                    shoot(0, 2, fixed_angle: 108, projectile: 1)
+                    on timed(200) -> cpe_5
+                }
+                state cpe_5 {
+                    shoot(0, 2, fixed_angle: 144, projectile: 1)
+                    on timed(200) -> cpe_6
+                }
+                state cpe_6 {
+                    shoot(0, 2, fixed_angle: 180, projectile: 1)
+                    on timed(200) -> cpe_7
+                }
+                state cpe_7 {
+                    shoot(0, 2, fixed_angle: 216, projectile: 1)
+                    on timed(200) -> cpe_8
+                }
+                state cpe_8 {
+                    shoot(0, 2, fixed_angle: 252, projectile: 1)
+                    on timed(200) -> cpe_9
+                }
+                state cpe_9 {
+                    shoot(0, 2, fixed_angle: 288, projectile: 1)
+                    on timed(200) -> cpe_10
+                }
+                state cpe_10 {
+                    shoot(0, 2, fixed_angle: 324, projectile: 1)
+                    on timed(200) -> checkEntities
+                }
+                state checkEntities {
+                    on player_within(3, "cpe_Imma Follow") -> cpe_Imma_Follow
+                    on no_player_within(3, "cpe_Imma chill") -> cpe_Imma_chill
+                }
+                state cpe_x {
+                    on timed(5000, "Move Sideways") -> Move_Sideways
+                    state cpe_Imma_Follow {
+                        follow(1, 3, 0.3)
+                        shoot(5, 5, cooldown: 1000)
+                        on timed(2500, "cpe_Imma chill") -> cpe_Imma_chill
+                    }
+                    state cpe_Imma_chill {
+                        prioritize() {
+                            stay_close_to_spawn(0.5, 3)
+                            wander(0.5)
+                        }
+                        shoot(0, 10, projectile: 2, fixed_angle: 0, cooldown: 1000)
+                        on timed(2500, "cpe_Imma Follow") -> cpe_Imma_Follow
+                    }
+                }
+            }
+        }
+        state Move_Sideways {
+            state msw_prepare {
+                move_to(speed: 1, x: 113.5, y: 39.5)
+                on timed(1500) -> msw_shoot
+            }
+            state msw_shoot {
+                shoot(0, 2, fixed_angle: 90, cooldown_offset: 0)
+                shoot(0, 2, fixed_angle: 85.5, cooldown_offset: 100)
+                shoot(0, 2, fixed_angle: 81, cooldown_offset: 200)
+                shoot(0, 2, fixed_angle: 76.5, cooldown_offset: 300)
+                shoot(0, 2, fixed_angle: 72, cooldown_offset: 400)
+                shoot(0, 2, fixed_angle: 67.5, cooldown_offset: 500)
+                shoot(0, 2, fixed_angle: 63, cooldown_offset: 600)
+                shoot(0, 2, fixed_angle: 58.5, cooldown_offset: 700)
+                shoot(0, 2, fixed_angle: 54, cooldown_offset: 800)
+                shoot(0, 2, fixed_angle: 49.5, cooldown_offset: 900)
+                shoot(0, 2, fixed_angle: 45, cooldown_offset: 1000)
+                shoot(0, 2, fixed_angle: 40.5, cooldown_offset: 1100)
+                shoot(0, 2, fixed_angle: 36, cooldown_offset: 1200)
+                shoot(0, 2, fixed_angle: 31.5, cooldown_offset: 1300)
+                shoot(0, 2, fixed_angle: 27, cooldown_offset: 1400)
+                shoot(0, 2, fixed_angle: 22.5, cooldown_offset: 1500)
+                shoot(0, 2, fixed_angle: 18, cooldown_offset: 1600)
+                shoot(0, 2, fixed_angle: 13.5, cooldown_offset: 1700)
+                shoot(0, 2, fixed_angle: 9, cooldown_offset: 1800)
+                shoot(0, 2, fixed_angle: 4.5, cooldown_offset: 1900)
+            }
+        }
+    }
+    state Forever_Alone {
+    }
+    loot {
+        threshold(0.1) { item("Ancient Stone Sword", 0.02) item("Gauntlet Mayhem", 0.001) item("Potion of Defense", 1) tier(8, weapon, 0.1) tier(7, armor, 0.1) tier(3, ring, 0.1) }
+    }
+}
+
+enemy "Oryx Guardian TaskMaster" {
+    conditional_effect(invincible, true)
+    state Idle {
+        on entities_not_exists(100, "Oryx Stone Guardian Right", "Oryx Stone Guardian Left") -> Death
+    }
+    state Death {
+        spawn("Oryx's Chamber Portal", 1, 1)
+        suicide()
+    }
+}
+
+enemy "Oryx's Living Floor Fire Down" {
+    state Idle {
+        on player_within(20) -> Toss
+    }
+    state Toss {
+        toss_object("Quiet Bomb", 10, cooldown: 1000)
+        on no_player_within(21) -> Idle
+        on player_within(5, "Shoot and Toss") -> Shoot_and_Toss
+    }
+    state Shoot_and_Toss {
+        on no_player_within(21) -> Idle
+        on no_player_within(6) -> Toss
+        shoot(0, 18, fixed_angle: 0)
+        toss_object("Quiet Bomb", 10, cooldown: 1000)
+    }
+}
+
+enemy "Oryx Knight" {
+    state waiting_for_u_bae__3 {
+        on player_within(10, "tim 4 rekkings") -> tim_4_rekkings
+    }
+    state tim_4_rekkings {
+        prioritize() {
+            wander(0.2)
+            follow(0.6, 10, 3, -1, 0)
+        }
+        shoot(10, 3, 20, 0, cooldown: 350)
+        on timed(5000, "tim 4 singular rekt") -> tim_4_singular_rekt
+    }
+    state tim_4_singular_rekt {
+        prioritize() {
+            wander(0.2)
+            follow(0.7, 10, 3, -1, 0)
+        }
+        shoot(10, 1, projectile: 0, cooldown: 50)
+        shoot(10, 1, projectile: 1, cooldown: 1000)
+        shoot(10, 1, projectile: 2, cooldown: 450)
+        on timed(2500, "tim 4 rekkings") -> tim_4_rekkings
+    }
+}
+
+enemy "Oryx Pet" {
+    state swagoo_baboon {
+        on player_within(10) -> anuspiddle
+    }
+    state anuspiddle {
+        prioritize() {
+            wander(0.2)
+            follow(0.6, 10, 0, -1, 0)
+        }
+        shoot(10, 2, shoot_angle: 20, projectile: 0, cooldown: 1)
+        shoot(10, 1, projectile: 0, cooldown: 1)
+    }
+}
+
+enemy "Oryx Insect Commander" {
+    state lol_jordan_is_a_nub {
+        prioritize() {
+            wander(0.2)
+        }
+        reproduce("Oryx Insect Minion", 10, 20, 1)
+        shoot(10, 1, projectile: 0, cooldown: 900)
+    }
+}
+
+enemy "Oryx Insect Minion" {
+    state its_SWARMING_time {
+        prioritize() {
+            wander(0.2)
+            stay_close_to_spawn(0.4, 8)
+            follow(0.8, 10, 1, -1, 0)
+        }
+        shoot(10, 5, projectile: 0, cooldown: 1500)
+        shoot(10, 1, projectile: 0, cooldown: 230)
+    }
+}
+
+enemy "Oryx Suit of Armor" {
+    state idle {
+        on player_within(8, "attack me pl0x") -> attack_me_pl0x
+    }
+    state attack_me_pl0x {
+        on damage_taken(1, "jordan is stanking") -> jordan_is_stanking
+    }
+    state jordan_is_stanking {
+        prioritize() {
+            wander(0.2)
+            follow(0.4, 10, 2, -1, 0)
+        }
+        set_alt_texture(1)
+        shoot(10, 2, 15, 0, cooldown: 600)
+        on hp_below(0.2) -> heal
+    }
+    state heal {
+        conditional_effect(invulnerable)
+        set_alt_texture(0)
+        shoot(10, 6, projectile: 0, cooldown: 200)
+        heal_self(cooldown: 2000, amount: 200)
+        on timed(1500, "jordan is stanking") -> jordan_is_stanking
+    }
+}
+
+enemy "Oryx Eye Warrior" {
+    state swaggin {
+        on player_within(10) -> penispiddle
+    }
+    state penispiddle {
+        prioritize() {
+            follow(0.6, 10, 0, -1, 0)
+        }
+        shoot(10, 5, projectile: 0, cooldown: 1000)
+        shoot(10, 1, projectile: 1, cooldown: 500)
+    }
+}
+
+enemy "Oryx Brute" {
+    state swaggin {
+        on player_within(10) -> piddle
+    }
+    state piddle {
+        prioritize() {
+            wander(0.2)
+            follow(0.4, 10, 1, -1, 0)
+        }
+        shoot(10, 5, projectile: 1, cooldown: 1000)
+        reproduce("Oryx Eye Warrior", 10, 4, 2)
+        on timed(5000) -> charge
+    }
+    state charge {
+        prioritize() {
+            wander(0.3)
+            follow(1.2, 10, 1, -1, 0)
+        }
+        shoot(10, 5, projectile: 1, cooldown: 1000)
+        shoot(10, 5, projectile: 2, cooldown: 750)
+        reproduce("Oryx Eye Warrior", 10, 4, 2)
+        shoot(10, 3, 10, projectile: 0, cooldown: 300)
+        on timed(4000) -> piddle
+    }
+}
+
+enemy "Quiet Bomb" {
+    conditional_effect(invincible, true)
+    state Idle {
+        state Tex1 {
+            on timed(250) -> Tex2
+        }
+        state Tex2 {
+            set_alt_texture(1)
+            on timed(250) -> Tex3
+        }
+        state Tex3 {
+            set_alt_texture(0)
+            on timed(250) -> Tex4
+        }
+        state Tex4 {
+            set_alt_texture(1)
+            on timed(250) -> Explode
+        }
+    }
+    state Explode {
+        set_alt_texture(0)
+        shoot(0, 18, fixed_angle: 0)
+        suicide()
+    }
+}
+

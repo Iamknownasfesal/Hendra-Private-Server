@@ -64,6 +64,16 @@ pub struct Mind {
     /// The direction a wander is currently heading, so it drifts rather than jitters.
     wander_angle: f32,
 
+    /// Which way the current dart is going, and how much of it is left.
+    buzz_angle: f32,
+    buzz_remaining: f32,
+
+    /// How long the tick being run is.
+    ///
+    /// Held rather than threaded through, because one behaviour in nine hundred needs it and giving
+    /// every one of them an argument for it would be paying everywhere for a single caller.
+    elapsed_ms: u32,
+
     /// The deadline a `timed_random` transition drew on entering this state.
     ///
     /// Drawn once rather than rolled every tick, because rolling would make the transition fire at
@@ -111,6 +121,9 @@ impl Mind {
             // Zero is a fixed point of the generator below, so it is never a valid seed.
             seed: if seed == 0 { 0x9e37_79b9 } else { seed },
             wander_angle: 0.0,
+            buzz_angle: 0.0,
+            buzz_remaining: 0.0,
+            elapsed_ms: 0,
             deadline_ms: 0,
             damage_in_state: 0,
             phase: 0.0,
@@ -196,6 +209,7 @@ impl Mind {
         out: &mut Vec<Action>,
     ) {
         out.clear();
+        self.elapsed_ms = elapsed_ms;
         self.in_state_ms = self.in_state_ms.saturating_add(elapsed_ms);
         self.damage_in_state = self.damage_in_state.saturating_add(senses.damage_taken);
 
@@ -389,6 +403,46 @@ impl Mind {
 
                 out.push(Action::Move {
                     angle: self.wander_angle,
+                    speed: *speed,
+                });
+                *has_moved = true;
+                1
+            }
+
+            Primitive::Buzz {
+                speed,
+                distance,
+                cooldown_ms,
+            } => {
+                if *has_moved {
+                    return 1;
+                }
+
+                // Waiting between darts is what makes this buzzing rather than walking. The wait is
+                // held in the same cooldown slot the behaviour would use to fire, since a dart and a
+                // shot are both "this behaviour acted".
+                if self.cooldowns.get(slot).copied().unwrap_or(0) > 0 {
+                    return 1;
+                }
+
+                // A new heading only once the last dart has been spent, so it travels in straight
+                // short bursts rather than shivering on the spot.
+                if self.buzz_remaining <= 0.0 {
+                    // One of the eight compass directions, as the original draws it: two integers
+                    // in minus one to one, never both zero.
+                    let eighth = (self.random() * 8.0) as u32 % 8;
+                    self.buzz_angle = eighth as f32 * std::f32::consts::FRAC_PI_4;
+                    self.buzz_remaining = *distance;
+
+                    if let Some(cooldown) = self.cooldowns.get_mut(slot) {
+                        *cooldown = *cooldown_ms;
+                    }
+                }
+
+                self.buzz_remaining -= *speed * (self.elapsed_ms as f32 / 1000.0);
+
+                out.push(Action::Move {
+                    angle: self.buzz_angle,
                     speed: *speed,
                 });
                 *has_moved = true;

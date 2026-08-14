@@ -1,0 +1,188 @@
+enemy "Skeleton" {
+    shoot(3)
+    state Default {
+        prioritize() {
+            follow(1, range: 1)
+            wander(0.4)
+        }
+    }
+    state Protect {
+        prioritize() {
+            protect(1, "Deathmage")
+            wander(0.4)
+        }
+        on entity_not_exists("Deathmage", 10) -> Default
+    }
+    state Circling {
+        prioritize() {
+            orbit(1, 10)
+            wander(0.4)
+        }
+        on entity_not_exists("Deathmage", 10) -> Default
+    }
+    state Engaging {
+        prioritize() {
+            follow(1, acquire_range: 15, range: 1)
+            wander(0.4)
+        }
+        on entity_not_exists("Deathmage", 10) -> Default
+    }
+    loot {
+        item("Long Sword", 0.02)
+        item("Dirk", 0.02)
+    }
+}
+
+enemy "Skeleton Swordsman" {
+    shoot(3)
+    state Default {
+        prioritize() {
+            follow(1, range: 1)
+            wander(0.4)
+        }
+    }
+    state Protect {
+        prioritize() {
+            protect(1, "Deathmage")
+            wander(0.4)
+        }
+        on entity_not_exists("Deathmage", 10) -> Default
+    }
+    state Circling {
+        prioritize() {
+            orbit(1, 10)
+            wander(0.4)
+        }
+        on entity_not_exists("Deathmage", 10) -> Default
+    }
+    state Engaging {
+        prioritize() {
+            follow(1, acquire_range: 15, range: 1)
+            wander(0.4)
+        }
+        on entity_not_exists("Deathmage", 10) -> Default
+    }
+    loot {
+        item("Long Sword", 0.03)
+        item("Steel Shield", 0.02)
+        item("Bronze Helm", 0.02)
+    }
+}
+
+enemy "Skeleton Veteran" {
+    shoot(3)
+    state Default {
+        prioritize() {
+            follow(1, range: 1)
+            wander(0.4)
+        }
+    }
+    state Protect {
+        prioritize() {
+            protect(1, "Deathmage")
+            wander(0.4)
+        }
+        on entity_not_exists("Deathmage", 10) -> Default
+    }
+    state Circling {
+        prioritize() {
+            orbit(1, 10)
+            wander(0.4)
+        }
+        on entity_not_exists("Deathmage", 10) -> Default
+    }
+    state Engaging {
+        prioritize() {
+            follow(1, acquire_range: 15, range: 1)
+            wander(0.4)
+        }
+        on entity_not_exists("Deathmage", 10) -> Default
+    }
+    loot {
+        item("Long Sword", 0.03)
+        item("Golden Shield", 0.02)
+        item("Cloak of Darkness", 0.01)
+        item("Spider Venom", 0.01)
+    }
+}
+
+enemy "Skeleton Mage" {
+    shoot(10)
+    state Default {
+        prioritize() {
+            follow(1, range: 7)
+            wander(0.4)
+        }
+    }
+    state Protect {
+        prioritize() {
+            protect(1, "Deathmage")
+            wander(0.4)
+        }
+        on entity_not_exists("Deathmage", 10) -> Default
+    }
+    state Circling {
+        prioritize() {
+            orbit(1, 10)
+            wander(0.4)
+        }
+        on entity_not_exists("Deathmage", 10) -> Default
+    }
+    state Engaging {
+        prioritize() {
+            follow(1, acquire_range: 15, range: 1)
+            wander(0.4)
+        }
+        on entity_not_exists("Deathmage", 10) -> Default
+    }
+    loot {
+        item("Missile Wand", 0.02)
+        item("Comet Staff", 0.02)
+        item("Comet Staff", 0.02)
+        item("Fire Nova Spell", 0.02)
+    }
+}
+
+enemy "Deathmage" {
+    state Waiting {
+        prioritize() {
+            stay_close_to_spawn(0.8, 5)
+            wander(0.4)
+        }
+        order(10, "Skeleton", "Protect")
+        order(10, "Skeleton Swordsman", "Protect")
+        order(10, "Skeleton Veteran", "Protect")
+        order(10, "Skeleton Mage", "Protect")
+        on player_within(15) -> Attacking
+    }
+    state Attacking {
+        taunt(0.2, 2000, "{PLAYER}, you will soon be my undead slave!", "My skeletons will make short work of you.", "You will never leave this graveyard alive!")
+        prioritize() {
+            stay_close_to_spawn(0.8, 5)
+            follow(0.8, range: 8)
+            wander(0.4)
+        }
+        shoot(10, count: 3, shoot_angle: 15, predictive: 1)
+        state Circling {
+            orbit(0.8, 5)
+            order(10, "Skeleton", "Circling")
+            order(10, "Skeleton Swordsman", "Circling")
+            order(10, "Skeleton Veteran", "Circling")
+            order(10, "Skeleton Mage", "Circling")
+            on timed(2000) -> Engaging
+        }
+        state Engaging {
+            order(10, "Skeleton", "Engaging")
+            order(10, "Skeleton Swordsman", "Engaging")
+            order(10, "Skeleton Veteran", "Engaging")
+            order(10, "Skeleton Mage", "Engaging")
+            on timed(2000) -> Circling
+        }
+        on no_player_within(30) -> Waiting
+    }
+    spawn("Skeleton", max_children: 4, cooldown: 8000, gives_no_xp: false)
+    spawn("Skeleton Swordsman", max_children: 2, cooldown: 8000, gives_no_xp: false)
+    spawn("Skeleton Veteran", max_children: 1, cooldown: 8000, gives_no_xp: false)
+    spawn("Skeleton Mage", max_children: 1, cooldown: 8000, gives_no_xp: false)
+}
+

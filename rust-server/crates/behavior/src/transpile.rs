@@ -66,7 +66,12 @@ impl Report {
 pub fn transpile(source: &str, report: &mut Report) -> String {
     let mut out = String::new();
 
-    let (enemies, unreadable) = crate::csharp::read_enemies_reporting(source);
+    // Commented-out code is not code. Two enemies in the database are written inside block
+    // comments, and converting them made one of them a second definition of a boss that already
+    // exists: whichever of the two the host happened to keep decided how that fight went.
+    let source = strip_comments(source);
+
+    let (enemies, unreadable) = crate::csharp::read_enemies_reporting(&source);
     report.unreadable += unreadable;
 
     for enemy in enemies {
@@ -77,6 +82,89 @@ pub fn transpile(source: &str, report: &mut Report) -> String {
                 report.enemies += 1;
             }
             Err(reason) => report.skipped.push((enemy.name.clone(), reason)),
+        }
+    }
+
+    out
+}
+
+/// Removes C# comments, leaving everything else where it was.
+///
+/// Replaces each comment with spaces rather than deleting it, so every byte that is kept stays at
+/// the offset it had: the reader reports positions, and a position into a shortened copy points at
+/// the wrong line.
+///
+/// String literals are respected, or a URL in a message would swallow the rest of its line.
+fn strip_comments(source: &str) -> String {
+    let bytes: Vec<char> = source.chars().collect();
+    let mut out = String::with_capacity(source.len());
+
+    let mut at = 0;
+    let mut in_string = false;
+    let mut in_char = false;
+
+    while at < bytes.len() {
+        let here = bytes[at];
+        let next = bytes.get(at + 1).copied();
+
+        if in_string || in_char {
+            out.push(here);
+
+            // An escaped quote does not end the literal, and neither does the character after it.
+            if here == '\\'
+                && let Some(escaped) = next
+            {
+                out.push(escaped);
+                at += 2;
+                continue;
+            }
+
+            if (in_string && here == '"') || (in_char && here == '\'') {
+                in_string = false;
+                in_char = false;
+            }
+
+            at += 1;
+            continue;
+        }
+
+        match (here, next) {
+            ('/', Some('/')) => {
+                while at < bytes.len() && bytes[at] != '\n' {
+                    out.push(' ');
+                    at += 1;
+                }
+            }
+
+            ('/', Some('*')) => {
+                let mut depth = 1;
+                out.push_str("  ");
+                at += 2;
+
+                while at < bytes.len() && depth > 0 {
+                    if bytes[at] == '*' && bytes.get(at + 1) == Some(&'/') {
+                        depth -= 1;
+                        out.push_str("  ");
+                        at += 2;
+                        continue;
+                    }
+
+                    // Newlines are kept so line numbers still count.
+                    out.push(if bytes[at] == '\n' { '\n' } else { ' ' });
+                    at += 1;
+                }
+            }
+
+            _ => {
+                if here == '"' {
+                    in_string = true;
+                }
+                if here == '\'' {
+                    in_char = true;
+                }
+                out.push(here);
+                at += 1;
+            }
         }
     }
 
@@ -566,6 +654,75 @@ mod tests {
             new ItemLoot("Health Potion", 0.02)
         )
     "#;
+
+    #[test]
+    fn an_enemy_written_inside_a_comment_is_not_an_enemy() {
+        // Two in the database are, and one of them is a second definition of a boss that already
+        // exists: converting it meant whichever copy the host happened to keep decided that fight.
+        let source = r#"
+            /*
+            .Init("Ghost Of The Comment",
+                new State(
+                    new State("idle", new Wander(0.4))
+                    )
+                )
+            */
+            .Init("Real Enemy",
+                new State(
+                    new State("idle", new Wander(0.4))
+                    )
+                )
+        "#;
+
+        let mut report = Report::default();
+        let text = transpile(source, &mut report);
+
+        assert!(text.contains(r#"enemy "Real Enemy""#));
+        assert!(
+            !text.contains("Ghost Of The Comment"),
+            "a commented-out enemy was converted into a real one"
+        );
+    }
+
+    #[test]
+    fn a_line_comment_takes_the_rest_of_its_line_and_no_more() {
+        let source = r#"
+            .Init("Real Enemy",
+                new State(
+                    // new State("commented", new Wander(0.4)),
+                    new State("idle", new Wander(0.4))
+                    )
+                )
+        "#;
+
+        let mut report = Report::default();
+        let text = transpile(source, &mut report);
+
+        assert!(text.contains("idle"));
+        assert!(!text.contains("commented"));
+    }
+
+    #[test]
+    fn a_comment_marker_inside_a_string_is_part_of_the_string() {
+        // Or a taunt with a web address in it swallows the rest of its line, and the enemy loses
+        // whatever was written after it.
+        let source = r#"
+            .Init("Real Enemy",
+                new State(
+                    new State("idle",
+                        new Taunt("visit http://example.com/help"),
+                        new Wander(0.4)
+                        )
+                    )
+                )
+        "#;
+
+        let mut report = Report::default();
+        let text = transpile(source, &mut report);
+
+        assert!(text.contains("example.com"), "the address was cut: {text}");
+        assert!(text.contains("wander"), "what followed it was lost: {text}");
+    }
 
     #[test]
     fn the_target_state_is_taken_from_where_the_transition_actually_puts_it() {

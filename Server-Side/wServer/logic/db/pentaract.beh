@@ -1,0 +1,43 @@
+enemy "Pentaract Eye" {
+    prioritize() {
+        swirl(2, 8, 20, true)
+        protect(2, "Pentaract Tower", 20, 6, 4)
+    }
+    shoot(9, 1, cooldown: 1000)
+}
+
+enemy "Pentaract Tower" {
+    spawn("Pentaract Eye", 5, cooldown: 5000, gives_no_xp: false)
+    grenade(4, 100, 8, cooldown: 5000)
+    transform_on_death("Pentaract Tower Corpse")
+    transfer_damage_on_death("Pentaract")
+    transfer_damage_on_death("Pentaract Tower Corpse")
+}
+
+enemy "Pentaract" {
+    conditional_effect(invincible)
+    state Waiting {
+        on entity_not_exists("Pentaract Tower", 50) -> Die
+    }
+    state Die {
+        suicide()
+    }
+}
+
+enemy "Pentaract Tower Corpse" {
+    conditional_effect(invincible)
+    state Waiting {
+        on timed(15000) -> Spawn
+        on entity_not_exists("Pentaract Tower", 50) -> Die
+    }
+    state Spawn {
+        transform("Pentaract Tower")
+    }
+    state Die {
+        suicide()
+    }
+    loot {
+        threshold(0.01) { tier(8, weapon, 0.15) tier(9, weapon, 0.1) tier(10, weapon, 0.07) tier(11, weapon, 0.05) tier(4, ability, 0.15) tier(5, ability, 0.07) tier(8, armor, 0.2) tier(9, armor, 0.15) tier(10, armor, 0.1) tier(11, armor, 0.07) tier(12, armor, 0.04) tier(3, ring, 0.15) tier(4, ring, 0.07) tier(5, ring, 0.03) item("Potion of Defense", 0.1) item("Potion of Attack", 0.1) item("Potion of Vitality", 0.1) item("Potion of Wisdom", 0.1) item("Potion of Speed", 0.1) item("Potion of Dexterity", 0.1) item("Seal of Blasphemous Prayer", 0.004) }
+    }
+}
+

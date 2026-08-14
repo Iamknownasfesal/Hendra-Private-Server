@@ -1,0 +1,65 @@
+enemy "Masked Party God" {
+    state s1 {
+        taunt(true, "Oh no, Mixcoatl is my brother, I prefer partying to fighting.")
+        set_alt_texture(1)
+        on timed(500, "2") -> s2
+    }
+    state s2 {
+        taunt(true, "Lets have a fun-time in the sun-shine!")
+        set_alt_texture(2)
+        on timed(500, "3") -> s3
+    }
+    state s3 {
+        taunt(true, "Nothing like relaxin' on the beach.")
+        set_alt_texture(3)
+        on timed(500, "4") -> s4
+    }
+    state s4 {
+        taunt(true, "Chillin' is the name of the game!")
+        set_alt_texture(1)
+        on timed(500, "5") -> s5
+    }
+    state s5 {
+        taunt(true, "I hope you're having a good time!")
+        set_alt_texture(2)
+        on timed(500, "6") -> s6
+    }
+    state s6 {
+        taunt(true, "How do you like my shades?")
+        set_alt_texture(3)
+        on timed(500, "7") -> s7
+    }
+    state s7 {
+        taunt(true, "EVERYBODY BOOGEY!")
+        set_alt_texture(1)
+        on timed(500, "8") -> s8
+    }
+    state s8 {
+        taunt(true, "What a beautiful day!")
+        set_alt_texture(2)
+        on timed(500, "9") -> s9
+    }
+    state s9 {
+        taunt(true, "Whoa there!")
+        set_alt_texture(3)
+        on timed(500, "10") -> s10
+    }
+    state s10 {
+        taunt(true, "Oh SNAP!")
+        set_alt_texture(1)
+        on timed(500, "11") -> s11
+    }
+    state s11 {
+        taunt(true, "Ho!")
+        set_alt_texture(2)
+        on timed(500) -> end
+    }
+    state end {
+        set_alt_texture(3)
+        on timed(500, "1") -> s1
+    }
+    loot {
+        threshold(0.1) { item("Blue Paradise", 0.2) item("Pink Passion Breeze", 0.2) item("Bahama Sunrise", 0.2) item("Lime Jungle Bay", 0.2) }
+    }
+}
+

@@ -1,0 +1,180 @@
+enemy "Pirate" {
+    prioritize() {
+        follow(0.85, range: 1, duration: 5000, cooldown: 0)
+        wander(0.4)
+    }
+    shoot(3, cooldown: 2500)
+    loot {
+        tier(1, weapon, 0.2)
+        item("Health Potion", 0.03)
+    }
+}
+
+enemy "Piratess" {
+    prioritize() {
+        follow(1.1, range: 1, duration: 3000, cooldown: 1500)
+        wander(0.6)
+    }
+    shoot(3, cooldown: 2500)
+    reproduce("Pirate", density_max: 5)
+    reproduce("Piratess", density_max: 5)
+    loot {
+        tier(1, armor, 0.2)
+        item("Health Potion", 0.03)
+    }
+}
+
+enemy "Snake" {
+    wander(0.8)
+    shoot(10, cooldown: 2000)
+    reproduce(density_max: 5)
+    loot {
+        item("Health Potion", 0.03)
+        item("Magic Potion", 0.02)
+    }
+}
+
+enemy "Poison Scorpion" {
+    prioritize() {
+        protect(0.4, "Scorpion Queen")
+        wander(0.4)
+    }
+    shoot(8, cooldown: 2000)
+}
+
+enemy "Scorpion Queen" {
+    change_size(100, 200)
+    wander(0.2)
+    spawn("Poison Scorpion", gives_no_xp: false)
+    reproduce("Poison Scorpion", cooldown: 10000, density_max: 10)
+    reproduce(density_max: 2, density_radius: 40)
+    loot {
+        item("Health Potion", 0.03)
+        item("Magic Potion", 0.02)
+    }
+}
+
+enemy "Bandit Enemy" {
+    state fast_follow {
+        shoot(3)
+        prioritize() {
+            protect(0.6, "Bandit Leader", acquire_range: 9, protection_range: 7, reprotect_range: 3)
+            follow(1, range: 1)
+            wander(0.6)
+        }
+        on timed(3000) -> scatter1
+    }
+    state scatter1 {
+        prioritize() {
+            protect(0.6, "Bandit Leader", acquire_range: 9, protection_range: 7, reprotect_range: 3)
+            wander(1)
+            wander(0.6)
+        }
+        on timed(2000) -> slow_follow
+    }
+    state slow_follow {
+        shoot(4.5)
+        prioritize() {
+            protect(0.6, "Bandit Leader", acquire_range: 9, protection_range: 7, reprotect_range: 3)
+            follow(0.5, acquire_range: 9, range: 3.5, duration: 4000)
+            wander(0.5)
+        }
+        on timed(3000) -> scatter2
+    }
+    state scatter2 {
+        prioritize() {
+            protect(0.6, "Bandit Leader", acquire_range: 9, protection_range: 7, reprotect_range: 3)
+            wander(1)
+            wander(0.6)
+        }
+        on timed(2000) -> fast_follow
+    }
+    state escape {
+        stay_back(0.5, 8)
+        on timed(15000) -> fast_follow
+    }
+}
+
+enemy "Bandit Leader" {
+    spawn("Bandit Enemy", cooldown: 8000, max_children: 4, gives_no_xp: false)
+    state bold {
+        state warn_about_grenades {
+            taunt(0.15, "Catch!")
+            on timed(400) -> wimpy_grenade1
+        }
+        state wimpy_grenade1 {
+            grenade(1.4, 12, cooldown: 10000)
+            prioritize() {
+                stay_above(0.3, 7)
+                wander(0.3)
+            }
+            on timed(2000) -> wimpy_grenade2
+        }
+        state wimpy_grenade2 {
+            grenade(1.4, 12, cooldown: 10000)
+            prioritize() {
+                stay_above(0.5, 7)
+                wander(0.5)
+            }
+            on timed(3000) -> slow_follow
+        }
+        state slow_follow {
+            shoot(13, cooldown: 1000)
+            prioritize() {
+                stay_above(0.4, 7)
+                follow(0.4, acquire_range: 9, range: 3.5, duration: 4000)
+                wander(0.4)
+            }
+            on timed(4000) -> warn_about_grenades
+        }
+        on hp_below(0.45) -> meek
+    }
+    state meek {
+        taunt(0.5, "Forget this... run for it!")
+        stay_back(0.5, 6)
+        order(10, "Bandit Enemy", "escape")
+        on timed(12000) -> bold
+    }
+    loot {
+        tier(1, weapon, 0.2)
+        tier(1, armor, 0.2)
+        tier(2, weapon, 0.12)
+        tier(2, armor, 0.12)
+        item("Health Potion", 0.12)
+        item("Magic Potion", 0.14)
+    }
+}
+
+enemy "Red Gelatinous Cube" {
+    shoot(8, count: 2, shoot_angle: 10, predictive: 0.2, cooldown: 1000)
+    wander(0.4)
+    reproduce(density_max: 5)
+    drop_portal_on_death("Pirate Cave Portal", 0.01)
+    loot {
+        item("Health Potion", 0.04)
+        item("Magic Potion", 0.04)
+    }
+}
+
+enemy "Purple Gelatinous Cube" {
+    shoot(8, predictive: 0.2, cooldown: 600)
+    wander(0.4)
+    reproduce(density_max: 5)
+    drop_portal_on_death("Pirate Cave Portal", 0.01)
+    loot {
+        item("Health Potion", 0.04)
+        item("Magic Potion", 0.04)
+    }
+}
+
+enemy "Green Gelatinous Cube" {
+    shoot(8, count: 5, shoot_angle: 72, predictive: 0.2, cooldown: 1800)
+    wander(0.4)
+    reproduce(density_max: 5)
+    drop_portal_on_death("Pirate Cave Portal", 0.01)
+    loot {
+        item("Health Potion", 0.04)
+        item("Magic Potion", 0.04)
+    }
+}
+
