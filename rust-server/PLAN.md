@@ -725,8 +725,18 @@ category by category. It found thirteen things, one of them a mechanic that sile
 
 ### 18.8 Quest choice — **S**
 
-- [ ] Scored by priority, level distance and range in the original, from a table of a hundred and
+- [x] Scored by priority, level distance and range in the original, from a table of a hundred and
       twenty. Nearest-flagged-object here
+
+  All hundred and twenty, extracted from the original rather than retyped, with its score:
+  `(20 - |enemy level - your level|) * priority - distance / 100`. Three pulls against each other,
+  so what the arrow points at is the most worthwhile thing near enough to be worth walking to rather
+  than the nearest thing worth killing. The level range is a hard filter rather than part of the
+  score, or a high enough priority would send a beginner to something that kills them.
+
+  Ten of the hundred and twenty name enemies this content does not ship. They are kept and listed,
+  each checked by hand for a near-miss on capitals, with a test in each direction: an eleventh
+  missing name is a typo and fails, and one of the ten arriving in a content drop fails too.
 
 ### 18.9 Anti-cheat strikes — **M**
 
@@ -745,9 +755,13 @@ category by category. It found thirteen things, one of them a mechanic that sile
 
 - [ ] `LTBoosted` and `LDBoosted`: loot-tier and loot-drop boosts, which the loot roll should apply
 
-### 18.13 Pets in a world — **M**
+### 18.13 Pets — **not wanted**
 
-- [ ] Pets are stored, chosen and never enter a world
+- [x] Pets are stored, chosen and never enter a world
+
+  Declined. Asked for on 2026-08-14 and the answer was that this server does not want pets, so no
+  pet ever enters a world. The storage the activate effects already write to is left where it is:
+  it is harmless, and tearing it out would break the abilities that grant one.
 
 ### 18.14 A login queue — **S**
 

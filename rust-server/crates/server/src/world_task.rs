@@ -1416,20 +1416,44 @@ fn show_portals(world: &mut World, catalog: &Catalog, portals: &[PortalSign]) {
 /// rule, and answers with nothing rather than the closest enemy when none is marked: an arrow
 /// pointing at a slime is worse than no arrow.
 fn nearest_quest(world: &World, catalog: &Catalog, handle: Handle) -> Option<(String, i32, i32)> {
+    use hendra_sim::quest;
+
     let player = world.get(handle)?;
+    let level = player.progress.level;
 
     world
         .iter()
         .filter(|(_, entity)| entity.kind == hendra_sim::Kind::Enemy && !entity.dead)
         .filter_map(|(_, entity)| {
             let desc = catalog.object(entity.object_type)?;
-            desc.quest.then_some((desc, entity))
-        })
-        .min_by_key(|(_, entity)| {
+
+            // Only what the table names, and only what suits this level. The range is a hard filter
+            // rather than part of the score, or a high enough priority would send a beginner to
+            // something that kills them.
+            let quest = quest::quest_for(&desc.id)?;
+            if !quest::suits(&quest, level) {
+                return None;
+            }
+
             let (dx, dy) = (entity.x - player.x, entity.y - player.y);
-            (dx * dx + dy * dy) as i64
+            let distance = (dx * dx + dy * dy).sqrt();
+
+            Some((
+                quest::score(
+                    quest.priority,
+                    desc.level.unwrap_or(0) as i16,
+                    level,
+                    distance,
+                ),
+                desc,
+                entity,
+            ))
         })
-        .map(|(desc, entity)| (desc.id.clone(), entity.x as i32, entity.y as i32))
+        // The most worthwhile thing near enough to be worth walking to, rather than the nearest
+        // thing worth killing. Those are different answers, and the first is why the arrow is
+        // useful at all.
+        .max_by_key(|(score, _, _)| *score)
+        .map(|(_, desc, entity)| (desc.id.clone(), entity.x as i32, entity.y as i32))
 }
 
 /// What an administrator is doing to the world in front of them.

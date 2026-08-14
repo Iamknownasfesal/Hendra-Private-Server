@@ -11,6 +11,7 @@ pub mod inventory;
 pub mod leveling;
 pub mod metrics;
 pub mod projectile;
+pub mod quest;
 pub mod realm;
 pub mod setpiece;
 pub mod shop;
