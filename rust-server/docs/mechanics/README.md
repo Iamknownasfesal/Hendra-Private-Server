@@ -60,6 +60,7 @@ inside the game: a different data structure, a different loop, a different order
 | [37-the-wire.md](37-the-wire.md) | Framing, RC4, pooling, keep-alive, disconnect saves | `Client.cs`, `Server.cs`, `CommHandler.cs` |
 | [38-handlers.md](38-handlers.md) | Dispatch modes, login, inventory rules, portals, hit claims | `networking/handlers/` |
 | [39-fork-economy.md](39-fork-economy.md) | Forging, prestige, Onrane, Sor — this fork's own, and mostly broken | `ForgeItemHandler.cs`, `PrestigeHandler.cs` |
+| [40-packets.md](40-packets.md) | Registration, framing, and every wire shape | 105 of 105 |
 
 Page 25 lists exactly what was read and states the case for the groups assessed by census rather
 than file by file. See "How much of this is actually read" below before trusting any of it.
@@ -76,8 +77,8 @@ bonus in the game. See [the stats page](08-stats.md).
 
 ## How much of this is actually read
 
-The C# server is **547 files**. About **295** were opened and read, including every behaviour, every
-transition, every command, every world subclass and every setpiece. The rest was assessed by census,
+The C# server is **547 files**. About **400** were opened and read, including every behaviour, every
+transition, every command, every world subclass, every setpiece, every handler and every packet. The rest was assessed by census,
 by signature, or by call site, which is weaker evidence and is how the first two passes of this audit
 reached wrong conclusions twice.
 
