@@ -504,8 +504,50 @@ fn slot_type_of(kind: &str) -> Option<i32> {
 /// a single tick of drift was three times larger and honest players kept tripping it.
 pub const MOVE_TOLERANCE: f32 = 1.5;
 
+/// How a world decides what a player can see.
+///
+/// `Sight.GetSightCircle` picks between these on the world's `blocking` value, and the base
+/// `World` constructor sets it to zero — so the realm, the nexus, the vault and everything else
+/// built in code show whatever is within twenty tiles, wall or no wall. Only a world loaded from a
+/// proto asks for anything else, and 25 of the 29 that do ask for rooms.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Sight {
+    /// The whole circle, walls ignored. `blocking: 0`, and the default.
+    #[default]
+    Unblocked,
+
+    /// You see the room you are in. `blocking: 1`, and what most dungeons ask for.
+    Room,
+
+    /// A clear line to what you can see. `blocking: 2`, which no world in the content selects.
+    Line,
+
+    /// By region rather than by wall. `blocking: 3`.
+    Region,
+}
+
+impl Sight {
+    pub fn from_blocking(blocking: i32) -> Sight {
+        match blocking {
+            1 => Sight::Room,
+            2 => Sight::Line,
+            3 => Sight::Region,
+            _ => Sight::Unblocked,
+        }
+    }
+
+    /// Whether anything at all stands between a viewer and what they might see.
+    pub fn occludes(self) -> bool {
+        self != Sight::Unblocked
+    }
+}
+
 pub struct World {
     pub name: String,
+
+    /// What this world lets a player see through.
+    pub sight: Sight,
+
     terrain: Terrain,
     entities: Slab<Entity>,
     projectiles: Projectiles,
@@ -663,6 +705,7 @@ impl World {
 
         let grid = Grid::new(terrain.width(), terrain.height());
         let mut world = World {
+            sight: Sight::default(),
             name,
             terrain,
             entities,
@@ -4717,7 +4760,13 @@ impl World {
             // Within range is not the same as in view. Without this a player sees, and is seen by,
             // anything on the far side of a wall, which in a game where being seen means being
             // shot is a correctness problem rather than a cosmetic one.
-            if *handle != viewer && !self.terrain.line_of_sight(x, y, entity.x, entity.y) {
+            // A wall hides what is behind it only where the world says so. In the realm and
+            // everywhere else built in code the original hides nothing, and hiding an enemy there
+            // takes away the thing the realm is: seeing something worth walking to.
+            if *handle != viewer
+                && self.sight.occludes()
+                && !self.terrain.line_of_sight(x, y, entity.x, entity.y)
+            {
                 continue;
             }
 
@@ -4753,6 +4802,7 @@ mod tests {
         <Ground type="0x12" id="Lava"><MinDamage>100</MinDamage><MaxDamage>100</MaxDamage></Ground>
         <Object type="0x500" id="Wall"><Class>GameObject</Class><FullOccupy/><Static/></Object>
         <Object type="0x501" id="Sign"><Class>GameObject</Class><Static/></Object>
+        <Object type="0x50f" id="Thicket"><Class>GameObject</Class><BlocksSight/><Static/></Object>
         <Object type="0x504" id="Tree"><Class>GameObject</Class><BlocksSight/><Static/></Object>
         <Object type="0x502" id="Slime"><Class>Character</Class><Enemy/>
           <MaxHitPoints>200</MaxHitPoints>
@@ -5525,6 +5575,47 @@ mod tests {
         let hurt = world.get(victim).unwrap().hp;
         assert!(hurt < 500, "should have been caught in the blast");
         assert!(hurt > 0, "but not killed outright");
+    }
+
+    #[test]
+    fn a_wall_hides_what_is_behind_it_only_where_the_world_says() {
+        // The base World constructor sets blocking to zero and only a proto overrides it, so the
+        // realm and everything else built in code shows what is within twenty tiles whether or not
+        // a wall is in the way. Hiding it there takes away what the realm is for.
+        let catalog = catalog();
+
+        // A field with one sight-blocking square in the middle of it.
+        let mut squares: Vec<Composition> = (0..32 * 32)
+            .map(|_| square(0x10, ObjectType::NONE.0))
+            .collect();
+        squares[10 * 32 + 7] = square(0x10, 0x50f);
+        let map = Map::from_squares(32, 32, squares).unwrap();
+        let mut world = World::new("Field", Terrain::build(map, &catalog), &catalog);
+
+        let viewer = world
+            .spawn(Entity::player(ObjectType(0x600), 5.5, 10.5, 500))
+            .unwrap();
+
+        let mut behind = Entity::fixture(ObjectType(0x502), 9.5, 10.5);
+        behind.kind = Kind::Enemy;
+        let behind = world.spawn(behind).unwrap();
+        world.reindex();
+
+        let sees = |world: &mut World| {
+            world
+                .snapshot_for(viewer, SIGHT_RADIUS)
+                .iter()
+                .any(|(id, _)| id == behind.to_entity_id())
+        };
+
+        world.sight = Sight::Unblocked;
+        assert!(sees(&mut world), "with no occlusion the wall hides nothing");
+
+        world.sight = Sight::Room;
+        assert!(
+            !sees(&mut world),
+            "and a world that asks for occlusion gets it"
+        );
     }
 
     #[test]

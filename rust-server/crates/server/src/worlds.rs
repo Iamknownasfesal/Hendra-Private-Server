@@ -269,6 +269,11 @@ impl Worlds {
         // teleport into a room the map author meant to be walked into.
         world.set_allows_teleport(!definition.restrict_tp);
 
+        // What a wall hides, which the world's own definition decides and which defaults to
+        // nothing. A dungeon asks for rooms; the realm asks for nothing and is meant to be seen
+        // across.
+        world.sight = hendra_sim::Sight::from_blocking(definition.blocking);
+
         report_portals(&world, self);
 
         // Only the world the original calls `Realm` fills itself and closes on a clock. Every other
