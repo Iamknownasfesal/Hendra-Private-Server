@@ -79,10 +79,8 @@ and [40](40-packets.md).
 
 **The 48 files of the `server/` HTTP tree** — now read; see [page 41](41-the-account-server.md).
 
-**7 of the 29 files of `common/`.** The remaining ones are `NReader`/`NWriter` (byte-level
-serialisation), `WeakDictionary`, `TimedLock`, `ISManager`/`ISDataTypes`/`InterServerChannel` (the
-Redis pub/sub bus), `ConfigModels`, `DbStatus`, `PrivateMessages`, `ChangePassword`, `Ranks`,
-`WorldMapExporter` and `Interfaces`. None carries game mechanics.
+**All of `common/`** — now read; see [page 42](42-between-servers.md). The only file skipped is
+`WeakDictionary.cs`, a generic container with no callers in this tree.
 
 **The 61 `logic/db/BehaviorDb.*.cs` scripts** — 24,392 lines of behaviour *content*, not engine code.
 These are what our converter consumes, and coverage is established by the `gaps` census, which
