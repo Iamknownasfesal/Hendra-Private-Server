@@ -289,7 +289,31 @@ pub enum Primitive {
         /// `None` means aim at the nearest player.
         fixed_angle: Option<f32>,
         cooldown_ms: u32,
+
+        /// How long after entering the state the first shot waits.
+        ///
+        /// `coolDownOffset`, and the single most used argument in the content after the cooldown
+        /// itself. It is how a boss builds a rotating pattern: a dozen shoots with the same
+        /// enormous cooldown and offsets a fifth of a second apart, each firing once in sequence.
+        /// Dropped, they all fire on the same frame and then nothing does anything again.
+        cooldown_offset_ms: u32,
+
         projectile: u8,
+
+        /// How far away a target may be to be shot at, in tiles.
+        ///
+        /// `Shoot`'s first positional argument, passed by every use in the content. Without it an
+        /// enemy fires at anything inside the twenty-tile sense radius rather than its own range,
+        /// which is often four to eight, and nothing has a distance at which it is safe.
+        acquire_range: f32,
+
+        /// Where to aim with nothing in range, if the content says.
+        ///
+        /// With neither this nor a fixed angle an enemy holds fire, which is what the original does.
+        default_angle: Option<f32>,
+
+        /// Turns the whole spread, in degrees.
+        angle_offset: f32,
     },
 
     Wander {
@@ -592,6 +616,19 @@ impl Primitive {
                 1 + children.iter().map(Primitive::slots).sum::<usize>()
             }
             _ => 1,
+        }
+    }
+
+    /// What this behaviour's cooldown starts at when its state is entered.
+    ///
+    /// Zero for everything but a shot, which starts at its offset so that a group of them written
+    /// together fires in sequence rather than at once.
+    pub fn entry_cooldown_ms(&self) -> u32 {
+        match self {
+            Primitive::Shoot {
+                cooldown_offset_ms, ..
+            } => *cooldown_offset_ms,
+            _ => 0,
         }
     }
 

@@ -448,17 +448,27 @@ fn duration_ms(call: &Call, name: &str, index: usize, fallback: f64) -> u32 {
 
 fn behaviour(call: &Call, names: &mut Names, diagnostics: &mut Vec<Diagnostic>) -> Primitive {
     match call.name.as_str() {
+        // Positional indices follow the C# constructor, which is the order the converter writes:
+        // radius, count, shootAngle, projectileIndex, fixedAngle, rotateAngle, angleOffset,
+        // defaultAngle, predictive, coolDownOffset, coolDown. Every real use names its arguments,
+        // so these matter only for hand-written behaviours — but a wrong index there is silent, and
+        // three of them were wrong.
         "shoot" => Primitive::Shoot {
-            // The first positional argument in the C# is a radius that nothing reads; count is what
-            // matters, and it is named in nearly every use.
+            acquire_range: number(call, "radius", 0, 20.0).max(0.0) as f32,
             count: number(call, "count", 1, 1.0).max(1.0) as u32,
-            spread: number(call, "shoot_angle", 9, 0.0) as f32,
+            spread: number(call, "shoot_angle", 2, 0.0) as f32,
+            projectile: number(call, "projectile", 3, 0.0).clamp(0.0, 255.0) as u8,
             fixed_angle: call
                 .named("fixed_angle")
                 .and_then(Value::as_number)
                 .map(|degrees| degrees as f32),
-            cooldown_ms: number(call, "cooldown", 8, 1000.0).max(0.0) as u32,
-            projectile: number(call, "projectile", 7, 0.0).clamp(0.0, 255.0) as u8,
+            angle_offset: number(call, "angle_offset", 6, 0.0) as f32,
+            default_angle: call
+                .named("default_angle")
+                .and_then(Value::as_number)
+                .map(|degrees| degrees as f32),
+            cooldown_offset_ms: number(call, "cooldown_offset", 9, 0.0).max(0.0) as u32,
+            cooldown_ms: number(call, "cooldown", 10, 1000.0).max(0.0) as u32,
         },
 
         "buzz" => Primitive::Buzz {
@@ -1153,12 +1163,17 @@ mod tests {
                 cooldown_ms,
                 projectile,
                 fixed_angle,
+                acquire_range,
+                cooldown_offset_ms,
+                ..
             } => {
                 assert_eq!(*count, 15);
                 assert_eq!(*spread, 24.0);
                 assert_eq!(*cooldown_ms, 1200);
                 assert_eq!(*projectile, 2);
                 assert_eq!(*fixed_angle, None, "unset means aim at the nearest player");
+                assert_eq!(*acquire_range, 1.0, "the first positional is the range");
+                assert_eq!(*cooldown_offset_ms, 0);
             }
             other => panic!("expected a shoot, got {other:?}"),
         }

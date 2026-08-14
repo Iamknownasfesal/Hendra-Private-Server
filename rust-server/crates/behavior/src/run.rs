@@ -106,7 +106,7 @@ pub struct Mind {
 impl Mind {
     /// A fresh mind, starting in the program's entry state.
     pub fn new(program: &Program, seed: u32) -> Mind {
-        Mind {
+        let mut mind = Mind {
             current: program
                 .state(program.root)
                 .map(|state| state.entry)
@@ -129,7 +129,11 @@ impl Mind {
             still_for_ms: 0,
             was_at: None,
             chain: Vec::new(),
-        }
+        };
+
+        let landing = mind.current;
+        mind.arm_cooldowns(program, landing);
+        mind
     }
 
     /// Puts the mind into a state from outside, as an order does.
@@ -190,17 +194,31 @@ impl Mind {
         // Drawn on entry, so a group that entered together does not leave together.
         self.deadline_ms = 0;
 
-        // A behaviour that was mid-cooldown when its state was left should not still be waiting
-        // when the state is entered again. Otherwise a boss re-entering an attack phase stands
-        // there doing nothing for the remainder of a cooldown it started minutes ago.
+        self.arm_cooldowns(program, landing);
+    }
+
+    /// Sets every cooldown in a state's ancestry to what that behaviour starts with.
+    ///
+    /// A behaviour that was mid-cooldown when its state was left should not still be waiting when
+    /// the state is entered again, or a boss re-entering an attack phase stands there for the
+    /// remainder of a cooldown it started minutes ago.
+    ///
+    /// Armed to the behaviour's own starting value rather than to zero, because a shot's is its
+    /// offset: that is what turns a volley written as a dozen shoots into a sequence instead of one
+    /// simultaneous burst. Called on the first state as well as on every later one, since a boss
+    /// that opens with a staggered volley never transitions before firing it.
+    fn arm_cooldowns(&mut self, program: &Program, landing: usize) {
         program.ancestry(landing, &mut self.chain);
         for index in &self.chain {
             let Some(state) = program.state(*index) else {
                 continue;
             };
-            let needed: usize = state.behaviours.iter().map(Primitive::slots).sum();
-            for slot in state.slot_base..(state.slot_base + needed).min(self.cooldowns.len()) {
-                self.cooldowns[slot] = 0;
+            let mut slot = state.slot_base;
+            for behaviour in &state.behaviours {
+                if slot < self.cooldowns.len() {
+                    self.cooldowns[slot] = behaviour.entry_cooldown_ms();
+                }
+                slot += behaviour.slots();
             }
         }
     }
@@ -368,24 +386,33 @@ impl Mind {
                 spread,
                 fixed_angle,
                 cooldown_ms,
+                cooldown_offset_ms: _,
                 projectile,
+                acquire_range,
+                default_angle,
+                angle_offset,
             } => {
                 if self.cooldowns.get(slot).copied().unwrap_or(0) > 0 {
                     return 1;
                 }
 
-                // Without a fixed angle it aims at whoever is nearest, and with nobody in sight it
-                // holds fire rather than shooting at the origin.
-                let angle = match fixed_angle {
-                    Some(degrees) => degrees.to_radians(),
-                    None => match senses.nearest_player {
-                        Some(player) => (player.y - senses.y).atan2(player.x - senses.x),
-                        None => return 1,
-                    },
+                // A fixed angle fires regardless of who is about. Otherwise it aims at whoever is
+                // nearest *and within its own range*, falling back to the default angle when the
+                // content gives one and holding fire when it does not.
+                let aimed = match fixed_angle {
+                    Some(degrees) => Some(degrees.to_radians()),
+                    None => senses
+                        .nearest_player
+                        .filter(|player| player.distance <= *acquire_range)
+                        .map(|player| (player.y - senses.y).atan2(player.x - senses.x))
+                        .or_else(|| default_angle.map(f32::to_radians)),
+                };
+                let Some(angle) = aimed else {
+                    return 1;
                 };
 
                 out.push(Action::Shoot {
-                    angle,
+                    angle: angle + angle_offset.to_radians(),
                     count: *count,
                     spread: *spread,
                     projectile: *projectile,
@@ -1868,6 +1895,60 @@ mod tests {
             duration_ms > 0 && duration_ms < 1000,
             "renewed, not forever"
         );
+    }
+
+    #[test]
+    fn a_volley_written_as_several_shoots_fires_in_sequence() {
+        // The idiom this exists for: a dozen shoots with the same enormous cooldown and offsets a
+        // fifth of a second apart, each firing once. Without the offset all of them fire on the
+        // first frame and then nothing happens again, which is not a slightly wrong boss.
+        let program = program(
+            r#"enemy "X" { state a {
+                 shoot(20, count: 1, cooldown: 100000)
+                 shoot(20, count: 1, cooldown: 100000, cooldown_offset: 200)
+                 shoot(20, count: 1, cooldown: 100000, cooldown_offset: 400)
+               } }"#,
+        );
+        let mut mind = Mind::new(&program, 1);
+        let mut out = Vec::new();
+
+        // A player stands well inside every shot's range.
+        let seen = with_player_at(11.0, 10.0);
+
+        mind.tick(&program, &seen, 50, &mut out);
+        assert_eq!(out.len(), 1, "only the unoffset one fires immediately");
+
+        let mut fired = 0;
+        for _ in 0..4 {
+            out.clear();
+            mind.tick(&program, &seen, 50, &mut out);
+            fired += out.len();
+        }
+        assert_eq!(fired, 1, "the second at 200ms");
+
+        for _ in 0..4 {
+            out.clear();
+            mind.tick(&program, &seen, 50, &mut out);
+            fired += out.len();
+        }
+        assert_eq!(fired, 2, "and the third at 400ms, none of them again");
+    }
+
+    #[test]
+    fn a_shot_does_not_reach_past_its_own_range() {
+        // Every shoot in the content passes a radius and it used to be dropped, so an enemy with a
+        // four-tile attack fired at anything inside the twenty-tile sense radius.
+        let program = program(r#"enemy "X" { state a { shoot(4, count: 1, cooldown: 100) } }"#);
+        let mut mind = Mind::new(&program, 1);
+        let mut out = Vec::new();
+
+        let far = with_player_at(20.0, 10.0);
+        mind.tick(&program, &far, 50, &mut out);
+        assert!(out.is_empty(), "ten tiles away is out of a four-tile range");
+
+        let near = with_player_at(13.0, 10.0);
+        mind.tick(&program, &near, 50, &mut out);
+        assert_eq!(out.len(), 1, "three tiles away is inside it");
     }
 
     #[test]
