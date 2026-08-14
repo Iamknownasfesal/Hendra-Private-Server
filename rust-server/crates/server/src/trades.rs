@@ -71,6 +71,9 @@ struct State {
     /// Everybody who is online, by name.
     present: HashMap<String, Party>,
 
+    /// How to ask each of them to re-read what they hold.
+    refreshes: HashMap<String, tokio::sync::mpsc::Sender<()>>,
+
     /// How to reach each of them.
     ///
     /// Kept apart from who is present so that agreeing a trade needs only the names and the state,
@@ -117,7 +120,14 @@ impl Trades {
     }
 
     /// Notes that somebody is online and could be traded with.
-    pub fn arrived(&self, name: &str, account_id: i64, character_id: i64, sender: LinkSender) {
+    pub fn arrived(
+        &self,
+        name: &str,
+        account_id: i64,
+        character_id: i64,
+        sender: LinkSender,
+        refresh: tokio::sync::mpsc::Sender<()>,
+    ) {
         let Ok(mut state) = self.inner.lock() else {
             return;
         };
@@ -131,6 +141,7 @@ impl Trades {
             },
         );
         state.senders.insert(name.to_string(), sender);
+        state.refreshes.insert(name.to_string(), refresh);
     }
 
     /// Claims an account for a new session, ending whatever else was playing on it.
@@ -164,6 +175,7 @@ impl Trades {
                 sender.close("that account is playing somewhere else");
             }
             state.present.remove(name);
+            state.refreshes.remove(name);
 
             if let Some(active) = state.active.remove(name) {
                 state.active.remove(&active.partner);
@@ -184,6 +196,7 @@ impl Trades {
 
         state.present.remove(name);
         state.senders.remove(name);
+        state.refreshes.remove(name);
         state.asked.remove(name);
         for asked in state.asked.values_mut() {
             asked.retain(|(who, _)| who != name);
@@ -478,6 +491,27 @@ impl Trades {
         tell(&state, partner, &done);
     }
 
+    /// Asks a named player's session to re-read what it holds.
+    ///
+    /// Somebody else's doing: a trade that completed, an item sold on the market, a gift from an
+    /// administrator. The session that made the change refreshes itself; this is for the one that
+    /// did not and would otherwise be looking at a vault, a pack or a purse that is no longer what
+    /// the database says.
+    ///
+    /// Asked rather than sent, because only a session can read its own account and only it knows
+    /// what it has already shown.
+    pub fn refresh(&self, name: &str) {
+        let Ok(state) = self.inner.lock() else {
+            return;
+        };
+
+        if let Some(asking) = state.refreshes.get(name) {
+            // A full queue means one is already waiting, and one is enough: what it will read is
+            // whatever is true when it reads it, not whatever was true when this was asked.
+            let _ = asking.try_send(());
+        }
+    }
+
     /// Sends one message to a named player.
     pub fn send(&self, name: &str, message: &ServerMessage<'_>) {
         let Ok(state) = self.inner.lock() else {
@@ -557,6 +591,50 @@ mod tests {
             offer[*slot] = true;
         }
         offer
+    }
+
+    #[test]
+    fn a_refresh_reaches_the_session_that_did_not_make_the_change() {
+        let trades = trades();
+        let (to_them, mut asked) = tokio::sync::mpsc::channel(1);
+
+        {
+            let Ok(mut state) = trades.inner.lock() else {
+                panic!("the lock");
+            };
+            state.refreshes.insert("Bo".to_string(), to_them);
+        }
+
+        trades.refresh("Bo");
+        assert!(asked.try_recv().is_ok(), "Bo was never asked");
+    }
+
+    #[test]
+    fn a_second_refresh_waiting_behind_the_first_is_dropped() {
+        // What a refresh reads is whatever is true when it reads it, so two waiting would read the
+        // same thing twice and the second would say nothing new.
+        let trades = trades();
+        let (to_them, mut asked) = tokio::sync::mpsc::channel(1);
+
+        {
+            let Ok(mut state) = trades.inner.lock() else {
+                panic!("the lock");
+            };
+            state.refreshes.insert("Bo".to_string(), to_them);
+        }
+
+        for _ in 0..10 {
+            trades.refresh("Bo");
+        }
+
+        assert!(asked.try_recv().is_ok());
+        assert!(asked.try_recv().is_err(), "ten asks queued up");
+    }
+
+    #[test]
+    fn refreshing_somebody_who_is_not_here_does_nothing() {
+        let trades = trades();
+        trades.refresh("Nobody");
     }
 
     #[test]

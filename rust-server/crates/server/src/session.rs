@@ -120,6 +120,10 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
     // One slot: a character dies once, and the session ends when it does.
     let (to_death, mut died) = mpsc::channel(1);
 
+    // One slot as well: what a refresh reads is whatever is true when it reads it, so a second
+    // request waiting behind the first would read the same thing twice.
+    let (to_refresh, mut refresh) = mpsc::channel(1);
+
     let Some((player, mut placement)) =
         handshake(&mut link, &context, &entry, &to_session, &to_death).await
     else {
@@ -145,9 +149,13 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
     }
 
     // Reachable by name from now on, which is what lets somebody else ask them to trade.
-    context
-        .trades
-        .arrived(&name, player.account.id, player.character.id, link.sender());
+    context.trades.arrived(
+        &name,
+        player.account.id,
+        player.character.id,
+        link.sender(),
+        to_refresh,
+    );
     context.trades.moved(&name, &placement.world.name);
 
     // The ground first, because a client that has not been told the map cannot place anything it
@@ -164,6 +172,14 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
     loop {
         let received = tokio::select! {
             received = link.recv() => received,
+
+            // Somebody else changed what this player holds: a trade completed, an item sold, a
+            // gift arrived. Waited on beside the client, because a player looking at a stale vault
+            // is not going to send anything that would prompt a re-read.
+            _ = refresh.recv() => {
+                send_containers(&mut link, &context.catalog, &context.store, &player).await;
+                continue;
+            }
 
             // A death, which ends the session. Waited on beside the client rather than checked
             // between messages, because somebody who dies standing still sends nothing.
@@ -1621,9 +1637,16 @@ async fn settle_trade(
         .await;
 
     match outcome {
-        Ok(_) => context
-            .trades
-            .finished(name, partner_name, 0, "Trade successful."),
+        Ok(_) => {
+            context
+                .trades
+                .finished(name, partner_name, 0, "Trade successful.");
+
+            // Both packs changed. Both sides are asked to re-read, including this one: the items
+            // moved in the database and neither session's view of them survived that.
+            context.trades.refresh(name);
+            context.trades.refresh(partner_name);
+        }
         Err(err) => {
             tracing::info!(%name, %partner_name, %err, "a trade was refused");
             context
@@ -3193,11 +3216,12 @@ async fn moderate(
                 return say(link, "there is no such item").await;
             };
 
-            context
-                .store
-                .add_gift(target.id, item.uuid)
-                .await
-                .map(|_| format!("{} was sent {}.", target.name, item.id))
+            context.store.add_gift(target.id, item.uuid).await.map(|_| {
+                // Their chest changed and they did not do it, so their session is told to
+                // re-read rather than finding out on their next visit.
+                context.trades.refresh(&target.name);
+                format!("{} was sent {}.", target.name, item.id)
+            })
         }
 
         Moderation::Rename => context

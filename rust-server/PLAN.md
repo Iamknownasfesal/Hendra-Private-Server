@@ -755,7 +755,17 @@ category by category. It found thirteen things, one of them a mechanic that sile
 
 ### 18.10 Vault broadcast — **S**
 
-- [ ] A vault change reaches other sessions of the same account only on re-entry
+- [x] A vault change reaches other sessions of the same account only on re-entry
+
+  Narrower than the plan said, once one account plays one session: there are no other sessions of
+  the same account to tell. What is left is the real case, and it was worse than the note claimed.
+  A completed trade told both players it had happened and refreshed *neither* pack, so the side that
+  did not settle it was looking at an inventory the database no longer agreed with. An
+  administrator's gift landed in a chest its owner would not see until their next visit.
+
+  A session can now be asked to re-read what it holds, and the paths that change somebody else's
+  things ask. One slot: what a refresh reads is whatever is true when it reads it, so a second
+  request waiting behind the first would read the same thing twice.
 
 ### 18.11 Position history — **M**
 
