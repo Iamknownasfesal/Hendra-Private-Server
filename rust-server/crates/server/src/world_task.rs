@@ -2177,6 +2177,14 @@ fn spawn_point(world: &World) -> (f32, f32) {
 #[derive(Clone)]
 pub struct WorldHandle {
     pub name: Arc<str>,
+
+    /// How large the map is, in tiles.
+    ///
+    /// Kept beside the name because a joining client is told both before its first snapshot, and
+    /// asking the world task for them would mean a round trip in the middle of a handshake.
+    pub width: u16,
+    pub height: u16,
+
     pub inbox: mpsc::Sender<ToWorld>,
 }
 
@@ -2209,9 +2217,15 @@ pub fn spawn(mut world: World, catalog: Arc<Catalog>, loadout: Loadout) -> World
     world.set_bag_types(loadout.bag_types.clone());
 
     let name: Arc<str> = Arc::from(world.name.as_str());
+    let (width, height) = (world.terrain().width() as u16, world.terrain().height() as u16);
     let (inbox, receiver) = mpsc::channel(1024);
 
     tokio::spawn(run(world, catalog, loadout, receiver));
 
-    WorldHandle { name, inbox }
+    WorldHandle {
+        name,
+        width,
+        height,
+        inbox,
+    }
 }

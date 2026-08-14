@@ -790,6 +790,14 @@ pub enum ServerMessage<'a> {
         player: EntityId,
         tick: Tick,
         world: &'a str,
+
+        /// How large the map is, in tiles.
+        ///
+        /// The terrain arrives as rows and the extent is implied by them, but a client has to size
+        /// its map and its minimap before the first row lands. Sending it here costs four bytes
+        /// once per world and saves the client guessing.
+        width: u16,
+        height: u16,
     },
 
     Rejected {
@@ -997,10 +1005,14 @@ impl ServerMessage<'_> {
                 player,
                 tick,
                 world,
+                width,
+                height,
             } => {
                 w.varint(player.0 as u64);
                 w.varint(tick.0 as u64);
                 w.string(world);
+                w.varint(*width as u64);
+                w.varint(*height as u64);
             }
             ServerMessage::Rejected { reason } => w.u8(*reason as u8),
             // Written raw: the snapshot encoder produced these bytes and re-length-prefixing them
@@ -1113,6 +1125,8 @@ impl ServerMessage<'_> {
                 player: EntityId(r.varint_u32()?),
                 tick: Tick(r.varint_u32()?),
                 world: r.string()?,
+                width: r.varint_u32()? as u16,
+                height: r.varint_u32()? as u16,
             },
             server_id::REJECTED => {
                 let code = r.u8()?;

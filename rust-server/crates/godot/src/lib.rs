@@ -68,6 +68,10 @@ enum Event {
         player: u32,
         tick: u32,
         world: String,
+
+        /// How large the map is, in tiles, so a client can size itself before the first row lands.
+        width: u16,
+        height: u16,
     },
     Rejected(RejectReason),
     Chat {
@@ -439,8 +443,12 @@ impl HendraConnection {
                     player,
                     tick,
                     world,
+                    width,
+                    height,
                 } => {
                     entry.set("kind", "welcome");
+                    entry.set("width", width as i64);
+                    entry.set("height", height as i64);
                     entry.set("player", player as i64);
                     entry.set("tick", tick as i64);
                     entry.set("world", world);
@@ -967,6 +975,8 @@ fn apply(
             player,
             tick,
             world,
+            width,
+            height,
         } => {
             // A second welcome means a different world, and a different world means everything
             // held about the last one is void. Its snapshots were measured against a history that
@@ -983,6 +993,8 @@ fn apply(
                 player: player.0,
                 tick: tick.0,
                 world: world.to_owned(),
+                width,
+                height,
             });
         }
 

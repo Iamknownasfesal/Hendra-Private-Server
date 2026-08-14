@@ -1183,6 +1183,8 @@ async fn join(
         player: handle.to_entity_id(),
         tick: hendra_net::Tick::ZERO,
         world: &world.name,
+        width: world.width,
+        height: world.height,
     }
     .encode(&mut Writer::new(&mut buf));
 

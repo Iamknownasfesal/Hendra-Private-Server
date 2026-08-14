@@ -32,9 +32,15 @@ namespace Hendra.Net;
 /// arrives unhandled is logged once, so a gap shows up as a line rather than as silence.
 /// </para>
 /// </remarks>
-public sealed partial class RustSession : Node
+/// <remarks>
+/// A plain object rather than a node, as the session it replaces was: it is created by the service
+/// locator and driven by the world controller's frame, not by the scene tree. The extension
+/// underneath it *is* a node — it holds a native object and wants freeing with the tree — so it is
+/// parented to the root here.
+/// </remarks>
+public sealed class RustSession : IDisposable
 {
-    private HendraNet _net;
+    private readonly HendraNet _net;
     private readonly Core.GameClock _clock;
 
     /// <summary>Where the app server answers. It is the only thing that ever sees a password.</summary>
@@ -43,6 +49,26 @@ public sealed partial class RustSession : Node
     public RustSession(Core.GameClock clock)
     {
         _clock = clock;
+
+        _net = new HendraNet();
+
+        // Deferred, because a session is made while the scene that asked for it is still building
+        // its own children and the tree refuses a new one mid-setup.
+        if (Engine.GetMainLoop() is SceneTree tree)
+            tree.Root.CallDeferred(Node.MethodName.AddChild, _net);
+
+        _net.Welcomed += OnWelcomed;
+        _net.Rejected += OnRejected;
+        _net.Disconnected += reason => Disconnected?.Invoke(reason);
+        _net.Chatted += OnChatted;
+        _net.TerrainRow += OnTerrainRow;
+        _net.GroundChanged += OnGroundChanged;
+        _net.WorldChanged += OnWorldChanged;
+    }
+
+    public void Dispose()
+    {
+        _net?.QueueFree();
     }
 
     /// <summary>What the world held last frame, so arrivals and departures can be worked out.</summary>
@@ -112,20 +138,6 @@ public sealed partial class RustSession : Node
     public event Action<FailurePacket> Failed;
     public event Action<string> Disconnected;
 
-    public override void _Ready()
-    {
-        _net = new HendraNet();
-        AddChild(_net);
-
-        _net.Welcomed += OnWelcomed;
-        _net.Rejected += OnRejected;
-        _net.Disconnected += reason => Disconnected?.Invoke(reason);
-        _net.Chatted += OnChatted;
-        _net.TerrainRow += OnTerrainRow;
-        _net.GroundChanged += OnGroundChanged;
-        _net.WorldChanged += OnWorldChanged;
-    }
-
     /// <summary>Raised when the server asks the client to reconnect elsewhere.</summary>
     public event Action<ReconnectPacket> ReconnectRequested;
 
@@ -161,59 +173,58 @@ public sealed partial class RustSession : Node
         ConnectToLoadAsync(host, port, guid, password, gameId, charId);
 
     /// <summary>Exchanges a name and password for a session token, or reports why not.</summary>
+    /// <remarks>
+    /// A plain HTTP client rather than Godot's <c>HttpRequest</c>, which is a node and refuses to
+    /// work until it is inside the scene tree — and signing in happens before the session is
+    /// parented.
+    /// </remarks>
     private async System.Threading.Tasks.Task<string> SignInAsync(string guid, string password)
     {
-        var request = new Godot.HttpRequest();
-        AddChild(request);
-
-        string body = Json.Stringify(new Godot.Collections.Dictionary
+        string body = System.Text.Json.JsonSerializer.Serialize(new
         {
-            ["name"] = guid,
-            ["password"] = password,
+            name = guid,
+            password,
         });
 
-        var error = request.Request(
-            $"{AppServer}/login",
-            new[] { "Content-Type: application/json" },
-            HttpClient.Method.Post,
-            body);
-
-        if (error != Error.Ok)
+        try
         {
-            request.QueueFree();
-            Failed?.Invoke(new FailurePacket
+            using var http = new System.Net.Http.HttpClient
             {
-                ErrorId = -1,
-                ErrorDescription = $"Cannot reach the account server at {AppServer}.",
-            });
-            return null;
-        }
+                Timeout = TimeSpan.FromSeconds(15),
+            };
 
-        var answer = await ToSignal(request, Godot.HttpRequest.SignalName.RequestCompleted);
-        request.QueueFree();
+            using var content = new System.Net.Http.StringContent(
+                body, System.Text.Encoding.UTF8, "application/json");
 
-        long code = answer[1].AsInt64();
-        string text = System.Text.Encoding.UTF8.GetString(answer[3].AsByteArray());
+            var answer = await http.PostAsync($"{AppServer}/login", content);
+            string text = await answer.Content.ReadAsStringAsync();
 
-        if (code != 200)
-        {
-            Failed?.Invoke(new FailurePacket
+            if (!answer.IsSuccessStatusCode)
             {
-                ErrorId = (int)code,
-                ErrorDescription = code == 401 ? "Wrong name or password." : $"Sign-in failed ({code}).",
-            });
-            return null;
-        }
+                Fail((int)answer.StatusCode, answer.StatusCode == System.Net.HttpStatusCode.Unauthorized
+                    ? "Wrong name or password."
+                    : $"Sign-in failed ({(int)answer.StatusCode}).");
+                return null;
+            }
 
-        var parsed = Json.ParseString(text);
-        if (parsed.VariantType != Variant.Type.Dictionary)
+            using var parsed = System.Text.Json.JsonDocument.Parse(text);
+            if (!parsed.RootElement.TryGetProperty("token", out var token))
+            {
+                Fail(-1, "The account server answered without a token.");
+                return null;
+            }
+
+            return token.GetString();
+        }
+        catch (Exception ex)
         {
-            Failed?.Invoke(new FailurePacket { ErrorId = -1, ErrorDescription = "The account server said something unreadable." });
+            Fail(-1, $"Cannot reach the account server at {AppServer} — {ex.Message}");
             return null;
         }
-
-        return parsed.AsGodotDictionary()["token"].AsString();
     }
+
+    private void Fail(int code, string description) =>
+        Failed?.Invoke(new FailurePacket { ErrorId = code, ErrorDescription = description });
 
     /// <summary>Opens the connection. The token comes from the app server over HTTP.</summary>
     public bool Connect(string host, int port, string token, int character, bool allowAnyCertificate = true)
@@ -248,39 +259,37 @@ public sealed partial class RustSession : Node
         // sampled here for the ledger, and there is no ledger to sample for.
     }
 
-    /// <summary>Sends this frame's input. Called once per frame by the world controller.</summary>
+    /// <summary>
+    /// Drains what arrived and reports where the player is. Called once per frame.
+    /// </summary>
     public void Poll()
     {
+        _tickTime = _clock?.NowMs ?? _tickTime;
+        _net?.Poll();
+
         if (HasPlayerPosition)
             _net?.SendInput(new Vector2(PlayerX, PlayerY), _tickTime);
     }
 
 
 
-    public override void _Process(double delta)
-    {
-        _net?.Poll();
-        _tickTime += (int)(delta * 1000.0);
-    }
-
     // ----------------------------------------------------------------------------------------
     // Arriving
     // ----------------------------------------------------------------------------------------
 
-    private void OnWelcomed(int player, uint tick, string world)
+    private void OnWelcomed(int player, uint tick, string world, int width, int height)
     {
         PlayerObjectId = player;
         WorldName = world;
 
-        // The old server sent the map's own dimensions before anything else. Here the terrain
-        // arrives as rows and the client sizes itself from them, so this carries the name and the
-        // identity and leaves the extent to the rows that follow.
+        // The extent comes with the welcome rather than being inferred from the rows, because the
+        // map and the minimap are sized before the first row lands.
         MapLoaded?.Invoke(new MapInfoPacket
         {
             Name = world,
             DisplayName = world,
-            Width = 0,
-            Height = 0,
+            Width = width,
+            Height = height,
             Seed = 0,
             Background = 0,
             Difficulty = 0,

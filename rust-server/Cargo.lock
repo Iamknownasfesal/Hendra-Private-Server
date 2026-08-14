@@ -768,6 +768,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "hendra-beh-lsp"
+version = "0.1.0"
+dependencies = [
+ "hendra-behavior",
+ "serde_json",
+]
+
+[[package]]
 name = "hendra-behavior"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,14 @@
+{
+  "name": "tree-sitter-beh",
+  "version": "0.1.0",
+  "description": "Tree-sitter grammar for the Hendra behaviour language",
+  "license": "MIT",
+  "main": "bindings/node",
+  "tree-sitter": [
+    {
+      "scope": "source.beh",
+      "file-types": ["beh"],
+      "injection-regex": "^beh$"
+    }
+  ]
+}

@@ -154,8 +154,11 @@ public sealed partial class HendraNet : Node
     /// <summary>Raised once the QUIC handshake has completed.</summary>
     public event Action Connected;
 
-    /// <summary>Raised when the server accepts us into a world.</summary>
-    public event Action<int, uint, string> Welcomed;
+    /// <summary>
+    /// Raised when the server accepts us into a world: our entity, the tick, the world's name and
+    /// how large its map is.
+    /// </summary>
+    public event Action<int, uint, string, int, int> Welcomed;
 
     /// <summary>Raised when the server refuses the connection.</summary>
     public event Action<RejectReason> Rejected;
@@ -226,15 +229,29 @@ public sealed partial class HendraNet : Node
 
     private ulong _lastRevision;
 
-    public override void _Ready()
+    public override void _Ready() => EnsureNative();
+
+    /// <summary>
+    /// Creates the native object if it does not exist yet.
+    /// </summary>
+    /// <remarks>
+    /// On demand rather than only in <c>_Ready</c>, because a session is built and connected before
+    /// the node carrying it has been parented — the scene that asks for one is still setting up its
+    /// own children at the time, so the tree defers the add by a frame and the connection would
+    /// find nothing here.
+    /// </remarks>
+    private bool EnsureNative()
     {
+        if (_native is not null)
+            return true;
+
         if (!ExtensionAvailable)
         {
             GD.PushError(
                 $"Hendra: the native extension is not loaded. Build it with "
                     + "`cargo build -p hendra-godot --release` and copy the library into res://bin/."
             );
-            return;
+            return false;
         }
 
         _native = ClassDB.Instantiate(NativeClass).As<GodotObject>();
@@ -242,6 +259,8 @@ public sealed partial class HendraNet : Node
         {
             AddChild(node);
         }
+
+        return _native is not null;
     }
 
     /// <summary>
@@ -263,6 +282,7 @@ public sealed partial class HendraNet : Node
         bool allowAnyCertificate = false
     )
     {
+        EnsureNative();
         if (_native is null)
         {
             return false;
@@ -284,6 +304,7 @@ public sealed partial class HendraNet : Node
     /// </remarks>
     public void Poll()
     {
+        EnsureNative();
         if (_native is null)
         {
             return;
@@ -316,7 +337,9 @@ public sealed partial class HendraNet : Node
                 Welcomed?.Invoke(
                     entry["player"].AsInt32(),
                     (uint)entry["tick"].AsInt64(),
-                    entry["world"].AsString()
+                    entry["world"].AsString(),
+                    entry["width"].AsInt32(),
+                    entry["height"].AsInt32()
                 );
                 break;
 
