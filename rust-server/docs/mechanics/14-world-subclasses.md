@@ -60,10 +60,80 @@ The keys are **entities leaving the world**, not items being picked up — so th
 object being removed, whatever removed it. A player arriving late is told which keys are already
 found, which is the whole point of keeping the flags.
 
-## Nexus, Marketplace, DonorShop, Castle, Candyland, Test
+## Nexus
 
-Thin: they place merchants by region, or override nothing at all. `Castle` overrides nothing, which
-is why our census records it as "nothing: the original's class overrides nothing either".
+`Init` walks every world the manager already has and gives it a portal:
+
+- **every `Realm`** gets a default portal on a random `Realm_Portals` tile;
+- **`ClothBazaar`** gets object `0x167` at `Store_39`;
+- **`Marketplace`** gets object `0x190` at `Store_37`, and only when the market is enabled.
+
+Worlds with a **non-negative id are skipped** — that is, only the static hub worlds are linked, and
+dynamic instances are not. A named portal whose region is missing from the map is skipped silently
+(`if (pos == null) continue`), so a Nexus map without a `Store_37` tile simply has no marketplace
+portal and says nothing about it.
+
+The names carry `(0)` from the start because `PortalMonitor.Tick` finds the count by regex on the
+name and needs something to replace.
+
+## Castle
+
+Overrides `GetSpawnPoints`, and it is the only world that scales its spawn spread to the crowd:
+
+```
+< 20 players entering  ->  1 spawn tile
+< 40                   ->  2
+< 60                   ->  3
+otherwise              ->  every spawn tile
+```
+
+`Take(n)` on `Map.Regions` takes the **first n in dictionary order**, not n chosen or n spread apart,
+so which tiles those are is whatever the map load happened to produce.
+
+`PlayersEntering` is a constructor argument defaulting to 100, and there is a second constructor that
+sets it to **0** — used when the Castle arrives by `/quake`, so that everybody quaked in lands on one
+tile together. The reflection-based `DynamicWorld.TryGetWorld` calls `(ProtoWorld, Client)`, which is
+the zero one, so **a Castle created the ordinary way always uses a single spawn tile.** The 100
+default is only reachable from a call site that passes it explicitly.
+
+## Candyland
+
+Two enemies in the map are singled out by object type: the candy spawners (`0x5e31`) and the boss
+spawner (`0x5e43`). Both are set `TickStateManually = true` in `Init`, which takes them out of the
+ordinary behaviour tick, and the world then ticks their state itself from `Tick` — the **200 ms slow
+tick**, not the fast one.
+
+So Candyland's spawners run at a fifth of the rate every other enemy's behaviour runs at. That is the
+whole mechanism: no counters, no timers, just a slower clock for the two things that spawn.
+
+The guard `_candyBossSpawner == null` returns early for the **whole method**, so a map missing the boss
+spawner also stops the candy spawners ticking.
+
+## Marketplace and DonorShop
+
+Identical: `Init` calls `Manager.Market.InitMarketplace(this)`. **Both** register as the marketplace,
+and the second one to initialise wins — `InitMarketplace` assigns `_marketplace` outright — so on a
+server running both, the merchants are placed in whichever loaded last. `RealmManager` adds
+`DonorShop` before `Marketplace` in the `Marketplace` server mode, so the Marketplace wins there.
+
+## Test
+
+`Init` is overridden to do **nothing at all**, so a Test world starts with no map. The map arrives
+from the client: `ConnectManager` writes the submitted JSON to disk, calls `LoadJson`, and the world
+converts it with `Json2Wmap` and runs `InitShops`. Requires rank 50.
+
+`LoadJson` guards the conversion with `JsonLoaded` but calls `InitShops()` **outside** the guard, so a
+second load re-runs shop placement on an unchanged map.
+
+## How a world class is chosen
+
+`DynamicWorld` reflects over every `World` subclass at startup and matches **`type.Name` against
+`proto.name`** — the class name and the world's name in the data must be the same string. There is no
+registration list and no error when nothing matches; `TryGetWorld` just leaves `world` null and
+`RealmManager` falls back to a plain `World`. Renaming a class silently demotes that world to having
+no logic.
+
+`DungeonTemplates.cs` is entirely commented out.
 
 ## What this server does differently
 
@@ -75,3 +145,10 @@ is why our census records it as "nothing: the original's class overrides nothing
   visit.
 - Davy's key notifications match; ours announces on the key being found and tells arrivals what is
   already found.
+- **Castle's spawn spreading was recorded as "overrides nothing" by an earlier census.** It overrides
+  `GetSpawnPoints`, and the practical behaviour is one spawn tile because of which constructor the
+  reflection picks. Worth having, and worth having deliberately rather than by accident.
+- **Candyland's spawners tick on the 200 ms world tick, not the behaviour tick.** If we tick them with
+  everything else they spawn five times as fast.
+- Matching a world class to a world by **class name** is the kind of implicit link that fails
+  silently. Ours should name the world explicitly in the data.

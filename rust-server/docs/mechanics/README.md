@@ -51,6 +51,7 @@ inside the game: a different data structure, a different loop, a different order
 | [28-chat.md](28-chat.md) | Six channels, emote gating, the filter list | `ChatManager.cs` |
 | [29-connecting.md](29-connecting.md) | The queue, reconnect tokens, world resolution, Nexus portals | `ConnectManager.cs`, `ConnectionQueue.cs`, `RealmManager.cs`, `PortalMonitor.cs` |
 | [30-the-server-loop.md](30-the-server-loop.md) | The two loops, tick debt, world timers | `FLLogicTicker.cs`, `NetworkTicker.cs`, `WorldTimer.cs` |
+| [31-commands.md](31-commands.md) | Registration, ranks, and every command | `Command.cs`, `UnrankedCommands.cs`, `RankedCommands.cs` |
 
 Page 25 lists exactly what was read and states the case for the groups assessed by census rather
 than file by file. See "How much of this is actually read" below before trusting any of it.
@@ -67,8 +68,8 @@ bonus in the game. See [the stats page](08-stats.md).
 
 ## How much of this is actually read
 
-The C# server is **547 files**. About **167** were opened and read, including every behaviour and
-every transition. The rest was assessed by census,
+The C# server is **547 files**. About **180** were opened and read, including every behaviour, every
+transition, every command and every world subclass. The rest was assessed by census,
 by signature, or by call site, which is weaker evidence and is how the first two passes of this audit
 reached wrong conclusions twice.
 
