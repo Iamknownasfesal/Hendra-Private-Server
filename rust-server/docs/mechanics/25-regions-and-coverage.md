@@ -72,28 +72,25 @@ Every file below was opened and read, not grepped.
 
 ## What has not been read, and why that is defensible
 
-**The 103 packet definitions and 51 handlers.** These are wire format and dispatch, not mechanics.
-Coverage is established by the `handlers` census, which I verified this session against the real
-directory listing: all 51 are accounted for, including the five hit-claim packets that are
-deliberately answered "decided by the world". The mechanics *behind* the handlers are in the files
-above.
+**37 of the 38 setpieces** — now read; see [page 24](24-setpieces.md).
 
-**The 48 files of the `server/` HTTP tree.** Coverage is established by the `endpoints` census, which
-I verified against the routes the C# registers: 37 real routes, all covered, with `/account/rp` an
-alias of `resetPassword`.
+**The 103 packet definitions and 51 handlers** — now read; see [pages 38](38-handlers.md)
+and [40](40-packets.md).
+
+**The 48 files of the `server/` HTTP tree** — now read; see [page 41](41-the-account-server.md).
 
 **7 of the 29 files of `common/`.** The remaining ones are `NReader`/`NWriter` (byte-level
 serialisation), `WeakDictionary`, `TimedLock`, `ISManager`/`ISDataTypes`/`InterServerChannel` (the
 Redis pub/sub bus), `ConfigModels`, `DbStatus`, `PrivateMessages`, `ChangePassword`, `Ranks`,
 `WorldMapExporter` and `Interfaces`. None carries game mechanics.
 
-**37 of the 38 setpieces.** The placement table and one representative piece were read. Each of the
-others is the same shape: an integer grid, a floor tile, and entities at marked cells. Fifteen are
-already implemented and match the table exactly; the other 23 are the event pieces, and they are
-blocked on the realm-events feature rather than on knowing what they draw.
+**The 61 `logic/db/BehaviorDb.*.cs` scripts** — 24,392 lines of behaviour *content*, not engine code.
+These are what our converter consumes, and coverage is established by the `gaps` census, which
+reports every construct it could not translate. Reading them one by one would confirm what the
+converter already reports per line.
 
-If any of those four groups turns out to matter, the census that covers it is the thing to distrust
-first — one of them was under-reporting for the life of the project before this audit.
+If any of those turns out to matter, the census that covers it is the thing to distrust first — one
+of them was under-reporting for the life of the project before this audit.
 
 ## Dead code in the C# tree, so nobody ports it
 
