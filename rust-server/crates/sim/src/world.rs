@@ -215,6 +215,13 @@ pub struct Entity {
     /// its own accuracy will report whatever earns the most.
     pub tally: crate::fame::Tally,
 
+    /// How long this player is still too new to be worth attacking.
+    ///
+    /// `Player.SetNewbiePeriod`, three seconds. Somebody who has just walked through a portal has
+    /// not had a chance to see what is in the room, and being shot at during the moment their client
+    /// is still drawing it is a death nobody could have avoided.
+    pub unseen_ms: u32,
+
     /// Which enemy this player's quest arrow points at.
     ///
     /// Held rather than worked out when asked, because two rules depend on which enemy it *was*
@@ -329,6 +336,7 @@ impl Entity {
             tally: crate::fame::Tally::default(),
             seen: None,
             quest_target: None,
+            unseen_ms: 0,
             texture: 0,
             resizing: None,
             no_experience: false,
@@ -379,6 +387,7 @@ impl Entity {
             tally: crate::fame::Tally::default(),
             seen: None,
             quest_target: None,
+            unseen_ms: 0,
             texture: 0,
             resizing: None,
             no_experience: false,
@@ -1290,6 +1299,12 @@ struct SenseScalars {
 /// How long before a player may teleport again.
 pub const TELEPORT_COOLDOWN_MS: u32 = 10_000;
 
+/// How long somebody who has just arrived is left alone.
+///
+/// `Player.SetNewbiePeriod`, three seconds. Long enough for a client to have drawn the room it
+/// walked into, and short enough that it is not a way to fight.
+pub const NEWCOMER_GRACE_MS: u32 = 3_000;
+
 /// How long a teleported player is forgiven for arriving somewhere no speed explains.
 ///
 /// A teleport moves somebody further in one tick than walking ever could, and the movement check
@@ -1562,7 +1577,15 @@ impl World {
                 player,
             });
 
-            if player && seen && nearest.is_none_or(|closest| distance < closest.distance) {
+            // What an enemy will chase and shoot at, which is not the same as what it can be told
+            // about. Somebody invisible, paused, or who has only just arrived is there to be looked
+            // at rather than attacked.
+            let worth_attacking = player
+                && other.unseen_ms == 0
+                && !crate::effects::Rules::of(other.conditions).unseen_by_enemies;
+
+            if worth_attacking && seen && nearest.is_none_or(|closest| distance < closest.distance)
+            {
                 nearest = Some(Nearby {
                     x: other.x,
                     y: other.y,
@@ -2034,7 +2057,7 @@ impl World {
     ///
     /// Renewing one it already holds extends it rather than stacking it, because a behaviour that
     /// holds an effect renews it every tick and stacking would make the list grow without bound.
-    fn give_effect(&mut self, handle: Handle, effect: u8, duration_ms: u32) {
+    pub(crate) fn give_effect(&mut self, handle: Handle, effect: u8, duration_ms: u32) {
         let Some(entity) = self.entities.get_mut(handle) else {
             return;
         };
@@ -2332,6 +2355,7 @@ impl World {
             entity.ability_cooldown_ms = entity.ability_cooldown_ms.saturating_sub(elapsed_ms);
             entity.teleport_cooldown_ms = entity.teleport_cooldown_ms.saturating_sub(elapsed_ms);
             entity.move_grace_ms = entity.move_grace_ms.saturating_sub(elapsed_ms);
+            entity.unseen_ms = entity.unseen_ms.saturating_sub(elapsed_ms);
 
             if !entity.boosts.is_empty() {
                 let before = entity.boosts.len();
@@ -2501,6 +2525,27 @@ impl World {
             }
 
             let rules = crate::effects::Rules::of(entity.conditions);
+
+            // A ninja's speed is paid for rather than given. Ten magic a second, and it ends the
+            // moment there is none left, which is what stops it being free movement.
+            if entity
+                .conditions
+                .contains(hendra_content::ConditionEffect::NinjaSpeedy)
+            {
+                entity.magic_fraction += crate::effects::Rules::MAGIC_PER_SECOND * seconds;
+                let spent = entity.magic_fraction.trunc();
+                entity.magic_fraction -= spent;
+
+                entity.mp = (entity.mp - spent as i32).max(0);
+                if entity.mp == 0 {
+                    entity
+                        .conditions
+                        .remove(hendra_content::ConditionEffect::NinjaSpeedy);
+                    let ninja = hendra_content::ConditionEffect::NinjaSpeedy as u8;
+                    entity.effects.retain(|(effect, _)| *effect != ninja);
+                }
+            }
+
             if rules.health_per_second == 0.0 {
                 continue;
             }
@@ -7280,6 +7325,151 @@ mod tests {
         }
 
         (world, player, enemy)
+    }
+
+    #[test]
+    fn a_ninjas_speed_is_paid_for_in_magic() {
+        // Ten a second, and it ends the moment there is none left. Free movement otherwise.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 10.0, 10.0, 800))
+            .unwrap();
+
+        if let Some(entity) = world.get_mut(player) {
+            entity.mp = 25;
+            entity.max_mp = 100;
+        }
+        world.give_effect(
+            player,
+            hendra_content::ConditionEffect::NinjaSpeedy as u8,
+            60_000,
+        );
+
+        // One second of it.
+        for _ in 0..20 {
+            world.advance(&catalog, 50);
+        }
+        assert_eq!(world.get(player).unwrap().mp, 15, "the speed was free");
+
+        // And it ends when the magic does, rather than carrying on unpaid.
+        for _ in 0..40 {
+            world.advance(&catalog, 50);
+        }
+
+        let entity = world.get(player).unwrap();
+        assert_eq!(entity.mp, 0);
+        assert!(
+            !entity
+                .conditions
+                .contains(hendra_content::ConditionEffect::NinjaSpeedy),
+            "the effect outlived the magic paying for it"
+        );
+    }
+
+    /// An enemy that chases, and a player in front of it.
+    fn hunted(catalog: &Catalog) -> (World, Handle, Handle) {
+        let squares = (0..32 * 32).map(|_| square(0x10, ObjectType::NONE.0));
+        let map = Map::from_squares(32, 32, squares).unwrap();
+        let mut world = World::new("Arena", Terrain::build(map, catalog), catalog);
+
+        let mut slime = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
+        slime.kind = Kind::Enemy;
+        slime.hp = 500;
+        slime.max_hp = 500;
+        let enemy = world.spawn(slime).unwrap();
+
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 14.0, 10.0, 800))
+            .unwrap();
+
+        let source =
+            r#"enemy "Slime" { state hunt { follow(speed: 1.0, acquire_range: 15, range: 0.5) } }"#;
+        let (programs, diagnostics) = hendra_behavior::compile::compile(
+            &hendra_behavior::parse::parse(source).expect("behaviour should parse"),
+        );
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        world.set_behaviours(catalog, programs);
+
+        (world, enemy, player)
+    }
+
+    /// How far the enemy travelled over a second of chasing.
+    fn chased(world: &mut World, catalog: &Catalog, enemy: Handle) -> f32 {
+        let before = world.get(enemy).map(|e| (e.x, e.y)).unwrap();
+        for _ in 0..20 {
+            world.advance(catalog, 50);
+        }
+        let after = world.get(enemy).map(|e| (e.x, e.y)).unwrap();
+
+        let (dx, dy) = (after.0 - before.0, after.1 - before.1);
+        (dx * dx + dy * dy).sqrt()
+    }
+
+    #[test]
+    fn an_enemy_chases_somebody_it_can_see() {
+        let catalog = catalog();
+        let (mut world, enemy, _) = hunted(&catalog);
+
+        assert!(
+            chased(&mut world, &catalog, enemy) > 0.5,
+            "the enemy did not chase at all, so this proves nothing"
+        );
+    }
+
+    #[test]
+    fn an_enemy_does_not_chase_somebody_invisible() {
+        // `IsVisibleToEnemy`. Invisibility that hid you from other players and not from what is
+        // trying to kill you would be the wrong half of the effect.
+        let catalog = catalog();
+        let (mut world, enemy, player) = hunted(&catalog);
+
+        if let Some(entity) = world.get_mut(player) {
+            entity
+                .conditions
+                .insert(hendra_content::ConditionEffect::Invisible);
+        }
+
+        assert_eq!(
+            chased(&mut world, &catalog, enemy),
+            0.0,
+            "an invisible player was chased"
+        );
+    }
+
+    #[test]
+    fn an_enemy_leaves_somebody_who_has_just_arrived_alone() {
+        // Three seconds, from `SetNewbiePeriod`. Being shot while your client is still drawing the
+        // room you walked into is a death nobody could have avoided.
+        let catalog = catalog();
+        let (mut world, enemy, player) = hunted(&catalog);
+
+        if let Some(entity) = world.get_mut(player) {
+            entity.unseen_ms = NEWCOMER_GRACE_MS;
+        }
+
+        let start = world.get(enemy).map(|e| (e.x, e.y)).unwrap();
+
+        // Two and a half seconds, which is inside the three.
+        for _ in 0..50 {
+            world.advance(&catalog, 50);
+        }
+        assert_eq!(
+            world.get(enemy).map(|e| (e.x, e.y)).unwrap(),
+            start,
+            "somebody who had just arrived was chased"
+        );
+
+        // Past it now, and it wears off rather than lasting, or it would be a way to fight.
+        for _ in 0..20 {
+            world.advance(&catalog, 50);
+        }
+        assert_ne!(
+            world.get(enemy).map(|e| (e.x, e.y)).unwrap(),
+            start,
+            "the grace never wore off"
+        );
     }
 
     #[test]

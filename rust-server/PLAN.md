@@ -962,3 +962,31 @@ category by category. It found thirteen things, one of them a mechanic that sile
 
   Not implemented: `MonsterAssists` and `GodAssists`. The original records both and no bonus reads
   either, so they are two numbers written to a database and never asked a question.
+
+### 18.19 `Player.Effects.cs`, and what an enemy is willing to attack — **M**
+
+- [x] `IsVisibleToEnemy`
+
+  An enemy picked the nearest player full stop. Invisible, hidden, paused, or newly arrived made no
+  difference, so an invisibility that hid you from other players left you being chased by the thing
+  trying to kill you, which is the wrong half of the effect.
+
+  Separate from `invisible` rather than folded into it, because they answer different questions: an
+  administrator watching a fight unseen is there to be looked at and not there to be attacked.
+
+- [x] Three seconds before anything attacks somebody who has just arrived
+
+  `SetNewbiePeriod`. Being shot while your client is still drawing the room you walked into is a
+  death nobody could have avoided. It wears off rather than lasting, or it would be a way to fight.
+
+- [x] A ninja's speed is paid for in magic
+
+  Ten a second, from `HandleEffects`, and the effect ends the moment there is none left. We
+  suppressed magic regeneration while it was held and never charged for it, which made it free
+  movement for as long as the duration ran.
+
+  Checked and already right: healing and bleeding at twenty-eight a second, bleeding never taking the
+  last point, Quiet emptying magic, and both regeneration suppressions.
+
+  Not implemented: the Ocean Trench's oxygen. It is one world's mechanic written into `Player.Ground`
+  by name, and this server has no Ocean Trench.

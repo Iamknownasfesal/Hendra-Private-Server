@@ -409,6 +409,7 @@ mod tests {
             damage_by: Vec::new(),
             seen: None,
             quest_target: None,
+            unseen_ms: 0,
             last_hurt_by: None,
             loot_drop: 1.0,
             boosts: Vec::new(),

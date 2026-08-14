@@ -857,6 +857,10 @@ fn handle(
             entity.name = Some(name.as_str().into());
             entity.weapon = arrival.weapon.or(loadout.weapon);
 
+            // A moment before anything will attack them. Somebody who has just walked through a
+            // portal has not seen what is in the room yet.
+            entity.unseen_ms = hendra_sim::world::NEWCOMER_GRACE_MS;
+
             let Some(handle) = world.spawn(entity) else {
                 tracing::warn!(world = %world.name, "world is full; refusing a join");
                 return;

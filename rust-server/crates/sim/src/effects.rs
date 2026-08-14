@@ -49,6 +49,13 @@ pub struct Rules {
     /// Hidden from other players.
     pub invisible: bool,
 
+    /// Not something an enemy will chase or shoot at.
+    ///
+    /// `Player.IsVisibleToEnemy`. Wider than `invisible`, which is only about other players: an
+    /// administrator watching a fight unseen, and somebody paused, are both there to be looked at
+    /// and neither is there to be attacked.
+    pub unseen_by_enemies: bool,
+
     /// Health regeneration is suppressed.
     pub no_health_regen: bool,
 
@@ -105,6 +112,7 @@ impl Rules {
         quiet: false,
         paused: false,
         invisible: false,
+        unseen_by_enemies: false,
         no_health_regen: false,
         no_magic_regen: false,
         defence_multiplier: 1.0,
@@ -122,6 +130,11 @@ impl Rules {
 
     /// How much health `Healing` and `Bleeding` move per second.
     pub const HEALTH_PER_SECOND: f32 = 28.0;
+
+    /// What a ninja's speed costs, in magic a second.
+    ///
+    /// From `HandleEffects`. It is what stops the effect being free movement: run out and it ends.
+    pub const MAGIC_PER_SECOND: f32 = 10.0;
 
     /// The share of a hit that always lands, however much defence is in the way.
     pub const DAMAGE_FLOOR: f32 = 0.25;
@@ -144,7 +157,8 @@ impl Rules {
         rules.rooted = rules.paused || conditions.contains(Paralyzed);
         rules.silenced = conditions.contains(Stunned) || rules.paused;
         rules.quiet = conditions.contains(Quiet) || rules.paused;
-        rules.invisible = conditions.contains(Invisible);
+        rules.invisible = conditions.contains(Invisible) || conditions.contains(Hidden);
+        rules.unseen_by_enemies = rules.invisible || rules.paused;
 
         // Sick and Bleeding stop health returning; Quiet and NinjaSpeedy stop magic.
         rules.no_health_regen = conditions.contains(Sick) || conditions.contains(Bleeding);
