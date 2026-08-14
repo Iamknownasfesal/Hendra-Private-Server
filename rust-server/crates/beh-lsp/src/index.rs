@@ -106,12 +106,29 @@ impl Workspace {
 
     /// Where an enemy is defined, wherever that is.
     pub fn enemy(&self, name: &str) -> Option<(&File, &EnemyBlock)> {
-        self.files.values().find_map(|file| {
-            file.enemies
-                .iter()
-                .find(|enemy| enemy.name == name)
-                .map(|enemy| (file, enemy))
-        })
+        self.files.values().find_map(|file| definition(file, name))
+    }
+
+    /// The same, but starting from the file being read.
+    ///
+    /// The repository holds two copies of the content — the converted one and the one beside the
+    /// C# it came from — so a name can be defined twice. Following it should stay in the copy the
+    /// author is editing rather than land in the other one by alphabetical accident.
+    pub fn enemy_near<'a>(
+        &'a self,
+        near: &'a File,
+        name: &str,
+    ) -> Option<(&'a File, &'a EnemyBlock)> {
+        if let Some(found) = definition(near, name) {
+            return Some(found);
+        }
+
+        let directory = near.path.parent();
+        self.files
+            .values()
+            .filter(|file| file.path.parent() == directory)
+            .find_map(|file| definition(file, name))
+            .or_else(|| self.enemy(name))
     }
 
     pub fn enemies(&self) -> impl Iterator<Item = (&File, &EnemyBlock)> {
@@ -153,6 +170,13 @@ impl Workspace {
             })
             .sum()
     }
+}
+
+fn definition<'a>(file: &'a File, name: &str) -> Option<(&'a File, &'a EnemyBlock)> {
+    file.enemies
+        .iter()
+        .find(|enemy| enemy.name == name)
+        .map(|enemy| (file, enemy))
 }
 
 /// A `file://` URI for a path.
@@ -216,6 +240,23 @@ mod tests {
         assert_eq!(file.uri, "file:///a.beh");
         assert_eq!(enemy.states[0].name, "idle");
         assert!(workspace.enemy("Nobody").is_none());
+    }
+
+    #[test]
+    fn a_name_defined_twice_resolves_in_the_file_being_read() {
+        let mut workspace = workspace();
+        // The repository holds a second copy of the content beside the C# it was converted from.
+        workspace.set(
+            "file:///Server-Side/a.beh",
+            r#"enemy "Guard" { state old { } }"#.into(),
+        );
+
+        let reading = workspace.get("file:///b.beh").expect("open");
+        let (file, _) = workspace.enemy_near(reading, "Guard").expect("found");
+        assert_eq!(file.uri, "file:///a.beh");
+
+        // Alphabetical order would have found the other copy first.
+        assert_eq!(workspace.enemy("Guard").map(|(file, _)| file.uri.as_str()), Some("file:///Server-Side/a.beh"));
     }
 
     #[test]

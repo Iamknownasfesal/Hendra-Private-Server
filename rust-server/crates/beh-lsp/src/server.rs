@@ -204,7 +204,7 @@ impl Server {
             What::Keyword(word) => keyword_help(word).to_string(),
             What::Call(site) => self.call_help(site),
             What::Argument { call, name, .. } => self.argument_help(call, name),
-            What::Enemy { name, .. } => self.enemy_help(name),
+            What::Enemy { name, .. } => self.enemy_help(file, name),
             What::State { name, .. } => self
                 .state_help(file, offset, name)
                 .unwrap_or_else(|| format!("`{name}` is not a state of this enemy.")),
@@ -313,8 +313,8 @@ impl Server {
     }
 
     /// An enemy by name: where it is written, and what it is made of.
-    fn enemy_help(&self, name: &str) -> String {
-        let Some((file, enemy)) = self.workspace.enemy(name) else {
+    fn enemy_help(&self, from: &File, name: &str) -> String {
+        let Some((file, enemy)) = self.workspace.enemy_near(from, name) else {
             return format!(
                 "**{name}**\n\nNo behaviour file defines this. It may be a plain object from the \
                  XML content, which needs no behaviour of its own."
@@ -374,7 +374,7 @@ impl Server {
         }
 
         if quoted {
-            return self.enemy_help(text);
+            return self.enemy_help(file, text);
         }
 
         if let Some(index) = docs::effect(text) {
@@ -414,12 +414,12 @@ impl Server {
     }
 
     /// The enemy an `order` is aimed at, taken from the `children` written beside it.
-    fn ordered_enemy(
-        &self,
-        file: &File,
+    fn ordered_enemy<'a>(
+        &'a self,
+        file: &'a File,
         offset: usize,
         call: &CallSite,
-    ) -> Option<(&File, &EnemyBlock)> {
+    ) -> Option<(&'a File, &'a EnemyBlock)> {
         if !matches!(call.name.as_str(), "order" | "order_once" | "order_on_death") {
             return None;
         }
@@ -439,7 +439,7 @@ impl Server {
             });
 
         let _ = index;
-        self.workspace.enemy(&children?)
+        self.workspace.enemy_near(file, &children?)
     }
 
     // -- going places ---------------------------------------------------------------------------
@@ -470,7 +470,7 @@ impl Server {
                 {
                     return location_of(target, state.name_span.clone());
                 }
-                match self.workspace.enemy(&text) {
+                match self.workspace.enemy_near(file, &text) {
                     Some((found, enemy)) => location_of(found, enemy.name_span.clone()),
                     None => Value::Null,
                 }
@@ -489,7 +489,7 @@ impl Server {
                 None => Value::Null,
             },
 
-            What::Enemy { name, .. } => match self.workspace.enemy(&name) {
+            What::Enemy { name, .. } => match self.workspace.enemy_near(file, &name) {
                 Some((found, enemy)) => location_of(found, enemy.name_span.clone()),
                 None => Value::Null,
             },

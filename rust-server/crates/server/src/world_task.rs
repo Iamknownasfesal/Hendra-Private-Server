@@ -30,6 +30,13 @@ use tokio::sync::mpsc;
 /// How often the world advances.
 pub const TICKS_PER_SECOND: u32 = 20;
 
+/// How long a player's movement goes unjudged after they arrive somewhere.
+///
+/// `Player.Verify.MoveGraceMs`. Arriving through a portal, the first claims a client makes are
+/// measured from where it last stood — which is a position in the world it just left — and judging
+/// those disconnects everybody who uses a portal.
+const MOVE_GRACE: std::time::Duration = std::time::Duration::from_secs(3);
+
 /// What a session asks the world to do.
 pub enum ToWorld {
     /// A player is arriving. The world replies with the handle it was given.
@@ -473,6 +480,14 @@ struct Player {
     /// person on a better line is not the same case.
     strikes: crate::strikes::Strikes,
 
+    /// When this player's movement starts being judged.
+    ///
+    /// A player arriving in a world has not been told where they are yet, and the claims they make
+    /// in the meantime are measured from wherever they last stood — which, coming out of a portal,
+    /// is a different world entirely. `Player.Verify` gives three seconds before it judges anything
+    /// for the same reason.
+    judge_moves_from: std::time::Instant,
+
     /// What this player has been sent, so a snapshot can be a delta against what they confirm.
     history: BaselineRing<WorldSnapshot>,
     encoder: SnapshotEncoder,
@@ -890,6 +905,7 @@ fn handle(
                 orders,
                 died,
                 strikes: crate::strikes::Strikes::new(),
+                judge_moves_from: std::time::Instant::now() + MOVE_GRACE,
                 history: BaselineRing::new(),
                 encoder: SnapshotEncoder::with_budget(budget),
                 acknowledged: Acknowledgement::NONE,
@@ -924,9 +940,14 @@ fn handle(
                 //
                 // The original strikes for "moving faster than it can" and for nothing else about
                 // movement, which is the same judgement.
-                if let Some(why) = outcome.refused.filter(|why| {
-                    matches!(why, hendra_sim::MoveRefusal::TooFar)
-                })
+                let judging = players
+                    .iter()
+                    .find(|player| player.handle == handle)
+                    .is_some_and(|player| std::time::Instant::now() >= player.judge_moves_from);
+
+                if let Some(why) = outcome
+                    .refused
+                    .filter(|why| judging && matches!(why, hendra_sim::MoveRefusal::TooFar))
                     && let Some(player) = players.iter_mut().find(|player| player.handle == handle)
                 {
                     let verdict = player.strikes.note(std::time::Instant::now());

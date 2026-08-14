@@ -282,6 +282,15 @@ public sealed class RustSession : IDisposable
         PlayerObjectId = player;
         WorldName = world;
 
+        // A welcome is a new world, and everything held about the last one is void: its entities
+        // are gone, and — the part that disconnects you — its coordinates are meaningless here.
+        // Claiming a nexus position inside a realm is a claim to have crossed a thousand tiles in
+        // a tick, which is the one refusal the server is right to treat as a lie.
+        _known.Clear();
+        _tiles.Clear();
+        _entered = false;
+        HasPlayerPosition = false;
+
         // The extent comes with the welcome rather than being inferred from the rows, because the
         // map and the minimap are sized before the first row lands.
         MapLoaded?.Invoke(new MapInfoPacket
@@ -367,6 +376,23 @@ public sealed class RustSession : IDisposable
                     ObjectType = (ushort)view.Types[i],
                     Stats = stats,
                 });
+
+                // Where the server put us, which is the only thing that can tell the client where
+                // it is in a world it has just arrived in. The client owns its position from here
+                // on; this is the one moment it does not.
+                if (id == PlayerObjectId)
+                {
+                    var at = view.PositionOf(i);
+                    PlayerX = at.X;
+                    PlayerY = at.Y;
+                    HasPlayerPosition = true;
+
+                    Repositioned?.Invoke(new GotoPacket
+                    {
+                        ObjectId = id,
+                        Position = new WorldPos(at.X, at.Y),
+                    });
+                }
                 continue;
             }
 
