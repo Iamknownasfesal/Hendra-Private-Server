@@ -1177,3 +1177,32 @@ category by category. It found thirteen things, one of them a mechanic that sile
   A real behaviour the census had never counted. Darting a short way in one of the eight compass
   directions and pausing, which is not the same as wandering in the way that matters to a player: a
   wanderer drifts and can be led, and this darts and cannot.
+
+---
+
+# Phase 12: reading our own server against the C# mechanics
+
+The 44 pages in `docs/mechanics/` were written by reading all 547 C# files. They record what the
+original does. What they cannot record is what *this* server does, because until now the Rust side
+had never been read end to end: every claim about it was made by looking up the one function named,
+which finds a divergence only when you already suspect one.
+
+103 files, 62,917 lines. Read each one against the page that covers the same ground, and write the
+comparison down. Findings go to `docs/audit/`, one page per crate, so that a refactor has a list
+rather than a feeling.
+
+The three defects already found this way — `Order` restarting its targets, case-sensitive id
+lookup, and the argument census that counts names instead of arguments — are what this phase is
+for. Each was invisible to the test suite and to the census, and each was found by reading two
+implementations side by side.
+
+- [ ] `content` — 13 files. Against pages 20, 33, 35, and the descriptor defaults.
+- [ ] `behavior` — 9 files. Against pages 01, 02, 03, 43, 44.
+- [ ] `sim`, part one: the world loop and entities — against pages 04, 09, 12, 17, 30.
+- [ ] `sim`, part two: combat, stats, items — against pages 05, 07, 08, 11, 13, 18, 21, 23.
+- [ ] `sim`, part three: worlds, setpieces, realm, shops — against pages 06, 10, 14, 15, 16, 24.
+- [ ] `net` — 6 files. Against pages 19, 37, 40.
+- [ ] `server` — 12 files. Against pages 22, 26, 29, 30, 31, 38.
+- [ ] `store` — 12 files. Against page 34.
+- [ ] `app`, `auth`, `transport`, `characters` — against pages 41, 42.
+- [ ] A refactor list, ordered by how many players notice.
