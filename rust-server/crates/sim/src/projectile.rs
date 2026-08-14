@@ -407,6 +407,7 @@ mod tests {
             glow: 0,
             belongs_to: None,
             damage_by: Vec::new(),
+            last_hurt_by: None,
             teleport_cooldown_ms: 0,
             move_grace_ms: 0,
             x,

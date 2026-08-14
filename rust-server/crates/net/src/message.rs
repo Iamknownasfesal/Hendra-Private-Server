@@ -81,6 +81,7 @@ pub mod server_id {
     pub const TRADE_ACCEPTED: u16 = 0x800f;
     pub const TRADE_DONE: u16 = 0x8010;
     pub const NOTICE: u16 = 0x8011;
+    pub const DIED: u16 = 0x8012;
 }
 
 /// Why a connection was refused.
@@ -907,6 +908,19 @@ pub enum ServerMessage<'a> {
         message: String,
     },
 
+    /// This character has died.
+    ///
+    /// Its own message rather than a notice, because it is the end of the session: what follows is
+    /// the character select screen, and a client that treated it as text would keep playing a
+    /// character the server has already written down as dead.
+    Died {
+        character: u32,
+        killed_by: String,
+
+        /// What the character finished with, which is what the death screen shows.
+        fame: i32,
+    },
+
     /// Something the world wants shown rather than said.
     ///
     /// Separate from chat because it is not somebody talking: a dungeon saying which keys have been
@@ -948,6 +962,7 @@ impl ServerMessage<'_> {
             ServerMessage::TradeAccepted { .. } => server_id::TRADE_ACCEPTED,
             ServerMessage::TradeDone { .. } => server_id::TRADE_DONE,
             ServerMessage::Notice { .. } => server_id::NOTICE,
+            ServerMessage::Died { .. } => server_id::DIED,
         }
     }
 
@@ -972,6 +987,15 @@ impl ServerMessage<'_> {
                 w.string(text);
             }
             ServerMessage::Notice { text } => w.string(text),
+            ServerMessage::Died {
+                character,
+                killed_by,
+                fame,
+            } => {
+                w.varint(*character as u64);
+                w.string(killed_by);
+                w.varint((*fame).max(0) as u64);
+            }
             ServerMessage::TradeRequested { name } => w.string(name),
             ServerMessage::TradeStart {
                 mine,
@@ -1115,6 +1139,11 @@ impl ServerMessage<'_> {
                 }
                 ServerMessage::Terrain { x, y, runs }
             }
+            server_id::DIED => ServerMessage::Died {
+                character: r.varint_u32()?,
+                killed_by: r.string()?.to_string(),
+                fame: r.varint_u32()? as i32,
+            },
             server_id::NOTICE => ServerMessage::Notice {
                 text: r.string()?.to_string(),
             },

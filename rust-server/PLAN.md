@@ -601,3 +601,79 @@ and carries a test that walks a threshold from C# through the converter and the 
 `cargo run -p hendra-server --example entities` counts the kinds of thing a world holds. Names differ
 from the original's on purpose, so the rows say which is which rather than matching names and calling
 every one a gap.
+
+## Phase 18 — What the file-by-file audit found
+
+Counted surfaces all read full, so the next audit went through `wServer` file by file rather than
+category by category. It found thirteen things, one of them a mechanic that silently does nothing.
+
+### 18.1 Death — **L**
+
+- [x] A player whose health reaches zero simply vanishes. The character is never marked dead, no
+      death message reaches the client, no gravestone, no announcement, no fame is worked out, and
+      `desc.resurrects` is parsed and never read. Logging back in finds the character alive
+
+  The world notes a death before it reaps the body, names it after whatever last took health off,
+  and puts a gravestone where it fell: which stone and how long it stands come from how much of the
+  character was finished, as they do in the original. The session answers the rest, in the
+  original's order and with the same stops: nowhere personal and no nexus kills anybody, an amulet
+  spends itself and sends them home alive, and only then is the character written down as dead.
+
+  The durable half runs before anything is sent. A death message the player sees and a character the
+  database still calls alive is a character they can log back into.
+
+### 18.2 Fame — **L**
+
+- [ ] `FameCounter` and the twenty bonuses in `common/FameStats.cs`. Nothing tracks shots, hits,
+      dungeons, assists, tiles seen, teleports, abilities or potions, so no bonus can be awarded
+
+### 18.3 Equipment sets — **M**
+
+- [ ] Seven sets in the content. Wearing a full one grants extra activates. The file is never parsed
+
+### 18.4 Boost stacking — **S**
+
+- [ ] Stacked stat boosts add up flat here. The original halves each one after the largest, and
+      takes only the highest of the non-stacking kind
+
+### 18.5 Potion stacking — **S**
+
+- [ ] `ItemStacker`: potions stack in their own slots with a ceiling
+
+### 18.6 One session per account — **S**
+
+- [ ] The same account can log in twice. The original takes a lock and disconnects the other
+
+### 18.7 Soulbound on drop — **S**
+
+- [ ] Respected in a trade and not on a drop, so a soulbound item can be given away by dropping it
+
+### 18.8 Quest choice — **S**
+
+- [ ] Scored by priority, level distance and range in the original, from a table of a hundred and
+      twenty. Nearest-flagged-object here
+
+### 18.9 Anti-cheat strikes — **M**
+
+- [ ] Five named offences are recorded in the original and nothing is recorded here, so there is no
+      repeat-offender signal
+
+### 18.10 Vault broadcast — **S**
+
+- [ ] A vault change reaches other sessions of the same account only on re-entry
+
+### 18.11 Position history — **M**
+
+- [ ] `PositionTimeline`, which answers where a player was when a shot was fired
+
+### 18.12 Loot boosts — **S**
+
+- [ ] `LTBoosted` and `LDBoosted`: loot-tier and loot-drop boosts, which the loot roll should apply
+
+### 18.13 Pets in a world — **M**
+
+- [ ] Pets are stored, chosen and never enter a world
+
+### 18.14 A login queue — **S**
+
+- [ ] `ConnectionQueue`, for when the server is full

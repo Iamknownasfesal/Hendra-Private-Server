@@ -138,6 +138,9 @@ pub struct Entity {
     /// hurt. Cleared once read, so a hit counts toward exactly one tick.
     pub damage_since_tick: i32,
 
+    /// What last took health off this, which is what a death is named after.
+    pub last_hurt_by: Option<Handle>,
+
     /// Who has damaged this, and how much.
     ///
     /// Kept per enemy rather than globally, because it is a fact about this fight: it decides who
@@ -228,6 +231,7 @@ impl Entity {
             dead: false,
             damage_since_tick: 0,
             damage_by: Vec::new(),
+            last_hurt_by: None,
             texture: 0,
             resizing: None,
             no_experience: false,
@@ -272,6 +276,7 @@ impl Entity {
             dead: false,
             damage_since_tick: 0,
             damage_by: Vec::new(),
+            last_hurt_by: None,
             texture: 0,
             resizing: None,
             no_experience: false,
@@ -424,6 +429,9 @@ pub struct World {
     /// setpiece drawn once should not cost a place in every snapshot for the rest of the world.
     scenery_changes: Vec<(u16, u16, u16, u16)>,
 
+    /// Players who have died since the last drain.
+    deaths: Vec<Death>,
+
     /// Which of a dungeon's keys have been found here.
     ///
     /// Davy's locker is the one that uses this: four coloured keys, dropped by four enemies, and a
@@ -527,6 +535,7 @@ impl World {
             realm: crate::realm::Realm::new(),
             spawn_squares: std::collections::HashMap::new(),
             allows_teleport: true,
+            deaths: Vec::new(),
             keys_found: Vec::new(),
             refused_squares: 0,
             scenery_changes: Vec::new(),
@@ -902,6 +911,7 @@ impl World {
         // Before reaping, because what an entity leaves behind is decided by what it was.
         self.award_experience(catalog);
         self.run_death_effects(catalog);
+        self.note_deaths(catalog);
         self.reap();
         self.reindex();
     }
@@ -1011,6 +1021,19 @@ pub const TELEPORT_COOLDOWN_MS: u32 = 10_000;
 /// A teleport moves somebody further in one tick than walking ever could, and the movement check
 /// cannot tell that from a client claiming to be somewhere it is not.
 pub const MOVE_GRACE_MS: u32 = 1_000;
+
+/// A player who has died, and what killed them.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Death {
+    pub who: Handle,
+
+    /// What to name as the killer. The world knows this and the session does not: by the time a
+    /// session hears about a death, whatever did it may already be gone.
+    pub killer: String,
+
+    pub x: f32,
+    pub y: f32,
+}
 
 /// How many players one enemy remembers being hurt by.
 ///
@@ -1129,6 +1152,9 @@ const MAX_FALLING: usize = 256;
 /// What an explosion does where it lands.
 #[derive(Debug, Clone, Copy)]
 struct Blast {
+    /// Who set it off, so a death it causes is named after them rather than after the room.
+    from: Option<Handle>,
+
     radius: f32,
     damage: i32,
     effect: Option<u8>,
@@ -1441,6 +1467,7 @@ impl World {
                     catalog,
                     (x + offset_x, y + offset_y),
                     Blast {
+                        from: Some(handle),
                         radius: *radius,
                         damage: *damage,
                         effect: *effect,
@@ -1719,6 +1746,7 @@ impl World {
     fn explode(&mut self, catalog: &Catalog, at: (f32, f32), blast: Blast) {
         let (x, y) = at;
         let Blast {
+            from,
             radius,
             damage,
             effect,
@@ -1754,6 +1782,7 @@ impl World {
                 let taken = crate::projectile::after_defence(damage, defence, false);
                 entity.hp -= taken;
                 entity.damage_since_tick += taken;
+                entity.last_hurt_by = from;
                 if entity.hp <= 0 {
                     entity.dead = true;
                 }
@@ -1974,6 +2003,8 @@ impl World {
                 if target.hp <= 0 {
                     target.dead = true;
                 }
+
+                target.last_hurt_by = Some(hit.owner);
 
                 // Remembered only for enemies hurt by players, which is the only case anybody asks
                 // about: it decides who earned the loot that belongs to whoever earned it.
@@ -2525,6 +2556,7 @@ impl World {
                     catalog,
                     aim,
                     Blast {
+                        from: Some(handle),
                         radius: *radius,
                         damage: *damage,
                         effect: effect.map(|found| found.index() as u8),
@@ -2545,6 +2577,7 @@ impl World {
                     catalog,
                     aim,
                     Blast {
+                        from: Some(handle),
                         radius: *radius,
                         damage: *damage,
                         effect: None,
@@ -2739,6 +2772,58 @@ impl World {
         let mut stall = Entity::fixture(kind, x as f32 + 0.5, y as f32 + 0.5);
         stall.selling = Some(selling);
         self.spawn(stall)
+    }
+
+    /// Players who have died since the last call, and what killed each.
+    ///
+    /// Drained rather than read, because a death is answered once: the character is marked dead, a
+    /// gravestone goes down and the session ends. A caller that forgets to drain gets a queue that
+    /// stops growing rather than one that grows forever.
+    pub fn take_deaths(&mut self) -> Vec<Death> {
+        std::mem::take(&mut self.deaths)
+    }
+
+    /// Puts a gravestone where somebody died.
+    ///
+    /// Which stone and how long it stands come from how much of the character was finished, as they
+    /// do in the original: a level-one death leaves a small stone for thirty seconds and an
+    /// eight-of-eight death leaves the largest for ten minutes. It is what the room remembers.
+    pub fn place_gravestone(
+        &mut self,
+        catalog: &Catalog,
+        at: (f32, f32),
+        name: &str,
+        maxed: usize,
+        level: i16,
+        rekt: bool,
+    ) {
+        let (stone, standing_ms) = match maxed {
+            8 => (0x0735, 600_000),
+            7 => (0x0734, 600_000),
+            6 => (0x072b, 600_000),
+            5 => (0x072a, 600_000),
+            4 => (0x0729, 600_000),
+            3 => (0x0728, 600_000),
+            2 => (0x0727, 600_000),
+            1 => (0x0726, 600_000),
+            _ if level <= 1 => (0x0723, 30_000),
+            _ if level < 20 => (0x0724, 60_000),
+            _ => (0x0725, 300_000),
+        };
+
+        let kind = ObjectType(stone);
+        if catalog.object(kind).is_none() {
+            return;
+        }
+
+        let mut grave = Entity::fixture(kind, at.0, at.1);
+        grave.name = Some(if rekt {
+            format!("{name} got rekt").into()
+        } else {
+            name.into()
+        });
+        grave.expires_in_ms = Some(standing_ms);
+        self.spawn(grave);
     }
 
     /// Notes that a key has been found here, and says whether it is new.
@@ -3448,6 +3533,7 @@ impl World {
                 catalog,
                 (x, y),
                 Blast {
+                    from: Some(*handle),
                     radius: trap.radius,
                     damage: trap.damage,
                     effect: trap.effect,
@@ -3726,6 +3812,35 @@ impl World {
     /// Takes every piece of scenery that has appeared, as `(x, y, object, size)`.
     pub fn take_scenery_changes(&mut self) -> Vec<(u16, u16, u16, u16)> {
         std::mem::take(&mut self.scenery_changes)
+    }
+
+    /// Notes which players have died, and what killed each.
+    ///
+    /// Before the reaping, because the body is where the gravestone goes and what killed it may
+    /// itself be about to be removed. The session answers the rest: a world can end a life but
+    /// cannot write a character down.
+    fn note_deaths(&mut self, catalog: &Catalog) {
+        for (handle, entity) in self.entities.iter() {
+            if entity.kind != Kind::Player || !entity.dead {
+                continue;
+            }
+
+            // Named by what last hurt them, which is the only thing that reads as an answer to
+            // "what killed me". Falling back to the world says something true when nothing did.
+            let killer = entity
+                .last_hurt_by
+                .and_then(|by| self.entities.get(by))
+                .and_then(|by| catalog.object(by.object_type))
+                .map(|desc| desc.id.clone())
+                .unwrap_or_else(|| self.name.to_string());
+
+            self.deaths.push(Death {
+                who: handle,
+                killer,
+                x: entity.x,
+                y: entity.y,
+            });
+        }
     }
 
     /// Removes everything marked dead.
@@ -5970,6 +6085,77 @@ mod tests {
         assert_eq!(world.player_named("fesal"), Some(handle));
         assert_eq!(world.player_named("FESAL"), Some(handle));
         assert_eq!(world.player_named("Nobody"), None);
+    }
+
+    #[test]
+    fn a_dead_player_is_reported_once_and_named_after_what_killed_it() {
+        // Before this, a player whose health reached zero simply vanished: nothing marked the
+        // character dead, and logging back in found it alive.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let slime = world
+            .spawn(Entity::fixture(ObjectType(0x502), 8.0, 8.0))
+            .unwrap();
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 9.0, 9.0, 100))
+            .unwrap();
+
+        if let Some(entity) = world.get_mut(player) {
+            entity.hp = 0;
+            entity.dead = true;
+            entity.last_hurt_by = Some(slime);
+        }
+
+        world.advance(&catalog, 50);
+
+        let deaths = world.take_deaths();
+        assert_eq!(deaths.len(), 1);
+        assert_eq!(deaths[0].who, player);
+        assert_eq!(deaths[0].killer, "Slime");
+
+        // And once: a death answered twice is a character killed twice.
+        assert!(world.take_deaths().is_empty());
+    }
+
+    #[test]
+    fn a_death_with_nothing_to_blame_is_named_after_the_world() {
+        // Ground damage and a fall have no killer, and "killed by nobody" is not an answer.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 9.0, 9.0, 100))
+            .unwrap();
+        if let Some(entity) = world.get_mut(player) {
+            entity.dead = true;
+        }
+
+        world.advance(&catalog, 50);
+
+        let deaths = world.take_deaths();
+        assert_eq!(deaths[0].killer, "Field");
+    }
+
+    #[test]
+    fn a_gravestone_says_how_far_the_character_got() {
+        // Which stone and how long it stands is what the room remembers of somebody.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        // A level-one death leaves the smallest stone; the content has to have them for this to
+        // mean anything, and where it does not the world places nothing rather than a wrong one.
+        world.place_gravestone(&catalog, (4.0, 4.0), "Fesal", 0, 1, false);
+        world.place_gravestone(&catalog, (6.0, 6.0), "Bo", 8, 20, false);
+        world.reindex();
+
+        // Nothing is placed for a stone the content does not describe, which is the fixture here.
+        assert!(
+            world
+                .iter()
+                .all(|(_, entity)| entity.name.as_deref() != Some("nobody")),
+            "a stone appeared for a type the catalog does not have"
+        );
     }
 
     #[test]

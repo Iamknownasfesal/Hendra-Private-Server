@@ -117,7 +117,11 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
     // castle when a realm closes. One slot is enough: there is one such order, and it happens once.
     let (to_session, mut orders) = mpsc::channel(4);
 
-    let Some((player, mut placement)) = handshake(&mut link, &context, &entry, &to_session).await
+    // One slot: a character dies once, and the session ends when it does.
+    let (to_death, mut died) = mpsc::channel(1);
+
+    let Some((player, mut placement)) =
+        handshake(&mut link, &context, &entry, &to_session, &to_death).await
     else {
         link.close("handshake refused");
         return;
@@ -153,6 +157,17 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
         let received = tokio::select! {
             received = link.recv() => received,
 
+            // A death, which ends the session. Waited on beside the client rather than checked
+            // between messages, because somebody who dies standing still sends nothing.
+            departed = died.recv() => {
+                let Some(departed) = departed else { break };
+
+                if die(&mut link, &context, &player, &placement, departed).await {
+                    break;
+                }
+                continue;
+            }
+
             // A world asking for something only a session can do. Waited on beside the client
             // rather than checked between messages, because a player standing still sends nothing
             // and a closing realm should still empty.
@@ -169,6 +184,7 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
                             &context.worlds,
                             arrival_of(&player, &context),
                             &to_session,
+                            &to_death,
                         )
                         .await
                         {
@@ -204,6 +220,7 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
                         &name,
                         &mut placement,
                         &to_session,
+                        &to_death,
                         &command,
                         &rest,
                     )
@@ -235,6 +252,7 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
                     &context.worlds,
                     arrival_of(&player, &context),
                     &to_session,
+                    &to_death,
                 )
                 .await
                 {
@@ -295,6 +313,7 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
                         &placement,
                         &name,
                         &to_session,
+                        &to_death,
                     )
                     .await
                     {
@@ -314,6 +333,7 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
                     &context.worlds,
                     arrival_of(&player, &context),
                     &to_session,
+                    &to_death,
                 )
                 .await
                 {
@@ -474,6 +494,7 @@ async fn handshake(
     context: &Context,
     entry: &WorldHandle,
     orders: &mpsc::Sender<crate::world_task::Order>,
+    died: &mpsc::Sender<crate::world_task::Departed>,
 ) -> Option<(crate::accounts::Session, Placement)> {
     let received = link.recv().await?;
     let payload = received.into_payload();
@@ -540,6 +561,7 @@ async fn handshake(
         &player.character.name,
         arrival_of(&player, context),
         orders,
+        died,
     )
     .await?;
     Some((
@@ -957,6 +979,7 @@ async fn join(
     name: &str,
     arrival: crate::world_task::Arrival,
     orders: &mpsc::Sender<crate::world_task::Order>,
+    died: &mpsc::Sender<crate::world_task::Departed>,
 ) -> Option<Handle> {
     let (reply, answer) = tokio::sync::oneshot::channel();
     if !world
@@ -965,6 +988,7 @@ async fn join(
             arrival,
             sender: link.sender(),
             orders: orders.clone(),
+            died: died.clone(),
             reply,
         })
         .await
@@ -1114,6 +1138,7 @@ async fn run_command(
     name: &str,
     placement: &mut Placement,
     to_session: &mpsc::Sender<crate::world_task::Order>,
+    to_death: &mpsc::Sender<crate::world_task::Departed>,
     command: &str,
     rest: &str,
 ) {
@@ -1162,7 +1187,7 @@ async fn run_command(
         // depends on what the guild has paid for, so it does not go through the ordinary door.
         Action::GoTo(world) if world == crate::commands::GUILD_HALL => {
             if let Some(next) =
-                enter_guild_hall(link, context, player, placement, name, to_session).await
+                enter_guild_hall(link, context, player, placement, name, to_session, to_death).await
             {
                 *placement = next;
                 context.trades.moved(name, &placement.world.name);
@@ -1180,6 +1205,7 @@ async fn run_command(
                 &context.worlds,
                 arrival_of(player, context),
                 to_session,
+                to_death,
             )
             .await
             {
@@ -1933,6 +1959,7 @@ async fn travel(
     worlds: &Worlds,
     arrival: crate::world_task::Arrival,
     orders: &mpsc::Sender<crate::world_task::Order>,
+    died: &mpsc::Sender<crate::world_task::Departed>,
 ) -> Option<Placement> {
     let destination = worlds.destination_of(portal_type)?.to_string();
     go_to(
@@ -1944,6 +1971,7 @@ async fn travel(
         worlds,
         arrival,
         orders,
+        died,
     )
     .await
 }
@@ -1962,6 +1990,7 @@ async fn go_to(
     worlds: &Worlds,
     arrival: crate::world_task::Arrival,
     orders: &mpsc::Sender<crate::world_task::Order>,
+    died: &mpsc::Sender<crate::world_task::Departed>,
 ) -> Option<Placement> {
     // Going back into the world you are already in is a no-op, not a rejoin. Rejoining would move
     // the player to the spawn point for no reason.
@@ -1972,7 +2001,7 @@ async fn go_to(
     // A personal world gets one instance per account, so two players in the vault are in two
     // rooms rather than looking at each other's chests.
     let world = worlds.get_or_start_for(destination, account_id)?;
-    let handle = join(link, &world, name, arrival, orders).await?;
+    let handle = join(link, &world, name, arrival, orders, died).await?;
 
     from.world
         .send(ToWorld::Leave {
@@ -3053,8 +3082,9 @@ async fn enter(
     world: WorldHandle,
     arrival: crate::world_task::Arrival,
     orders: &mpsc::Sender<crate::world_task::Order>,
+    died: &mpsc::Sender<crate::world_task::Departed>,
 ) -> Option<Placement> {
-    let handle = join(link, &world, name, arrival, orders).await?;
+    let handle = join(link, &world, name, arrival, orders, died).await?;
 
     from.world
         .send(ToWorld::Leave {
@@ -3499,6 +3529,7 @@ async fn enter_guild_hall(
     from: &Placement,
     name: &str,
     orders: &mpsc::Sender<crate::world_task::Order>,
+    died: &mpsc::Sender<crate::world_task::Departed>,
 ) -> Option<Placement> {
     let Ok(Some((guild, _))) = context.store.guild_of(player.account.id).await else {
         say(link, "you are not in a guild").await;
@@ -3520,5 +3551,166 @@ async fn enter_guild_hall(
         return None;
     };
 
-    enter(link, from, name, hall, arrival_of(player, context), orders).await
+    enter(
+        link,
+        from,
+        name,
+        hall,
+        arrival_of(player, context),
+        orders,
+        died,
+    )
+    .await
+}
+
+/// Answers a death.
+///
+/// Follows `Player.Death`, whose checks run in order and each of which can stop the rest: a
+/// resurrection spends an item and sends them home, and the nexus never kills anybody. Returns
+/// whether the session is over.
+///
+/// The character is written down as dead *before* anything is sent, because that is the half that
+/// must not be lost: a death message the player sees and a character the database still calls alive
+/// is a character they can log back into.
+async fn die(
+    link: &mut Link,
+    context: &Context,
+    player: &crate::accounts::Session,
+    placement: &Placement,
+    departed: crate::world_task::Departed,
+) -> bool {
+    // Nowhere safe kills anybody. The nexus and the vault are places rather than fights, and dying
+    // in one is a bug in whatever put damage there rather than the end of a character.
+    if context.worlds.is_personal(&placement.world.name)
+        || placement.world.name.as_ref() == crate::commands::NEXUS
+    {
+        say(link, "Something hurt you, but not here.").await;
+        return false;
+    }
+
+    // A resurrection spends the item and sends them home alive. Checked before anything durable
+    // happens, because the whole point is that the death does not.
+    if let Some((slot, item)) = resurrection(context, player).await
+        && context
+            .store
+            .take_item(player.character.id, slot, item)
+            .await
+            .is_ok()
+    {
+        {
+            send_containers(link, &context.catalog, &context.store, player).await;
+            say(link, "Your amulet breaks, and you are somewhere else.").await;
+            return false;
+        }
+    }
+
+    // The durable half first. Everything after this is telling people about it.
+    if let Err(err) = context.store.kill_character(player.character.id).await {
+        tracing::error!(%err, character = player.character.id, "could not record a death");
+    }
+
+    let fame = context
+        .store
+        .character(player.character.id)
+        .await
+        .map(|character| character.fame)
+        .unwrap_or(0);
+
+    // How much of the character was finished, which decides the stone and how long it stands.
+    let maxed = maxed_stats(context, player).await;
+
+    placement
+        .world
+        .send(ToWorld::Gravestone {
+            at: (departed.x, departed.y),
+            name: player.character.name.clone(),
+            maxed,
+            level: player.character.level,
+            rekt: false,
+        })
+        .await;
+
+    // Said everywhere for a death worth hearing about, and to the room otherwise. A death nobody
+    // was near is still a death, and the original draws the line at six-of-eight or a thousand fame.
+    let notable = maxed >= 6 || fame >= NOTABLE_FAME;
+    let line = format!(
+        "{} died to {} ({maxed}/8, {fame} fame)",
+        player.character.name, departed.killer
+    );
+
+    if notable {
+        let said = ServerMessage::Chat {
+            from: "Server",
+            text: &line,
+        };
+        for who in context.trades.present() {
+            context.trades.send(&who, &said);
+        }
+    } else {
+        placement.world.send(ToWorld::Announce { text: line }).await;
+    }
+
+    let mut buffer = Vec::new();
+    ServerMessage::Died {
+        character: player.character.id.max(0) as u32,
+        killed_by: departed.killer,
+        fame,
+    }
+    .encode(&mut Writer::new(&mut buffer));
+    let _ = link.send(Delivery::Stream, &buffer).await;
+
+    true
+}
+
+/// A death worth telling the whole server about.
+const NOTABLE_FAME: i32 = 1000;
+
+/// The worn item that will spend itself to prevent a death, if there is one.
+async fn resurrection(
+    context: &Context,
+    player: &crate::accounts::Session,
+) -> Option<(i16, uuid::Uuid)> {
+    let character = context.store.character(player.character.id).await.ok()?;
+
+    character
+        .inventory
+        .iter()
+        .filter(|(slot, _)| *slot < EQUIPPED_SLOTS as i16)
+        .find(|(_, item)| {
+            context
+                .catalog
+                .type_of_uuid(*item)
+                .and_then(|kind| context.catalog.object(kind))
+                .and_then(|desc| desc.item.as_ref())
+                .is_some_and(|item| item.resurrects)
+        })
+        .copied()
+}
+
+/// How many of the eight stats are at their class's maximum.
+async fn maxed_stats(context: &Context, player: &crate::accounts::Session) -> usize {
+    let Some(class) = context
+        .catalog
+        .type_of_uuid(player.character.class)
+        .and_then(|kind| {
+            context
+                .catalog
+                .classes()
+                .iter()
+                .find(|class| class.object_type == kind)
+        })
+    else {
+        return 0;
+    };
+
+    // Health and magic are the two the character stores; the other six live in the world and are
+    // recomputed on arrival, so this counts what can actually be known here.
+    let mut maxed = 0;
+    if player.character.max_hp >= class.stats[0].maximum {
+        maxed += 1;
+    }
+    if player.character.max_mp >= class.stats[1].maximum {
+        maxed += 1;
+    }
+    maxed
 }

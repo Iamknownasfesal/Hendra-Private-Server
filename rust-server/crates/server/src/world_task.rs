@@ -41,6 +41,9 @@ pub enum ToWorld {
         /// How the world tells this session to do something only a session can do.
         orders: mpsc::Sender<Order>,
 
+        /// How the world tells this session its character has died.
+        died: mpsc::Sender<Departed>,
+
         reply: tokio::sync::oneshot::Sender<Handle>,
     },
 
@@ -215,6 +218,20 @@ pub enum ToWorld {
         reply: tokio::sync::oneshot::Sender<Option<(String, i32, i32)>>,
     },
 
+    /// Puts a gravestone down where somebody died.
+    Gravestone {
+        at: (f32, f32),
+        name: String,
+        maxed: usize,
+        level: i16,
+        rekt: bool,
+    },
+
+    /// Says something to everybody in this world.
+    Announce {
+        text: String,
+    },
+
     /// Where a player is standing.
     Where {
         handle: Handle,
@@ -251,6 +268,17 @@ pub enum ToWorld {
 
 /// Where a closed realm sends everybody still in it.
 pub const CASTLE: &str = "Castle";
+
+/// A character that has died, as the session needs it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Departed {
+    /// What to name as the killer.
+    pub killer: String,
+
+    /// Where the body fell, which is where the gravestone goes.
+    pub x: f32,
+    pub y: f32,
+}
 
 /// Something a world asks of one session.
 ///
@@ -400,6 +428,12 @@ struct Player {
     /// How the world asks this session to do something only a session can do.
     orders: mpsc::Sender<Order>,
 
+    /// How the world tells this session its character has died.
+    ///
+    /// Apart from `orders` because a death is not a request: the world has already ended the life
+    /// and the session's job is to write it down, not to decide whether to.
+    died: mpsc::Sender<Departed>,
+
     /// What this player has been sent, so a snapshot can be a delta against what they confirm.
     history: BaselineRing<WorldSnapshot>,
     encoder: SnapshotEncoder,
@@ -498,6 +532,28 @@ pub async fn run(
                         elapsed_ms as u64,
                         &players,
                     );
+                }
+
+                // Deaths first, because a death ends a session and everything after it this tick
+                // would be sent to somebody who is no longer playing.
+                for death in world.take_deaths() {
+                    let Some(index) = players.iter().position(|p| p.handle == death.who) else {
+                        continue;
+                    };
+                    let player = players.remove(index);
+
+                    tracing::info!(
+                        world = %world.name,
+                        name = %player.name,
+                        killer = %death.killer,
+                        "a player died"
+                    );
+
+                    let _ = player.died.try_send(Departed {
+                        killer: death.killer,
+                        x: death.x,
+                        y: death.y,
+                    });
                 }
 
                 for name in world.take_unknown_setpieces() {
@@ -730,6 +786,7 @@ fn handle(
             arrival,
             sender,
             orders,
+            died,
             reply,
         } => {
             // A closed realm is about to be emptied. Letting somebody in now would be putting them
@@ -774,6 +831,7 @@ fn handle(
                 name: name.clone(),
                 sender,
                 orders,
+                died,
                 history: BaselineRing::new(),
                 encoder: SnapshotEncoder::with_budget(budget),
                 acknowledged: Acknowledgement::NONE,
@@ -946,6 +1004,18 @@ fn handle(
         ToWorld::Quest { handle, reply } => {
             let _ = reply.send(nearest_quest(world, catalog, handle));
         }
+
+        ToWorld::Gravestone {
+            at,
+            name,
+            maxed,
+            level,
+            rekt,
+        } => {
+            world.place_gravestone(catalog, at, &name, maxed, level, rekt);
+        }
+
+        ToWorld::Announce { text } => world.announce(&text),
 
         ToWorld::Where { handle, reply } => {
             let at = world

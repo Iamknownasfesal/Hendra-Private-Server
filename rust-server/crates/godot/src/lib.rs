@@ -91,6 +91,13 @@ enum Event {
     /// Something the world wants shown rather than said.
     Notice(String),
 
+    /// This character has died, and the session is over.
+    Died {
+        character: u32,
+        killed_by: String,
+        fame: i32,
+    },
+
     /// Somebody asked to trade.
     TradeRequested(String),
 
@@ -401,6 +408,16 @@ impl HendraConnection {
 
                     let row: Vec<i32> = tiles.iter().map(|tile| *tile as i32).collect();
                     entry.set("tiles", &PackedInt32Array::from(row.as_slice()));
+                }
+                Event::Died {
+                    character,
+                    killed_by,
+                    fame,
+                } => {
+                    entry.set("kind", "died");
+                    entry.set("character", character as i64);
+                    entry.set("killed_by", killed_by.as_str());
+                    entry.set("fame", fame as i64);
                 }
                 Event::Notice(text) => {
                     entry.set("kind", "notice");
@@ -855,6 +872,15 @@ fn apply(
         ServerMessage::Scenery { y, objects } => shared.push(Event::Scenery { y, objects }),
 
         ServerMessage::Notice { text } => shared.push(Event::Notice(text)),
+        ServerMessage::Died {
+            character,
+            killed_by,
+            fame,
+        } => shared.push(Event::Died {
+            character,
+            killed_by,
+            fame,
+        }),
         ServerMessage::TradeRequested { name } => shared.push(Event::TradeRequested(name)),
         ServerMessage::TradeStart {
             mine,
