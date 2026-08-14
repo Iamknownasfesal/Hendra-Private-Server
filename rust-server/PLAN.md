@@ -660,7 +660,19 @@ category by category. It found thirteen things, one of them a mechanic that sile
 
 ### 18.3 Equipment sets — **M**
 
-- [ ] Seven sets in the content. Wearing a full one grants extra activates. The file is never parsed
+- [x] Seven sets in the content. Wearing a full one grants extra activates. The file is never parsed
+
+  Read now, held by the catalog, and applied where the worn stat layer is worked out, so what a set
+  gives goes away the moment a piece comes off. A set gives nothing for three of its four pieces,
+  which is the whole shape of it and the thing the tests hold onto.
+
+  Two details that would each have made this look implemented while doing nothing. A setpiece naming
+  item type `0xFFFF` asks for an *empty* slot, which is how a three-piece set is spelled; read as an
+  item it is a set nobody can wear. And a set's `IncrementStat` is a boost rather than the permanent
+  rise the same effect means on a potion, because `ApplySetBonus` calls `IncrementBoost` for it.
+
+  The second was caught by a test asserting that at least five of the shipped sets raise a stat. It
+  said zero, because the effect being matched was the wrong one and nothing was ever applied.
 
 ### 18.4 Boost stacking — **S**
 

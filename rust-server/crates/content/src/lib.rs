@@ -15,6 +15,7 @@ pub mod activate;
 pub mod catalog;
 pub mod desc;
 pub mod effect;
+pub mod equipment_set;
 pub mod identity;
 pub mod legacy;
 pub mod map;
@@ -30,6 +31,7 @@ pub use desc::{
     StatBoost, TileDesc, TileType,
 };
 pub use effect::{AppliedEffect, ConditionEffect, ConditionSet};
+pub use equipment_set::{EquipmentSet, Piece};
 pub use map::{Composition, Map, MapError};
 pub use player::{PlayerDesc, STATS, Stat, StatGrowth, Unlock};
 pub use region::{Region, TERRAIN_COUNT, Terrain};

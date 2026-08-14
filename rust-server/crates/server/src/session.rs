@@ -1915,7 +1915,42 @@ fn worn_boosts(catalog: &hendra_content::Catalog, inventory: &[(i16, uuid::Uuid)
         .filter_map(|found| catalog.object(found))
         .filter_map(|desc| desc.item.as_ref());
 
-    hendra_sim::stats::equipment_boosts(worn)
+    let mut boosts = hendra_sim::stats::equipment_boosts(worn);
+
+    // And what a completed set adds on top, which is on none of its pieces: a set gives nothing for
+    // three of its four, so this can only be answered by looking at all of them together.
+    for set in catalog.sets_worn(&|slot| in_slot(catalog, inventory, slot)) {
+        for activate in &set.gives {
+            // A set's `IncrementStat` is a boost rather than the permanent rise the same effect
+            // means on a potion: `ApplySetBonus` calls `IncrementBoost` for it. So it lasts exactly
+            // as long as the set is worn, and taking a piece off recomputes this and takes it away.
+            let raised = match hendra_content::Effect::of(activate) {
+                hendra_content::Effect::IncrementStat { stat, amount } => Some((stat, amount)),
+                hendra_content::Effect::StatBoost { stat, amount, .. } => Some((stat, amount)),
+                _ => None,
+            };
+
+            if let Some((stat, amount)) = raised
+                && let Some(held) = boosts.get_mut(stat as usize)
+            {
+                *held += amount;
+            }
+        }
+    }
+
+    boosts
+}
+
+/// What is worn in one slot, by object type.
+fn in_slot(
+    catalog: &hendra_content::Catalog,
+    inventory: &[(i16, uuid::Uuid)],
+    slot: u16,
+) -> Option<hendra_content::ObjectType> {
+    inventory
+        .iter()
+        .find(|(at, _)| *at == slot as i16)
+        .and_then(|(_, item)| catalog.type_of_uuid(*item))
 }
 
 /// The body a character arrives in.

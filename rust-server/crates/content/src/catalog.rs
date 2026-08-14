@@ -31,6 +31,11 @@ pub struct Catalog {
     /// select screen shows them in.
     classes: Vec<PlayerDesc>,
 
+    /// Sets of equipment that give something extra when all of them are worn. What they give is on
+    /// none of the pieces, so an item read alone can never say what wearing it with three others is
+    /// worth.
+    equipment_sets: Vec<crate::EquipmentSet>,
+
     /// Files that were read, in load order. Kept for diagnostics and for the bake step's staleness
     /// check.
     sources: Vec<PathBuf>,
@@ -240,6 +245,20 @@ impl Catalog {
             "Ground" => {
                 if let Some(tile) = TileDesc::parse(node) {
                     self.insert_tile(tile, problems);
+                }
+                return;
+            }
+            "EquipmentSet" => {
+                // Read here rather than in a pass of its own, because a set arrives in the same
+                // stream of files as everything else and there is nothing to gain from a second
+                // walk of it.
+                if let Some(set) = crate::EquipmentSet::parse(node)
+                    && !self
+                        .equipment_sets
+                        .iter()
+                        .any(|held| held.set_type == set.set_type)
+                {
+                    self.equipment_sets.push(set);
                 }
                 return;
             }
@@ -458,6 +477,22 @@ impl Catalog {
     }
 
     #[inline]
+    /// Every set of equipment the content describes.
+    pub fn equipment_sets(&self) -> &[crate::EquipmentSet] {
+        &self.equipment_sets
+    }
+
+    /// Which sets somebody wearing these things has completed.
+    ///
+    /// `worn` answers what is in a slot, or `None` for an empty one. A set gives nothing for three
+    /// of its four pieces, which is the whole shape of it.
+    pub fn sets_worn(&self, worn: &dyn Fn(u16) -> Option<ObjectType>) -> Vec<&crate::EquipmentSet> {
+        self.equipment_sets
+            .iter()
+            .filter(|set| set.worn_by(worn))
+            .collect()
+    }
+
     pub fn tile(&self, tile_type: TileType) -> Option<&TileDesc> {
         self.tiles.get(tile_type.0 as usize)?.as_ref()
     }
