@@ -52,6 +52,8 @@ inside the game: a different data structure, a different loop, a different order
 | [29-connecting.md](29-connecting.md) | The queue, reconnect tokens, world resolution, Nexus portals | `ConnectManager.cs`, `ConnectionQueue.cs`, `RealmManager.cs`, `PortalMonitor.cs` |
 | [30-the-server-loop.md](30-the-server-loop.md) | The two loops, tick debt, world timers | `FLLogicTicker.cs`, `NetworkTicker.cs`, `WorldTimer.cs` |
 | [31-commands.md](31-commands.md) | Registration, ranks, and every command | `Command.cs`, `UnrankedCommands.cs`, `RankedCommands.cs` |
+| [32-fame-bonuses.md](32-fame-bonuses.md) | The 25 statistics and the 20 compounding bonuses | `FameStats.cs` |
+| [33-content-loading.md](33-content-loading.md) | XML passes, duplicate handling, worlds, settings | `XmlData.cs`, `Resources.cs`, `WorldData.cs`, `AppSettings.cs` |
 
 Page 25 lists exactly what was read and states the case for the groups assessed by census rather
 than file by file. See "How much of this is actually read" below before trusting any of it.
