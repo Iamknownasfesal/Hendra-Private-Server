@@ -54,12 +54,14 @@ public partial class DeathScreen : Control
         backdrop.SetAnchorsPreset(LayoutPreset.FullRect);
         AddChild(backdrop);
 
-        var panel = new CutEdgePanel
-        {
-            Background = CutEdgePanel.PanelBackground,
-            Border = new Color(0.42f, 0.35f, 0.35f),
-        };
-        panel.Padded(0);
+        var plate = Style.Plate(Style.Panel, Style.PanelEdge);
+        plate.ContentMarginLeft = 18;
+        plate.ContentMarginRight = 18;
+        plate.ContentMarginTop = 18;
+        plate.ContentMarginBottom = 18;
+
+        var panel = new PanelContainer();
+        panel.AddThemeStyleboxOverride("panel", plate);
         panel.SetAnchorsPreset(LayoutPreset.Center);
         panel.OffsetLeft = -PanelWidth / 2f;
         panel.OffsetRight = PanelWidth / 2f;
@@ -67,29 +69,24 @@ public partial class DeathScreen : Control
         panel.OffsetBottom = 240;
         AddChild(panel);
 
-        var margin = new MarginContainer();
-        foreach (string side in new[] { "margin_left", "margin_top", "margin_right", "margin_bottom" })
-            margin.AddThemeConstantOverride(side, 18);
-        panel.AddChild(margin);
-
+        // The plate carries its own padding, so the inner margin box the cut-cornered panel needed
+        // is gone with it.
         _column = new VBoxContainer();
         _column.AddThemeConstantOverride("separation", 10);
-        margin.AddChild(_column);
+        panel.AddChild(_column);
 
-        _heading = new Label { Text = "You have died" };
-        _heading.AddThemeFontSizeOverride("font_size", 24);
+        _heading = new Label { Text = "You have died" }
+            .Typeset(Style.FontTitle, Style.Text);
         _column.AddChild(_heading);
 
-        _subheading = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
+        _subheading = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart }
+            .Typeset(Style.FontBody, Style.Text);
         _column.AddChild(_subheading);
 
-        _total = new Label();
-        _total.AddThemeFontSizeOverride("font_size", 18);
-        _total.AddThemeColorOverride("font_color", new Color(0.99f, 0.87f, 0.35f));
+        _total = new Label().Typeset(Style.FontName, Style.FameFill);
         _column.AddChild(_total);
 
-        _status = new Label { Text = "Tallying…" };
-        _status.AddThemeColorOverride("font_color", new Color(0.65f, 0.65f, 0.65f));
+        _status = new Label { Text = "Tallying…" }.Typeset(Style.FontBody, Style.TextDim);
         _column.AddChild(_status);
 
         _bonuses = new VBoxContainer();
@@ -184,7 +181,7 @@ public partial class DeathScreen : Control
                 Text = $"{bonus.Description}  +{bonus.Fame}",
                 AutowrapMode = TextServer.AutowrapMode.WordSmart,
             };
-            line.AddThemeColorOverride("font_color", new Color(0.72f, 0.86f, 0.72f));
+            line.Typeset(Style.FontBody, Style.StatBonus);
             _bonuses.AddChild(line);
         }
 
@@ -220,9 +217,8 @@ public partial class DeathScreen : Control
 
     private void AddCell(string text, bool dim)
     {
-        var label = new Label { Text = text };
-        if (dim)
-            label.AddThemeColorOverride("font_color", new Color(0.62f, 0.62f, 0.62f));
+        var label = new Label { Text = text }
+            .Typeset(Style.FontSmall, dim ? Style.StatLabel : Style.StatValue);
         _tallies.AddChild(label);
     }
 }

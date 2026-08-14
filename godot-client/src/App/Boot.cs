@@ -68,6 +68,15 @@ public partial class Boot : Control
 
         _status.Visible = false;
 
+        // Once, here, before anything is drawn. These were only ever applied on the way out of the
+        // login page and when a setting was changed, so a player who had chosen fullscreen, a frame
+        // cap or a render scale got none of it until they signed in -- and an auto-connecting run,
+        // which never builds a login page, got none of it at all. That is also why the interface
+        // looked squeezed in an unattended screenshot: the window stayed at the project's own 1280
+        // by 720, which is below the size the HUD can hold its layout at, so everything came out at
+        // roughly three quarters scale.
+        ServiceLocator.ApplySettings();
+
         if (_options.CanAutoCreate)
         {
             GD.Print($"[boot] auto-creating a character of class {_options.CreateClassType}");
@@ -76,7 +85,11 @@ public partial class Boot : Control
         }
         else if (_options.CanAutoConnect)
         {
-            GD.Print($"[boot] auto-connecting to {_options.Host}:{_options.Port} as character {_options.CharacterId}");
+            // The account is named as well as the character. Without it an unattended run leaves no
+            // record of who it signed in as, which is exactly the question worth asking when the
+            // player card comes back with somebody else's name on it.
+            GD.Print($"[boot] auto-connecting to {_options.Host}:{_options.Port} " +
+                     $"as {_options.Guid} character {_options.CharacterId}");
             StartGame(_options.ToServer(), _options.Guid, _options.Password ?? string.Empty, _options.CharacterId);
         }
         else
@@ -155,7 +168,7 @@ public partial class Boot : Control
         // waiting on a download before showing the world would be a poor trade.
         _ = Assets.RemoteTextures.LoadAsync(_appServerUrl, ServiceLocator.Assets, ServiceLocator.Data);
 
-        _game = new GameScene { Autofire = _options?.Autofire ?? false, AutoAbility = _options?.AutoAbility ?? false, AutoWalk = _options?.AutoWalk ?? false, OpenCharacterPanel = _options?.OpenCharacterPanel ?? false, OpenAccountPanel = _options?.OpenAccountPanel ?? false, OpenVault = _options?.OpenVault ?? false, OpenOptions = _options?.OpenOptions ?? false, OptionsTab = _options?.OptionsTab,
+        _game = new GameScene { Autofire = _options?.Autofire ?? false, AutoAbility = _options?.AutoAbility ?? false, AutoWalk = _options?.AutoWalk ?? false, OpenCharacterPanel = _options?.OpenCharacterPanel ?? false, OpenAccountPanel = _options?.OpenAccountPanel ?? false, OpenVault = _options?.OpenVault ?? false, OpenOptions = _options?.OpenOptions ?? false, OptionsTab = _options?.OptionsTab, OpenMenu = _options?.OpenMenu ?? false,
             StartingCameraAngle = _options?.CameraAngleDegrees * Mathf.Pi / 180f, ScriptedLines = new System.Collections.Generic.Queue<string>(_options?.Say ?? new System.Collections.Generic.List<string>()) };
         _game.Ended += OnSessionEnded;
         _game.Died += OnCharacterDied;
@@ -190,7 +203,7 @@ public partial class Boot : Control
         // waiting on a download before showing the world would be a poor trade.
         _ = Assets.RemoteTextures.LoadAsync(_appServerUrl, ServiceLocator.Assets, ServiceLocator.Data);
 
-        _game = new GameScene { Autofire = _options?.Autofire ?? false, AutoAbility = _options?.AutoAbility ?? false, AutoWalk = _options?.AutoWalk ?? false, OpenCharacterPanel = _options?.OpenCharacterPanel ?? false, OpenAccountPanel = _options?.OpenAccountPanel ?? false, OpenVault = _options?.OpenVault ?? false, OpenOptions = _options?.OpenOptions ?? false, OptionsTab = _options?.OptionsTab,
+        _game = new GameScene { Autofire = _options?.Autofire ?? false, AutoAbility = _options?.AutoAbility ?? false, AutoWalk = _options?.AutoWalk ?? false, OpenCharacterPanel = _options?.OpenCharacterPanel ?? false, OpenAccountPanel = _options?.OpenAccountPanel ?? false, OpenVault = _options?.OpenVault ?? false, OpenOptions = _options?.OpenOptions ?? false, OptionsTab = _options?.OptionsTab, OpenMenu = _options?.OpenMenu ?? false,
             StartingCameraAngle = _options?.CameraAngleDegrees * Mathf.Pi / 180f, ScriptedLines = new System.Collections.Generic.Queue<string>(_options?.Say ?? new System.Collections.Generic.List<string>()) };
         _game.Ended += OnSessionEnded;
         _game.Died += OnCharacterDied;

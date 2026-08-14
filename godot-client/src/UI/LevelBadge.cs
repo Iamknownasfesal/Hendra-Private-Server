@@ -23,8 +23,10 @@ public partial class LevelBadge : Control
     {
         _level = level;
 
+        // Cool at level one, the interface's amber at the cap. The same warming the vitals bar does
+        // when it stops counting experience and starts counting fame.
         float climb = Mathf.Clamp(level / (float)MaxLevel, 0f, 1f);
-        _colour = Style.Steel.Lerp(Style.Gold, climb);
+        _colour = Style.TextDim.Lerp(Style.FameFill, climb);
 
         CustomMinimumSize = new Vector2(52, 22);
     }
@@ -39,15 +41,14 @@ public partial class LevelBadge : Control
             MouseFilter = MouseFilterEnum.Ignore,
         };
         label.SetAnchorsPreset(LayoutPreset.FullRect);
-        label.AddThemeFontSizeOverride("font_size", 14);
-        label.AddThemeColorOverride("font_color", _colour);
+        label.Typeset(Style.FontSmall, _colour);
         AddChild(label);
     }
 
     public override void _Draw()
     {
         var box = new Rect2(Vector2.Zero, Size);
-        DrawRect(box, _colour with { A = 0.13f });
-        DrawRect(box, _colour with { A = 0.5f }, filled: false, width: 1f);
+        DrawRect(box, Style.PanelInset);
+        DrawRect(box, _colour with { A = 0.65f }, filled: false, width: 1f);
     }
 }

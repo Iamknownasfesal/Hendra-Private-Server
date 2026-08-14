@@ -24,6 +24,12 @@ public enum SlotHighlight
 
     /// <summary>This character cannot equip what is on the slot.</summary>
     Red,
+
+    /// <summary>On the table in a trade: this is going to the other person.</summary>
+    Offered,
+
+    /// <summary>Soulbound, or an equipped slot a trade may not reach.</summary>
+    Untradeable,
 }
 
 public static class SlotHighlights
@@ -46,6 +52,30 @@ public static class SlotHighlights
     public static readonly Color RedEdge = new("8f2222");
 
     /// <summary>
+    /// The plate under an item that has been put on the table.
+    /// </summary>
+    /// <remarks>
+    /// The interface's amber, which already means "this is the thing to look at" on the fame bar
+    /// and on a new quest. A trade is read by comparing two columns, so what matters is that the
+    /// offered squares separate from the rest at a glance rather than being individually legible.
+    /// </remarks>
+    public static readonly Color OfferedFill = new("5a4413");
+
+    public static readonly Color OfferedEdge = new("f2a01c");
+
+    /// <summary>
+    /// A slot the trade cannot touch: worn equipment, or something soulbound.
+    /// </summary>
+    /// <remarks>
+    /// Darker than the board rather than red. It is not a warning -- nothing has gone wrong and
+    /// the player has not made a mistake -- it is simply a square that does not take part, and it
+    /// should recede rather than shout.
+    /// </remarks>
+    public static readonly Color InertFill = new("242424");
+
+    public static readonly Color InertEdge = new("363636");
+
+    /// <summary>
     /// The fill and border a highlight asks for, or the neutral pair for none.
     /// </summary>
     /// <remarks>
@@ -59,6 +89,8 @@ public static class SlotHighlights
         highlight switch
         {
             SlotHighlight.Red => (RedFill, RedEdge),
+            SlotHighlight.Offered => (OfferedFill, OfferedEdge),
+            SlotHighlight.Untradeable => (InertFill, InertEdge),
             _ => occupied ? (Style.Slot, Style.SlotBorder) : (Style.SlotEmpty, Style.SlotEmptyEdge),
         };
 }

@@ -8,12 +8,12 @@
   "serverInfo": {
     "type": "Account",
     "name": "AppEngine",
-    "bindAddress": "37.123.96.189",
+    "bindAddress": "127.0.0.1",
     "port": "8888"
   },
   "serverSettings": {
     "logFolder": "./logs",
-    "resourceFolder":  "./resources",
+    "resourceFolder":  "D:/Hendra-Private-Server/Server-Side/XmlDatas",
     "sendGridApiKey": ""
   }
 }

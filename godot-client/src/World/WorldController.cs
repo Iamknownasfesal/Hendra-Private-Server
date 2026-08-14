@@ -78,6 +78,16 @@ public partial class WorldController : Node
     /// <summary>Overrides the starting camera heading, in radians. See LaunchOptions.</summary>
     public float? StartingCameraAngle { set { if (value.HasValue) _cameraAngle = value.Value; } }
 
+    /// <summary>
+    /// Swings the camera back to the heading the settings call home.
+    /// </summary>
+    /// <remarks>
+    /// What the reset key does, exposed so that changing the setting can do it too: the point of
+    /// choosing a default angle is to look at the world from it, and a setting whose effect is
+    /// deferred until you press an unrelated key reads as a setting that is broken.
+    /// </remarks>
+    public void ResetCamera() => _cameraAngle = DefaultCameraAngle;
+
     private int _nextAutoAbilityMs;
 
     /// <summary>
@@ -124,8 +134,9 @@ public partial class WorldController : Node
     /// <summary>Raised when the character sheet should open or close.</summary>
     public event System.Action CharacterToggled;
 
-    /// <summary>Raised when the account panel should open or close.</summary>
-    public event System.Action AccountToggled;
+    // There is no AccountToggled to match it. The account panel is reached from the button on the
+    // player card, which GameScene wires directly, and no key is bound to it -- so the event that
+    // used to live here was declared, subscribed to twice, and raised by nothing.
 
     /// <summary>Whether the options panel is up, so input can be held back while it is.</summary>
     public System.Func<bool> OptionsAreOpen { private get; set; }
@@ -164,6 +175,12 @@ public partial class WorldController : Node
     {
         _minimap = minimap;
         _strings = App.ServiceLocator.Strings ?? _strings;
+
+        // The heading the settings ask for, taken at the start of the session rather than only when
+        // the reset key is pressed. Without this the option was reachable one way -- press Z -- and
+        // a player who set 45 and never learned that key had a setting that did nothing. The
+        // command line's own override is applied after Begin returns, so it still wins.
+        _cameraAngle = DefaultCameraAngle;
         _overlay = overlay;
         _overlay?.Configure(new SheetConditionIcons(assets));
 
@@ -606,6 +623,15 @@ public partial class WorldController : Node
 
         if (isSelf && entity is LocalPlayer player)
         {
+            // Two objects claiming our own id in one session should be impossible: the server hands
+            // them out of a counter that only ever climbs. Said out loud rather than assumed,
+            // because the symptom of it happening is the interface quietly describing someone else
+            // -- their name on the card, their stats on the sheet -- with nothing else to go on.
+            if (_map.Player != null && !ReferenceEquals(_map.Player, player))
+                GD.PushWarning(
+                    $"[world] a second object claimed our id {entity.ObjectId}; " +
+                    $"was \"{_map.Player.Name}\", now \"{player.Name}\".");
+
             _map.Player = player;
             _focus = player;
             player.OnMoved();
@@ -838,13 +864,24 @@ public partial class WorldController : Node
         if (owner == null || owner.Dead)
             return;
 
+        // The firing pose is kept whatever the setting says: it belongs to the character rather
+        // than to the shot, and a crowd of people swinging at nothing reads as a broken animation.
         owner.SetAttack(shot.Angle, now);
+
+        // 0 shows everything, 1 drops the projectiles, 2 drops the muzzle flash with them. A Nexus
+        // full of people testing weapons is the case this exists for.
+        int hide = Options?.AllyShoot ?? 0;
+        if (hide >= 2)
+            return;
 
         var container = _data.GetObject((ushort)shot.ContainerType);
         if (container?.Projectiles == null || !container.Projectiles.TryGetValue(0, out var desc))
             return;
 
         Muzzle(desc, owner.X, owner.Y, shot.Angle);
+
+        if (hide >= 1)
+            return;
 
         _combat.SpawnCosmetic(desc, (ushort)shot.ContainerType, shot.OwnerId, shot.BulletId,
             shot.Angle, owner.X, owner.Y, now);
@@ -1067,6 +1104,9 @@ public partial class WorldController : Node
 
         _particles.Quality = Options?.ParticleDetail ?? 2;
         _world.Zoom = Mathf.Clamp(Options?.CameraZoom ?? 1f, FurthestZoom, NearestZoom);
+
+        if (_overlay != null)
+            _overlay.ConditionIconSize = Options is { SmallConditionIcons: true } ? 11f : 16f;
 
         using (Phases.Measure("particles"))
             _particles.Update(now, deltaMs);
@@ -1358,6 +1398,17 @@ public partial class WorldController : Node
     private string _worldId = string.Empty;
 
     /// <summary>
+    /// Whether the player is standing in the Nexus already.
+    /// </summary>
+    /// <remarks>
+    /// The internal name rather than the display one: the display name arrives as a localisation
+    /// key on this server and is whatever the player's language turned it into, which is not
+    /// something to make a decision on.
+    /// </remarks>
+    public bool InNexus =>
+        string.Equals(_worldId, "Nexus", System.StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
     /// What to call the world we have just entered.
     /// </summary>
     /// <remarks>
@@ -1396,7 +1447,7 @@ public partial class WorldController : Node
         // The server refuses outright in the Nexus and answers nothing at all -- a bare return, no
         // InvResult -- so a client that just sent it would show the item leaving the slot and then
         // reappearing a tick later with no explanation.
-        if (string.Equals(_worldId, "Nexus", System.StringComparison.OrdinalIgnoreCase))
+        if (InNexus)
         {
             _chat?.AddSystem("Items cannot be dropped in the Nexus.");
             return;
@@ -1704,13 +1755,34 @@ public partial class WorldController : Node
         // Two keys for the Nexus, as in the original -- R for the hand on the keyboard and F5 for
         // the one that has just been surprised.
         if (Input.IsActionJustPressed("nexus") || Input.IsActionJustPressed("nexus_alt"))
-            NexusRequested?.Invoke();
+            RequestNexus();
 
         if (Input.IsActionJustPressed("quick_slot_1"))
             _inventory.UsePotion(health: true);
 
         if (Input.IsActionJustPressed("quick_slot_2"))
             _inventory.UsePotion(health: false);
+    }
+
+    /// <summary>
+    /// Goes to the Nexus, unless that is where the player already is.
+    /// </summary>
+    /// <remarks>
+    /// The key used to fire regardless, and going to the Nexus is a reconnect rather than a
+    /// teleport -- the session is torn down and stood back up against the same world. So pressing
+    /// it in the Nexus cost a loading screen, a fresh handshake and a re-streamed map to arrive
+    /// exactly where you were standing, which reads as the game hiccuping for no reason. It is also
+    /// the key people hit hardest when something has gone wrong, so it was easy to do twice.
+    /// </remarks>
+    private void RequestNexus()
+    {
+        if (InNexus)
+        {
+            _chat?.AddSystem("You are already in the Nexus.");
+            return;
+        }
+
+        NexusRequested?.Invoke();
     }
 
     /// <summary>Acts on whatever the player is standing next to.</summary>
@@ -2213,6 +2285,12 @@ public partial class WorldController : Node
         if (entity.Desc.DrawUnder)
             draw.SortBias -= 1f;
 
+        // Your own character over anyone sharing its tile. The id tie-break above spans a quarter
+        // of a unit, so this clears it, and it stays under the half a flash adds so a hit still
+        // reads over the top.
+        if (Options is { PlayerOnTop: true } && ReferenceEquals(entity, _map.Player))
+            draw.SortBias += 0.4f;
+
         // A few objects are real geometry rather than a picture of it. Those are drawn as
         // geometry and their sprite becomes the texture on it, so the flat quad is skipped.
         if (AddModel(entity, draw))
@@ -2607,7 +2685,7 @@ public partial class WorldController : Node
                 AnchorX = 0.5f,
                 AnchorY = 0.5f,
                 Rotation = angle,
-                Modulate = Colors.White,
+                Modulate = ProjectileModulate(projectile),
                 Outlined = true,
                 // Slightly above whatever they are flying over, so a bullet is never swallowed by
                 // the sprite it is about to hit.
@@ -2619,6 +2697,27 @@ public partial class WorldController : Node
 
             LeaveTrail(projectile, now);
         }
+    }
+
+    /// <summary>
+    /// How solid a shot is drawn, so a crowd's covering fire can be seen through.
+    /// </summary>
+    /// <remarks>
+    /// Only other players' shots, and never an enemy's. The setting sits with the rest of the
+    /// opacity controls, which are all about seeing past other people -- fading the things that are
+    /// trying to kill you would be a different feature, and a bad one.
+    /// </remarks>
+    private Color ProjectileModulate(Projectile projectile)
+    {
+        var options = Options;
+        if (options is not { FadeProjectiles: true })
+            return Colors.White;
+
+        var player = _map.Player;
+        if (player == null || !projectile.DamagesEnemies || projectile.OwnerId == player.ObjectId)
+            return Colors.White;
+
+        return new Color(1f, 1f, 1f, Mathf.Clamp(options.Opacity, 0.1f, 1f));
     }
 
     /// <summary>

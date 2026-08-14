@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Godot;
 using Hendra.Account;
+using Hendra.UI;
 
 namespace Hendra.App;
 
@@ -50,7 +51,9 @@ public partial class LoginScreen : Control
         // character read as the same place as the title rather than as a form on flat black.
         var art = new TextureRect
         {
-            Texture = ServiceLocator.Assets?.GetImage("TitleScreen"),
+            // The manifest's key. See TitleScreen: "TitleScreen" matches nothing and returns null,
+            // which is why this screen has been a form on flat black rather than on the artwork.
+            Texture = ServiceLocator.Assets?.GetImage("OriginalTitleScreen"),
             ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
             StretchMode = TextureRect.StretchModeEnum.KeepAspectCovered,
             MouseFilter = MouseFilterEnum.Ignore,
@@ -65,7 +68,7 @@ public partial class LoginScreen : Control
 
         // The same sky as the title screen, so moving between them does not change worlds.
         AddChild(new UI.Starfield());
-        AddChild(new UI.Vignette(0.45f));
+        AddChild(new UI.Vignette(0.16f));
 
         var centre = new CenterContainer();
         centre.SetAnchorsPreset(LayoutPreset.FullRect);
@@ -79,9 +82,7 @@ public partial class LoginScreen : Control
         {
             Text = "Sign in",
             HorizontalAlignment = HorizontalAlignment.Center,
-        };
-        heading.AddThemeFontSizeOverride("font_size", 26);
-        heading.AddThemeColorOverride("font_color", new Color(0.93f, 0.9f, 0.84f));
+        }.Typeset(UI.Style.FontTitle, UI.Style.Text);
         stack.AddChild(heading);
         _heading = heading;
 
@@ -134,7 +135,7 @@ public partial class LoginScreen : Control
             HorizontalAlignment = HorizontalAlignment.Center,
             CustomMinimumSize = new Vector2(CharacterBoxWidth, 0),
         };
-        _status.AddThemeColorOverride("font_color", new Color(0.9f, 0.7f, 0.5f));
+        _status.Typeset(UI.Style.FontBody, UI.Style.StatLabel);
         stack.AddChild(_status);
 
         // A fresh account has no name until it picks one, and the world server refuses to let it
@@ -178,6 +179,36 @@ public partial class LoginScreen : Control
         _characters = new VBoxContainer();
         _characters.AddThemeConstantOverride("separation", 6);
         characterColumn.AddChild(_characters);
+
+        // Deleting takes over the screen rather than opening a box over it. It is the one thing here
+        // that cannot be undone, and a panel you have to read your way out of is the point.
+        _deletePanel = NewPanel();
+        _deletePanel.Visible = false;
+        stack.AddChild(_deletePanel);
+
+        var deleteColumn = new VBoxContainer();
+        deleteColumn.AddThemeConstantOverride("separation", 10);
+        _deletePanel.AddChild(deleteColumn);
+
+        _deletePrompt = new Label
+        {
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            CustomMinimumSize = new Vector2(CharacterBoxWidth, 0),
+        }.Typeset(UI.Style.FontBody, UI.Style.Text);
+        deleteColumn.AddChild(_deletePrompt);
+
+        // The safe way out takes the accent. The destructive one is the plain plate, and it is the
+        // second button rather than the first.
+        var keep = new UI.GameButton("Keep this character", primary: true, compact: true)
+        {
+            CustomMinimumSize = new Vector2(0, 36),
+        };
+        keep.Pressed += () => { _deleting = -1; ShowCharacters(); };
+        deleteColumn.AddChild(keep);
+
+        _deleteConfirm = new UI.GameButton("Delete it permanently", compact: true);
+        _deleteConfirm.Pressed += OnDeleteConfirmed;
+        deleteColumn.AddChild(_deleteConfirm);
 
         // Enter submits from any field, which is how anyone actually uses a login form.
         foreach (var field in new[] { _guid, _password })
@@ -241,13 +272,19 @@ public partial class LoginScreen : Control
     /// point of the screen is comparing characters at a glance, and a sentence per character makes
     /// that a reading exercise.
     /// </remarks>
-    private static Control NewCharacterBox(string className, Account.CharacterInfo character, Action play)
+    /// <param name="remove">
+    /// Asks to delete this character. Wired to a cross in the heading rather than to the box, and
+    /// it opens a confirmation rather than doing it -- a character is weeks of play and the server
+    /// has no undo.
+    /// </param>
+    private static Control NewCharacterBox(
+        string className, Account.CharacterInfo character, Action play, Action remove)
     {
         // A click target, not a keyboard widget -- the original's are graphics you click, and
         // CardButton keeps itself out of the focus chain for the same reason. Godot gives the first
         // focusable control focus on its own, and a focused Button is activated by ui_accept, which
         // is Enter, Space *and joypad button 0* by default.
-        var box = new UI.CardButton(UI.Style.Gold)
+        var box = new UI.CardButton(UI.Style.FameFill)
         {
             CustomMinimumSize = new Vector2(CharacterBoxWidth, 86),
             TooltipText = "Play this character",
@@ -283,8 +320,7 @@ public partial class LoginScreen : Control
             MouseFilter = MouseFilterEnum.Ignore,
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
         };
-        heading.AddThemeFontSizeOverride("font_size", 18);
-        heading.AddThemeColorOverride("font_color", UI.Style.Text);
+        heading.Typeset(UI.Style.FontName, UI.Style.Text);
         headingRow.AddChild(heading);
 
         // Stars, on the original's thresholds: one for each of 20, 150, 400, 800 and 2000 fame.
@@ -313,6 +349,17 @@ public partial class LoginScreen : Control
             SizeFlagsVertical = SizeFlags.ShrinkCenter,
         });
 
+        // A Control with Stop inside a row of Ignores: the row does not swallow the click and the
+        // cross is picked before the card behind it, so deleting and playing stay separate presses.
+        var scrap = new UI.HudIconButton(UI.HudIcons.Cross, "Delete this character", inset: 6f)
+        {
+            Tint = UI.Style.TextDim,
+            CustomMinimumSize = new Vector2(20, 20),
+            SizeFlagsVertical = SizeFlags.ShrinkCenter,
+        };
+        scrap.Pressed += remove;
+        headingRow.AddChild(scrap);
+
         var vitals = new Label
         {
             Text = $"{character.HitPoints}/{character.MaxHitPoints} HP    " +
@@ -320,7 +367,7 @@ public partial class LoginScreen : Control
                    $"{character.CurrentFame:N0} fame",
             MouseFilter = MouseFilterEnum.Ignore,
         };
-        vitals.AddThemeColorOverride("font_color", new Color(0.72f, 0.72f, 0.72f));
+        vitals.Typeset(UI.Style.FontBody, UI.Style.Text);
         rows.AddChild(vitals);
 
         var stats = new Label
@@ -329,7 +376,7 @@ public partial class LoginScreen : Control
                    $"DEX {character.Dexterity}  VIT {character.Vitality}  WIS {character.Wisdom}",
             MouseFilter = MouseFilterEnum.Ignore,
         };
-        stats.AddThemeColorOverride("font_color", new Color(0.62f, 0.62f, 0.62f));
+        stats.Typeset(UI.Style.FontSmall, UI.Style.TextDim);
         rows.AddChild(stats);
 
         return box;
@@ -340,7 +387,7 @@ public partial class LoginScreen : Control
 
     private Button _register;
     private CheckBox _remember;
-    private UI.CutEdgePanel _namePanel;
+    private PanelContainer _namePanel;
     private LineEdit _name;
     private Button _setName;
 
@@ -348,19 +395,34 @@ public partial class LoginScreen : Control
     public event Action BackPressed;
 
     private Label _heading;
-    private UI.CutEdgePanel _signInPanel;
-    private UI.CutEdgePanel _charactersPanel;
+    private PanelContainer _signInPanel;
+    private PanelContainer _charactersPanel;
 
-    /// <summary>A panel in the game's own shape, so the menu belongs to the same game as the HUD.</summary>
-    private static UI.CutEdgePanel NewPanel()
+    private PanelContainer _deletePanel;
+    private Label _deletePrompt;
+    private Button _deleteConfirm;
+
+    /// <summary>The character the confirmation panel is asking about, or -1 when it is closed.</summary>
+    private int _deleting = -1;
+
+    /// <summary>
+    /// A panel in the game's own shape, so the menu belongs to the same game as the HUD.
+    /// </summary>
+    /// <remarks>
+    /// An opaque grey plate with a one-pixel dark edge and square corners, which is what every
+    /// panel in the interface is. It used to be a cut-cornered box in the older palette, and the
+    /// player met it about four seconds before meeting the HUD's version of the same idea.
+    /// </remarks>
+    private static PanelContainer NewPanel()
     {
-        var panel = new UI.CutEdgePanel
-        {
-            Background = UI.CutEdgePanel.PanelBackground,
-            Border = new Color(0.42f, 0.42f, 0.42f),
-        };
+        var plate = UI.Style.Plate(UI.Style.Panel, UI.Style.PanelEdge);
+        plate.ContentMarginLeft = 18;
+        plate.ContentMarginRight = 18;
+        plate.ContentMarginTop = 18;
+        plate.ContentMarginBottom = 18;
 
-        panel.Padded(18);
+        var panel = new PanelContainer();
+        panel.AddThemeStyleboxOverride("panel", plate);
         return panel;
     }
 
@@ -370,7 +432,12 @@ public partial class LoginScreen : Control
         row.AddThemeConstantOverride("separation", 8);
         parent.AddChild(row);
 
-        row.AddChild(new Label { Text = label, CustomMinimumSize = new Vector2(90, 0) });
+        row.AddChild(new Label
+        {
+            Text = label,
+            CustomMinimumSize = new Vector2(90, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        }.Typeset(UI.Style.FontBody, UI.Style.TextDim));
 
         var edit = new LineEdit
         {
@@ -543,6 +610,10 @@ public partial class LoginScreen : Control
 
     private void ShowCharacters()
     {
+        // Called to come back from the delete confirmation as well as after a fetch, so it clears
+        // rather than assuming it is being run against an empty list.
+        ClearCharacters();
+
         _servers.Clear();
         foreach (var server in _charList.Servers)
         {
@@ -556,6 +627,7 @@ public partial class LoginScreen : Control
         bool needsName = !_charList.Account.NameChosen;
         _namePanel.Visible = needsName;
         _charactersPanel.Visible = !needsName;
+        _deletePanel.Visible = false;
         _heading.Text = needsName ? "Choose your name" : "Choose a character";
 
         if (needsName)
@@ -586,11 +658,143 @@ public partial class LoginScreen : Control
             string name = desc?.DisplayId ?? desc?.Id ?? $"Type {character.ObjectType}";
 
             int characterId = character.CharacterId;
-            _characters.AddChild(NewCharacterBox(name, character, () => RequestPlay(characterId)));
+            var doomed = character;
+
+            _characters.AddChild(NewCharacterBox(name, character,
+                () => RequestPlay(characterId),
+                () => ConfirmDelete(name, doomed)));
         }
 
         if (living.Count < Math.Max(_charList.MaxCharacters, 1))
             AddClassPicker(living.Count == 0);
+        else
+            AddSlotOffer();
+    }
+
+    /// <summary>Puts the confirmation panel up for one character.</summary>
+    private void ConfirmDelete(string className, Account.CharacterInfo character)
+    {
+        _deleting = character.CharacterId;
+
+        // Named by what it cost to get, because that is what the answer turns on. A level 1 Wizard
+        // rolled by accident and a level 20 with two thousand fame both reach this panel, and the
+        // panel should not read the same for both.
+        _deletePrompt.Text =
+            $"Delete this level {character.Level} {className}, with {character.CurrentFame:N0} fame?" +
+            "\n\nIt is gone for good, and no fame is banked for it. The slot it frees can be used " +
+            "for a new character.";
+
+        _charactersPanel.Visible = false;
+        _deletePanel.Visible = true;
+        _heading.Text = "Delete a character";
+        _status.Text = string.Empty;
+    }
+
+    /// <summary>
+    /// The way out of a full character list.
+    /// </summary>
+    /// <remarks>
+    /// Only when every slot is taken, because that is the only time it is the answer. The price and
+    /// the currency both come down with the character list, so a server that prices slots in gold
+    /// rather than fame, or does not sell them at all, says so itself.
+    /// </remarks>
+    private void AddSlotOffer()
+    {
+        var account = _charList.Account;
+
+        string used = $"All {_charList.MaxCharacters} of your character slots are in use.";
+
+        // The balance goes in the sentence, not in a tooltip. A greyed-out button that only explains
+        // itself on hover looks like a fault; one under a line saying what you have and what it
+        // costs looks like a price.
+        string note = account.NextSlotPrice <= 0
+            ? $"{used} Delete one to make room."
+            : $"{used} You have {account.SlotBalance:N0} {account.SlotCurrencyName}, and another " +
+              $"slot costs {account.NextSlotPrice:N0}.";
+
+        _characters.AddChild(new Control { CustomMinimumSize = new Vector2(0, 6) });
+        _characters.AddChild(new Label
+        {
+            Text = note,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            CustomMinimumSize = new Vector2(CharacterBoxWidth, 0),
+        }.Typeset(UI.Style.FontBody, UI.Style.TextDim));
+
+        // A server can decline to sell them at all, which it says by pricing them at nothing.
+        if (account.NextSlotPrice <= 0)
+            return;
+
+        var buy = new UI.GameButton(
+            $"Buy another slot — {account.NextSlotPrice:N0} {account.SlotCurrencyName}", compact: true)
+        {
+            Disabled = account.SlotBalance < account.NextSlotPrice,
+        };
+
+        buy.Pressed += () => OnBuySlotPressed(buy);
+        _characters.AddChild(buy);
+    }
+
+    private async void OnDeleteConfirmed()
+    {
+        if (_deleting < 0)
+            return;
+
+        int charId = _deleting;
+        _deleteConfirm.Disabled = true;
+        _status.Text = "Deleting the character...";
+
+        try
+        {
+            using var client = new AppEngineClient(ServerConfig.AppServer);
+            await client.PostAsync("/char/delete", new Dictionary<string, string>
+            {
+                ["guid"] = _guid.Text,
+                ["password"] = _password.Text,
+                ["charId"] = charId.ToString(),
+            });
+
+            // Refetched rather than removed from the copy on hand: the slot count and the next
+            // character id both moved, and the server is the only thing that knows what to.
+            _deleting = -1;
+            OnSignInPressed();
+        }
+        catch (Exception ex)
+        {
+            _deleting = -1;
+            ShowCharacters();
+            _status.Text = $"The character was not deleted: {ex.Message}";
+        }
+        finally
+        {
+            _deleteConfirm.Disabled = false;
+        }
+    }
+
+    private async void OnBuySlotPressed(Button buy)
+    {
+        buy.Disabled = true;
+        _status.Text = "Buying a character slot...";
+
+        try
+        {
+            using var client = new AppEngineClient(ServerConfig.AppServer);
+            await client.PostAsync("/account/purchaseCharSlot", new Dictionary<string, string>
+            {
+                ["guid"] = _guid.Text,
+                ["password"] = _password.Text,
+            });
+
+            // The list is rebuilt from here, so the button this ran from is on its way out and is
+            // deliberately not re-enabled.
+            OnSignInPressed();
+        }
+        catch (Exception ex)
+        {
+            _status.Text = $"The slot was not bought: {ex.Message}";
+
+            if (IsInstanceValid(buy))
+                buy.Disabled = false;
+        }
     }
 
     /// <summary>
@@ -623,7 +827,9 @@ public partial class LoginScreen : Control
 
             // Click only, for the reason the character boxes are: creating a character by accident
             // costs a slot, and CardButton stays out of the focus chain.
-            var button = new UI.CardButton(UI.Style.Steel)
+            // No accent: a class you have not made yet is not one of your characters, and the amber
+            // stripe is what marks the ones that are.
+            var button = new UI.CardButton(UI.Style.SlotBorderHi)
             {
                 CustomMinimumSize = new Vector2(126, 78),
                 TooltipText = playerClass.DisplayId ?? playerClass.Id,
@@ -680,9 +886,20 @@ public partial class LoginScreen : Control
         return _charList.Servers[index];
     }
 
+    /// <summary>
+    /// Empties the character list.
+    /// </summary>
+    /// <remarks>
+    /// Detached as well as freed. <c>QueueFree</c> alone does not take a node out of the tree until
+    /// the end of the frame, so a rebuild that happens in the same frame -- coming back from the
+    /// delete confirmation does -- would append its boxes below the ones it meant to replace.
+    /// </remarks>
     private void ClearCharacters()
     {
         foreach (var child in _characters.GetChildren())
+        {
+            _characters.RemoveChild(child);
             child.QueueFree();
+        }
     }
 }

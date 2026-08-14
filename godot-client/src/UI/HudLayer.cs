@@ -43,6 +43,17 @@ public partial class HudLayer : CanvasLayer
         Refit();
     }
 
+    /// <summary>
+    /// Hands the text renderer back its default scale.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Style.Sharpness"/> is one global for the whole client and this is the only thing
+    /// that sets it, so leaving it behind would have the screens either side of the game -- title,
+    /// login, the death summary, none of which are on a scaled canvas -- rasterising their text at
+    /// whatever factor the last session's window happened to want.
+    /// </remarks>
+    public override void _ExitTree() => Style.Sharpness = 1f;
+
     /// <summary>Recomputes the scale and re-sizes every child to the space it leaves.</summary>
     public void Refit()
     {

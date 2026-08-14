@@ -38,8 +38,6 @@ public partial class ChatView : Control
     /// <summary>The row along the bottom of the panel that carries the bubble and the input.</summary>
     private const float InputRow = 34f;
 
-    private const float ScrollbarWidth = 14f;
-
     /// <summary>How long the log sits quiet before it folds itself away.</summary>
     private const double IdleSeconds = 8.0;
 
@@ -239,9 +237,52 @@ public partial class ChatView : Control
         Submitted?.Invoke(trimmed);
     }
 
+    /// <summary>The recipient the server marks guild chat with.</summary>
+    private const string GuildChannel = "*Guild*";
+
+    /// <summary>
+    /// Whether the player has asked to see this kind of line.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The channel is read off the recipient, which is the only thing that carries it: the server
+    /// sends guild chat as <c>*Guild*</c>, a whisper as the name of whoever it is going to, and
+    /// everything else as an empty string.
+    /// </para>
+    /// <para>
+    /// Server messages are never filtered, whatever the switches say. Those arrive with the empty
+    /// recipient too, so a bare "is the recipient empty" test would let "Player Chat" hide the line
+    /// telling you why you cannot enter a portal. They are told apart by the speaker instead: the
+    /// server names itself with a leading <c>*</c> or <c>#</c>, which no player name can start
+    /// with.
+    /// </para>
+    /// </remarks>
+    private static bool WantsToSee(TextPacket text)
+    {
+        var options = App.ServiceLocator.Settings;
+        if (options == null)
+            return true;
+
+        string recipient = text.Recipient ?? string.Empty;
+
+        if (recipient == GuildChannel)
+            return options.GuildChatShown;
+
+        if (recipient.Length > 0 && recipient[0] != '*' && recipient[0] != '#')
+            return options.WhisperChat;
+
+        string name = text.Name ?? string.Empty;
+        bool fromPlayer = name.Length > 0 && name[0] != '*' && name[0] != '#';
+
+        return !fromPlayer || options.PlayerChat;
+    }
+
     /// <summary>Appends a line from the server.</summary>
     public void Add(TextPacket text, string displayText)
     {
+        if (!WantsToSee(text))
+            return;
+
         Expand();
 
         var rank = Fame.Colour(text.NumStars, 14, text.Admin > 0);
@@ -286,9 +327,6 @@ public partial class ChatView : Control
         private const float RankSize = 14f;
 
         private const float RankGap = 6f;
-
-        /// <summary>The scrollbar's arrow buttons, at the ends of the track.</summary>
-        private const float ArrowHeight = 12f;
 
         private readonly List<Line> _lines = new(MaxLines);
         private readonly List<Row> _rows = new(MaxLines * 2);
@@ -357,10 +395,13 @@ public partial class ChatView : Control
 
         private float RowHeight => Mathf.Round(Mathf.Max(Style.Sans.GetHeight(FontSize), 14f) + 4f);
 
-        private float TextWidth => Size.X - ScrollbarWidth - 6f;
+        private float TextWidth => Size.X - HudScrollbar.Width - 6f;
+
+        /// <summary>Everything there is to scroll through, in pixels.</summary>
+        private float Content => _rows.Count * RowHeight;
 
         /// <summary>How far down the content the log can be scrolled.</summary>
-        private float MaxScroll => Mathf.Max(0f, _rows.Count * RowHeight - Size.Y);
+        private float MaxScroll => HudScrollbar.MaxOffset(Size, Content);
 
         /// <summary>
         /// Where the log is actually showing from.
@@ -534,66 +575,47 @@ public partial class ChatView : Control
                 return;
             }
 
-            if (at.X < Size.X - ScrollbarWidth)
-                return;
-
-            if (at.Y <= ArrowHeight)
+            switch (HudScrollbar.Test(Size, Offset, Content, at))
             {
-                Scroll(-1);
-                return;
-            }
+                case HudScrollbar.Part.None:
+                    return;
 
-            if (at.Y >= Size.Y - ArrowHeight)
-            {
-                Scroll(1);
-                return;
-            }
+                case HudScrollbar.Part.Up:
+                    Scroll(-1);
+                    return;
 
-            var thumb = Thumb();
-            if (thumb.HasPoint(at))
-            {
-                _draggingThumb = true;
-                _dragOffset = at.Y - thumb.Position.Y;
-                return;
-            }
+                case HudScrollbar.Part.Down:
+                    Scroll(1);
+                    return;
 
-            // A click in the empty track jumps a page towards it.
-            Scroll(at.Y < thumb.Position.Y ? -5 : 5);
+                case HudScrollbar.Part.Thumb:
+                    _draggingThumb = true;
+                    _dragOffset = at.Y - HudScrollbar.Thumb(Size, Offset, Content).Position.Y;
+                    return;
+
+                // A click in the empty track jumps a page towards it.
+                case HudScrollbar.Part.TrackAbove:
+                    Scroll(-5);
+                    return;
+
+                default:
+                    Scroll(5);
+                    return;
+            }
         }
 
         private void DragThumb(float y)
         {
-            var track = Track();
-            var thumb = Thumb();
+            _scroll = HudScrollbar.OffsetForThumbTop(Size, Content, y - _dragOffset);
 
-            float travel = track.Size.Y - thumb.Size.Y;
-            if (travel <= 0f)
-                return;
-
-            float fraction = Mathf.Clamp((y - _dragOffset - track.Position.Y) / travel, 0f, 1f);
-
-            _scroll = fraction * MaxScroll;
-            _atBottom = fraction >= 0.999f;
+            // Snapping back to following is deliberate: dragging to the bottom means "show me what
+            // arrives", and having to scroll again after every line would be a worse log.
+            _atBottom = _scroll >= MaxScroll - 1f;
 
             if (_atBottom)
                 _unread = false;
 
             QueueRedraw();
-        }
-
-        private Rect2 Track() => new(
-            Size.X - ScrollbarWidth, ArrowHeight, ScrollbarWidth, Mathf.Max(0f, Size.Y - ArrowHeight * 2f));
-
-        private Rect2 Thumb()
-        {
-            var track = Track();
-            float content = Mathf.Max(_rows.Count * RowHeight, Size.Y);
-            float height = Mathf.Max(20f, track.Size.Y * Size.Y / content);
-            float travel = track.Size.Y - height;
-            float fraction = MaxScroll <= 0f ? 0f : Mathf.Clamp(Offset / MaxScroll, 0f, 1f);
-
-            return new Rect2(track.Position.X + 2f, track.Position.Y + travel * fraction,
-                ScrollbarWidth - 4f, height);
         }
 
         public override void _Draw()
@@ -642,27 +664,8 @@ public partial class ChatView : Control
         private void Text(Vector2 at, string text, Color colour) =>
             this.DrawText(at, text, FontSize, colour);
 
-        private void DrawScrollbar()
-        {
-            var track = Track();
-
-            DrawRect(new Rect2(Size.X - ScrollbarWidth, 0f, ScrollbarWidth, Size.Y), Style.PanelInset);
-
-            HudIcons.Chevron(this,
-                new Rect2(Size.X - ScrollbarWidth + 3f, 2f, ScrollbarWidth - 6f, ArrowHeight - 4f),
-                Style.TextDim, up: true);
-
-            HudIcons.Chevron(this,
-                new Rect2(Size.X - ScrollbarWidth + 3f, Size.Y - ArrowHeight + 2f, ScrollbarWidth - 6f, ArrowHeight - 4f),
-                Style.TextDim, up: false);
-
-            if (track.Size.Y <= 0f)
-                return;
-
-            var thumb = Thumb();
-            DrawRect(thumb, _draggingThumb ? Style.SlotBorderHi : Style.ButtonFace);
-            DrawRect(thumb, Style.PanelEdge, filled: false, width: 1f);
-        }
+        private void DrawScrollbar() =>
+            HudScrollbar.Draw(this, Size, Offset, Content, _draggingThumb);
 
         /// <summary>
         /// The mark that says the log has moved on without you.
@@ -677,7 +680,7 @@ public partial class ChatView : Control
 
             float width = Style.Measure(Label, Style.FontSmall);
             var pill = new Rect2(
-                Mathf.Round((Size.X - ScrollbarWidth - width) / 2f) - 8f,
+                Mathf.Round((Size.X - HudScrollbar.Width - width) / 2f) - 8f,
                 Size.Y - RowHeight,
                 width + 16f,
                 RowHeight - 2f);

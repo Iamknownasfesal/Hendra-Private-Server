@@ -13,16 +13,17 @@ namespace Hendra.UI;
 /// their parent and the built-in stylebox is cleared out of the way.
 /// </para>
 /// <para>
-/// It lifts, brightens and takes an edge in its accent under the pointer. On a screen whose whole
-/// purpose is choosing between several of these, the one you are pointing at has to be obvious
-/// without being read.
+/// It is a slot, deliberately. The character list is a grid of things you pick between, which is
+/// what the inventory is, so it borrows the inventory's plate and two-pixel border wholesale — see
+/// <see cref="SlotView"/>. The accent survives as a stripe down the left edge, which is the one
+/// thing a slot has no equivalent for and the character boxes need: a mark that says which row you
+/// are on without ringing the whole square.
 /// </para>
 /// </remarks>
 public partial class CardButton : Button
 {
-    private const int Cut = 8;
-
-    private static readonly bool[] AllCorners = { true, true, true, true };
+    /// <summary>Matches a slot's border, for the same reason: one pixel disappears.</summary>
+    private const float Border = 2f;
 
     private readonly Color _accent;
     private float _glow;
@@ -41,7 +42,7 @@ public partial class CardButton : Button
     public override void _Process(double delta)
     {
         float target = IsHovered() && !Disabled ? 1f : 0f;
-        float eased = Mathf.MoveToward(_glow, target, (float)delta * 7f);
+        float eased = Mathf.MoveToward(_glow, target, (float)delta * 8f);
 
         if (Mathf.IsEqualApprox(eased, _glow))
             return;
@@ -52,34 +53,20 @@ public partial class CardButton : Button
 
     public override void _Draw()
     {
-        var outline = CutEdgePanel.Outline(Size, Cut, AllCorners);
+        var full = new Rect2(Vector2.Zero, Size);
 
-        // A shadow that grows with the lift, which is what sells the plate coming off the page.
-        var shadow = new Vector2[outline.Length];
-        for (int i = 0; i < outline.Length; i++)
-            shadow[i] = outline[i] + new Vector2(0f, 3f + _glow * 3f);
+        // The occupied slot's plate, lifted a little under the pointer -- the same twelve per cent
+        // a hovered inventory square takes.
+        DrawRect(full, Style.Slot.Lightened(_glow * 0.12f));
 
-        DrawColoredPolygon(shadow, new Color(0f, 0f, 0f, 0.4f));
+        // Drawn inside the bounds rather than centred on them, or half of every border would fall
+        // into the gutter and the column would sit a pixel off.
+        DrawRect(full.Grow(-Border / 2f), _glow > 0.5f ? Style.SlotBorderHi : Style.SlotBorder,
+            filled: false, width: Border);
 
-        var top = Style.PanelTop.Lerp(Style.ControlHoverTop, _glow * 0.8f);
-        var bottom = Style.PanelBottom.Lerp(Style.ControlBottom, _glow * 0.8f);
-
-        var shades = new Color[outline.Length];
-        float height = Mathf.Max(Size.Y, 1f);
-        for (int i = 0; i < outline.Length; i++)
-            shades[i] = top.Lerp(bottom, Mathf.Clamp(outline[i].Y / height, 0f, 1f));
-
-        DrawPolygon(outline, shades);
-
-        // A stripe of the accent down the left edge, at full strength once pointed at. It reads as
-        // a marker on a row rather than as another border around a box.
-        DrawRect(new Rect2(0f, Cut, 3f, Size.Y - Cut * 2f), _accent with { A = 0.35f + _glow * 0.65f });
-
-        var closed = new Vector2[outline.Length + 1];
-        outline.CopyTo(closed, 0);
-        closed[^1] = outline[0];
-
-        DrawPolyline(closed, Style.Edge.Lerp(_accent, _glow) with { A = 0.5f + _glow * 0.5f },
-            1.5f, antialiased: true);
+        // The accent stripe, inset so it reads as a marker on the row rather than as a second
+        // border fighting the first.
+        DrawRect(new Rect2(Border, Border + 2f, 3f, Size.Y - (Border + 2f) * 2f),
+            _accent with { A = 0.45f + _glow * 0.55f });
     }
 }

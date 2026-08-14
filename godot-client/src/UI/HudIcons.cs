@@ -393,6 +393,37 @@ public static class HudIcons
             : Map(box, 0.5f, 0.82f, 0.94f, 0.22f, 0.06f, 0.22f), colour);
     }
 
+    /// <summary>
+    /// The two chevrons again, in the shape an icon button takes.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="HudIconButton"/> holds one delegate and cannot pass a direction, so the two ends
+    /// get a name each. Cheaper than a button that knows which way it points.
+    /// </remarks>
+    public static void ChevronUp(CanvasItem into, Rect2 box, Color colour) =>
+        Chevron(into, box, colour, up: true);
+
+    public static void ChevronDown(CanvasItem into, Rect2 box, Color colour) =>
+        Chevron(into, box, colour, up: false);
+
+    /// <summary>
+    /// A cross: close, dismiss, remove.
+    /// </summary>
+    /// <remarks>
+    /// Drawn rather than typed. The interface is set in a pixel face that has no multiplication
+    /// sign and no arrows, so a button labelled "✕" renders as a missing-glyph box -- which is what
+    /// the guild panel's promote, demote and remove buttons were before this existed.
+    /// </remarks>
+    public static void Cross(CanvasItem into, Rect2 box, Color colour)
+    {
+        float thickness = Mathf.Max(1.5f, Span(box) * 0.16f);
+
+        into.DrawLine(box.Position, box.End, colour, thickness);
+        into.DrawLine(
+            new Vector2(box.End.X, box.Position.Y), new Vector2(box.Position.X, box.End.Y),
+            colour, thickness);
+    }
+
     /// <summary>A round dot with a dark rim, as the guild and party markers use.</summary>
     public static void Dot(CanvasItem into, Rect2 box, Color colour)
     {

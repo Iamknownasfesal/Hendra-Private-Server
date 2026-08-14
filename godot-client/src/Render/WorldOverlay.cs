@@ -99,6 +99,17 @@ public partial class WorldOverlay : Control
     /// <summary>Supplies the icon sheet, so the overlay does not have to know how assets are stored.</summary>
     public void Configure(IConditionSheet conditionSheet) => _conditionSheet = conditionSheet;
 
+    /// <summary>
+    /// How large a status icon is drawn, in pixels.
+    /// </summary>
+    /// <remarks>
+    /// Pushed in by the world rather than read from the settings here, because this class draws and
+    /// does not know the game has preferences. Sixteen is the ordinary size; the small setting drops
+    /// it to eleven, which is where the row of them stops being wider than the thing it belongs to
+    /// on an enemy carrying six effects at once.
+    /// </remarks>
+    public float ConditionIconSize { get; set; } = 16f;
+
     /// <summary>Where the quest objective is on screen, or null when there is none.</summary>
     private Vector2? _questTarget;
     private Font _font;
@@ -341,14 +352,17 @@ public partial class WorldOverlay : Control
         if (_conditionSheet == null)
             return;
 
-        const float Size = 16f;
+        float size = ConditionIconSize;
 
         int count = item.Conditions.Count;
-        float left = item.Anchor.X - Size * count / 2f;
+        float left = item.Anchor.X - size * count / 2f;
 
         // Above the artwork rather than across it: the anchor is where the entity's feet are, so
         // the icons have to clear its own height before they are over its head.
-        float top = item.Anchor.Y - Mathf.Max(item.SpriteHeight, 16f) - Size - ConditionGap;
+        float top = item.Anchor.Y - Mathf.Max(item.SpriteHeight, 16f) - size - ConditionGap;
+
+        // The inset scales with the icon, or a small one is mostly disc.
+        float inset = Mathf.Max(1f, Mathf.Round(size / 8f));
 
         for (int i = 0; i < count; i++)
         {
@@ -356,11 +370,11 @@ public partial class WorldOverlay : Control
             if (!region.HasValue)
                 continue;
 
-            var box = new Rect2(left + i * Size, top, Size, Size);
+            var box = new Rect2(left + i * size, top, size, size);
 
             // A disc behind each one, so a pale icon still reads over a pale floor.
-            DrawCircle(box.Position + box.Size / 2f, Size * 0.42f, new Color(0f, 0f, 0f, 0.45f));
-            DrawTextureRectRegion(_conditionSheet.Texture, box.Grow(-2f), region.Value);
+            DrawCircle(box.Position + box.Size / 2f, size * 0.42f, new Color(0f, 0f, 0f, 0.45f));
+            DrawTextureRectRegion(_conditionSheet.Texture, box.Grow(-inset), region.Value);
         }
     }
 
@@ -384,7 +398,7 @@ public partial class WorldOverlay : Control
 
         // Above everything else the entity carries: its own artwork, and the status icons over that.
         float above = Mathf.Max(item.SpriteHeight, 16f)
-                      + (item.Conditions is { Count: > 0 } ? 24f : 0f);
+                      + (item.Conditions is { Count: > 0 } ? ConditionIconSize + 8f : 0f);
 
         var box = new Rect2(
             item.Anchor.X - measured.X / 2f - PaddingX,

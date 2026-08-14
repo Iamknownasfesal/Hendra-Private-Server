@@ -8,7 +8,7 @@
   "serverInfo": {
     "type": "World",
     "name": "Server",
-    "address": "37.123.96.189",
+    "address": "127.0.0.1",
     "port": "2050",
     "coordinates": {
       "latitude": "0",
@@ -18,7 +18,7 @@
   },
   "serverSettings": {
     "logFolder": "./logs",
-    "resourceFolder": "./resources",
+    "resourceFolder": "D:/Hendra-Private-Server/Server-Side/XmlDatas",
     "version": "Alpha v01",
     "tps": "6",
     "mode": "Single",

@@ -264,9 +264,13 @@ public static class Style
     /// it stays a word at small sizes while every stem still lands on a whole pixel.
     /// </para>
     /// <para>
-    /// Everything that softens a glyph is off. That is the whole point of the face: antialiasing a
-    /// pixel font puts grey where it means black or white, and hinting would drag stems off the
-    /// grid they were drawn on.
+    /// Hinting and subpixel positioning stay off: both would drag stems off the grid the face was
+    /// drawn on, and neither buys anything back. Antialiasing is on, which is a reversal. The
+    /// argument against it -- that grey where the face means black or white is a smear -- only
+    /// holds when one font pixel lands on a whole number of screen pixels. It does at scale 1 and
+    /// 2, and it does not at the 0.77 a 1280 by 720 window produces, which is the size the game
+    /// opens at. Hard edges there are not crisp, they are simply the wrong pixels; the grey is what
+    /// makes the shape survive being resampled.
     /// </para>
     /// <para>
     /// One weight. There is no bold cut, and a pixel face does not want a synthesised one --
@@ -285,7 +289,7 @@ public static class Style
             if (ResourceLoader.Load("res://assets/fonts/Jersey10.ttf") is not FontFile file)
                 return _face = ThemeDB.FallbackFont;
 
-            file.Antialiasing = TextServer.FontAntialiasing.None;
+            file.Antialiasing = TextServer.FontAntialiasing.Gray;
             file.SubpixelPositioning = TextServer.SubpixelPositioning.Disabled;
             file.Hinting = TextServer.Hinting.None;
 
@@ -631,11 +635,20 @@ public static class Style
         return theme;
     }
 
-    /// <summary>A filled box with a border, graded from top to bottom.</summary>
-    public static StyleBoxFlat Box(Color top, Color bottom, Color border, int radius = 3, int borderWidth = 1)
+    /// <summary>
+    /// A flat plate with a one-pixel edge, which is the shape everything in this interface is.
+    /// </summary>
+    /// <remarks>
+    /// This replaced a rounded, graded, drop-shadowed box. That box was the menus' own language and
+    /// nothing else in the game spoke it: the HUD is opaque plates with hard corners and a
+    /// one-pixel border, and a text field with soft corners and a shadow under it sitting on the
+    /// same screen read as a control borrowed from a different program.
+    /// </remarks>
+    public static StyleBoxFlat Plate(Color fill, Color border, int borderWidth = 1)
     {
         var box = new StyleBoxFlat
         {
+            BgColor = fill,
             BorderColor = border,
             ContentMarginLeft = 10,
             ContentMarginRight = 10,
@@ -644,44 +657,38 @@ public static class Style
         };
 
         box.SetBorderWidthAll(borderWidth);
-        box.SetCornerRadiusAll(radius);
-
-        // A StyleBox has one fill, so the grade is faked by mixing the pair. It is enough to keep a
-        // control from reading as a flat rectangle against a flat panel.
-        box.ShadowColor = new Color(0f, 0f, 0f, 0.35f);
-        box.ShadowSize = 3;
-        box.ShadowOffset = new Vector2(0f, 2f);
-        box.BgColor = bottom.Lerp(top, 0.5f);
+        box.SetCornerRadiusAll(0);
         return box;
     }
 
     private static void StyleLineEdit(Theme theme)
     {
-        var rest = Box(new Color("15141a"), new Color("101015"), Edge);
+        // A slot's plate, because that is what a field is: a dark inset you put something into.
+        var rest = Plate(Slot, SlotBorder);
         rest.ContentMarginLeft = 9;
         rest.ContentMarginRight = 9;
         rest.ContentMarginTop = 7;
         rest.ContentMarginBottom = 7;
 
         var focused = (StyleBoxFlat)rest.Duplicate();
-        focused.BorderColor = Gold with { A = 0.75f };
-        focused.SetBorderWidthAll(1);
+        focused.BorderColor = SlotBorderHi;
+        focused.SetBorderWidthAll(2);
 
         theme.SetStylebox("normal", "LineEdit", rest);
         theme.SetStylebox("focus", "LineEdit", focused);
         theme.SetStylebox("read_only", "LineEdit", rest);
         theme.SetColor("font_color", "LineEdit", Text);
-        theme.SetColor("font_placeholder_color", "LineEdit", Faint);
-        theme.SetColor("caret_color", "LineEdit", Gold);
-        theme.SetColor("selection_color", "LineEdit", Gold with { A = 0.25f });
+        theme.SetColor("font_placeholder_color", "LineEdit", TextDim);
+        theme.SetColor("caret_color", "LineEdit", ButtonPromo);
+        theme.SetColor("selection_color", "LineEdit", ButtonPromo with { A = 0.3f });
         theme.SetFontSize("font_size", "LineEdit", FontBody);
     }
 
     private static void StyleOptionButton(Theme theme)
     {
-        var rest = Box(ControlTop, ControlBottom, Edge);
-        var hover = Box(ControlHoverTop, ControlHoverBottom, Gold with { A = 0.5f });
-        var pressed = Box(ControlBottom, ControlBottom, Gold with { A = 0.6f });
+        var rest = Plate(ButtonFace, PanelEdge);
+        var hover = Plate(ButtonHover, SlotBorder);
+        var pressed = Plate(ButtonBevelLow, ButtonPromo);
 
         foreach (string type in new[] { "OptionButton", "MenuButton", "PopupMenu" })
         {
@@ -694,9 +701,9 @@ public static class Style
             theme.SetFontSize("font_size", type, FontBody);
         }
 
-        theme.SetStylebox("panel", "PopupMenu", Box(PanelTop, PanelBottom, Edge));
+        theme.SetStylebox("panel", "PopupMenu", Plate(Panel, PanelEdge));
         theme.SetColor("font_color", "PopupMenu", Text);
-        theme.SetColor("font_hover_color", "PopupMenu", Gold);
+        theme.SetColor("font_hover_color", "PopupMenu", ButtonPromo);
     }
 
     private static void StyleCheckBox(Theme theme)
@@ -705,7 +712,7 @@ public static class Style
         theme.SetStylebox("hover", "CheckBox", new StyleBoxEmpty());
         theme.SetStylebox("pressed", "CheckBox", new StyleBoxEmpty());
         theme.SetStylebox("focus", "CheckBox", new StyleBoxEmpty());
-        theme.SetColor("font_color", "CheckBox", Muted);
+        theme.SetColor("font_color", "CheckBox", TextDim);
         theme.SetColor("font_hover_color", "CheckBox", Text);
         theme.SetFontSize("font_size", "CheckBox", FontSmall);
     }
@@ -733,10 +740,10 @@ public static class Style
 
     private static void StyleSeparators(Theme theme)
     {
-        var line = new StyleBoxLine { Color = Edge with { A = 0.6f }, Thickness = 1 };
+        var line = new StyleBoxLine { Color = Divider, Thickness = 1 };
         theme.SetStylebox("separator", "HSeparator", line);
 
-        var upright = new StyleBoxLine { Color = Edge with { A = 0.6f }, Thickness = 1, Vertical = true };
+        var upright = new StyleBoxLine { Color = Divider, Thickness = 1, Vertical = true };
         theme.SetStylebox("separator", "VSeparator", upright);
     }
 
@@ -744,7 +751,7 @@ public static class Style
     {
         // The item tooltip draws its own panel; this is for the plain ones, which should at least
         // belong to the same game.
-        theme.SetStylebox("panel", "TooltipPanel", Box(PanelTop, PanelBottom, Edge, 4));
+        theme.SetStylebox("panel", "TooltipPanel", Plate(Panel, PanelEdge));
         theme.SetColor("font_color", "TooltipLabel", Text);
         theme.SetFontSize("font_size", "TooltipLabel", FontSmall);
     }
@@ -770,11 +777,12 @@ public static class Style
 
     private static void StyleSliders(Theme theme)
     {
+        // The same track and fill the vitals bars use, so a slider is recognisably one of them.
         foreach (string type in new[] { "HSlider", "VSlider" })
         {
-            theme.SetStylebox("slider", type, Box(new Color("15141a"), new Color("15141a"), Edge, 3, 1));
-            theme.SetStylebox("grabber_area", type, Box(GoldDim, GoldDim, GoldDim, 3, 0));
-            theme.SetStylebox("grabber_area_highlight", type, Box(Gold, Gold, Gold, 3, 0));
+            theme.SetStylebox("slider", type, Plate(BarTrack, BarEdge));
+            theme.SetStylebox("grabber_area", type, Plate(ButtonFace, ButtonFace, 0));
+            theme.SetStylebox("grabber_area_highlight", type, Plate(ButtonPromo, ButtonPromo, 0));
         }
     }
 }

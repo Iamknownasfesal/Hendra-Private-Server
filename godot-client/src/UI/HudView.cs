@@ -1374,12 +1374,27 @@ public partial class HudView : Control
         _avatar.Set(ClassPortrait(player.ObjectType), Style.SlotBorder);
     }
 
+    /// <summary>
+    /// Which of the bars write their numbers on themselves. See <see cref="App.Settings.BarText"/>.
+    /// </summary>
+    /// <remarks>
+    /// A bar with no number is still a bar: the fill says roughly where you are, which is what the
+    /// setting is for -- someone who finds the figures noisy still wants the length.
+    /// </remarks>
+    private static bool VitalNumbers => (App.ServiceLocator.Settings?.BarText ?? 3) is 2 or 3;
+
+    private static bool ProgressNumbers => (App.ServiceLocator.Settings?.BarText ?? 3) is 1 or 3;
+
     private void RefreshVitals(LocalPlayer player)
     {
         RefreshProgress(player);
 
-        _health.Set(player.Hp, player.MaxHp, "HP", $"{player.Hp}/{player.MaxHp}", Bonus(player.Boosts[0]));
-        _mana.Set(player.Mp, player.MaxMp, "MP", $"{player.Mp}/{player.MaxMp}", Bonus(player.Boosts[1]));
+        // The equipment bonus goes with the figure it qualifies: "(+120)" beside nothing is a
+        // riddle. HudBar drops it on its own once the value is empty.
+        _health.Set(player.Hp, player.MaxHp, "HP",
+            VitalNumbers ? $"{player.Hp}/{player.MaxHp}" : string.Empty, Bonus(player.Boosts[0]));
+        _mana.Set(player.Mp, player.MaxMp, "MP",
+            VitalNumbers ? $"{player.Mp}/{player.MaxMp}" : string.Empty, Bonus(player.Boosts[1]));
 
         _healthPotions.Set(player.HealthPotions);
         _manaPotions.Set(player.MagicPotions);
@@ -1401,8 +1416,8 @@ public partial class HudView : Control
         if (player.Level >= 0 && player.Level < MaxLevel)
         {
             _fame.Fill = Style.XpFill;
-            _fame.Set(player.Experience, player.NextLevelExperience,
-                $"Lvl {player.Level}", $"{player.Experience}/{player.NextLevelExperience}");
+            _fame.Set(player.Experience, player.NextLevelExperience, $"Lvl {player.Level}",
+                ProgressNumbers ? $"{player.Experience}/{player.NextLevelExperience}" : string.Empty);
             return;
         }
 
@@ -1413,9 +1428,11 @@ public partial class HudView : Control
         int nextStar = Fame.NextThreshold(player.Fame);
 
         if (nextStar > 0)
-            _fame.Set(player.Fame, nextStar, "Fame", $"{player.Fame}/{nextStar}");
+            _fame.Set(player.Fame, nextStar, "Fame",
+                ProgressNumbers ? $"{player.Fame}/{nextStar}" : string.Empty);
         else
-            _fame.Set(1, 1, "Fame", player.Fame.ToString(CultureInfo.InvariantCulture));
+            _fame.Set(1, 1, "Fame",
+                ProgressNumbers ? player.Fame.ToString(CultureInfo.InvariantCulture) : string.Empty);
     }
 
     /// <summary>What equipment adds to a maximum, or nothing at all when it adds nothing.</summary>

@@ -10,6 +10,15 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
 
+  <!--
+    Only for the handful of Godot calls in the shared sources: GameConnection writes an undecodable
+    body out through GD and ProjectSettings. The package is managed types only and pulls in no
+    engine, which is the same reason the test project can reference it.
+  -->
+  <ItemGroup>
+    <PackageReference Include="GodotSharp" Version="4.7.0" />
+  </ItemGroup>
+
   <ItemGroup>
     <Compile Include="Program.cs" />
   </ItemGroup>

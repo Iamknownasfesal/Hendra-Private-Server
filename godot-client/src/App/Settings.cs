@@ -174,59 +174,48 @@ public sealed class Settings
     public System.Collections.Generic.Dictionary<string, int> KeyOverrides { get; }
         = new System.Collections.Generic.Dictionary<string, int>();
 
-    // ---- Gameplay ----
-
-    /// <summary>Whether the minimap turns with the camera. Off is the original's default.</summary>
-    public bool MinimapRotation { get; set; }
-
-    /// <summary>Hold the modifier and click to move an item between inventory and backpack.</summary>
-    public bool SwapWithBackpack { get; set; } = true;
-
     // ---- Opacity. Applied to other people so your own character stays readable in a crowd. ----
 
     public float Opacity { get; set; } = 1f;
+
+    /// <summary>Draws your own character over everyone standing on the same tile.</summary>
     public bool PlayerOnTop { get; set; } = true;
+
     public bool FadeGuildMembers { get; set; }
     public bool FadePlayers { get; set; } = true;
+
+    /// <summary>Fades other players' shots. Never an enemy's — you have to see those.</summary>
     public bool FadeProjectiles { get; set; } = true;
 
     // ---- Accessibility ----
 
-    /// <summary>Health bars that run green to orange to red as they empty.</summary>
-    public bool DynamicHpGui { get; set; } = true;
-
-    public bool DynamicHpPlayer { get; set; } = true;
-    public bool DynamicHpBoss { get; set; } = true;
-
-    /// <summary>Condition icons at half size.</summary>
+    /// <summary>Condition icons at two thirds size, for a screen crowded with them.</summary>
     public bool SmallConditionIcons { get; set; }
 
     // ---- Social ----
 
-    /// <summary>Chat kinds, each shown or hidden on its own.</summary>
+    /// <summary>Chat kinds, each shown or hidden on its own. Server messages are never filtered.</summary>
     public bool PlayerChat { get; set; } = true;
 
     public bool WhisperChat { get; set; } = true;
     public bool GuildChatShown { get; set; } = true;
-    public bool ShowPlayerTitles { get; set; } = true;
 
     // ---- Interface ----
 
-    public bool ShowAllyBuffIcons { get; set; } = true;
-    public bool ShowBossHpBars { get; set; } = true;
-    public bool ExpandLog { get; set; } = true;
-    public bool ShowFameGain { get; set; }
-
-    /// <summary>Always write the numbers on the vitals bars: 0 off, 1 fame, 2 HP/MP, 3 both.</summary>
-    public int BarText { get; set; }
+    /// <summary>
+    /// Which numbers the vitals bars carry: 0 none, 1 fame, 2 HP/MP, 3 both.
+    /// </summary>
+    /// <remarks>
+    /// Both by default. The original hides these until the pointer is over the bar, which cannot
+    /// apply here — the bars pass the pointer through to the world — so the choice is between
+    /// always and never, and always is the readable one.
+    /// </remarks>
+    public int BarText { get; set; } = 3;
 
     // ---- Quality ----
 
     /// <summary>How many particles a burst throws: 0 low, 1 medium, 2 high.</summary>
     public int ParticleDetail { get; set; } = 2;
-
-    /// <summary>Notifications floating over allies.</summary>
-    public bool AllyNotifications { get; set; } = true;
 
     /// <summary>Cursed enemies drawn with a red wash, so they can be picked out of a fight.</summary>
     public bool CurseIndication { get; set; }
@@ -293,28 +282,17 @@ public sealed class Settings
         settings.AntiAliasing = (int)file.GetValue(Section, "anti_aliasing", settings.AntiAliasing);
         settings.CameraZoom = (float)file.GetValue(Section, "camera_zoom", settings.CameraZoom);
         settings.BagSize = (float)file.GetValue(Section, "bag_size", settings.BagSize);
-        settings.MinimapRotation = (bool)file.GetValue(Section, "minimap_rotation", settings.MinimapRotation);
-        settings.SwapWithBackpack = (bool)file.GetValue(Section, "swap_with_backpack", settings.SwapWithBackpack);
         settings.Opacity = (float)file.GetValue(Section, "opacity", settings.Opacity);
         settings.PlayerOnTop = (bool)file.GetValue(Section, "player_on_top", settings.PlayerOnTop);
         settings.FadeGuildMembers = (bool)file.GetValue(Section, "fade_guild", settings.FadeGuildMembers);
         settings.FadePlayers = (bool)file.GetValue(Section, "fade_players", settings.FadePlayers);
         settings.FadeProjectiles = (bool)file.GetValue(Section, "fade_projectiles", settings.FadeProjectiles);
-        settings.DynamicHpGui = (bool)file.GetValue(Section, "dynamic_hp_gui", settings.DynamicHpGui);
-        settings.DynamicHpPlayer = (bool)file.GetValue(Section, "dynamic_hp_player", settings.DynamicHpPlayer);
-        settings.DynamicHpBoss = (bool)file.GetValue(Section, "dynamic_hp_boss", settings.DynamicHpBoss);
         settings.SmallConditionIcons = (bool)file.GetValue(Section, "small_condition_icons", settings.SmallConditionIcons);
         settings.PlayerChat = (bool)file.GetValue(Section, "player_chat", settings.PlayerChat);
         settings.WhisperChat = (bool)file.GetValue(Section, "whisper_chat", settings.WhisperChat);
         settings.GuildChatShown = (bool)file.GetValue(Section, "guild_chat_shown", settings.GuildChatShown);
-        settings.ShowPlayerTitles = (bool)file.GetValue(Section, "show_player_titles", settings.ShowPlayerTitles);
-        settings.ShowAllyBuffIcons = (bool)file.GetValue(Section, "ally_buff_icons", settings.ShowAllyBuffIcons);
-        settings.ShowBossHpBars = (bool)file.GetValue(Section, "boss_hp_bars", settings.ShowBossHpBars);
-        settings.ExpandLog = (bool)file.GetValue(Section, "expand_log", settings.ExpandLog);
-        settings.ShowFameGain = (bool)file.GetValue(Section, "show_fame_gain", settings.ShowFameGain);
         settings.BarText = (int)file.GetValue(Section, "bar_text", settings.BarText);
         settings.ParticleDetail = (int)file.GetValue(Section, "particle_detail", settings.ParticleDetail);
-        settings.AllyNotifications = (bool)file.GetValue(Section, "ally_notifications", settings.AllyNotifications);
         settings.CurseIndication = (bool)file.GetValue(Section, "curse_indication", settings.CurseIndication);
         settings.AllyShoot = (int)file.GetValue(Section, "ally_shoot", settings.AllyShoot);
 
@@ -363,28 +341,17 @@ public sealed class Settings
         file.SetValue(Section, "anti_aliasing", AntiAliasing);
         file.SetValue(Section, "camera_zoom", CameraZoom);
         file.SetValue(Section, "bag_size", BagSize);
-        file.SetValue(Section, "minimap_rotation", MinimapRotation);
-        file.SetValue(Section, "swap_with_backpack", SwapWithBackpack);
         file.SetValue(Section, "opacity", Opacity);
         file.SetValue(Section, "player_on_top", PlayerOnTop);
         file.SetValue(Section, "fade_guild", FadeGuildMembers);
         file.SetValue(Section, "fade_players", FadePlayers);
         file.SetValue(Section, "fade_projectiles", FadeProjectiles);
-        file.SetValue(Section, "dynamic_hp_gui", DynamicHpGui);
-        file.SetValue(Section, "dynamic_hp_player", DynamicHpPlayer);
-        file.SetValue(Section, "dynamic_hp_boss", DynamicHpBoss);
         file.SetValue(Section, "small_condition_icons", SmallConditionIcons);
         file.SetValue(Section, "player_chat", PlayerChat);
         file.SetValue(Section, "whisper_chat", WhisperChat);
         file.SetValue(Section, "guild_chat_shown", GuildChatShown);
-        file.SetValue(Section, "show_player_titles", ShowPlayerTitles);
-        file.SetValue(Section, "ally_buff_icons", ShowAllyBuffIcons);
-        file.SetValue(Section, "boss_hp_bars", ShowBossHpBars);
-        file.SetValue(Section, "expand_log", ExpandLog);
-        file.SetValue(Section, "show_fame_gain", ShowFameGain);
         file.SetValue(Section, "bar_text", BarText);
         file.SetValue(Section, "particle_detail", ParticleDetail);
-        file.SetValue(Section, "ally_notifications", AllyNotifications);
         file.SetValue(Section, "curse_indication", CurseIndication);
         file.SetValue(Section, "ally_shoot", AllyShoot);
 

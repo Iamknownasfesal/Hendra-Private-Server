@@ -71,6 +71,9 @@ public sealed class LaunchOptions
     /// <summary>Opens the options page once in the world. Same purpose as the three above.</summary>
     public bool OpenOptions { get; private set; }
 
+    /// <summary>Opens the Escape menu once in the world, so it can be screenshotted unattended.</summary>
+    public bool OpenMenu { get; private set; }
+
     /// <summary>Which of its tabs to open on, or null for the first.</summary>
     public string OptionsTab { get; private set; }
 
@@ -126,6 +129,7 @@ public sealed class LaunchOptions
                 case "--character": options.OpenCharacterPanel = true; break;
                 case "--account": options.OpenAccountPanel = true; break;
                 case "--vault": options.OpenVault = true; break;
+                case "--menu": options.OpenMenu = true; break;
                 case "--options":
                 {
                     options.OpenOptions = true;

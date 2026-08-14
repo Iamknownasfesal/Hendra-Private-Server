@@ -30,15 +30,13 @@ public partial class GameScene : Node
     private GuildView _guild;
     private CharacterPanel _character;
     private AccountPanel _account;
+    private SystemMenu _menu;
 
     /// <summary>The world's own furniture: health bars and markers, in the world's coordinates.</summary>
     private CanvasLayer _ui;
 
     /// <summary>The HUD, on its own scaled canvas so it can be written in reference pixels.</summary>
     private HudLayer _hudLayer;
-
-    /// <summary>The panels that open over the HUD: options, guild, trade.</summary>
-    private CanvasLayer _modalLayer;
 
     private CanvasLayer _loadingLayer;
     private MapLoadingView _loading;
@@ -81,8 +79,14 @@ public partial class GameScene : Node
     /// <summary>Which options tab to open on, or null for the first. Set from the command line.</summary>
     public string OptionsTab { get; set; }
 
+    /// <summary>Opens the Escape menu once in the world. Set from the command line.</summary>
+    public bool OpenMenu { get; set; }
+
     /// <summary>Overrides the starting camera heading, in radians. Set from the command line.</summary>
     public float? StartingCameraAngle { get; set; }
+
+    /// <summary>The default camera angle as it stood last time the options were applied.</summary>
+    private int _cameraAngleWas;
 
     /// <summary>
     /// Lines to send once in the world, in order. Set from the command line.
@@ -120,11 +124,6 @@ public partial class GameScene : Node
         _hudLayer = new HudLayer { Layer = 2 };
         AddChild(_hudLayer);
 
-        // Over the HUD, because these are opened on top of it and expect to be read rather than
-        // played through.
-        _modalLayer = new CanvasLayer { Layer = 3 };
-        AddChild(_modalLayer);
-
         // Above everything, because it covers the whole screen including the HUD while a world is
         // being entered.
         _loadingLayer = new CanvasLayer { Layer = 5 };
@@ -152,11 +151,18 @@ public partial class GameScene : Node
         _account = new AccountPanel();
         _hudLayer.AddChild(_account);
 
+        // These three used to sit on a canvas of their own, one layer above the HUD. That put them
+        // outside the only scaled canvas in the client, and Style.Sharpness -- which is global and
+        // set from the HUD's scale -- then had them rasterising their text at the HUD's factor and
+        // drawing it under the inverse of a transform their canvas was not applying. On any window
+        // where that factor is not one, every word on them came out resampled. They are ordinary
+        // HUD children now, added after the panels they open over, which is all the layering they
+        // ever needed.
         _trade = new TradeView();
-        _modalLayer.AddChild(_trade);
+        _hudLayer.AddChild(_trade);
 
         _guild = new GuildView();
-        _modalLayer.AddChild(_guild);
+        _hudLayer.AddChild(_guild);
 
         // On the HUD's own layer, so it is laid out in the same space as the player card it sits
         // under and is scaled with the rest of the interface rather than beside it.
@@ -166,9 +172,22 @@ public partial class GameScene : Node
         _options = new OptionsView();
         _options.Configure(ServiceLocator.Settings);
         _options.Changed += OnOptionsChanged;
-        _modalLayer.AddChild(_options);
+        _hudLayer.AddChild(_options);
+
+        // Last, so it draws over everything else on the canvas: it is the way out of all of them.
+        _menu = new SystemMenu();
+        _menu.OptionsRequested += () => _options.Toggle();
+        _menu.NexusRequested += () =>
+            Reconnect(string.Empty, _port, GameIds.Nexus, 0, System.Array.Empty<byte>(), false);
+        _menu.CharactersRequested += () => Ended?.Invoke(string.Empty);
+        _menu.QuitRequested += () => GetTree().Quit();
+        _hudLayer.AddChild(_menu);
 
         _hudLayer.Refit();
+
+        // Seeded, so the first change the player makes is seen as a change rather than as the
+        // baseline and swallowed.
+        _cameraAngleWas = ServiceLocator.Settings?.DefaultCameraAngle ?? 0;
 
         // The card's buttons go straight to the panels they open, wired once, here.
         //
@@ -250,20 +269,75 @@ public partial class GameScene : Node
     /// Shows or hides everything drawn over the world.
     /// </summary>
     /// <remarks>
-    /// Three layers rather than one now that the HUD has a canvas of its own, which is what the key
+    /// Two layers rather than one now that the HUD has a canvas of its own, which is what the key
     /// that hides the interface for a screenshot has to reach. The world keeps drawing underneath.
     /// </remarks>
     private void ShowInterface(bool shown)
     {
         _ui.Visible = shown;
         _hudLayer.Visible = shown;
-        _modalLayer.Visible = shown;
+    }
+
+    /// <summary>
+    /// Escape, once nothing else has claimed it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Unhandled input reaches children before their parent, so every panel built on
+    /// <see cref="ModalPanel"/> has already had its chance: if one was open it closed itself and
+    /// marked the press handled, and this never runs. What is left is Escape pressed with nothing
+    /// in the way, which is the request for the menu.
+    /// </para>
+    /// <para>
+    /// Two exceptions have to be caught here because neither is a modal panel. The chat box reads
+    /// Escape by polling from the world controller, so the key would otherwise both close the box
+    /// and open the menu; and the options page draws its own chrome rather than using the shell, so
+    /// it has no Escape of its own to consume.
+    /// </para>
+    /// </remarks>
+    public override void _UnhandledKeyInput(InputEvent @event)
+    {
+        if (@event is not InputEventKey { Pressed: true, Echo: false, Keycode: Key.Escape })
+            return;
+
+        if (_chat is { IsTyping: true })
+            return;
+
+        GetViewport().SetInputAsHandled();
+
+        if (_options is { IsOpen: true })
+        {
+            _options.Toggle();
+            return;
+        }
+
+        if (_menu == null)
+            return;
+
+        _menu.CanReturnToNexus = _controller is { InNexus: false };
+        _menu.Toggle();
     }
 
     /// <summary>Applies a changed setting immediately and writes it out.</summary>
     private void OnOptionsChanged()
     {
         ServiceLocator.ApplySettings();
+
+        // Interface Scale is read by the canvas rather than pushed to it, and the canvas only reads
+        // it when it is built or when the window changes shape. Without this the row moves, saves
+        // and does nothing you can see until the next launch, which reads as a setting that does
+        // not work.
+        _hudLayer?.Refit();
+
+        // Only when the angle itself moved. Every row on the page comes through here, and swinging
+        // the camera because someone dragged the music slider would undo whatever they had turned
+        // the view to.
+        int angle = ServiceLocator.Settings?.DefaultCameraAngle ?? 0;
+        if (angle != _cameraAngleWas)
+        {
+            _cameraAngleWas = angle;
+            _controller?.ResetCamera();
+        }
 
         if (_controller != null)
             _controller.CenterOnPlayer = ServiceLocator.Settings.CenterOnPlayer;
@@ -302,6 +376,12 @@ public partial class GameScene : Node
                 _options.ShowTab(OptionsTab);
                 _options.Toggle();
             }
+
+            if (OpenMenu && !_menu.IsOpen)
+            {
+                _menu.CanReturnToNexus = !_controller.InNexus;
+                _menu.Toggle();
+            }
         };
         _controller.OptionsToggled += () => _options.Toggle();
         _controller.DebugToggled += () => _debug.Toggle();
@@ -319,14 +399,13 @@ public partial class GameScene : Node
             _guild.Toggle();
         };
         _controller.CharacterToggled += ShowCharacter;
-        _controller.AccountToggled += ShowAccount;
 
         _account.Connect($"http://{_host}:8888", _guid, _password);
         _character.Connect($"http://{_host}:8888", _guid, _password, _characterId);
 
         // The character sheet is deliberately absent from this list. It opens beside the world
         // rather than over it, and the player keeps playing while it is up.
-        _controller.OptionsAreOpen = () => _options.IsOpen || _guild.IsOpen;
+        _controller.OptionsAreOpen = () => _options.IsOpen || _guild.IsOpen || _menu.IsOpen;
         _guild.Configure(_session, $"http://{_host}:8888", _guid, _password);
         _controller.ScriptedLines = ScriptedLines;
         _trade.Configure(_controller.Trading, ServiceLocator.Assets, ServiceLocator.Data);
@@ -473,6 +552,12 @@ public partial class GameScene : Node
                 _options.ShowTab(OptionsTab);
                 _options.Toggle();
             }
+
+            if (OpenMenu && !_menu.IsOpen)
+            {
+                _menu.CanReturnToNexus = !_controller.InNexus;
+                _menu.Toggle();
+            }
         };
         _controller.OptionsToggled += () => _options.Toggle();
         _controller.DebugToggled += () => _debug.Toggle();
@@ -490,14 +575,13 @@ public partial class GameScene : Node
             _guild.Toggle();
         };
         _controller.CharacterToggled += ShowCharacter;
-        _controller.AccountToggled += ShowAccount;
 
         _account.Connect($"http://{_host}:8888", _guid, _password);
         _character.Connect($"http://{_host}:8888", _guid, _password, _characterId);
 
         // The character sheet is deliberately absent from this list. It opens beside the world
         // rather than over it, and the player keeps playing while it is up.
-        _controller.OptionsAreOpen = () => _options.IsOpen || _guild.IsOpen;
+        _controller.OptionsAreOpen = () => _options.IsOpen || _guild.IsOpen || _menu.IsOpen;
         _guild.Configure(_session, $"http://{_host}:8888", _guid, _password);
         _controller.ScriptedLines = ScriptedLines;
         _trade.Configure(_controller.Trading, ServiceLocator.Assets, ServiceLocator.Data);

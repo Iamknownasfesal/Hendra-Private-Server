@@ -48,7 +48,9 @@ public partial class TitleScreen : Control
 
         _art = new TextureRect
         {
-            Texture = App.ServiceLocator.Assets?.GetImage("TitleScreen"),
+            // The manifest's key, not the class's name -- asking for "TitleScreen" quietly returned
+            // null and the screen has been a black rectangle with three buttons on it ever since.
+            Texture = App.ServiceLocator.Assets?.GetImage("OriginalTitleScreen"),
             ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
             // Covers the window rather than letterboxing inside it: the art is a wash and a
             // wordmark, so cropping its edges costs nothing and black bars down both sides of a

@@ -73,6 +73,15 @@ public sealed class CharacterInfo
     public CharacterStats Stats = CharacterStats.Parse(null);
 }
 
+/// <summary>What a purchase is paid in. The server's <c>CurrencyType</c>.</summary>
+public enum Currency
+{
+    Gold = 0,
+    Fame = 1,
+    GuildFame = 2,
+    Prestige = 4,
+}
+
 /// <summary>The account itself.</summary>
 public sealed class AccountInfo
 {
@@ -86,6 +95,18 @@ public sealed class AccountInfo
     public bool VerifiedEmail;
     public string GuildName = string.Empty;
     public int GuildRank;
+
+    /// <summary>What one more character slot costs, in <see cref="SlotCurrency"/>.</summary>
+    public int NextSlotPrice;
+
+    /// <summary>What that price is denominated in. Set per server, in its <c>init.xml</c>.</summary>
+    public Currency SlotCurrency = Currency.Fame;
+
+    /// <summary>What the account holds of the currency a slot is bought with.</summary>
+    public int SlotBalance => SlotCurrency == Currency.Gold ? Credits : Fame;
+
+    /// <summary>The currency's name, for a sentence like "1,000 fame".</summary>
+    public string SlotCurrencyName => SlotCurrency == Currency.Gold ? "gold" : "fame";
 }
 
 /// <summary>
@@ -219,8 +240,15 @@ public sealed class CharListResult
         AccountId = Text(e, "AccountId") ?? string.Empty,
         Name = Text(e, "Name") ?? string.Empty,
         Credits = Int(Text(e, "Credits")),
-        Fame = Int(Text(e, "Fame")),
+
+        // Under <Stats>, not under <Account> -- the server nests the account's own fame with the
+        // per-class tallies. Read from the wrong level this was silently zero, which would have
+        // told a player with plenty of fame that they could not afford a character slot.
+        Fame = Int(Text(e.Element("Stats"), "Fame")),
+
         Rank = Int(Text(e, "Rank")),
+        NextSlotPrice = Int(Text(e, "NextCharSlotPrice")),
+        SlotCurrency = (Currency)Int(Text(e, "CharSlotCurrency")),
 
         // Presence flags. The server writes `NameChosen ? new XElement("NameChosen", "") : null`,
         // so the element is absent when false and *empty* when true -- reading its content would

@@ -316,21 +316,38 @@ public sealed partial class SlotView : Control
         return new ItemTooltipPanel(_desc, _sprite, _data, App.ServiceLocator.Strings);
     }
 
+    private SlotHighlight? _highlight;
+
     /// <summary>
-    /// What this slot is saying about its item, beyond the artwork.
+    /// What this slot's plate is saying, when the owner knows something the slot does not.
     /// </summary>
     /// <remarks>
-    /// Resolved rather than stored, because the only meaning wired to it is one this slot already
-    /// knows: an item the character cannot equip. A slot given a highlight for some other reason
-    /// would set this instead.
+    /// Null leaves the slot to work it out, which everywhere but the trade window means "red if
+    /// this class cannot equip it". The trade window sets it, because "offered" and "untradeable"
+    /// are facts about the trade rather than about the item, and no amount of looking at the item
+    /// would reveal them.
     /// </remarks>
-    private SlotHighlight Highlight =>
-        _sprite.IsValid && !_usable ? SlotHighlight.Red : SlotHighlight.None;
+    public SlotHighlight? Highlight
+    {
+        get => _highlight;
+        set
+        {
+            if (_highlight == value)
+                return;
+
+            _highlight = value;
+            QueueRedraw();
+        }
+    }
+
+    /// <summary>The highlight actually drawn: the owner's if it set one, otherwise the slot's own.</summary>
+    private SlotHighlight Marking =>
+        _highlight ?? (_sprite.IsValid && !_usable ? SlotHighlight.Red : SlotHighlight.None);
 
     public override void _Draw()
     {
         var full = new Rect2(Vector2.Zero, Size);
-        var (fill, edge) = SlotHighlights.Pair(Highlight, _sprite.IsValid);
+        var (fill, edge) = SlotHighlights.Pair(Marking, _sprite.IsValid);
 
         DrawRect(full, fill.Lightened(_glow * 0.12f));
 

@@ -21,7 +21,7 @@ namespace Hendra.UI;
 /// </remarks>
 public partial class Starfield : Control
 {
-    private const int Motes = 150;
+    private const int Motes = 220;
 
     /// <summary>Seeded rather than random, so the field is the same one every time.</summary>
     private const ulong Seed = 0x5EED_1234;
@@ -39,10 +39,19 @@ public partial class Starfield : Control
     private double _elapsed;
     private Vector2 _field;
 
+    /// <remarks>
+    /// Anchors <em>and</em> offsets. <c>SetAnchorsPreset</c> on its own, called from here, recomputes
+    /// the offsets to preserve the rectangle the node currently has -- and a node that has just been
+    /// added has none. It came out as anchors (0,0,1,1) against offsets (0,0,-1280,-720), which
+    /// cancel exactly, and the field was nought by nought for the life of the process: no error, no
+    /// warning, and nothing drawn. The same line in the same place had done the same to
+    /// <see cref="Vignette"/>. It works elsewhere in this client only because those calls happen
+    /// before the node is added, when there is no parent rectangle to preserve against.
+    /// </remarks>
     public override void _Ready()
     {
         MouseFilter = MouseFilterEnum.Ignore;
-        SetAnchorsPreset(LayoutPreset.FullRect);
+        SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         Scatter();
     }
 
@@ -104,11 +113,15 @@ public partial class Starfield : Control
             float x = Mathf.PosMod(mote.At.X - time * speed, size.X);
             float y = mote.At.Y + Mathf.Sin(time * 0.15f + mote.Phase) * 6f;
 
-            float brightness = (0.10f + mote.Depth * 0.5f) *
+            // The floor used to be a tenth, which is invisible: most motes are far ones, and the
+            // menus sit over artwork rather than over black, so a tenth of white on mid grey is
+            // nothing at all. The far layer now reads as a faint drift and the near one carries
+            // the movement.
+            float brightness = (0.28f + mote.Depth * 0.55f) *
                                (0.7f + 0.3f * Mathf.Sin(time * mote.Twinkle + mote.Phase));
 
             var colour = Style.Steel.Lerp(Colors.White, mote.Depth) with { A = brightness };
-            DrawCircle(new Vector2(x, y), mote.Size * (0.5f + mote.Depth), colour);
+            DrawCircle(new Vector2(x, y), mote.Size * (0.7f + mote.Depth), colour);
         }
     }
 }

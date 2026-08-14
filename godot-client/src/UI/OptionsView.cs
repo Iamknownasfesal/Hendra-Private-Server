@@ -18,12 +18,13 @@ namespace Hendra.UI;
 /// key -- which is what the original's screen is made of.
 /// </para>
 /// <para>
-/// The full list from the original is here, which means a number of rows are remembered but have
-/// nothing behind them yet -- the ones for pets, summons, titles, quest portraits, trade and guild
-/// invite panels, cursors, and the parts of the log and the fame notifications this fork has not
-/// built. They persist, so a player who sets them keeps them, and each is a single wiring change
-/// away from working the day the feature underneath it exists. What none of them do is lie about
-/// something that is already there.
+/// Every row here does something. That is a rule rather than an observation: an earlier pass
+/// carried the original's full list, which meant a third of the screen was switches that saved
+/// themselves to disk and were read by nothing -- a minimap rotation toggle above a minimap that
+/// does not rotate, three separate switches for one health-bar colour ramp, a "User Interface"
+/// choice with one option and an empty setter. A control that does nothing is worse than a missing
+/// one, because the player spends a click and some trust finding out. The ones with a real meaning
+/// were wired; the rest were deleted, and should stay deleted until the feature behind them exists.
 /// </para>
 /// <para>
 /// Changes apply as they are made. A volume you cannot hear, or a shadow you cannot see, until the
@@ -40,6 +41,9 @@ public partial class OptionsView : Control
     private const float RowHeight = 30f;
     private const float RowGap = 3f;
     private const float HeadingHeight = 34f;
+
+    /// <summary>One entry in an open list of choices.</summary>
+    private const float ChoiceHeight = 26f;
 
     /// <summary>Where the control plate starts, as a fraction of the body's width.</summary>
     private const float SplitAt = 0.55f;
@@ -65,8 +69,9 @@ public partial class OptionsView : Control
 
     public override void _Ready()
     {
+        // No FillScreen: the HUD canvas sizes its children to the reference-pixel space, which is
+        // what puts this panel's text on the same footing as the rest of the interface.
         MouseFilter = MouseFilterEnum.Ignore;
-        this.FillScreen();
 
         _panel = new Chrome(this) { Visible = false, MouseFilter = MouseFilterEnum.Stop };
         AddChild(_panel);
@@ -75,6 +80,9 @@ public partial class OptionsView : Control
         _panel.AddChild(_body);
 
         Resized += Fit;
+        if (GetParent() is HudLayer layer)
+            layer.Reflowed += Fit;
+
         Fit();
     }
 
@@ -119,8 +127,10 @@ public partial class OptionsView : Control
         if (_panel == null)
             return;
 
-        // A rebinding left half-finished would otherwise swallow the next key pressed in the world.
+        // A rebinding left half-finished would otherwise swallow the next key pressed in the world,
+        // and a list left open would be showing over the page the next time it is opened.
         _body?.StopListening();
+        _body?.CloseList();
 
         _panel.Visible = !_panel.Visible;
 
@@ -337,6 +347,12 @@ public partial class OptionsView : Control
         /// <summary>The row waiting for a key press, or -1 when nothing is being rebound.</summary>
         private int _listening = -1;
 
+        /// <summary>The row whose list of choices is open, or -1 when none is.</summary>
+        private int _open = -1;
+
+        /// <summary>Which entry of the open list the pointer is over, or -1.</summary>
+        private int _openAt = -1;
+
         public Body(OptionsView owner) => _owner = owner;
 
         public override void _Ready()
@@ -353,6 +369,9 @@ public partial class OptionsView : Control
         /// <summary>Moves the list, clamped to what there is to see.</summary>
         public void Scroll(float by)
         {
+            // An open list is pinned to a row, and the row is about to move out from under it.
+            CloseList();
+
             float was = _scroll;
             _scroll = Mathf.Clamp(_scroll + by, 0f, MaxScroll());
 
@@ -369,11 +388,24 @@ public partial class OptionsView : Control
             QueueRedraw();
         }
 
+        /// <summary>Puts away the list of choices, if one is showing.</summary>
+        public void CloseList()
+        {
+            if (_open < 0)
+                return;
+
+            _open = -1;
+            _openAt = -1;
+            QueueRedraw();
+        }
+
         public void Rebuild()
         {
             _rows.Clear();
             _scroll = 0f;
             _listening = -1;
+            _open = -1;
+            _openAt = -1;
 
             if (Options != null)
             {
@@ -421,10 +453,7 @@ public partial class OptionsView : Control
         private void BuildGameplay()
         {
             Heading("General");
-            Choice("User Interface", new[] { "Classic" }, () => 0, _ => { });
             Toggle("Allow Camera Rotation", () => Options.AllowCameraRotation, on => Options.AllowCameraRotation = on);
-            Toggle("Allow Minimap Rotation", () => Options.MinimapRotation, on => Options.MinimapRotation = on);
-            Toggle("Switch Item to/from Backpack", () => Options.SwapWithBackpack, on => Options.SwapWithBackpack = on);
             Toggle("Keep the player centred", () => Options.CenterOnPlayer, on => Options.CenterOnPlayer = on);
 
             Heading("Opacity");
@@ -440,9 +469,6 @@ public partial class OptionsView : Control
             Choice("Chat Font Size", new[] { "Tiny", "Small", "Default", "Large", "Big" },
                 () => ChatSizes.IndexOf(Options.ChatFontSize) is var at && at >= 0 ? at : 2,
                 value => Options.ChatFontSize = ChatSizes[value]);
-            Toggle("Dynamic HP Colors on GUI", () => Options.DynamicHpGui, on => Options.DynamicHpGui = on);
-            Toggle("Dynamic HP Colors on Player", () => Options.DynamicHpPlayer, on => Options.DynamicHpPlayer = on);
-            Toggle("Dynamic HP Colors on Boss", () => Options.DynamicHpBoss, on => Options.DynamicHpBoss = on);
             Toggle("Small Condition Icons", () => Options.SmallConditionIcons, on => Options.SmallConditionIcons = on);
 
             Heading("Social");
@@ -450,7 +476,6 @@ public partial class OptionsView : Control
             Toggle("Player Chat", () => Options.PlayerChat, on => Options.PlayerChat = on);
             Toggle("Whisper Chat", () => Options.WhisperChat, on => Options.WhisperChat = on);
             Toggle("Guild Chat", () => Options.GuildChatShown, on => Options.GuildChatShown = on);
-            Toggle("Show Player Titles", () => Options.ShowPlayerTitles, on => Options.ShowPlayerTitles = on);
         }
 
         private void BuildVideo()
@@ -495,12 +520,8 @@ public partial class OptionsView : Control
                 value => Options.DefaultCameraAngle = value == 1 ? 45 : 0);
 
             Heading("Interface");
-            Toggle("Show Ally Buff Icons", () => Options.ShowAllyBuffIcons, on => Options.ShowAllyBuffIcons = on);
-            Toggle("Show Boss HP Bars", () => Options.ShowBossHpBars, on => Options.ShowBossHpBars = on);
             Toggle("Show Tier Level", () => Options.ShowTierLevel, on => Options.ShowTierLevel = on);
-            Toggle("Expand Log", () => Options.ExpandLog, on => Options.ExpandLog = on);
-            Toggle("Show Fame Gain", () => Options.ShowFameGain, on => Options.ShowFameGain = on);
-            Choice("Toggle Fame and HP/MP Text", new[] { "Off", "Fame", "HP/MP", "All" },
+            Choice("Bar Numbers", new[] { "Off", "Fame", "HP/MP", "All" },
                 () => Options.BarText, value => Options.BarText = value);
             Choice("HP Bars", new[] { "Off", "Enemy", "Ally", "All" },
                 () => Options.HealthBars, value => Options.HealthBars = value);
@@ -515,7 +536,6 @@ public partial class OptionsView : Control
             Toggle("Player Hit Particles", () => Options.PlayerHitParticles, on => Options.PlayerHitParticles = on);
             Toggle("AOE Particles", () => Options.AoeParticles, on => Options.AoeParticles = on);
             Toggle("Draw Text Bubbles", () => Options.TextBubbles, on => Options.TextBubbles = on);
-            Toggle("Ally Notifications", () => Options.AllyNotifications, on => Options.AllyNotifications = on);
             Toggle("Enemy Damage Text", () => Options.EnemyDamageText, on => Options.EnemyDamageText = on);
             Toggle("Ally Damage Text", () => Options.AllyDamageText, on => Options.AllyDamageText = on);
             Toggle("Curse Indication", () => Options.CurseIndication, on => Options.CurseIndication = on);
@@ -640,6 +660,42 @@ public partial class OptionsView : Control
             return new Rect2(row.Position.X + left, row.Position.Y, row.Size.X - left, row.Size.Y);
         }
 
+        /// <summary>
+        /// Where an open list of choices is drawn.
+        /// </summary>
+        /// <remarks>
+        /// Under the control it belongs to, or over it when there is no room under -- the body clips
+        /// its own contents, so a list that runs off the bottom is a list with its last entries
+        /// missing, which is the half of it the player is most likely to be reaching for. Clamped
+        /// after that, for the rare list taller than the panel.
+        /// </remarks>
+        private Rect2 ChoiceList(int index)
+        {
+            var control = ControlAt(index);
+            float height = _rows[index].Choices.Length * ChoiceHeight + 2f;
+
+            float top = control.End.Y + 2f;
+            if (top + height > Size.Y)
+                top = control.Position.Y - height - 2f;
+
+            top = Mathf.Clamp(top, 0f, Mathf.Max(0f, Size.Y - height));
+            return new Rect2(control.Position.X, Mathf.Round(top), control.Size.X, height);
+        }
+
+        /// <summary>Which entry of the open list a point falls on, or -1 for none of them.</summary>
+        private int ChoiceUnder(Vector2 at)
+        {
+            if (_open < 0)
+                return -1;
+
+            var list = ChoiceList(_open);
+            if (!list.HasPoint(at))
+                return -1;
+
+            int index = (int)((at.Y - list.Position.Y - 1f) / ChoiceHeight);
+            return index >= 0 && index < _rows[_open].Choices.Length ? index : -1;
+        }
+
         // ---- input ----
 
         public override void _GuiInput(InputEvent @event)
@@ -680,6 +736,20 @@ public partial class OptionsView : Control
                         return;
                     }
 
+                    // While a list is open it is the only thing the pointer can be over: the rows
+                    // behind it are not reachable until it closes.
+                    if (_open >= 0)
+                    {
+                        int entry = ChoiceUnder(motion.Position);
+                        if (entry != _openAt)
+                        {
+                            _openAt = entry;
+                            QueueRedraw();
+                        }
+
+                        return;
+                    }
+
                     int over = RowUnder(motion.Position);
                     if (over != _hovered)
                     {
@@ -693,6 +763,25 @@ public partial class OptionsView : Control
 
         private void Press(Vector2 at)
         {
+            // An open list takes the whole press, wherever it lands: on an entry it picks that
+            // entry, anywhere else it just puts the list away. Falling through to the row beneath
+            // would act on something the list was covering.
+            if (_open >= 0)
+            {
+                int entry = ChoiceUnder(at);
+                var opened = _rows[_open];
+                CloseList();
+
+                if (entry >= 0)
+                {
+                    opened.SetChoice(entry);
+                    _owner.Apply();
+                }
+
+                QueueRedraw();
+                return;
+            }
+
             // The scrollbar first: it overlays the right edge of every row.
             if (at.X >= Size.X - HudScrollbar.Width)
             {
@@ -733,11 +822,12 @@ public partial class OptionsView : Control
                     break;
 
                 case RowKind.Choice:
-                    // Cycling rather than a popup list: every choice here is two to five values, and
-                    // a menu that opens over a panel that is already scrolling is more machinery
-                    // than the thing it selects.
-                    row.SetChoice((row.GetChoice() + 1) % row.Choices.Length);
-                    _owner.Apply();
+                    // Opens the list rather than stepping to the next value. Stepping was quiet
+                    // enough on a two-value row, but the chevron drawn on the right of every one of
+                    // these promises a list, and "Interface Scale" has seven settings you cannot
+                    // see and can only walk forwards through -- overshoot it and you go round again.
+                    _open = index;
+                    _openAt = row.GetChoice();
                     break;
 
                 case RowKind.Slider:
@@ -775,6 +865,16 @@ public partial class OptionsView : Control
         {
             if (@event is not InputEventKey { Pressed: true, Echo: false } key)
                 return;
+
+            // Escape closes the open list and stops there. It is the innermost thing on the screen,
+            // so it is the one the player means -- letting this through would shut the whole panel
+            // and lose the row they were part-way through setting.
+            if (_open >= 0 && key.Keycode == Key.Escape)
+            {
+                CloseList();
+                GetViewport().SetInputAsHandled();
+                return;
+            }
 
             // The keyboard moves the list too, which matters on the Controls tab: it is long enough
             // that reaching the bottom of it by wheel is a chore.
@@ -844,7 +944,10 @@ public partial class OptionsView : Control
                 switch (row.Kind)
                 {
                     case RowKind.Toggle: DrawToggle(control, row.GetBool()); break;
-                    case RowKind.Choice: DrawChoice(control, row.Choices[Mathf.Clamp(row.GetChoice(), 0, row.Choices.Length - 1)]); break;
+                    case RowKind.Choice:
+                        DrawChoice(control,
+                            row.Choices[Mathf.Clamp(row.GetChoice(), 0, row.Choices.Length - 1)], i == _open);
+                        break;
                     case RowKind.Slider: DrawSlider(control, row.GetValue()); break;
                     case RowKind.Key: DrawKey(control, row, i == _listening); break;
                 }
@@ -852,6 +955,39 @@ public partial class OptionsView : Control
 
             if (Content() > Size.Y)
                 HudScrollbar.Draw(this, Size, _scroll, Content(), _dragging);
+
+            // Last, so it covers the rows and the scrollbar both.
+            if (_open >= 0)
+                DrawChoiceList(_open);
+        }
+
+        /// <summary>The open list of choices, drawn over whatever it lands on.</summary>
+        private void DrawChoiceList(int index)
+        {
+            var row = _rows[index];
+            var list = ChoiceList(index);
+            int chosen = Mathf.Clamp(row.GetChoice(), 0, row.Choices.Length - 1);
+
+            DrawRect(list, Style.PanelSolid);
+            DrawRect(list, Style.SlotBorderHi, filled: false, width: 1f);
+
+            for (int i = 0; i < row.Choices.Length; i++)
+            {
+                var entry = new Rect2(list.Position.X + 1f, list.Position.Y + 1f + i * ChoiceHeight,
+                    list.Size.X - 2f, ChoiceHeight);
+
+                if (i == _openAt)
+                    DrawRect(entry, Style.ButtonHover);
+                else if (i == chosen)
+                    DrawRect(entry, Style.Panel);
+
+                // The setting in force keeps the accent whether or not the pointer is on it, so the
+                // list says what is set as well as what is available.
+                this.DrawText(
+                    new Vector2(entry.Position.X + 11f,
+                        entry.Position.Y + Style.BaselineIn(ChoiceHeight, Style.FontBody)),
+                    row.Choices[i], Style.FontBody, i == chosen ? Style.FameFill : Style.Text);
+            }
         }
 
         private void DrawToggle(Rect2 control, bool on)
@@ -868,15 +1004,17 @@ public partial class OptionsView : Control
                     pill.Position.Y + pill.Size.Y - 5f), text, Style.FontTag, Style.Text);
         }
 
-        private void DrawChoice(Rect2 control, string value)
+        private void DrawChoice(Rect2 control, string value, bool open)
         {
             this.DrawText(new Vector2(control.Position.X + 12f, control.Position.Y + 20f),
                 value, Style.FontBody, Style.Text);
 
-            // The triangle at the right edge, which is what says the value can be changed.
+            // The triangle at the right edge, which is what says there is a list behind this. It
+            // brightens while that list is showing, so the row you opened stays findable under it.
             var at = new Vector2(control.End.X - 20f, control.Position.Y + control.Size.Y / 2f - 2f);
             DrawColoredPolygon(
-                new[] { at, at + new Vector2(10f, 0f), at + new Vector2(5f, 6f) }, Style.TextDim);
+                new[] { at, at + new Vector2(10f, 0f), at + new Vector2(5f, 6f) },
+                open ? Style.Text : Style.TextDim);
         }
 
         private void DrawSlider(Rect2 control, float value)
