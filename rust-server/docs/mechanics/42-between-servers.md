@@ -58,8 +58,15 @@ serverSettings  tps 20, mode Single, key "B1A5ED", maxConnections 256,
                 maxPlayers 100, maxPlayersWithPriority 120, enableMarket true
 ```
 
-**`tps` 20 means `MsPT` 50**, not the 200 ms the world tick uses — the 200 ms figure on
-[the loop page](30-the-server-loop.md) is the *slow* tick, and the fast one runs four times as often.
+**`tps` is 20 only as a code default.** `ConfigModels.cs:60` declares `public int tps { get; set; }
+= 20`, and that is the number an earlier draft of this page reported. The shipped
+`wServer/wServer.json` overrides it to **6**, and git shows it has said 6 since the file was added.
+
+So the running server's `MsPT` is **167 ms**, not 50. That changes the reading of
+[the loop page](30-the-server-loop.md): the "fast" tick at 167 ms and the world tick at 200 ms are
+nearly the same clock, rather than one running four times as often as the other. Measured live —
+booting this server with 500 enemies and one player has it reporting 96% of wall time in the enemy
+phase at that rate.
 
 `key` is the RC4 client key from [page 37](37-the-wire.md), and its default is in this file.
 

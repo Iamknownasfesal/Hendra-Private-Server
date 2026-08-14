@@ -15,7 +15,7 @@ The arithmetic is right. Every stat formula matches the original to the constant
 | Attack frequency | `0.0015 + (dex / 75) * 0.0065` | same |
 | Health regen | `6 + vit * 0.12`, Sick zeroes the vitality only | same |
 | Magic regen | `0.5 + wis * 0.06`, Quiet stops it | same |
-| Tick rate | 20/s | 20/s |
+| Tick rate | **6/s** as shipped (20 is only the code default) | 20/s |
 | A late tick | skipped, never queued | `MissedTickBehavior::Skip` |
 
 What differs is when things are run, and which things.
@@ -24,21 +24,27 @@ What differs is when things are run, and which things.
 
 `FLLogicTicker` runs two loops:
 
-- **Every 50 ms**, `TickOneWorld` — entities, behaviours, projectiles.
+- **Every `MsPT`**, `TickOneWorld` — entities, behaviours, projectiles.
 - **Every 200 ms or more**, `World.Tick` — world timers, dungeon logic, and *every player's own tick*.
+
+`MsPT` is `1000 / tps`, and the shipped `tps` is **6**, so that is 167 ms rather than the 50 ms an
+earlier draft of this page assumed — 20 is only the default in `ConfigModels.cs`. The two clocks are
+therefore 167 ms and 200 ms, which is nearly the same clock. We run the fast one at 50 ms, so this
+server simulates at **more than three times the original's granularity**, and the gap between the
+two loops that this page treats as a scheduling difference is much smaller than it looked.
 
 The slow one is guarded: `if (_worldTask == null || _worldTask.IsCompleted)`. A slow tick still
 running when the next is due is not queued, and the elapsed time it would have covered is folded into
 the next one that does run.
 
 Everything here runs on the 50 ms tick. For rates that scale by elapsed time — regeneration, effect
-timers — that is equivalent and smoother. It is not equivalent for anything the content tuned against
-the 200 ms cadence, and it is not equivalent for `WorldTimer`, which
+timers — that is equivalent and smoother. It is not equivalent for anything the content was tuned
+against at 167 ms, and it is not equivalent for `WorldTimer`, which
 [page 30](../mechanics/30-the-server-loop.md) records as firing at `> period` and discarding the
 overshoot: at 200 ms granularity a 1,500 ms timer fires at 1,600, and here it fires at 1,500.
 
-That last one is in our favour and still a difference. Whether to keep it is a decision, not an
-oversight — but it is currently an undocumented one.
+That is in our favour and still a difference. Whether to keep it is a decision, not an oversight —
+but it is currently an undocumented one.
 
 ## Every enemy thinks, everywhere, all the time
 
@@ -54,8 +60,10 @@ chunks of one, where `CHUNK_SIZE = 16`. An enemy more than about fifty tiles fro
 does not run its behaviour at all. Decoys are ticked separately and unconditionally, which is the
 only exception.
 
-`World::think` (`crates/sim/src/world.rs:1217`) filters on `mind.is_some() && !dead && !paused` and
-nothing else. Every enemy in the world thinks, twenty times a second.
+`World::think` filtered on `mind.is_some() && !dead && !paused` and nothing else, so every enemy in
+the world thought twenty times a second. **Fixed** — the same chunk rule now gates it, and a live
+comparison confirmed the original's: 500 enemies in a world with no player in it cost the C# server
+`enemies 0.1%` of its loop, and moving a player in took it to `96%`.
 
 Two consequences, and the second is the one that matters:
 

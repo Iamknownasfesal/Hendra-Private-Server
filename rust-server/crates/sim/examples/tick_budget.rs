@@ -41,6 +41,7 @@ fn main() {
         ("Losthall.jm", 80, 0),
         // The heaviest thing the content has, in a heap: eighteen shoots across three states, all
         // of them inside the players' chunks so every one of them thinks every tick.
+        ("OryxCastle.jm", 1, 500),
         ("OryxCastle.jm", 120, 100),
         ("OryxCastle.jm", 120, 250),
         ("OryxCastle.jm", 20, 500),
@@ -153,6 +154,13 @@ fn measure(
             boss.kind = hendra_sim::Kind::Enemy;
             boss.max_hp = catalog.object(kind).map(|d| d.max_hp).unwrap_or(1000).max(1);
             boss.hp = boss.max_hp;
+
+            // Invulnerable, so the load being measured is the load that was set up: without it the
+            // players shoot the count down over the run and the last ticks measure a smaller world
+            // than the first.
+            boss.conditions
+                .insert(hendra_content::ConditionEffect::Invulnerable);
+
             if world.spawn(boss).is_some() {
                 made += 1;
             }

@@ -158,7 +158,86 @@ namespace wServer.realm
             network.ContinueWith(Program.Stop, TaskContinuationOptions.OnlyOnFaulted);
             network.Start();
 
+            StressSpawn();
+
             Log.Info("Realm Manager started.");
+        }
+
+        /// <summary>
+        /// Fills a world with one enemy repeated, for measuring the tick against the Rust server.
+        /// </summary>
+        /// <remarks>
+        /// Off unless HENDRA_STRESS is set, so a normal run is untouched. The Rust harness places
+        /// its enemies the same way — straight into the world rather than through a command — so
+        /// that what is being compared is the loop rather than two different spawn paths.
+        ///
+        /// Set HENDRA_STRESS to "500 Oryx the Mad God 2".
+        /// </remarks>
+        private void StressSpawn()
+        {
+            var spec = Environment.GetEnvironmentVariable("HENDRA_STRESS");
+            if (string.IsNullOrWhiteSpace(spec))
+                return;
+
+            var space = spec.IndexOf(' ');
+            if (space <= 0)
+                return;
+
+            if (!int.TryParse(spec.Substring(0, space), out var count))
+                return;
+            var name = spec.Substring(space + 1).Trim();
+
+            if (!Resources.GameData.IdToObjectType.TryGetValue(name, out var objType))
+            {
+                Log.Error($"stress: no such object '{name}'");
+                return;
+            }
+
+            // The nexus, because that is where a connecting player lands: enemies in a world
+            // nobody is standing in are frozen by the active-chunk rule and cost nothing, which
+            // would measure an idle loop rather than a loaded one.
+            var world = GetWorld(World.Nexus);
+            if (world == null)
+            {
+                Log.Error("stress: no world to fill");
+                return;
+            }
+
+            // Around the middle, in the same forty-tile square the Rust harness uses, so every one
+            // of them is inside the players' own chunks and thinks every tick.
+            var rand = new Random(0x1234);
+            var made = 0;
+            for (var attempt = 0; attempt < count * 40 && made < count; attempt++)
+            {
+                var x = world.Map.Width / 2 + rand.Next(-20, 20);
+                var y = world.Map.Height / 2 + rand.Next(-20, 20);
+                if (!world.IsPassable(x, y, true))
+                    continue;
+
+                Entity entity;
+                try
+                {
+                    entity = Entity.Resolve(this, objType);
+                }
+                catch (Exception e)
+                {
+                    Log.Error(e.ToString());
+                    return;
+                }
+
+                // Invulnerable, so the load being measured stays the load that was set up.
+                entity.ApplyConditionEffect(new ConditionEffect
+                {
+                    Effect = ConditionEffectIndex.Invulnerable,
+                    DurationMS = -1
+                });
+
+                entity.Move(x + 0.5f, y + 0.5f);
+                world.EnterWorld(entity);
+                made++;
+            }
+
+            Log.Info($"stress: placed {made} × {name} in the realm");
         }
 
         public void Stop()
