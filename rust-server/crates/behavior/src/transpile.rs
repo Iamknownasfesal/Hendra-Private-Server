@@ -585,6 +585,12 @@ fn transition_name(csharp: &str) -> String {
 }
 
 /// Converts a C# name to snake case.
+/// The snake case a C# name converts to, for the parity check in `compile`.
+#[cfg(test)]
+pub(crate) fn snake_for_test(name: &str) -> String {
+    snake(name)
+}
+
 fn snake(name: &str) -> String {
     let mut out = String::new();
     for (index, character) in name.chars().enumerate() {

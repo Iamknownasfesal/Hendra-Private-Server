@@ -42,6 +42,12 @@ pub enum Needs {
     Content,
 
     /// Trusted with the ranks of others. `permLevel: 95`.
+    ///
+    /// Nothing here sits on it: the original's one command at this level is a staff `/grank` that
+    /// sets somebody's guild rank from outside their guild, and ours is the guild leader's own.
+    /// Kept because the rung is real and the next command to need it should not have to rediscover
+    /// where it goes.
+    #[allow(dead_code, reason = "a rung of the original's ladder with no command of ours on it")]
     GuildMaster,
 
     /// Trusted with the map itself: setpieces, ground. `permLevel: 100`.

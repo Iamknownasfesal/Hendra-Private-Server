@@ -596,14 +596,14 @@ fn behaviour(call: &Call, names: &mut Names, diagnostics: &mut Vec<Diagnostic>) 
         // `RemoveEntity(dist, children)` removes *other* entities rather than itself. Reading it
         // as a suicide would have made every boss that tidies up its summons kill itself instead.
         "remove_entity" => Primitive::RemoveNearby {
-            radius: number(call, "radius", 0, 10.0) as f32,
+            radius: number(call, "dist", 0, 10.0) as f32,
             kind: maybe_entity(call, names, "children", 1),
         },
 
         "decay" => Primitive::Decay {
             // A written zero means the argument was elided rather than that it should vanish at
             // once, which is what the C# default of ten seconds says.
-            after_ms: match number(call, "duration", 0, 0.0).max(0.0) as u32 {
+            after_ms: match number(call, "time", 0, 0.0).max(0.0) as u32 {
                 0 => 10_000,
                 given => given,
             },
@@ -700,28 +700,32 @@ fn behaviour(call: &Call, names: &mut Names, diagnostics: &mut Vec<Diagnostic>) 
             reprotect_range: number(call, "reprotect_range", 4, 2.0) as f32,
         },
 
+        // `HealGroup(range, group, coolDown, healAmount)` — the cooldown comes *before* the
+        // amount here and after it in `HealEntity`, which is why they cannot share an index.
         "heal_group" => Primitive::HealOthers {
             radius: number(call, "range", 0, 10.0) as f32,
-            amount: number(call, "amount", 2, 100.0) as i32,
+            amount: number(call, "heal_amount", 3, 100.0) as i32,
             kind: maybe_entity(call, names, "group", 1),
             players: false,
-            cooldown_ms: number(call, "cooldown", 3, 1000.0).max(0.0) as u32,
+            cooldown_ms: number(call, "cooldown", 2, 1000.0).max(0.0) as u32,
         },
 
+        // `HealEntity(range, name, healAmount, coolDown)`.
         "heal_entity" => Primitive::HealOthers {
             radius: number(call, "range", 0, 10.0) as f32,
-            amount: number(call, "amount", 2, 100.0) as i32,
+            amount: number(call, "heal_amount", 2, 100.0) as i32,
             kind: maybe_entity(call, names, "name", 1),
             players: false,
             cooldown_ms: number(call, "cooldown", 3, 1000.0).max(0.0) as u32,
         },
 
+        // `HealPlayer(range, coolDown, healAmount)`.
         "heal_player" => Primitive::HealOthers {
             radius: number(call, "range", 0, 10.0) as f32,
-            amount: number(call, "amount", 1, 100.0) as i32,
+            amount: number(call, "heal_amount", 2, 100.0) as i32,
             kind: None,
             players: true,
-            cooldown_ms: number(call, "cooldown", 2, 1000.0).max(0.0) as u32,
+            cooldown_ms: number(call, "cooldown", 1, 1000.0).max(0.0) as u32,
         },
 
         // `MoveTo(speed, x, y)`.
@@ -765,7 +769,7 @@ fn behaviour(call: &Call, names: &mut Names, diagnostics: &mut Vec<Diagnostic>) 
 
         "return_to_spawn" => Primitive::ReturnToSpawn {
             speed: number(call, "speed", 0, 1.0) as f32,
-            tolerance: number(call, "tolerance", 1, 0.5) as f32,
+            tolerance: number(call, "return_within_radius", 1, 0.5) as f32,
         },
 
         "stay_above" => Primitive::StayAbove {
@@ -1356,5 +1360,282 @@ mod tests {
             program.states[a].slot_base, program.states[b].slot_base,
             "two states must not share cooldown slots"
         );
+    }
+}
+
+#[cfg(test)]
+mod parity {
+    //! Every argument the original's constructors take is either read or listed here.
+    //!
+    //! The censuses this project relies on count *names*: `shoot` resolves to `Primitive::Shoot`,
+    //! so it reports as covered, and `Primitive::Shoot` had five fields where the C# constructor
+    //! has twelve parameters. Nothing measured the difference, which is how an enemy came to fire
+    //! at anything within twenty tiles and a boss's staggered volley came to fire on one frame.
+    //!
+    //! This reads the original's own signatures and checks each parameter against the arm that
+    //! compiles it. An argument that is deliberately not read belongs in [`IGNORED`] with the
+    //! reason, so that "we decided not to" and "we forgot" stop looking the same.
+
+    use std::collections::BTreeMap;
+
+    /// Where the original's behaviour and transition sources are, relative to this crate.
+    const CSHARP: [&str; 2] = [
+        "../../../Server-Side/wServer/logic/behaviors",
+        "../../../Server-Side/wServer/logic/transitions",
+    ];
+
+    /// Arguments no arm reads, and why that is right.
+    ///
+    /// Keyed by the C# class. Anything here has been checked against the content: either no script
+    /// passes it, or it asks for something this server does not model.
+    const IGNORED: &[(&str, &str, &str)] = &[
+        ("Shoot", "shootLowHp", "no script passes it"),
+        ("Shoot", "rotateAngle", "12 uses; rotation is built from states in the content"),
+        ("Shoot", "predictive", "281 uses; leading a target is not modelled yet"),
+        ("TossObject", "coolDownOffset", "no script passes it to a toss"),
+        ("TossObject", "tossInvis", "the difference is what the client draws"),
+        ("TossObject", "probability", "no script passes it to a toss"),
+        ("TossObject", "group", "no script passes it"),
+        ("TossObject", "minAngle", "no script passes it"),
+        ("TossObject", "maxAngle", "no script passes it"),
+        ("TossObject", "minRange", "no script passes it"),
+        ("TossObject", "maxRange", "no script passes it"),
+        ("TossObject", "densityRange", "no script passes it"),
+        ("TossObject", "maxDensity", "no script passes it"),
+        ("TossObject", "region", "no script names a region; see mechanics page 25"),
+        ("TossObject", "regionRange", "no script names a region"),
+        ("Reproduce", "region", "no script names a region"),
+        ("Reproduce", "regionRange", "no script names a region"),
+        ("Orbit", "speedVariance", "67 uses; jitter, not yet modelled"),
+        ("Orbit", "radiusVariance", "25 uses; jitter, not yet modelled"),
+        ("Orbit", "orbitClockwise", "3 uses"),
+        ("Grenade", "color", "what the client draws"),
+        ("SetAltTexture", "minValue", "the animating form; 5 uses"),
+        ("SetAltTexture", "maxValue", "the animating form; 5 uses"),
+        ("SetAltTexture", "cooldown", "the animating form; 5 uses"),
+        ("SetAltTexture", "loop", "the animating form; 5 uses"),
+
+        // Read out of the string list rather than as a positional argument, because both take a
+        // set of names and the second set is the one that matters.
+        ("ChangeGroundOnDeath", "ChangeTo", "taken from the name list, not by position"),
+        ("ReplaceTile", "replacedObjName", "taken from the name list, not by position"),
+
+        // The nested block, which the parser reads as a block rather than as an argument.
+        ("OnDeathBehavior", "behavior", "a nested block, read by shape"),
+        ("Prioritize", "children", "a nested block, read by shape"),
+        ("Sequence", "children", "a nested block, read by shape"),
+        ("Timed", "behaviors", "a nested block, read by shape"),
+        ("ReproduceChildren", "children", "a nested block, read by shape"),
+
+        // Not modelled. Each is a decision rather than an oversight, and each is small.
+        ("ChangeGroundOnDeath", "dist", "the ground change is a fixed radius here"),
+        ("DropPortalOnDeath", "XAdjustment", "a portal drops where the enemy fell"),
+        ("DropPortalOnDeath", "YAdjustment", "a portal drops where the enemy fell"),
+        ("GroundTransform", "relativeY", "the transform is centred on the entity"),
+        ("GroundTransform", "persist", "ground changes are not reverted here"),
+        ("MoveTo2", "once", "the latch never fires in the original either; mechanics page 02"),
+        ("MoveTo2", "isMapPosition", "every use in the content is relative"),
+        ("MoveTo2", "instant", "no script passes it"),
+        ("OrderOnDeath", "probability", "2 uses, both at one"),
+        ("ReproduceChildren", "initialSpawn", "1 use"),
+        ("ScaleHP", "healAfterMax", "2 uses; scaling raises the maximum without a heal"),
+        ("ScaleHP", "scaleAfter", "2 uses"),
+        ("SpawnGroup", "radius", "the group lands together rather than spread"),
+        ("StayBack", "entity", "no script names one; it backs away from players"),
+        ("TransformOnDeath", "min", "4 uses; the count is one here"),
+        ("TransformOnDeath", "max", "4 uses; the count is one here"),
+        ("TransformOnDeath", "probability", "4 uses; the transform always happens here"),
+    ];
+
+    /// The C# names that become something other than their snake case.
+    fn argument_name(csharp: &str) -> String {
+        match csharp {
+            "coolDown" => "cooldown".to_string(),
+            "projectileIndex" => "projectile".to_string(),
+            "coolDownOffset" => "cooldown_offset".to_string(),
+            other => crate::transpile::snake_for_test(other),
+        }
+    }
+
+    fn constructors() -> BTreeMap<String, Vec<String>> {
+        let mut found = BTreeMap::new();
+
+        for directory in CSHARP {
+            let Ok(entries) = std::fs::read_dir(directory) else {
+                continue;
+            };
+
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) != Some("cs") {
+                    continue;
+                }
+                let Some(class) = path.file_stem().and_then(|s| s.to_str()) else {
+                    continue;
+                };
+                let Ok(source) = std::fs::read_to_string(&path) else {
+                    continue;
+                };
+
+                let Some(start) = source.find(&format!("public {class}(")) else {
+                    continue;
+                };
+                let open = start + source[start..].find('(').unwrap();
+                let Some(close) = matching(&source, open) else {
+                    continue;
+                };
+
+                let names = source[open + 1..close]
+                    .split(',')
+                    .filter_map(|part| {
+                        let head = part.split('=').next()?.trim();
+                        head.split_whitespace().last().map(str::to_string)
+                    })
+                    .filter(|name| !name.is_empty())
+                    .collect::<Vec<_>>();
+
+                if !names.is_empty() {
+                    found.insert(class.to_string(), names);
+                }
+            }
+        }
+
+        found
+    }
+
+    /// Which positional slots an arm reads.
+    ///
+    /// The readers all take the index as their last-but-one argument — `number(call, "x", 2, 0.0)`,
+    /// `entity(call, names, "x", 2)` — so the integers in the arm are the positions it collects.
+    fn positions_read(arm: &str) -> Vec<usize> {
+        let mut found = Vec::new();
+        for reader in ["number(call,", "entity(call,", "text(call,", "argument(", "text_list(call,"] {
+            let mut from = 0usize;
+            while let Some(at) = arm[from..].find(reader) {
+                let at = from + at;
+                let tail = &arm[at..];
+                let end = tail.find(')').unwrap_or(tail.len());
+                for piece in tail[..end].split(',') {
+                    if let Ok(index) = piece.trim().parse::<usize>() {
+                        found.push(index);
+                    }
+                }
+                from = at + reader.len();
+            }
+        }
+        found
+    }
+
+    /// The index of the bracket closing the one at `open`.
+    fn matching(source: &str, open: usize) -> Option<usize> {
+        let bytes = source.as_bytes();
+        let mut depth = 0usize;
+        for (offset, byte) in bytes.iter().enumerate().skip(open) {
+            match byte {
+                b'(' => depth += 1,
+                b')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(offset);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+
+    /// The body of the match arm that compiles a DSL name, if there is one.
+    fn arm_for(name: &str) -> Option<&'static str> {
+        const SOURCE: &str = include_str!("compile.rs");
+
+        let marker = format!("\"{name}\"");
+        let mut from = 0usize;
+        while let Some(at) = SOURCE[from..].find(&marker) {
+            let at = from + at;
+            let line_start = SOURCE[..at].rfind('\n').map_or(0, |n| n + 1);
+            let indent = SOURCE[line_start..at].len();
+
+            // The arms of `behaviour` and `transition` sit at eight spaces and are the only place
+            // a quoted name is followed by `=>` or by another quoted alternative.
+            let tail = &SOURCE[at + marker.len()..];
+            let is_arm = indent == 8
+                && (tail.trim_start().starts_with("=>") || tail.trim_start().starts_with('|'));
+
+            if is_arm {
+                let body_start = at;
+                let body_end = SOURCE[body_start..]
+                    .find("\n        \"")
+                    .map(|end| body_start + end)
+                    .unwrap_or(SOURCE.len());
+                return Some(&SOURCE[body_start..body_end]);
+            }
+            from = at + marker.len();
+        }
+        None
+    }
+
+    #[test]
+    fn every_argument_the_original_takes_is_read_or_written_down() {
+        let constructors = constructors();
+        if constructors.is_empty() {
+            eprintln!("skipping: the original's sources are not where the test looks for them");
+            return;
+        }
+
+        let mut missing: Vec<String> = Vec::new();
+
+        for (class, parameters) in &constructors {
+            let dsl = crate::transpile::snake_for_test(class);
+            let Some(arm) = arm_for(&dsl) else {
+                continue;
+            };
+
+            let positions = positions_read(arm);
+
+            for (at, parameter) in parameters.iter().enumerate() {
+                // Read by name, or read at the position the constructor puts it. Both are fine:
+                // what is not fine is neither, which is an argument the content passes and nothing
+                // collects.
+                let wanted = argument_name(parameter);
+                if arm.contains(&format!("\"{wanted}\"")) || positions.contains(&at) {
+                    continue;
+                }
+                if IGNORED
+                    .iter()
+                    .any(|(on, name, _)| *on == class && name == parameter)
+                {
+                    continue;
+                }
+                missing.push(format!("{class}.{parameter} (looked for {wanted:?} or slot {at})"));
+            }
+        }
+
+        assert!(
+            missing.is_empty(),
+            "these arguments are neither read nor listed in IGNORED:\n  {}",
+            missing.join("\n  ")
+        );
+    }
+
+    #[test]
+    fn nothing_is_ignored_that_is_actually_read() {
+        // An entry that stops being true is worse than none: it says a decision was made where the
+        // code has since moved on.
+        let constructors = constructors();
+        if constructors.is_empty() {
+            return;
+        }
+
+        for (class, parameter, why) in IGNORED {
+            let Some(parameters) = constructors.get(*class) else {
+                panic!("IGNORED names {class}, which has no constructor in the original");
+            };
+            assert!(
+                parameters.iter().any(|name| name == parameter),
+                "IGNORED names {class}.{parameter}, which is not one of its arguments"
+            );
+            assert!(!why.is_empty(), "{class}.{parameter} needs a reason");
+        }
     }
 }
