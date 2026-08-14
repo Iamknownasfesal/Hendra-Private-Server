@@ -136,10 +136,18 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
         "session started"
     );
 
+    // One account plays one character at a time. Whatever else was on it is ended first, rather
+    // than this login being refused: the common case is somebody whose connection dropped trying to
+    // get back in, and refusing them would hold them out until a timeout they cannot see.
+    let ended = context.trades.claim(player.account.id);
+    if ended > 0 {
+        tracing::info!(%name, account = player.account.id, ended, "took over an account");
+    }
+
     // Reachable by name from now on, which is what lets somebody else ask them to trade.
     context
         .trades
-        .arrived(&name, player.character.id, link.sender());
+        .arrived(&name, player.account.id, player.character.id, link.sender());
     context.trades.moved(&name, &placement.world.name);
 
     // The ground first, because a client that has not been told the map cannot place anything it
@@ -896,6 +904,11 @@ async fn take_from_bag(
                 player: placement.handle,
                 bag: Some(bag),
                 item,
+
+                // Going back where it came from, which is a bag that already exists and already
+                // belongs to whoever it belongs to.
+                owned: false,
+
                 reply,
             })
             .await;
@@ -946,6 +959,11 @@ async fn put_in_bag(
             player: placement.handle,
             bag,
             item: number(&context.catalog, item).unwrap_or(0),
+
+            // A soulbound item drops into a bag only whoever dropped it may open, which is what
+            // makes dropping one a way to move it rather than a way to give it away.
+            owned: bag.is_none() && is_soulbound(&context.catalog, item),
+
             reply,
         })
         .await;
@@ -3959,4 +3977,16 @@ async fn worn_fame_bonus(context: &Context, player: &crate::accounts::Session) -
         .filter_map(|desc| desc.item.as_ref())
         .map(|item| item.fame_bonus)
         .sum()
+}
+
+/// Whether an item belongs to whoever found it.
+///
+/// Soulbound in the content. It cannot be traded, and dropping it makes a bag only the dropper can
+/// open, so there is no path by which it reaches somebody else.
+fn is_soulbound(catalog: &hendra_content::Catalog, item: uuid::Uuid) -> bool {
+    catalog
+        .type_of_uuid(item)
+        .and_then(|kind| catalog.object(kind))
+        .and_then(|desc| desc.item.as_ref())
+        .is_some_and(|item| item.soulbound)
 }

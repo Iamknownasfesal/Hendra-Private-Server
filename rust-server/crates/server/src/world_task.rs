@@ -119,6 +119,10 @@ pub enum ToWorld {
         player: Handle,
         bag: Option<hendra_net::EntityId>,
         item: u16,
+
+        /// Whether the bag this makes belongs to whoever dropped it.
+        owned: bool,
+
         reply: tokio::sync::oneshot::Sender<bool>,
     },
 
@@ -1145,9 +1149,10 @@ fn handle(
             player,
             bag,
             item,
+            owned,
             reply,
         } => {
-            let _ = reply.send(put_in_bag(world, catalog, player, bag, item));
+            let _ = reply.send(put_in_bag(world, catalog, player, bag, item, owned));
         }
 
         ToWorld::Equipment { handle, boosts } => {
@@ -1861,6 +1866,7 @@ fn put_in_bag(
     player: Handle,
     bag: Option<hendra_net::EntityId>,
     item: u16,
+    owned: bool,
 ) -> bool {
     let item = hendra_content::ObjectType(item);
 
@@ -1886,6 +1892,7 @@ fn put_in_bag(
     }
 
     // Nothing named: drop it where the player stands.
+    let player_handle = player;
     let Some(player) = world.get(player) else {
         return false;
     };
@@ -1900,6 +1907,13 @@ fn put_in_bag(
     dropped.kind = hendra_sim::Kind::Container;
     dropped.container = Some(Box::new(container));
     dropped.expires_in_ms = Some(60_000);
+
+    // A soulbound item goes into a bag only whoever dropped it can open, as the original does with
+    // its soul bag. That is what makes dropping one a way to move it rather than to give it away.
+    if owned {
+        dropped.belongs_to = Some(player_handle);
+    }
+
     world.spawn(dropped).is_some()
 }
 

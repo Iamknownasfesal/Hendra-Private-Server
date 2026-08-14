@@ -42,6 +42,12 @@ pub const FIRST_TRADEABLE: usize = 4;
 struct Party {
     character_id: i64,
 
+    /// Which account they belong to.
+    ///
+    /// One account plays one character at a time. Two sessions on one account is two copies of the
+    /// same vault and the same gold, and every durable rule this server has assumes one writer.
+    account_id: i64,
+
     /// Which world they are in, for `/visit` and for anybody looking for them.
     world: String,
 }
@@ -111,7 +117,7 @@ impl Trades {
     }
 
     /// Notes that somebody is online and could be traded with.
-    pub fn arrived(&self, name: &str, character_id: i64, sender: LinkSender) {
+    pub fn arrived(&self, name: &str, account_id: i64, character_id: i64, sender: LinkSender) {
         let Ok(mut state) = self.inner.lock() else {
             return;
         };
@@ -120,10 +126,51 @@ impl Trades {
             name.to_string(),
             Party {
                 character_id,
+                account_id,
                 world: String::new(),
             },
         );
         state.senders.insert(name.to_string(), sender);
+    }
+
+    /// Claims an account for a new session, ending whatever else was playing on it.
+    ///
+    /// One account plays one character at a time. The original takes a lock and disconnects the
+    /// other client; this does the same, and for the same reason: two sessions on one account are
+    /// two writers to one vault, and every durable rule here is written for one.
+    ///
+    /// The old session is ended rather than the new one refused, because the common case is not
+    /// somebody cheating but somebody whose connection dropped and who is trying to get back in. A
+    /// server that refused them would hold them out until a timeout they cannot see.
+    ///
+    /// Returns how many were ended.
+    pub fn claim(&self, account_id: i64) -> usize {
+        let Ok(mut state) = self.inner.lock() else {
+            return 0;
+        };
+
+        let others: Vec<String> = state
+            .present
+            .iter()
+            .filter(|(_, party)| party.account_id == account_id)
+            .map(|(name, _)| name.clone())
+            .collect();
+
+        for name in &others {
+            // Closing the sender is what ends a session: the one that owns the link sees it go and
+            // shuts down the same way it does when somebody quits, so a claim and a disconnection
+            // leave the same state behind.
+            if let Some(sender) = state.senders.remove(name) {
+                sender.close("that account is playing somewhere else");
+            }
+            state.present.remove(name);
+
+            if let Some(active) = state.active.remove(name) {
+                state.active.remove(&active.partner);
+            }
+        }
+
+        others.len()
     }
 
     /// Notes that somebody has gone, cancelling whatever they were doing.
@@ -486,6 +533,11 @@ mod tests {
     /// Present without a connection. What reaches the other side is the transport's business; what
     /// is being checked here is who may trade with whom and what they agreed to.
     fn arrive(trades: &Trades, name: &str, character_id: i64) {
+        arrive_on(trades, name, character_id, character_id);
+    }
+
+    /// Present on a named account, for the tests that care which.
+    fn arrive_on(trades: &Trades, name: &str, account_id: i64, character_id: i64) {
         let Ok(mut state) = trades.inner.lock() else {
             return;
         };
@@ -493,6 +545,7 @@ mod tests {
             name.to_string(),
             Party {
                 character_id,
+                account_id,
                 world: String::new(),
             },
         );
@@ -504,6 +557,52 @@ mod tests {
             offer[*slot] = true;
         }
         offer
+    }
+
+    #[test]
+    fn one_account_plays_one_character_at_a_time() {
+        // Two sessions on one account are two writers to one vault, and every durable rule here is
+        // written for one.
+        let trades = trades();
+        arrive_on(&trades, "First", 7, 1);
+        arrive_on(&trades, "Second", 7, 2);
+        arrive_on(&trades, "Somebody Else", 8, 3);
+
+        let ended = trades.claim(7);
+
+        assert_eq!(ended, 2, "both sessions on that account should end");
+        assert!(trades.present().contains(&"Somebody Else".to_string()));
+        assert!(!trades.present().contains(&"First".to_string()));
+    }
+
+    #[test]
+    fn claiming_an_account_nobody_is_playing_ends_nothing() {
+        let trades = trades();
+        arrive_on(&trades, "Somebody", 8, 1);
+
+        assert_eq!(trades.claim(7), 0);
+        assert_eq!(trades.present().len(), 1);
+    }
+
+    #[test]
+    fn taking_over_an_account_ends_the_trade_it_was_in() {
+        // A trade left half-agreed by a takeover is the same shape a duplication is built on as one
+        // left by a disconnection.
+        let trades = trades();
+        arrive_on(&trades, "Ana", 7, 1);
+        arrive_on(&trades, "Bo", 8, 2);
+
+        trades.request("Ana", "Bo");
+        trades.request("Bo", "Ana");
+        assert_eq!(trades.partner("Bo").as_deref(), Some("Ana"));
+
+        trades.claim(7);
+
+        assert_eq!(
+            trades.partner("Bo"),
+            None,
+            "Bo is still trading with a ghost"
+        );
     }
 
     #[test]

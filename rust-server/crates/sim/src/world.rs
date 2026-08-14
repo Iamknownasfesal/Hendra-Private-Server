@@ -6263,6 +6263,28 @@ mod tests {
     }
 
     #[test]
+    fn a_bag_that_belongs_to_somebody_is_only_theirs_to_open() {
+        // What makes dropping a soulbound item a way to move it rather than a way to give it away.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let owner = world
+            .spawn(Entity::player(ObjectType(0x600), 5.0, 5.0, 500))
+            .unwrap();
+
+        world.drop_owned_bag(&catalog, owner, vec![ObjectType(0x904)], 5.0, 5.0);
+        world.reindex();
+
+        let bag = world
+            .iter()
+            .find(|(_, entity)| entity.kind == Kind::Container)
+            .map(|(handle, entity)| (handle, entity.belongs_to))
+            .expect("a bag");
+
+        assert_eq!(bag.1, Some(owner));
+    }
+
+    #[test]
     fn a_temporary_boost_lapses_rather_than_lasting_forever() {
         // Its duration used to be discarded, which made every temporary boost permanent.
         let catalog = catalog();

@@ -707,11 +707,21 @@ category by category. It found thirteen things, one of them a mechanic that sile
 
 ### 18.6 One session per account — **S**
 
-- [ ] The same account can log in twice. The original takes a lock and disconnects the other
+- [x] The same account can log in twice. The original takes a lock and disconnects the other
+
+  Claimed on arrival now: whatever else was playing on that account is ended first. Ended rather
+  than the new login refused, because the common case is not somebody cheating but somebody whose
+  connection dropped trying to get back in, and refusing them would hold them out until a timeout
+  they cannot see. A takeover ends whatever trade the old session was in, for the same reason a
+  disconnection does.
 
 ### 18.7 Soulbound on drop — **S**
 
-- [ ] Respected in a trade and not on a drop, so a soulbound item can be given away by dropping it
+- [x] Respected in a trade and not on a drop, so a soulbound item can be given away by dropping it
+
+  The audit had the rule wrong. `InvDropHandler` does not refuse a soulbound drop: it drops it into
+  a soul bag whose owner is the dropper. So dropping one is a way to move it and not a way to give
+  it away, and the bag ownership that loot thresholds already needed is what carries it.
 
 ### 18.8 Quest choice — **S**
 
