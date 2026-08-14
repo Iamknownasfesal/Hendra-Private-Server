@@ -8,9 +8,19 @@ a dungeon, however wrong the dungeon is. Counts are from the content this server
 
 ## Status
 
-Everything in "first" is done, along with items 5 and 6 from "second". Each was committed with a
-test that fails against the old behaviour; the sections below are left as written so the reasoning
-survives, with the fix noted.
+**Everything on this page is done except two items, and both are deliberate.** Each fix was
+committed with a test that fails against the old behaviour; the sections are left as written so the
+reasoning survives, with the outcome noted against each.
+
+The two left:
+
+- **Ocean Trench oxygen** needs a bar the client has nowhere to draw, so it waits on the cutover.
+  Building the suffocation without the bar would be a dungeon where players take unexplained damage.
+- **Room and region sight** still occlude by ray rather than by room. The mode is read per world now
+  and defaults to none, which is the change that mattered; sharpening the two blocked modes is a
+  smaller thing on top of it.
+
+The **structural fix is in**, and it found the heals on its first run — see the end of this page.
 
 ## First: things a player feels in the first hour — **all fixed**
 
@@ -56,17 +66,17 @@ around becomes a ring that follows them.
 conditions at all. An invulnerable boss takes full damage from a spell. Delete the free function and
 route through `Rules`.
 
-**7. Spawned minions are worth full experience.** *(next)* [04](04-sim-combat.md)
+**7. Spawned minions are worth full experience.** ✅ **Fixed.** [04](04-sim-combat.md)
 
 The original abandons the award for anything `Spawned` and defaults `givesNoXp` to true across 364
 spawners. Here every minion is worth `max_hp / 10`, which is a standing farm next to any spawner.
 
-**8. Wisdom does nothing for abilities.** [04](04-sim-combat.md)
+**8. Wisdom does nothing for abilities.** ✅ **Fixed.** [04](04-sim-combat.md)
 
 `useWisMod` is parsed and read nowhere. 38 live abilities ignore it — every heal nova, every stat
 aura. Wisdom currently affects only MP regeneration.
 
-**9. Enemies think with nobody in the room.** [03](03-sim-loop.md)
+**9. Enemies think with nobody in the room.** ✅ **Fixed.** [03](03-sim-loop.md)
 
 The original ticks only enemies within three chunks of a player. Here every enemy in the world
 thinks, so bosses walk their phases unobserved and a room walked past and returned to is in a
@@ -74,43 +84,43 @@ different state. Also the largest single cost in the tick.
 
 ## Third: worth doing, felt over a session
 
-**10. No world-wide loot table.** [05](05-sim-worlds.md) — one line on `World.cs:27` gives every
+**10. No world-wide loot table.** ✅ **Fixed.** [05](05-sim-worlds.md) — one line on `World.cs:27` gives every
 enemy in the game a 3% tier-1 potion. It is the baseline potion economy and it is absent.
 
-**11. A thrown object lands 700 ms early.** [02](02-behaviour.md) — the telegraph is a hardcoded
+**11. A thrown object lands 700 ms early.** ✅ **Fixed.** [02](02-behaviour.md) — the telegraph is a hardcoded
 1,500 ms in the original and an unmatched argument name here, so all 389 uses take the 800 ms
 default.
 
-**12. Ground damage.** [01](01-content.md) — averaged instead of rolled, every tick instead of every
+**12. Ground damage.** ✅ **Fixed.** [01](01-content.md) — averaged instead of rolled, every tick instead of every
 500 ms, on enemies as well as players, ignoring `Damaging`, `ProtectFromGroundDamage`, `Paused` and
 `Invincible`.
 
-**13. `Spawn` drops `initialSpawn`.** [02](02-behaviour.md) — 225 uses decide how many appear on
+**13. `Spawn` drops `initialSpawn`.** ✅ **Fixed.** [02](02-behaviour.md) — 225 uses decide how many appear on
 entering a state.
 
-**14. Sight is blocked in every world.** [06](06-net.md) — the original picks one of four modes per
+**14. Sight is blocked in every world.** ✅ **Fixed**, with the two blocked modes still approximated by ray. [06](06-net.md) — the original picks one of four modes per
 world and **defaults to none**, so the realm and every code-built world show everything within twenty
 tiles. We ray-walk everywhere, which is the one mode no world selects. Decide this rather than fix
 it: a per-world mode is the feature, and right now no world can ask for anything.
 
-**15. `GenericActivate` does nothing.** [01](01-content.md) — 26 items say "nothing happens". It is a
+**15. `GenericActivate` does nothing.** ✅ **Fixed.** [01](01-content.md) — 26 items say "nothing happens". It is a
 fully specified condition-effect area, not an unknown id, and every argument is already parsed.
 
-**16. The rank ladder is three rungs.** [07](07-server.md) — eight in the original. Handing out items
+**16. The rank ladder is three rungs.** ✅ **Fixed.** [07](07-server.md) — eight in the original. Handing out items
 is currently as trusted as stamping a setpiece into a live world.
 
-## Fourth: small, cheap, do them alongside something else
+## Fourth: small, cheap — all done bar the oxygen
 
-- **Projectile damage can roll its maximum.** [01](01-content.md) — remove the `+ 1.0`; both of the
-  original's rolls are half-open.
-- **Bag reach is two tiles, not one.** [04](04-sim-combat.md)
-- **`Orbit` variance, `Follow` duration and cooldown, `Grenade` fixed angle, `SetAltTexture`'s
-  animating form.** [02](02-behaviour.md) — 67, 53, 57, 20 and 5 uses.
-- **Required drops.** [05](05-sim-worlds.md) — `numRequired` is passed three times in the whole
-  content. Three guaranteed drops are merely likely.
-- **Ocean Trench oxygen.** [01](01-content.md) — a whole dungeon's pressure, and only that dungeon.
-- **The `fame_from_experience` comment.** [04](04-sim-combat.md) — the code is right and the comment
-  above it describes a halving that does not happen. Correct the comment, not the arithmetic.
+- ✅ **Projectile damage can roll its maximum** — the `+ 1.0` is gone; both of the original's rolls
+  are half-open.
+- ✅ **Bag reach** is one tile.
+- ✅ **`Follow` duration and cooldown, `Grenade` fixed angle** — 53, 57 and 20 uses. `Orbit`'s
+  variance and `SetAltTexture`'s animating form are listed in the parity check's ignore list with
+  their counts, which is where a decision not to implement something now lives.
+- ✅ **Required drops** — three in the whole content, and certain rather than likely.
+- ✅ **The `fame_from_experience` comment** no longer describes a halving neither server does.
+- **Ocean Trench oxygen** — still open, and waiting on the client. A whole dungeon's pressure, and
+  only that dungeon.
 
 ## Decisions rather than fixes
 
@@ -140,9 +150,20 @@ reported 100%.
 - The behaviour census counted commented-out code until this pass, which is how five constructs
   looked used while having no live use at all.
 
-**A census that counts names will always report success.** The check worth building compares each C#
-constructor's parameter list against what `compile.rs` consumes and fails the build on anything
-neither read nor named in an explicit ignore list. That check would have caught items 3, 4, 5, 11 and
+**A census that counts names will always report success.** The check is now written —
+`compile::parity` in `crates/behavior/src/compile.rs` — and it reads the original's own signatures,
+checking each parameter against the arm that compiles it: read by name, read at the position the
+constructor puts it, or listed in `IGNORED` with a reason.
+
+**It found a real defect on its first run.** All three heal behaviours looked for `"amount"` where
+the C# argument is `healAmount`, so every explicit amount in the content was missed — and
+`HealGroup` and `HealPlayer` put the cooldown *before* the amount where `HealEntity` puts it after,
+so the two were being read into each other's fields. `heal_group(10, "OrcKings", 300)` was healing
+for 300 on a default cooldown; it is a 300 ms cooldown healing for the default. Three more names
+were guessed the same way: `Decay.time`, `RemoveEntity.dist`, `ReturnToSpawn.returnWithinRadius`.
+
+That defect had been described in the mechanics README since the audit began and had never been
+fixed, because nothing failed while it was there. The check would have caught items 3, 4, 5, 11 and
 13 the day they were written, and it is the only item on this page that stops the next one.
 
 The same discipline applies to the endpoint census, which says 40 of 40 and

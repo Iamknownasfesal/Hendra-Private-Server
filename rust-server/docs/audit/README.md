@@ -46,7 +46,7 @@ argument census counts names.
 
 ## Findings, worst first
 
-**Six are now fixed** — marked ✅ below. The ordered list with the reasoning is [page 10](10-what-to-fix.md).
+**All but one are now fixed** — marked ✅ below; the exception waits on the client cutover. The ordered list with the reasoning is [page 10](10-what-to-fix.md).
 
 The ordered list with the reasoning is [page 10](10-what-to-fix.md).
 
@@ -54,18 +54,18 @@ The ordered list with the reasoning is [page 10](10-what-to-fix.md).
 | --- | --- | --- |
 | ✅ Every stat potion but Life raises the wrong stat | 24 potions, 690 item bonuses | [01](01-content.md) |
 | ✅ A player's defence is never read, so armour does nothing | every hit on every player | [04](04-sim-combat.md) |
-| Spawned minions are worth full experience | 364 spawners | [04](04-sim-combat.md) |
-| Wisdom does nothing for abilities | 38 abilities | [04](04-sim-combat.md) |
+| ✅ Spawned minions are worth full experience | 364 spawners | [04](04-sim-combat.md) |
+| ✅ Wisdom does nothing for abilities | 38 abilities | [04](04-sim-combat.md) |
 | ✅ Area damage ignores invulnerability and uses the wrong floor | every grenade and spell | [01](01-content.md) |
-| Ground damage is averaged, continuous, and burns enemies | every hazard tile | [01](01-content.md) |
-| `GenericActivate` does nothing | 26 items | [01](01-content.md) |
-| No world-wide loot table, so no baseline potion drops | every enemy in the game | [05](05-sim-worlds.md) |
-| Ocean Trench has no oxygen | one dungeon, entirely | [01](01-content.md) |
-| Sight is blocked in every world; the original defaults to off | the realm and every code-built world | [06](06-net.md) |
+| ✅ Ground damage is averaged, continuous, and burns enemies | every hazard tile | [01](01-content.md) |
+| ✅ `GenericActivate` does nothing | 26 items | [01](01-content.md) |
+| ✅ No world-wide loot table, so no baseline potion drops | every enemy in the game | [05](05-sim-worlds.md) |
+| Ocean Trench has no oxygen *(waits on the client)* | one dungeon, entirely | [01](01-content.md) |
+| ✅ Sight is blocked in every world; the original defaults to off | the realm and every code-built world | [06](06-net.md) |
 | ✅ Everything that orbits, orbits the player | 137 of 167 orbits | [02](02-behaviour.md) |
 | ✅ `Shoot` drops its acquire range and its stagger | 4,486 and 2,663 uses | [02](02-behaviour.md) |
-| Projectile damage rolls can hit the maximum | every projectile | [01](01-content.md) |
-| A thrown object lands 700ms before it should | 389 uses | [02](02-behaviour.md) |
-| The staff rank ladder is three rungs where the original has eight | 54 ranked commands | [07](07-server.md) |
-| Enemies think with nobody in the room | every enemy, every world | [03](03-sim-loop.md) |
-| No slow tick, where the original has two clocks | world timers, dungeon logic | [03](03-sim-loop.md) |
+| ✅ Projectile damage rolls can hit the maximum | every projectile | [01](01-content.md) |
+| ✅ A thrown object lands 700ms before it should | 389 uses | [02](02-behaviour.md) |
+| ✅ The staff rank ladder is three rungs where the original has eight | 54 ranked commands | [07](07-server.md) |
+| ✅ Enemies think with nobody in the room | every enemy, every world | [03](03-sim-loop.md) |
+| No slow tick, where the original has two clocks *(a decision, see page 03)* | world timers, dungeon logic | [03](03-sim-loop.md) |
