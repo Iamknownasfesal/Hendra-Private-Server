@@ -149,12 +149,16 @@ impl ProjectileDesc {
     }
 
     /// Damage for one shot, given a roll in `0.0..1.0`.
+    ///
+    /// Half-open, as both of the original's rolls are: `Shoot.cs` uses .NET's `Random.Next(min,
+    /// max)` and `wRandom.NextIntRange` is `min + Gen() % (max - min)`, and neither can return the
+    /// maximum. A 55-90 projectile rolls 55 to 89.
     pub fn roll_damage(&self, roll: f32) -> i32 {
         if self.max_damage <= self.min_damage {
             return self.min_damage;
         }
         let span = (self.max_damage - self.min_damage) as f32;
-        self.min_damage + (roll * (span + 1.0)) as i32
+        self.min_damage + (roll * span) as i32
     }
 }
 
@@ -612,8 +616,9 @@ mod tests {
         assert_eq!(shot.min_damage, 220);
         assert_eq!(shot.max_damage, 275);
         assert_eq!(shot.lifetime_ms, 350);
+        // Half-open, as the original's rolls are: the top of the range is never reached.
         assert_eq!(shot.roll_damage(0.0), 220);
-        assert_eq!(shot.roll_damage(0.999), 275);
+        assert_eq!(shot.roll_damage(0.999), 274);
     }
 
     #[test]

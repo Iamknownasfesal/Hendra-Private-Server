@@ -170,6 +170,13 @@ pub struct Entity {
     /// How long until it may shoot again, in milliseconds.
     pub cooldown_ms: u32,
 
+    /// Whether killing this is worth experience.
+    ///
+    /// False for anything a spawner made, and for anything one of those made in turn. The original
+    /// keeps two flags for this — `GivesNoXp` on the child and `Spawned` propagated down the chain
+    /// — and both end at the same place.
+    pub awards_experience: bool,
+
     /// Where this entity came into being, which some behaviours keep it near.
     pub spawn_x: f32,
     pub spawn_y: f32,
@@ -329,6 +336,7 @@ impl Entity {
             stats: crate::stats::Stats::still(),
             weapon: None,
             cooldown_ms: 0,
+            awards_experience: true,
             spawn_x: x,
             spawn_y: y,
             mind: None,
@@ -381,6 +389,7 @@ impl Entity {
             stats: crate::stats::Stats::default(),
             weapon: None,
             cooldown_ms: 0,
+            awards_experience: true,
             spawn_x: x,
             spawn_y: y,
             mind: None,
@@ -1734,6 +1743,7 @@ impl World {
                 offset_y,
                 state,
                 delay_ms,
+                gives_no_xp,
             } => {
                 // One of them, chosen fresh, when the name is a group: `SpawnGroup` picks a member
                 // per spawn, which is what makes a dwarf camp a mix rather than a row of the same
@@ -1777,6 +1787,7 @@ impl World {
                         y + offset_y,
                         state.as_deref(),
                         Some(handle),
+                        *gives_no_xp,
                     );
                 }
             }
@@ -1834,7 +1845,7 @@ impl World {
                     entity.dead = true;
                     entity.no_experience = true;
                 }
-                self.spawn_child(catalog, behaviours, kind, x, y, None, Some(handle));
+                self.spawn_child(catalog, behaviours, kind, x, y, None, Some(handle), false);
             }
 
             Action::Order {
@@ -1905,7 +1916,7 @@ impl World {
                     return;
                 };
                 if let Some(portal) =
-                    self.spawn_child(catalog, behaviours, kind, x, y, None, Some(handle))
+                    self.spawn_child(catalog, behaviours, kind, x, y, None, Some(handle), false)
                     && let Some(entity) = self.entities.get_mut(portal)
                 {
                     entity.expires_in_ms = Some(*duration_ms);
@@ -2051,6 +2062,7 @@ impl World {
         y: f32,
         state: Option<&str>,
         from: Option<Handle>,
+        gives_no_xp: bool,
     ) -> Option<Handle> {
         let desc = catalog.object(kind)?;
 
@@ -2068,6 +2080,16 @@ impl World {
             .and_then(|parent| self.entities.get(parent))
             .map(|parent| parent.terrain)
             .unwrap_or_default();
+
+        // A spawner's children are worth nothing unless the script says otherwise, and a child of
+        // something already worthless stays worthless however deep the chain runs. `givesNoXp`
+        // defaults to true in the original and `Spawned` propagates, and between them they are
+        // what stops a boss with a spawner being somewhere to stand and level.
+        let parent_awards = from
+            .and_then(|parent| self.entities.get(parent))
+            .map(|parent| parent.awards_experience)
+            .unwrap_or(true);
+        entity.awards_experience = !gives_no_xp && parent_awards;
 
         // Taken from the caller rather than from `self`, because the tick lifts the programs out
         // of the world while it runs. Reading them from `self` here found an empty set, and every
@@ -3174,7 +3196,7 @@ impl World {
             Effect::Create { child } => {
                 if let Some(kind) = catalog.type_of(child) {
                     let behaviours = std::mem::take(&mut self.behaviours);
-                    self.spawn_child(catalog, &behaviours, kind, aim.0, aim.1, None, Some(handle));
+                    self.spawn_child(catalog, &behaviours, kind, aim.0, aim.1, None, Some(handle), false);
                     self.behaviours = behaviours;
                 }
             }
@@ -3289,6 +3311,7 @@ impl World {
                 landed.y,
                 None,
                 None,
+                false,
             ) && let Some(entity) = self.entities.get_mut(handle)
             {
                 entity.terrain = landed.terrain;
@@ -3331,7 +3354,7 @@ impl World {
             // Fanned, so a group put down together does not sit in one square and read as one.
             let spread = index as f32 * 0.35;
             if self
-                .spawn_child(catalog, &behaviours, kind, x + spread, y, None, None)
+                .spawn_child(catalog, &behaviours, kind, x + spread, y, None, None, false)
                 .is_some()
             {
                 made += 1;
@@ -3613,7 +3636,7 @@ impl World {
                 }
 
                 if let Some(handle) =
-                    self.spawn_child(catalog, &behaviours, spawn.kind, at_x, at_y, None, None)
+                    self.spawn_child(catalog, &behaviours, spawn.kind, at_x, at_y, None, None, false)
                     && let Some(entity) = self.entities.get_mut(handle)
                 {
                     // Tagged with the terrain it was placed on, which is what the next count reads
@@ -3823,6 +3846,7 @@ impl World {
                         at.1 as f32 + y,
                         None,
                         None,
+                        false,
                     ) && *size > 0
                         && let Some(entity) = self.entities.get_mut(handle)
                     {
@@ -3953,7 +3977,7 @@ impl World {
         let (x, y) = self.entities.get(at).map(|entity| (entity.x, entity.y))?;
 
         let behaviours = std::mem::take(&mut self.behaviours);
-        let portal = self.spawn_child(catalog, &behaviours, kind, x, y, None, None);
+        let portal = self.spawn_child(catalog, &behaviours, kind, x, y, None, None, false);
         self.behaviours = behaviours;
 
         if let Some(portal) = portal
@@ -4054,6 +4078,7 @@ impl World {
                         world_y as f32 + 0.5,
                         None,
                         None,
+                        false,
                     );
                     self.behaviours = behaviours;
                 }
@@ -4168,6 +4193,7 @@ impl World {
                 continue;
             };
             let (x, y, max_hp) = (entity.x, entity.y, entity.max_hp);
+            let awards = entity.awards_experience;
             let desc = catalog.object(entity.object_type);
             let multiplier = desc.and_then(|desc| desc.exp_multiplier).unwrap_or(1.0);
 
@@ -4245,7 +4271,7 @@ impl World {
                 }
 
                 let earned = crate::leveling::experience_for_kill(
-                    max_hp, multiplier, true, level, was_quest,
+                    max_hp, multiplier, awards, level, was_quest,
                 );
                 if earned <= 0 {
                     continue;
@@ -4378,13 +4404,14 @@ impl World {
                         y,
                         None,
                         Some(handle),
+                        true,
                     );
                 }
             }
 
             DeathEffect::TransformInto { child } => {
                 if let Some(kind) = program.kind_of(*child).map(ObjectType) {
-                    self.spawn_child(catalog, behaviours, kind, x, y, None, Some(handle));
+                    self.spawn_child(catalog, behaviours, kind, x, y, None, Some(handle), false);
                 }
             }
 
@@ -4400,7 +4427,7 @@ impl World {
                     return;
                 };
                 if let Some(portal) =
-                    self.spawn_child(catalog, behaviours, kind, x, y, None, Some(handle))
+                    self.spawn_child(catalog, behaviours, kind, x, y, None, Some(handle), false)
                     && let Some(entity) = self.entities.get_mut(portal)
                 {
                     entity.expires_in_ms = Some(*duration_ms);
@@ -5318,6 +5345,57 @@ mod tests {
     }
 
     #[test]
+    fn a_spawners_children_are_worth_nothing() {
+        // givesNoXp defaults to true across all 364 spawners in the content, and Spawned carries
+        // it down the chain. Awarding for them makes any boss with a spawner a place to stand and
+        // level rather than a fight.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut spawner = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
+        spawner.kind = Kind::Enemy;
+        spawner.max_hp = 200;
+        spawner.hp = 200;
+        let spawner = world.spawn(spawner).unwrap();
+
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 11.0, 10.0, 500))
+            .unwrap();
+
+        behaving(
+            &mut world,
+            &catalog,
+            r#"enemy "Slime" { state a { spawn("Spawnling", max_children: 4) } }"#,
+        );
+        world.reindex();
+        world.advance(&catalog, 50);
+
+        let child = world
+            .iter()
+            .find(|(handle, entity)| {
+                *handle != spawner && entity.object_type == ObjectType(0x505)
+            })
+            .map(|(handle, _)| handle)
+            .expect("the spawner made something");
+
+        assert!(
+            !world.get(child).unwrap().awards_experience,
+            "a spawned child is worth nothing"
+        );
+
+        let before = world.get(player).unwrap().progress.experience;
+        world.get_mut(child).unwrap().hp = 0;
+        world.get_mut(child).unwrap().dead = true;
+        world.advance(&catalog, 50);
+
+        assert_eq!(
+            world.get(player).unwrap().progress.experience,
+            before,
+            "and killing it earns nothing"
+        );
+    }
+
+    #[test]
     fn a_blast_cannot_touch_something_invulnerable() {
         // Explosions had their own copy of the damage formula, with a different floor and no
         // conditions at all, so a boss that had gone invulnerable between phases shrugged off
@@ -5947,21 +6025,23 @@ mod tests {
             &catalog,
             r#"enemy "Slime" {
                  state a {
-                   toss_object("Spawnling", range: 3, cooldown: 100000, throw_delay: 500)
+                   toss_object("Spawnling", range: 3, cooldown: 100000)
                  }
                }"#,
         );
         world.reindex();
 
+        // The telegraph is a second and a half, which is what `TossObject` arms its WorldTimer to
+        // and is not an argument the content can change.
         world.advance(&catalog, 50);
         assert_eq!(count_of(&world, 0x505), 0, "still in the air");
 
-        for _ in 0..8 {
+        for _ in 0..25 {
             world.advance(&catalog, 50);
         }
-        assert_eq!(count_of(&world, 0x505), 0, "not yet");
+        assert_eq!(count_of(&world, 0x505), 0, "not yet, at 1.3 seconds");
 
-        for _ in 0..4 {
+        for _ in 0..6 {
             world.advance(&catalog, 50);
         }
         assert_eq!(count_of(&world, 0x505), 1, "and now it lands");
@@ -6652,6 +6732,7 @@ mod tests {
                 5.0,
                 None,
                 Some(parent),
+                false,
             )
             .unwrap();
         world.behaviours = behaviours;
@@ -7115,6 +7196,7 @@ mod tests {
                 8.0,
                 None,
                 None,
+                false,
             )
             .unwrap();
         world.behaviours = behaviours;

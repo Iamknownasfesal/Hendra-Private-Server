@@ -150,6 +150,9 @@ pub enum Action {
 
         /// How long before it arrives. Zero appears at once.
         delay_ms: u32,
+
+        /// Whether the children are worth experience when they die.
+        gives_no_xp: bool,
     },
 
     /// Remove this entity without it counting as a kill.
@@ -339,6 +342,12 @@ pub enum Primitive {
         acquire_range: f32,
         /// How close it tries to get before stopping.
         range: f32,
+
+        /// How long a spell of following lasts. Zero follows for as long as the state does.
+        duration_ms: u32,
+
+        /// How long after a spell ends before another may start.
+        cooldown_ms: u32,
     },
 
     Orbit {
@@ -373,7 +382,20 @@ pub enum Primitive {
     Spawn {
         child: NameRef,
         max_children: u32,
+
+        /// The share of `max_children` that appear on entering the state.
+        ///
+        /// A fraction, defaulting to a half; the count is the truncated product.
+        initial_spawn: f32,
+
         cooldown_ms: u32,
+
+        /// Whether the children are worth experience.
+        ///
+        /// `givesNoXp`, whose default in the original is **true**: unless a script says otherwise,
+        /// a spawner's children are worth nothing at all. Awarding for them turns every spawner in
+        /// the game into a place to stand and level.
+        gives_no_xp: bool,
     },
 
     /// Spawn children only while few enough of them are already nearby.
@@ -404,6 +426,10 @@ pub enum Primitive {
         radius: f32,
         damage: i32,
         range: f32,
+
+        /// Thrown at a set angle rather than at whoever is nearest.
+        fixed_angle: Option<f32>,
+
         cooldown_ms: u32,
         effect: Option<u8>,
         effect_ms: u32,

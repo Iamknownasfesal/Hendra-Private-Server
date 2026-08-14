@@ -481,10 +481,14 @@ fn behaviour(call: &Call, names: &mut Names, diagnostics: &mut Vec<Diagnostic>) 
             speed: number(call, "speed", 0, 0.4) as f32,
         },
 
+        // `Follow(speed, acquireRange, range, duration, coolDown)`. A duration of zero means the
+        // original's default, which is to follow for as long as the state lasts.
         "follow" => Primitive::Follow {
             speed: number(call, "speed", 0, 1.0) as f32,
             acquire_range: number(call, "acquire_range", 1, 10.0) as f32,
             range: number(call, "range", 2, 6.0) as f32,
+            duration_ms: number(call, "duration", 3, 0.0).max(0.0) as u32,
+            cooldown_ms: number(call, "cooldown", 4, 0.0).max(0.0) as u32,
         },
 
         "orbit" => Primitive::Orbit {
@@ -509,10 +513,17 @@ fn behaviour(call: &Call, names: &mut Names, diagnostics: &mut Vec<Diagnostic>) 
             cooldown_ms: number(call, "cooldown", 1, 1000.0).max(0.0) as u32,
         },
 
+        // `Spawn(children, maxChildren, initialSpawn, coolDown, givesNoXp)`, where `initialSpawn`
+        // is a fraction of `maxChildren` and `givesNoXp` defaults to *true*.
         "spawn" => Primitive::Spawn {
             child: entity(call, names, "children", 0),
             max_children: number(call, "max_children", 1, 5.0).max(0.0) as u32,
-            cooldown_ms: number(call, "cooldown", 2, 1000.0).max(0.0) as u32,
+            initial_spawn: number(call, "initial_spawn", 2, 0.5).clamp(0.0, 1.0) as f32,
+            cooldown_ms: number(call, "cooldown", 3, 1000.0).max(0.0) as u32,
+            gives_no_xp: call
+                .named("gives_no_xp")
+                .and_then(Value::as_bool)
+                .unwrap_or(true),
         },
 
         // `Reproduce(children, densityRadius, densityMax, coolDown)`.
@@ -534,10 +545,16 @@ fn behaviour(call: &Call, names: &mut Names, diagnostics: &mut Vec<Diagnostic>) 
 
         // The C# spells the group form `SpawnGroup(group, max, initial, cooldown)`. A group is a
         // name like any other here; what it resolves to is the host's problem.
+        // `SpawnGroup(group, maxChildren, initialSpawn, coolDown, radius)`.
         "spawn_group" => Primitive::Spawn {
             child: entity(call, names, "group", 0),
             max_children: number(call, "max_children", 1, 5.0).max(0.0) as u32,
+            initial_spawn: number(call, "initial_spawn", 2, 0.5).clamp(0.0, 1.0) as f32,
             cooldown_ms: number(call, "cooldown", 3, 1000.0).max(0.0) as u32,
+            gives_no_xp: call
+                .named("gives_no_xp")
+                .and_then(Value::as_bool)
+                .unwrap_or(true),
         },
 
         // `InvisiToss` throws the same way but without the thrower being seen doing it. Nothing
@@ -551,16 +568,23 @@ fn behaviour(call: &Call, names: &mut Names, diagnostics: &mut Vec<Diagnostic>) 
                 .and_then(Value::as_number)
                 .map(|degrees| degrees as f32),
             cooldown_ms: number(call, "cooldown", 3, 1000.0).max(0.0) as u32,
-            // The telegraph. Without it a thrown object is an unavoidable hit, which is the
-            // difference between a hard fight and an unfair one.
-            warning_ms: number(call, "throw_delay", 9, 800.0).max(0.0) as u32,
+            // The telegraph, and not an argument in the original at all: `TossObject` arms a
+            // `WorldTimer(1500, ...)` between showing the throw and the thing landing. Without it
+            // a thrown object is an unavoidable hit, which is the difference between a hard fight
+            // and an unfair one, and 800 was little over half the warning the content expects.
+            warning_ms: 1500,
         },
 
+        // `Grenade(radius, damage, range, fixedAngle, coolDown, effect, effectDuration, color)`.
         "grenade" => Primitive::Grenade {
             radius: number(call, "radius", 0, 2.0) as f32,
             damage: number(call, "damage", 1, 100.0) as i32,
             range: number(call, "range", 2, 5.0) as f32,
-            cooldown_ms: number(call, "cooldown", 3, 1000.0).max(0.0) as u32,
+            fixed_angle: call
+                .named("fixed_angle")
+                .and_then(Value::as_number)
+                .map(|degrees| degrees as f32),
+            cooldown_ms: number(call, "cooldown", 4, 1000.0).max(0.0) as u32,
             effect: call
                 .named("effect")
                 .map(|_| effect_of(call, "effect", usize::MAX, diagnostics)),

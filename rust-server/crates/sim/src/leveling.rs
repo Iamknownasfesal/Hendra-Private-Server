@@ -53,10 +53,12 @@ pub fn experience_at(level: i16) -> i32 {
     50 * (level - 1) + (level - 2) * (level - 1) * 50
 }
 
-/// Fame earned from a lifetime's experience.
+/// Fame earned from a lifetime's experience: one per thousand.
 ///
-/// One per thousand, halving in rate past two hundred thousand so that late experience is worth
-/// less than early experience.
+/// The branch is the original's, from `Player.Leveling.cs:234`, and the two arms compute the same
+/// thing — `200 + (e - 200_000) / 1000` is `e / 1000`. It reads as though late experience was meant
+/// to be worth less and the halving was never written. Kept branch and all, because straightening
+/// it would invite someone to make the arms differ and quietly change what a lifetime is worth.
 pub fn fame_from_experience(experience: i32) -> i32 {
     const KNEE: i32 = 200 * 1000;
     if experience < KNEE {

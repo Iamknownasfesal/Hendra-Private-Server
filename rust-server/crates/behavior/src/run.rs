@@ -99,6 +99,15 @@ pub struct Mind {
     /// Where it was last tick, which is how standing still is noticed at all.
     was_at: Option<(f32, f32)>,
 
+    /// Per-slot countdowns for behaviours that run in spells rather than on a cooldown alone.
+    timers: Vec<u32>,
+
+    /// What each slot's cooldown becomes when its spell ends.
+    rest_after_spell: Vec<u32>,
+
+    /// Whether the opening batch of children has been made in this state.
+    spawned_opening: bool,
+
     /// Scratch for the ancestry walk, reused so a tick allocates nothing.
     chain: Vec<usize>,
 }
@@ -129,6 +138,9 @@ impl Mind {
             still_for_ms: 0,
             was_at: None,
             chain: Vec::new(),
+            timers: vec![0; program.slots],
+            rest_after_spell: vec![0; program.slots],
+            spawned_opening: false,
         };
 
         let landing = mind.current;
@@ -190,6 +202,9 @@ impl Mind {
         self.in_state_ms = 0;
         self.damage_in_state = 0;
         self.charge = None;
+        self.spawned_opening = false;
+        self.timers.iter_mut().for_each(|timer| *timer = 0);
+        self.rest_after_spell.iter_mut().for_each(|rest| *rest = 0);
 
         // Drawn on entry, so a group that entered together does not leave together.
         self.deadline_ms = 0;
@@ -256,6 +271,18 @@ impl Mind {
 
         for slot in self.cooldowns.iter_mut() {
             *slot = slot.saturating_sub(elapsed_ms);
+        }
+
+        // A spell that has run its length hands over to the rest that follows it. The rest is the
+        // behaviour's own cooldown, which is why it is armed here rather than where the spell runs.
+        for index in 0..self.timers.len() {
+            if self.timers[index] == 0 {
+                continue;
+            }
+            self.timers[index] = self.timers[index].saturating_sub(elapsed_ms);
+            if self.timers[index] == 0 {
+                self.cooldowns[index] = self.rest_after_spell[index];
+            }
         }
 
         // Transitions first, innermost outwards, first match wins.
@@ -485,10 +512,28 @@ impl Mind {
                 speed,
                 acquire_range,
                 range,
+                duration_ms,
+                cooldown_ms,
             } => {
                 if *has_moved {
                     return 1;
                 }
+
+                // With a duration the original follows in spells: it chases for that long, then
+                // stands for the cooldown, then chases again. Without one it simply follows, which
+                // is what the great majority of uses ask for.
+                if *duration_ms > 0 {
+                    if self.cooldowns.get(slot).copied().unwrap_or(0) > 0 {
+                        return 1;
+                    }
+                    if self.timers.get(slot).copied().unwrap_or(0) == 0
+                        && let Some(timer) = self.timers.get_mut(slot)
+                    {
+                        *timer = *duration_ms;
+                        self.rest_after_spell[slot] = *cooldown_ms;
+                    }
+                }
+
                 let Some(player) = senses.nearest_player else {
                     return 1;
                 };
@@ -608,7 +653,9 @@ impl Mind {
             Primitive::Spawn {
                 child,
                 max_children,
+                initial_spawn,
                 cooldown_ms,
+                gives_no_xp,
             } => {
                 if self.cooldowns.get(slot).copied().unwrap_or(0) > 0 {
                     return 1;
@@ -617,15 +664,28 @@ impl Mind {
                     return 1;
                 }
 
+                // The original makes its opening batch as the state is entered — a fraction of the
+                // maximum, truncated — and one at a time on the cooldown after that. A spawner that
+                // trickled from nothing would take its whole fight to fill a room the content
+                // expects to be full when the fight starts.
+                let count = if self.spawned_opening {
+                    1
+                } else {
+                    self.spawned_opening = true;
+                    ((*max_children as f32 * *initial_spawn) as u32).max(1)
+                }
+                .min(*max_children - self.children);
+
                 out.push(Action::Spawn {
                     child: *child,
-                    count: 1,
+                    count,
                     offset_x: 0.0,
                     offset_y: 0.0,
                     state: None,
                     delay_ms: 0,
+                    gives_no_xp: *gives_no_xp,
                 });
-                self.children += 1;
+                self.children += count;
 
                 if let Some(cooldown) = self.cooldowns.get_mut(slot) {
                     *cooldown = *cooldown_ms;
@@ -691,6 +751,7 @@ impl Mind {
                     count: 1,
                     offset_x: 0.0,
                     offset_y: 0.0,
+                    gives_no_xp: true,
                     state: None,
                     delay_ms: 0,
                 });
@@ -727,6 +788,7 @@ impl Mind {
                 out.push(Action::Spawn {
                     child: *child,
                     count: 1,
+                    gives_no_xp: true,
                     offset_x: angle.cos() * reach,
                     offset_y: angle.sin() * reach,
                     state: None,
@@ -743,6 +805,7 @@ impl Mind {
                 radius,
                 damage,
                 range,
+                fixed_angle,
                 cooldown_ms,
                 effect,
                 effect_ms,
@@ -750,18 +813,30 @@ impl Mind {
                 if self.cooldowns.get(slot).copied().unwrap_or(0) > 0 {
                     return 1;
                 }
-                let Some(player) = senses.nearest_player else {
-                    return 1;
-                };
-                if player.distance > *range {
-                    return 1;
-                }
 
-                // Thrown where the player is now. Leading them would make it unavoidable, which is
-                // the difference between a hard attack and one nobody can play around.
+                // A fixed angle throws at its own range in that direction, with or without anyone
+                // about. Otherwise it lands where the player is now: leading them would make it
+                // unavoidable, which is the difference between a hard attack and one nobody can
+                // play around.
+                let (offset_x, offset_y) = match fixed_angle {
+                    Some(degrees) => {
+                        let angle = degrees.to_radians();
+                        (range * angle.cos(), range * angle.sin())
+                    }
+                    None => {
+                        let Some(player) = senses.nearest_player else {
+                            return 1;
+                        };
+                        if player.distance > *range {
+                            return 1;
+                        }
+                        (player.x - senses.x, player.y - senses.y)
+                    }
+                };
+
                 out.push(Action::Grenade {
-                    offset_x: player.x - senses.x,
-                    offset_y: player.y - senses.y,
+                    offset_x,
+                    offset_y,
                     radius: *radius,
                     damage: *damage,
                     effect: *effect,

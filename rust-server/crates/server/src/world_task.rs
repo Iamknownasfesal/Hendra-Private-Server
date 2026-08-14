@@ -441,7 +441,10 @@ pub struct Vitals {
 }
 
 /// How close a player must be to reach into a bag, in tiles.
-pub const BAG_REACH: f32 = 2.0;
+///
+/// One, from `InvSwapHandler.cs:168`, which refuses a swap when the squared distance is above one.
+/// Two tiles is four times the area to grab from, and loot bags are contested.
+pub const BAG_REACH: f32 = 1.0;
 
 /// How close a player must be to a portal to use it, in tiles.
 ///
