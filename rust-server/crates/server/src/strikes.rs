@@ -1,6 +1,12 @@
 //! Keeping count of what a connection has been refused, and cutting it once the refusals stop
 //! looking like accidents.
 //!
+//! Follows `Player.Verify.Strike`, which strikes for "moving faster than it can" and for nothing
+//! else about movement. The distinction matters and cost a real session to learn: a player leaning
+//! on a movement key against a wall has every one of those moves refused, one per tick, and
+//! counting them spends the whole budget in under a second. Only a claim that could not be honest
+//! is worth counting, and the caller decides which those are — see `world_task`.
+//!
 //! Follows `Player.Verify.Strike`. The world already refuses each thing on its own: a move too far
 //! is clamped, a shot too soon is dropped, a hit is decided by the server whatever the client says.
 //! None of that needs a record to be correct. What a record adds is the difference between one

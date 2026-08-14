@@ -1,0 +1,19 @@
+# The template `install.sh` fills in. The grammar is a git repository as far as Zed is concerned,
+# and the one it clones is the copy the script builds under `.build`, so the revision here is
+# whatever that copy last committed and both are written per machine.
+
+id = "beh"
+name = "Behaviour"
+description = "The behaviour language the Hendra content is written in: highlighting, outlines, tooltips and cross-file navigation."
+version = "0.1.0"
+schema_version = 1
+authors = ["Hendra"]
+repository = "https://github.com/iamknownasfesal/Hendra-Private-Server"
+
+[grammars.beh]
+repository = "@GRAMMAR@"
+rev = "@REV@"
+
+[language_servers.beh-lsp]
+name = "beh-lsp"
+languages = ["Behaviour"]

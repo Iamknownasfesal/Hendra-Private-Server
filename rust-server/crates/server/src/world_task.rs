@@ -915,10 +915,18 @@ fn handle(
             if let Some(outcome) =
                 world.resolve_move(handle, catalog, x, y, tick_ms(client_time_ms))
             {
-                // A refusal on its own is not evidence of anything: a bad line produces every one
-                // of these honestly. What is worth noticing is the rate, so they are counted and
-                // the counting is what decides whether a connection is worth keeping.
-                if let Some(why) = outcome.refused
+                // Only a claim to have moved *faster than possible* says anything about the
+                // client. Walking into a wall is refused as `Blocked` and being held by an effect
+                // as `Rooted`, and an honest client produces one of those per tick for as long as
+                // the key is held — twelve of them inside a second, which is the whole strike
+                // budget. Counting those disconnects a player for leaning on a wall, which is
+                // what happened the first time anybody played this.
+                //
+                // The original strikes for "moving faster than it can" and for nothing else about
+                // movement, which is the same judgement.
+                if let Some(why) = outcome.refused.filter(|why| {
+                    matches!(why, hendra_sim::MoveRefusal::TooFar)
+                })
                     && let Some(player) = players.iter_mut().find(|player| player.handle == handle)
                 {
                     let verdict = player.strikes.note(std::time::Instant::now());

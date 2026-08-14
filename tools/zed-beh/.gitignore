@@ -1,0 +1,8 @@
+# Written by install.sh for this machine.
+extension.toml
+.build/
+
+# Built by Zed when it loads the extension.
+extension.wasm
+grammars/
+target/

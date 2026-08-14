@@ -1,0 +1,16 @@
+[package]
+name = "zed-beh"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MIT"
+
+# Zed loads an extension as a WebAssembly component, which is what this shape produces.
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+zed_extension_api = "0.7"
+
+# Its own workspace: this is built by Zed for `wasm32-wasip2`, not by the server's build.
+[workspace]

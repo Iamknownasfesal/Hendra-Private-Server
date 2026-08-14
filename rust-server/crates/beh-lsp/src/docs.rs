@@ -50,6 +50,12 @@ pub struct Ignored {
     pub name: &'static str,
     /// Why writing it has no effect.
     pub why: &'static str,
+    /// Whether the value would have been used had it been written differently.
+    ///
+    /// This is the difference between a mistake and a limit. `timed(time: 50)` means the author
+    /// asked for fifty milliseconds and got a thousand, which is worth interrupting them for;
+    /// `orbit(speed_variance: 2)` means the runtime has no such feature, which is not.
+    pub misread: bool,
 }
 
 pub struct Entry {
@@ -226,7 +232,7 @@ pub const BEHAVIOURS: &[Entry] = &[
             Param { name: "cooldown", position: Some(10), value: "ms", default: "1000", doc: "The wait between shots." },
         ],
         ignored: &[
-            Ignored { name: "rotate_angle", why: "the runtime does not turn a burst between shots" },
+            Ignored { name: "rotate_angle", why: "the runtime does not turn a burst between shots", misread: false },
         ],
         note: None,
     },
@@ -283,9 +289,9 @@ pub const BEHAVIOURS: &[Entry] = &[
             Param { name: "target", position: Some(3), value: "an object name", default: "the nearest player", doc: "What to circle. Guards circle their boss this way." },
         ],
         ignored: &[
-            Ignored { name: "speed_variance", why: "the runtime gives every orbiter the same speed" },
-            Ignored { name: "radius_variance", why: "the runtime gives every orbiter the same radius" },
-            Ignored { name: "orbit_clockwise", why: "the runtime picks the direction itself" },
+            Ignored { name: "speed_variance", why: "the runtime gives every orbiter the same speed", misread: false },
+            Ignored { name: "radius_variance", why: "the runtime gives every orbiter the same radius", misread: false },
+            Ignored { name: "orbit_clockwise", why: "the runtime picks the direction itself", misread: false },
         ],
         note: None,
     },
@@ -456,12 +462,12 @@ pub const BEHAVIOURS: &[Entry] = &[
             Param { name: "cooldown", position: Some(3), value: "ms", default: "1000", doc: "The wait between throws." },
         ],
         ignored: &[
-            Ignored { name: "min_range", why: "the runtime throws at one distance" },
-            Ignored { name: "max_range", why: "the runtime throws at one distance; write `range`" },
-            Ignored { name: "min_angle", why: "the runtime throws at one angle" },
-            Ignored { name: "max_angle", why: "the runtime throws at one angle; write `angle`" },
-            Ignored { name: "toss_invis", why: "write `invisi_toss` instead, which is the same behaviour" },
-            Ignored { name: "cooldown_offset", why: "the runtime does not stagger the first throw" },
+            Ignored { name: "min_range", why: "the runtime throws at one distance", misread: false },
+            Ignored { name: "max_range", why: "the runtime throws at one distance; write `range`", misread: false },
+            Ignored { name: "min_angle", why: "the runtime throws at one angle", misread: false },
+            Ignored { name: "max_angle", why: "the runtime throws at one angle; write `angle`", misread: false },
+            Ignored { name: "toss_invis", misread: true, why: "write `invisi_toss` instead, which is the same behaviour" },
+            Ignored { name: "cooldown_offset", why: "the runtime does not stagger the first throw", misread: false },
         ],
         note: None,
     },
@@ -555,10 +561,10 @@ pub const BEHAVIOURS: &[Entry] = &[
             Param { name: "index", position: Some(0), value: "number", default: "0", doc: "Which alternate texture from the object's data, where 0 is its own." },
         ],
         ignored: &[
-            Ignored { name: "min_value", why: "the runtime sets one texture rather than cycling through a range" },
-            Ignored { name: "max_value", why: "the runtime sets one texture rather than cycling through a range" },
-            Ignored { name: "loop", why: "the runtime does not animate the texture" },
-            Ignored { name: "cooldown", why: "the runtime does not animate the texture" },
+            Ignored { name: "min_value", why: "the runtime sets one texture rather than cycling through a range", misread: false },
+            Ignored { name: "max_value", why: "the runtime sets one texture rather than cycling through a range", misread: false },
+            Ignored { name: "loop", why: "the runtime does not animate the texture", misread: false },
+            Ignored { name: "cooldown", why: "the runtime does not animate the texture", misread: false },
         ],
         note: None,
     },
@@ -683,8 +689,8 @@ pub const BEHAVIOURS: &[Entry] = &[
             Param { name: "speed", position: Some(2), value: SPEED, default: "2", doc: "How fast it walks." },
         ],
         ignored: &[
-            Ignored { name: "once", why: "the runtime always walks there once" },
-            Ignored { name: "is_map_position", why: "the runtime reads the position as relative to the spawn" },
+            Ignored { name: "once", why: "the runtime always walks there once", misread: false },
+            Ignored { name: "is_map_position", why: "the runtime reads the position as relative to the spawn", misread: false },
         ],
         note: None,
     },
@@ -793,9 +799,9 @@ pub const BEHAVIOURS: &[Entry] = &[
             Param { name: "cooldown", position: Some(2), value: "ms", default: "0", doc: "The wait between changes." },
         ],
         ignored: &[
-            Ignored { name: "relative_x", why: "the runtime changes the ground around the enemy" },
-            Ignored { name: "relative_y", why: "the runtime changes the ground around the enemy" },
-            Ignored { name: "persist", why: "the runtime always leaves the changed ground behind" },
+            Ignored { name: "relative_x", why: "the runtime changes the ground around the enemy", misread: false },
+            Ignored { name: "relative_y", why: "the runtime changes the ground around the enemy", misread: false },
+            Ignored { name: "persist", why: "the runtime always leaves the changed ground behind", misread: false },
         ],
         note: None,
     },
@@ -821,9 +827,9 @@ pub const BEHAVIOURS: &[Entry] = &[
             Param { name: "target", position: Some(0), value: "an object name", default: "nothing", doc: "What appears in its place." },
         ],
         ignored: &[
-            Ignored { name: "min", why: "the runtime leaves exactly one behind" },
-            Ignored { name: "max", why: "the runtime leaves exactly one behind" },
-            Ignored { name: "probability", why: "the runtime always transforms" },
+            Ignored { name: "min", why: "the runtime leaves exactly one behind", misread: false },
+            Ignored { name: "max", why: "the runtime leaves exactly one behind", misread: false },
+            Ignored { name: "probability", why: "the runtime always transforms", misread: false },
         ],
         note: None,
     },
@@ -963,9 +969,9 @@ pub const CONDITIONS: &[Entry] = &[
             Param { name: "after", position: Some(0), value: "ms", default: "1000", doc: "How long the state runs before this fires." },
         ],
         ignored: &[
-            Ignored { name: "time", why: "the compiler reads this as `after`, and the value written here is thrown away for the default of 1000ms" },
-            Ignored { name: "randomized", why: "write `timed_random` instead, which is the transition that varies its wait" },
-            Ignored { name: "target_state", why: "the state to move to is what follows `->`" },
+            Ignored { name: "time", misread: true, why: "the compiler reads this as `after`, and the value written here is thrown away for the default of 1000ms" },
+            Ignored { name: "randomized", misread: true, why: "write `timed_random` instead, which is the transition that varies its wait" },
+            Ignored { name: "target_state", why: "the state to move to is what follows `->`", misread: false },
         ],
         note: None,
     },
@@ -992,7 +998,7 @@ pub const CONDITIONS: &[Entry] = &[
             Param { name: "see_invis", position: Some(1), value: "true or false", default: "false", doc: "Whether invisible players count." },
         ],
         ignored: &[
-            Ignored { name: "dist", why: "the compiler reads this as `radius`, and the value written here is thrown away for the default of 10 tiles" },
+            Ignored { name: "dist", misread: true, why: "the compiler reads this as `radius`, and the value written here is thrown away for the default of 10 tiles" },
         ],
         note: None,
     },
@@ -1005,7 +1011,7 @@ pub const CONDITIONS: &[Entry] = &[
             Param { name: "radius", position: Some(0), value: "tiles", default: "10", doc: "The distance that has to be empty." },
         ],
         ignored: &[
-            Ignored { name: "dist", why: "the compiler reads this as `radius`, and the value written here is thrown away for the default of 10 tiles" },
+            Ignored { name: "dist", misread: true, why: "the compiler reads this as `radius`, and the value written here is thrown away for the default of 10 tiles" },
         ],
         note: None,
     },
@@ -1019,8 +1025,8 @@ pub const CONDITIONS: &[Entry] = &[
             Param { name: "fraction", position: Some(0), value: "0 to 1, or a percentage", default: "0.5", doc: "The share of health this fires at." },
         ],
         ignored: &[
-            Ignored { name: "threshold", why: "the compiler reads this as `fraction`, and the value written here is thrown away for the default of half health" },
-            Ignored { name: "target_state", why: "the state to move to is what follows `->`" },
+            Ignored { name: "threshold", misread: true, why: "the compiler reads this as `fraction`, and the value written here is thrown away for the default of half health" },
+            Ignored { name: "target_state", why: "the state to move to is what follows `->`", misread: false },
         ],
         note: None,
     },
@@ -1030,11 +1036,11 @@ pub const CONDITIONS: &[Entry] = &[
         kind: Kind::Condition,
         summary: "Fires while a named entity is standing nearby.",
         params: &[
+            Param { name: "target", position: Some(0), value: "an object name", default: "nothing", doc: "What to look for. Any text argument is read as a name, whatever it is called." },
             Param { name: "radius", position: Some(1), value: "tiles", default: "10", doc: "How far out it looks." },
         ],
         ignored: &[
-            Ignored { name: "target", why: "the name is read from the entry's text arguments rather than by this name" },
-            Ignored { name: "dist", why: "the compiler reads this as `radius`, and the value written here is thrown away for the default of 10 tiles" },
+            Ignored { name: "dist", misread: true, why: "the compiler reads this as `radius`, and the value written here is thrown away for the default of 10 tiles" },
         ],
         note: None,
     },
@@ -1045,11 +1051,11 @@ pub const CONDITIONS: &[Entry] = &[
         summary: "Fires when no named entity is left nearby. How a room's door opens once its \
                   guards are dead.",
         params: &[
+            Param { name: "target", position: Some(0), value: "an object name", default: "nothing", doc: "What has to be gone. Any text argument is read as a name, whatever it is called, so several can be written." },
             Param { name: "radius", position: Some(1), value: "tiles", default: "10", doc: "How far out it looks." },
         ],
         ignored: &[
-            Ignored { name: "target", why: "the names are read from the entry's text arguments rather than by this name" },
-            Ignored { name: "dist", why: "the compiler reads this as `radius`, and the value written here is thrown away for the default of 10 tiles" },
+            Ignored { name: "dist", misread: true, why: "the compiler reads this as `radius`, and the value written here is thrown away for the default of 10 tiles" },
         ],
         note: None,
     },
@@ -1062,9 +1068,10 @@ pub const CONDITIONS: &[Entry] = &[
                   singular form.",
         params: &[
             Param { name: "radius", position: Some(0), value: "tiles", default: "10", doc: "How far out it looks." },
+            Param { name: "target", position: None, value: "object names", default: "nothing", doc: "What has to be gone. Every text argument is read as a name." },
         ],
         ignored: &[
-            Ignored { name: "dist", why: "the compiler reads this as `radius`, and the value written here is thrown away for the default of 10 tiles" },
+            Ignored { name: "dist", misread: true, why: "the compiler reads this as `radius`, and the value written here is thrown away for the default of 10 tiles" },
         ],
         note: None,
     },
@@ -1119,8 +1126,8 @@ pub const LOOT: &[Entry] = &[
             Param { name: "num_required", position: None, value: "number", default: "0", doc: "How many of it have to drop together." },
         ],
         ignored: &[
-            Ignored { name: "item", why: "the compiler reads the name as `name`, and an entry it cannot find a name for is dropped from the table entirely" },
-            Ignored { name: "probability", why: "the compiler reads the chance as `chance`, so the entry never drops" },
+            Ignored { name: "item", misread: true, why: "the compiler reads the name as `name`, and an entry it cannot find a name for is dropped from the table entirely" },
+            Ignored { name: "probability", misread: true, why: "the compiler reads the chance as `chance`, so the entry never drops" },
         ],
         note: None,
     },
@@ -1136,8 +1143,8 @@ pub const LOOT: &[Entry] = &[
             Param { name: "num_required", position: None, value: "number", default: "0", doc: "How many of it have to drop together." },
         ],
         ignored: &[
-            Ignored { name: "type", why: "the compiler reads the sort of item as `kind`, so any tier of item may drop" },
-            Ignored { name: "probability", why: "the compiler reads the chance as `chance`, so the entry never drops" },
+            Ignored { name: "type", misread: true, why: "the compiler reads the sort of item as `kind`, so any tier of item may drop" },
+            Ignored { name: "probability", misread: true, why: "the compiler reads the chance as `chance`, so the entry never drops" },
         ],
         note: None,
     },
@@ -1205,7 +1212,7 @@ mod tests {
     #[test]
     fn a_misspelling_finds_its_neighbour() {
         assert_eq!(nearest(BEHAVIOURS, "shoo"), Some("shoot"));
-        assert_eq!(nearest(CONDITIONS, "hp_less"), Some("hp_below"));
+        assert_eq!(nearest(CONDITIONS, "player_with"), Some("player_within"));
         assert_eq!(nearest(BEHAVIOURS, "completely_different_thing"), None);
     }
 }
