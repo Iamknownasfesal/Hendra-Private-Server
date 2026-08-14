@@ -64,6 +64,7 @@ inside the game: a different data structure, a different loop, a different order
 | [41-the-account-server.md](41-the-account-server.md) | 37 routes, the auth model, and the leaderboard that returns nothing | 48 of 48 |
 | [42-between-servers.md](42-between-servers.md) | The Redis bus, configuration defaults, byte order, locking | rest of `common/` |
 | [43-the-behaviour-scripts.md](43-the-behaviour-scripts.md) | What the content actually uses, and the 33 constructs it never does | 61 of 61 read in full, all 61 censused |
+| [44-how-a-dungeon-is-wired.md](44-how-a-dungeon-is-wired.md) | Orchestrators, gates, chest spawners, and the 115 entities that never fight | all 61 scripts, `Order.cs`, `Entity.cs` |
 
 Page 25 lists exactly what was read. See "How much of this is actually read" below before trusting
 any of it.
@@ -175,6 +176,11 @@ deliberately ignored, so the next one cannot be silent.
   budget, the other a population cap, and we treat both as the latter.
 - `StayCloseToSpawn` anchors to the position where the *state* was entered; `ReturnToSpawn` anchors
   to the entity's spawn point. We use the spawn point for both.
+- **A standing `Order` restarts its targets' state every second here, and never in the original.**
+  The C# skips a target already in the ordered state; we re-enter unconditionally and throttle the
+  sender to 1,000 ms instead, which resets `in_state_ms` and every cooldown in the state. Shatters'
+  ten-second obelisk sweep becomes its first second, ten times. See
+  [page 44](44-how-a-dungeon-is-wired.md).
 - **Object-id lookup is case-insensitive in the original and case-sensitive here.**
   `XmlData.IdToObjectType` is built with `StringComparer.InvariantCultureIgnoreCase`, and the
   behaviour scripts rely on it: Shatters names `"Shtrs Bridge Closer4"` where the entity is
