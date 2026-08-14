@@ -55,6 +55,7 @@ inside the game: a different data structure, a different loop, a different order
 | [32-fame-bonuses.md](32-fame-bonuses.md) | The 25 statistics and the 20 compounding bonuses | `FameStats.cs` |
 | [33-content-loading.md](33-content-loading.md) | XML passes, duplicate handling, worlds, settings | `XmlData.cs`, `Resources.cs`, `WorldData.cs`, `AppSettings.cs` |
 | [34-persistence.md](34-persistence.md) | The key space, locking, currency, death, the records | `Database.cs`, `DbModels.cs` |
+| [35-descriptors.md](35-descriptors.md) | Every default, the third stat numbering, four dead fields | `XmlDescriptors.cs` |
 
 Page 25 lists exactly what was read and states the case for the groups assessed by census rather
 than file by file. See "How much of this is actually read" below before trusting any of it.
@@ -71,7 +72,7 @@ bonus in the game. See [the stats page](08-stats.md).
 
 ## How much of this is actually read
 
-The C# server is **547 files**. About **185** were opened and read, including every behaviour, every
+The C# server is **547 files**. About **187** were opened and read, including every behaviour, every
 transition, every command and every world subclass. The rest was assessed by census,
 by signature, or by call site, which is weaker evidence and is how the first two passes of this audit
 reached wrong conclusions twice.
@@ -110,6 +111,10 @@ misfortune becomes permanent for every entity running that program.
   variant never restores them even when it should.
 - `PlayerTextTransition`: `_transition` and `_player` are fields on the shared transition, so one
   player speaking wakes every enemy of that kind in every world at once.
+- `TileDesc.PushY`: the guard reads `dy` off the `Ground` element and the value off `Animate`, so
+  every pushing tile in the game pushes horizontally only.
+- `ActivateEffect.DurationMS2` and `ObjectId2`: both parsed into the field above them, so neither is
+  ever set.
 - `MoveTo2`: the `once` latch tests the flag it is about to set, and against exact float equality with
   a target approached by normalised steps, so it never fires. It also uses `Move` rather than
   `ValidateAndMove`, so it walks through walls.
