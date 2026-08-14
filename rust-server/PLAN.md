@@ -990,3 +990,28 @@ category by category. It found thirteen things, one of them a mechanic that sile
 
   Not implemented: the Ocean Trench's oxygen. It is one world's mechanic written into `Player.Ground`
   by name, and this server has no Ocean Trench.
+
+### 18.20 Shots that do not travel in straight lines — **M**
+
+- [x] Wavy, parametric, boomerang and amplitude
+
+  The four were read from the content, held on the descriptor and asked for by nobody: every shot in
+  the game travelled in a straight line. A hundred and forty-nine projectiles in the files say
+  otherwise, and they are the ones bosses are built around, since dodging them is the fight.
+
+  A projectile's position is now a function of how long it has been alive rather than a step from
+  where it was last tick, which is how `Projectile.GetPosition` defines it. That matters beyond
+  tidiness: the client draws the path from the same formula, and a path integrated step by step
+  drifts away from the drawn one, so a bullet would be dodged where it is not and land where it is
+  not drawn. The collision walk samples the path in time for the same reason.
+
+  Each shot carries its place in the volley, because the curves read its parity: neighbouring bullets
+  wave to opposite sides, and without it a wave pattern is one thick line.
+
+  Wavy divides by sixty-four rather than multiplying, which is a wobble of about three degrees. The
+  other way up it sweeps some thirty full turns, which is a difference that matters now that the path
+  decides whether a bullet went through somebody.
+
+  Covered by comparing every curving shot in the content against the same shot with nothing curving
+  it, rather than against a threshold: some are a tenth of a tile wide and one turns round inside
+  fifty milliseconds, and any fixed distance that catches one calls the other straight.

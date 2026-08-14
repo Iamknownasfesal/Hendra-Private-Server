@@ -56,8 +56,41 @@ pub struct Projectile {
     pub x: f32,
     pub y: f32,
 
+    /// Where it was fired from.
+    ///
+    /// Kept because a projectile's position is a function of how long it has been alive rather than
+    /// of where it was last tick. Anything that does not travel in a straight line is defined that
+    /// way in the original, and integrating a curve step by step drifts away from the path the
+    /// client draws, which is the path the player is dodging.
+    pub start_x: f32,
+    pub start_y: f32,
+
     /// Direction of travel, in radians.
     pub angle: f32,
+
+    /// Which shot of a volley this is.
+    ///
+    /// Curves read its parity: neighbouring bullets wave to opposite sides, so a volley spreads into
+    /// a pattern rather than every bullet tracing the same line.
+    pub id: u8,
+
+    /// Travels in a sine wave about three degrees wide.
+    pub wavy: bool,
+
+    /// Traces a figure of eight rather than travelling outward at all.
+    pub parametric: bool,
+
+    /// Turns round at the halfway point of its life and comes back.
+    pub boomerang: bool,
+
+    /// How far a sine wave carries it sideways, in tiles. Zero for a straight shot.
+    pub amplitude: f32,
+
+    /// How many full waves it makes over its lifetime.
+    pub frequency: f32,
+
+    /// How large a parametric figure is drawn, in tiles.
+    pub magnitude: f32,
 
     /// Tiles per second.
     pub speed: f32,
@@ -83,6 +116,7 @@ pub struct Projectile {
 
 impl Projectile {
     /// Builds a projectile from a content descriptor.
+    #[allow(clippy::too_many_arguments)]
     pub fn from_desc(
         owner: Handle,
         from_player: bool,
@@ -91,6 +125,7 @@ impl Projectile {
         y: f32,
         angle: f32,
         roll: f32,
+        id: u8,
     ) -> Projectile {
         Projectile {
             owner,
@@ -98,7 +133,16 @@ impl Projectile {
             object_type: desc.object_type,
             x,
             y,
+            start_x: x,
+            start_y: y,
             angle,
+            id,
+            wavy: desc.wavy,
+            parametric: desc.parametric,
+            boomerang: desc.boomerang,
+            amplitude: desc.amplitude,
+            frequency: desc.frequency,
+            magnitude: desc.magnitude,
             // Content quotes speed in tiles per 10,000 ms, which is tiles per second times ten.
             speed: desc.speed / 10.0,
             damage: desc.roll_damage(roll),
@@ -113,6 +157,81 @@ impl Projectile {
 
     pub fn expired(&self) -> bool {
         self.age_ms >= self.lifetime_ms
+    }
+
+    /// Where this projectile is after being alive for `age_ms`.
+    ///
+    /// Follows `Projectile.GetPosition`. A function of age rather than a step from the last
+    /// position, because that is how the client draws it: the two must agree or a bullet is dodged
+    /// where it is not and hits where it is not drawn.
+    pub fn position_at(&self, age_ms: u32) -> (f32, f32) {
+        let age = age_ms as f32;
+        let travelled = self.speed * (age / 1000.0);
+
+        // Alternate bullets of a volley start half a wave apart, which is what turns a line of them
+        // into a braid rather than a single thick line.
+        let phase = if self.id.is_multiple_of(2) {
+            0.0
+        } else {
+            std::f32::consts::PI
+        };
+
+        if self.wavy {
+            // Divided rather than multiplied: a wobble of about three degrees, which is what the
+            // client draws and therefore what the player dodges.
+            let theta = self.angle
+                + (std::f32::consts::PI / 64.0)
+                    * (phase + 6.0 * std::f32::consts::PI * (age / 1000.0)).sin();
+
+            return (
+                self.start_x + travelled * theta.cos(),
+                self.start_y + travelled * theta.sin(),
+            );
+        }
+
+        if self.parametric {
+            let lifetime = self.lifetime_ms.max(1) as f32;
+            let theta = age / lifetime * 2.0 * std::f32::consts::PI;
+
+            let a = theta.sin() * if self.id.is_multiple_of(2) { -1.0 } else { 1.0 };
+            let b = (theta * 2.0).sin() * if self.id % 4 < 2 { 1.0 } else { -1.0 };
+            let (sin, cos) = (self.angle.sin(), self.angle.cos());
+
+            return (
+                self.start_x + (a * cos - b * sin) * self.magnitude,
+                self.start_y + (a * sin + b * cos) * self.magnitude,
+            );
+        }
+
+        // A boomerang turns round at the halfway point of its life rather than at a distance, so
+        // it comes back to the hand that threw it exactly as it expires.
+        let travelled = if self.boomerang {
+            let half = (self.lifetime_ms as f32 * self.speed / 1000.0) / 2.0;
+            if travelled > half {
+                half - (travelled - half)
+            } else {
+                travelled
+            }
+        } else {
+            travelled
+        };
+
+        let (mut x, mut y) = (
+            self.start_x + travelled * self.angle.cos(),
+            self.start_y + travelled * self.angle.sin(),
+        );
+
+        if self.amplitude != 0.0 {
+            let lifetime = self.lifetime_ms.max(1) as f32;
+            let sideways = self.amplitude
+                * (phase + age / lifetime * self.frequency * 2.0 * std::f32::consts::PI).sin();
+
+            let across = self.angle + std::f32::consts::FRAC_PI_2;
+            x += sideways * across.cos();
+            y += sideways * across.sin();
+        }
+
+        (x, y)
     }
 }
 
@@ -212,24 +331,18 @@ impl Projectiles {
         hits.clear();
         self.expired.clear();
 
-        let seconds = elapsed_ms as f32 / 1000.0;
-
         for (handle, projectile) in self.live.iter_mut() {
+            let was = projectile.age_ms;
             projectile.age_ms = projectile.age_ms.saturating_add(elapsed_ms);
 
-            let distance = projectile.speed * seconds;
-            let (dx, dy) = (
-                projectile.angle.cos() * distance,
-                projectile.angle.sin() * distance,
-            );
-
-            let (start_x, start_y) = (projectile.x, projectile.y);
             let mut stopped = false;
 
-            // Walk the segment rather than jumping to its end, so nothing is passed through.
+            // Walked in time rather than along a line, so a shot that curves is tested against the
+            // path it actually takes. A straight one comes out the same, since sampling a straight
+            // line at even intervals is the same as stepping along it.
             for step in 1..=PATH_STEPS {
-                let fraction = step as f32 / PATH_STEPS as f32;
-                let (x, y) = (start_x + dx * fraction, start_y + dy * fraction);
+                let age = was + (elapsed_ms * step) / PATH_STEPS;
+                let (x, y) = projectile.position_at(age);
 
                 if !projectile.passes_cover && terrain.blocks_sight(x as u32, y as u32) {
                     projectile.x = x;
@@ -456,7 +569,16 @@ mod tests {
             object_type: ObjectType(0x900),
             x,
             y,
+            start_x: x,
+            start_y: y,
             angle,
+            id: 0,
+            wavy: false,
+            parametric: false,
+            boomerang: false,
+            amplitude: 0.0,
+            frequency: 0.0,
+            magnitude: 0.0,
             speed: 10.0,
             damage,
             age_ms: 0,
@@ -466,6 +588,189 @@ mod tests {
             armor_piercing: false,
             struck: Vec::new(),
         }
+    }
+
+    #[test]
+    fn a_plain_shot_travels_in_a_straight_line() {
+        let shot = bullet(Handle::NONE, 0.0, 0.0, 0.0, 10);
+
+        // Ten tiles a second, aimed along the x axis.
+        assert!((shot.position_at(1000).0 - 10.0).abs() < 0.001);
+        assert!(shot.position_at(1000).1.abs() < 0.001);
+
+        // And half the time is half the distance, which is what "straight" means here.
+        assert!((shot.position_at(500).0 - 5.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn a_boomerang_comes_back_to_where_it_was_thrown() {
+        // It turns round at the halfway point of its life rather than at a distance, so it returns
+        // to the hand exactly as it expires.
+        let mut shot = bullet(Handle::NONE, 0.0, 0.0, 0.0, 10);
+        shot.boomerang = true;
+        shot.lifetime_ms = 1000;
+
+        let out = shot.position_at(500).0;
+        assert!(out > 4.0, "it did not go anywhere: {out}");
+
+        assert!(
+            shot.position_at(1000).0.abs() < 0.001,
+            "it did not come back: {}",
+            shot.position_at(1000).0
+        );
+
+        // Symmetrical about the turn: the same distance out and back.
+        assert!((shot.position_at(250).0 - shot.position_at(750).0).abs() < 0.001);
+    }
+
+    #[test]
+    fn an_amplitude_carries_a_shot_sideways_without_slowing_it() {
+        let mut shot = bullet(Handle::NONE, 0.0, 0.0, 0.0, 10);
+        shot.amplitude = 2.0;
+        shot.frequency = 1.0;
+        shot.lifetime_ms = 1000;
+
+        // A quarter of the way through one full wave is the far side of it.
+        let (x, y) = shot.position_at(250);
+        assert!((y - 2.0).abs() < 0.001, "sideways was {y}");
+
+        // Forward progress is untouched: the wave is across the line of travel, not along it.
+        assert!((x - 2.5).abs() < 0.001, "forward was {x}");
+
+        // And it crosses back, which is what makes it a wave rather than a curve.
+        assert!(shot.position_at(750).1 < -1.9);
+    }
+
+    #[test]
+    fn neighbouring_bullets_of_a_volley_wave_to_opposite_sides() {
+        // The parity of the shot's place in the volley. Without it every bullet traces the same
+        // line and a wave pattern is a single thick line.
+        let mut even = bullet(Handle::NONE, 0.0, 0.0, 0.0, 10);
+        even.amplitude = 2.0;
+        even.frequency = 1.0;
+        even.id = 0;
+
+        let mut odd = even.clone();
+        odd.id = 1;
+
+        let (left, right) = (even.position_at(250).1, odd.position_at(250).1);
+        assert!(left > 1.9 && right < -1.9, "both went the same way");
+    }
+
+    #[test]
+    fn a_wavy_shot_wobbles_about_its_line_rather_than_sweeping_around_it() {
+        // Divided rather than multiplied, which is a wobble of about three degrees. Written the
+        // other way up it sweeps some thirty full turns, and this path decides whether a bullet
+        // went through somebody.
+        let mut shot = bullet(Handle::NONE, 0.0, 0.0, 0.0, 10);
+        shot.wavy = true;
+        shot.lifetime_ms = 1000;
+
+        for age in [100, 250, 500, 750, 1000] {
+            let (x, y) = shot.position_at(age);
+            let off = y.atan2(x).to_degrees().abs();
+            assert!(off < 4.0, "at {age}ms it was {off} degrees off its line");
+        }
+
+        // And it does wobble, rather than being straight by accident.
+        let worst = (0..20)
+            .map(|step| {
+                let (x, y) = shot.position_at(step * 50);
+                y.atan2(x).to_degrees().abs()
+            })
+            .fold(0.0f32, f32::max);
+        assert!(worst > 1.0, "it never left its line: {worst} degrees");
+    }
+
+    #[test]
+    fn a_parametric_shot_traces_a_figure_and_returns() {
+        let mut shot = bullet(Handle::NONE, 0.0, 0.0, 0.0, 10);
+        shot.parametric = true;
+        shot.magnitude = 3.0;
+        shot.lifetime_ms = 1000;
+
+        // It starts and ends where it was fired, which is what makes it a figure rather than a path
+        // outward.
+        assert!(shot.position_at(0).0.abs() < 0.001);
+        assert!(shot.position_at(1000).0.abs() < 0.01);
+
+        // And it goes somewhere in between.
+        let reach = (0..20)
+            .map(|step| {
+                let (x, y) = shot.position_at(step * 50);
+                (x * x + y * y).sqrt()
+            })
+            .fold(0.0f32, f32::max);
+        assert!(reach > 2.0, "it never left the muzzle: {reach}");
+        assert!(
+            reach <= 3.0 * 1.5,
+            "it went further than its magnitude: {reach}"
+        );
+    }
+
+    #[test]
+    fn the_content_that_curves_reaches_the_simulation() {
+        // The bug this guards was not a wrong formula but a right one nothing called: the fields
+        // were read from the files, held on the descriptor, and never asked for. Every shot in the
+        // game travelled in a straight line and the content said otherwise.
+        let Ok((catalog, _)) =
+            Catalog::load_dir(std::path::Path::new("../../../godot-client/assets/xml"))
+        else {
+            eprintln!("skipping: the content files are not where the test looks for them");
+            return;
+        };
+
+        let mut curved = 0;
+        let mut checked = 0;
+
+        for number in 0..u16::MAX {
+            let Some(desc) = catalog.object(ObjectType(number)) else {
+                continue;
+            };
+
+            for shot in &desc.projectiles {
+                if !shot.wavy && !shot.parametric && !shot.boomerang && shot.amplitude == 0.0 {
+                    continue;
+                }
+                checked += 1;
+
+                let built = Projectile::from_desc(Handle::NONE, false, shot, 0.0, 0.0, 0.0, 0.5, 0);
+
+                // Compared against the same shot with nothing curving it, rather than against a
+                // threshold. Some of these are a tenth of a tile wide and some turn round inside
+                // fifty milliseconds, and any fixed distance that catches one calls the other
+                // straight. What is being asked is only whether the fields changed the path.
+                let mut straight = built.clone();
+                straight.wavy = false;
+                straight.parametric = false;
+                straight.boomerang = false;
+                straight.amplitude = 0.0;
+
+                let moved = (1..=200).any(|step| {
+                    let age = built.lifetime_ms * step / 200;
+                    let (x, y) = built.position_at(age);
+                    let (sx, sy) = straight.position_at(age);
+                    (x - sx).abs() > 1e-4 || (y - sy).abs() > 1e-4
+                });
+
+                if moved {
+                    curved += 1;
+                } else {
+                    eprintln!(
+                        "{} fires a shot the content curves and the path does not",
+                        desc.id
+                    );
+                }
+            }
+        }
+
+        assert!(checked > 100, "only {checked} curving shots were found");
+        assert_eq!(
+            curved,
+            checked,
+            "{} shots the content says do something travelled straight out and kept going",
+            checked - curved
+        );
     }
 
     /// Builds a world's worth of state: entities, an index over them, and terrain.

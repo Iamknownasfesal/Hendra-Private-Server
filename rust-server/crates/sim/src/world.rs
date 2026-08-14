@@ -1119,10 +1119,10 @@ impl World {
         // owner being weakened afterwards.
         let power = entity.stats.damage_multiplier(&rules);
 
-        for shot in &desc.projectiles {
+        for (index, shot) in desc.projectiles.iter().enumerate() {
             let roll = self.roll();
             let mut projectile =
-                Projectile::from_desc(handle, from_player, shot, x, y, angle, roll);
+                Projectile::from_desc(handle, from_player, shot, x, y, angle, roll, index as u8);
             projectile.damage = ((projectile.damage as f32) * power).round().max(1.0) as i32;
 
             if let Some(handle) = self.projectiles.fire(projectile) {
@@ -2338,6 +2338,7 @@ impl World {
                 y,
                 start + step * index as f32,
                 roll,
+                index as u8,
             );
             self.projectiles.fire(projectile);
         }
