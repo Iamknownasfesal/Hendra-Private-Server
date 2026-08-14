@@ -2984,8 +2984,18 @@ impl World {
         let cooldown = (desc.cooldown * 1000.0).max(0.0) as u32;
         let cost = desc.mp_cost;
 
+        // Wisdom grows what an ability does, where the content asks for it. Read before the item
+        // is spent, because it is the wisdom at the moment of use that decides the size of the
+        // heal.
+        let wisdom = entity.stats.total(hendra_content::Stat::MpRegen);
+
         for activate in &desc.activate {
-            ran.push(hendra_content::Effect::of(activate));
+            let effect = hendra_content::Effect::of(activate);
+            ran.push(if activate.flag("useWisMod") {
+                effect.scaled_by_wisdom(wisdom)
+            } else {
+                effect
+            });
         }
 
         // A potion and an ability are told apart by what the content calls the item, since both go
@@ -3128,6 +3138,39 @@ impl World {
                 });
             }
 
+            Effect::GenericArea {
+                effect,
+                duration_ms,
+                range,
+                targets_players,
+                centred_on_aim,
+            } => {
+                let Some(effect) = effect else {
+                    return;
+                };
+                let (index, duration) = (effect.index() as u8, *duration_ms);
+                let centre = if *centred_on_aim { aim } else { from };
+
+                // Stasis and invincibility refuse it, as `AEGenericActivate` refuses them: an
+                // effect that landed on a stasised enemy would break the hold that put it there.
+                self.grid.within(centre.0, centre.1, *range, &mut self.nearby);
+                let caught = std::mem::take(&mut self.nearby);
+                for other in &caught {
+                    let takes = self.entities.get(*other).is_some_and(|entity| {
+                        !entity.dead
+                            && (entity.kind == Kind::Player) == *targets_players
+                            && {
+                                let rules = crate::effects::Rules::of(entity.conditions);
+                                !rules.untouchable && !rules.no_damage
+                            }
+                    });
+                    if takes {
+                        self.give_effect(*other, index, duration);
+                    }
+                }
+                self.nearby = caught;
+            }
+
             Effect::Cleanse { range } => match range {
                 Some(range) => self.each_nearby(handle, *range, true, None, |world, other| {
                     world.cleanse(other);
@@ -3253,7 +3296,6 @@ impl World {
             | Effect::Unlock { .. }
             | Effect::Portal { .. }
             | Effect::Appearance { .. }
-            | Effect::Generic { .. }
             | Effect::Unsupported { .. } => {
                 // These change something the world does not own: an account's currency, a player's
                 // wardrobe, a pet that outlives the room. The caller carries them out, which is why

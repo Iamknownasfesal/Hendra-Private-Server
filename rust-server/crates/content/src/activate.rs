@@ -127,11 +127,22 @@ pub enum Effect {
     /// Opens a way somewhere.
     Portal { name: String, duration_ms: u32 },
 
-    /// Something whose whole behaviour is written in the content rather than in the name.
+    /// A condition effect laid over an area, with everything about it in the attributes.
     ///
-    /// The original dispatches these on an id and does something different for each. Carried so
-    /// the id reaches the simulation, which is the only place that can know what it means.
-    Generic { id: String },
+    /// `GenericActivate`, which despite the name is fully specified: it applies `condEffect` for a
+    /// duration over a range, centred on the caster or on the aimed point, to players or to
+    /// enemies. Entities in stasis or invincible are skipped, as `AEGenericActivate` skips them.
+    GenericArea {
+        effect: Option<ConditionEffect>,
+        duration_ms: u32,
+        range: f32,
+
+        /// Whether it lands on players rather than on enemies.
+        targets_players: bool,
+
+        /// Whether it is centred on the aimed point rather than on the caster.
+        centred_on_aim: bool,
+    },
 
     /// Something the content asks for that this runtime does not implement.
     ///
@@ -197,7 +208,102 @@ pub enum Appearance {
     PetSkin,
 }
 
+/// Scales a value by the user's wisdom, as `Player.UseWisMod` does.
+///
+/// Below thirty wisdom nothing happens at all. Above it a value grows by `wisdom / 150` of itself,
+/// so seventy-five wisdom is half again and a hundred and fifty is double. The rounding is the
+/// original's: `offset` is the number of decimal places kept, zero for amounts and one for ranges,
+/// and the result is truncated to whole units unless a tenth survives the floor.
+pub fn use_wis_mod(value: f32, wisdom: i32, offset: i32) -> f32 {
+    if wisdom < 30 {
+        return value;
+    }
+
+    let scale = 10f64.powi(offset);
+    let sign = if value < 0.0 { -1.0 } else { 1.0 };
+    let value = value as f64;
+
+    let grown = (value * wisdom as f64 / 150.0) + (value * sign);
+    let floored = (grown * scale).floor() / scale;
+
+    if floored - (floored as i64 as f64) * sign >= sign / scale {
+        ((floored * 10.0) as i64) as f32 / 10.0
+    } else {
+        floored as i64 as f32
+    }
+}
+
 impl Effect {
+    /// The same effect with its amounts and ranges grown by the user's wisdom.
+    ///
+    /// Applied only where the content sets `useWisMod`, which it does on 61 activates: every heal
+    /// nova, every stat aura, every self-buff on a timer. Without it wisdom does nothing but
+    /// restore magic slightly faster, which is not what the stat is for.
+    pub fn scaled_by_wisdom(self, wisdom: i32) -> Effect {
+        let amount = |value: i32| use_wis_mod(value as f32, wisdom, 0) as i32;
+        let range = |value: f32| use_wis_mod(value, wisdom, 1);
+        let time = |value: u32| use_wis_mod(value as f32 / 1000.0, wisdom, 1).max(0.0) * 1000.0;
+
+        match self {
+            Effect::Heal { amount: a } => Effect::Heal { amount: amount(a) },
+            Effect::Magic { amount: a } => Effect::Magic { amount: amount(a) },
+            Effect::HealNova { amount: a, range: r } => Effect::HealNova {
+                amount: amount(a),
+                range: range(r),
+            },
+            Effect::MagicNova { amount: a, range: r } => Effect::MagicNova {
+                amount: amount(a),
+                range: range(r),
+            },
+            Effect::GenericArea {
+                effect,
+                duration_ms,
+                range: r,
+                targets_players,
+                centred_on_aim,
+            } => Effect::GenericArea {
+                effect,
+                duration_ms: time(duration_ms) as u32,
+                range: range(r),
+                targets_players,
+                centred_on_aim,
+            },
+            Effect::StatBoost {
+                stat,
+                amount: a,
+                duration_ms,
+                range: r,
+            } => Effect::StatBoost {
+                stat,
+                amount: amount(a),
+                duration_ms: time(duration_ms) as u32,
+                range: r.map(range),
+            },
+            Effect::ConditionSelf {
+                effect,
+                duration_ms,
+            } => Effect::ConditionSelf {
+                effect,
+                duration_ms: time(duration_ms) as u32,
+            },
+            Effect::ConditionAura {
+                effect,
+                duration_ms,
+                range: r,
+            } => Effect::ConditionAura {
+                effect,
+                duration_ms: time(duration_ms) as u32,
+                range: range(r),
+            },
+            Effect::Cleanse { range: r } => Effect::Cleanse {
+                range: r.map(range),
+            },
+
+            // Everything else has nothing wisdom is defined to scale.
+            other => other,
+        }
+    }
+
     /// Whether this is something the runtime knows how to carry out.
     pub fn is_supported(&self) -> bool {
         !matches!(self, Effect::Unsupported { .. })
@@ -378,8 +484,12 @@ impl Effect {
             },
 
             // Dispatched on an id in the original, so the id is what has to travel.
-            "GenericActivate" => Effect::Generic {
-                id: text(desc, "id").unwrap_or_default().to_string(),
+            "GenericActivate" => Effect::GenericArea {
+                effect: text(desc, "condEffect").and_then(named_condition),
+                duration_ms: duration(),
+                range: range(),
+                targets_players: text(desc, "target") == Some("player"),
+                centred_on_aim: text(desc, "center") == Some("mouse"),
             },
 
             "Dye" => Effect::Appearance {
@@ -589,6 +699,32 @@ mod tests {
     }
 
     #[test]
+    fn wisdom_grows_an_ability_only_once_it_is_worth_having() {
+        // Below thirty it does nothing at all, which is what makes the stat a threshold rather
+        // than a slope.
+        assert_eq!(use_wis_mod(100.0, 0, 0), 100.0);
+        assert_eq!(use_wis_mod(100.0, 29, 0), 100.0);
+
+        // At seventy-five it is half again, and at a hundred and fifty it doubles.
+        assert_eq!(use_wis_mod(100.0, 75, 0), 150.0);
+        assert_eq!(use_wis_mod(100.0, 150, 0), 200.0);
+    }
+
+    #[test]
+    fn a_heal_nova_grows_in_both_what_it_heals_and_how_far() {
+        let nova = Effect::of(&desc(
+            "HealNova",
+            &[("amount", "100"), ("range", "4"), ("useWisMod", "true")],
+        ));
+
+        let Effect::HealNova { amount, range } = nova.scaled_by_wisdom(75) else {
+            panic!("expected a heal nova");
+        };
+        assert_eq!(amount, 150);
+        assert!(range > 4.0, "the aura widens as well: {range}");
+    }
+
+    #[test]
     fn a_heal_reads_its_amount() {
         assert_eq!(
             Effect::of(&desc("Heal", &[("amount", "100")])),
@@ -733,15 +869,29 @@ mod tests {
     }
 
     #[test]
-    fn a_generic_activate_carries_the_id_the_simulation_needs() {
-        // The original dispatches these on the id and does something different for each, so
-        // dropping it would leave twenty-six items doing nothing with no way to tell why.
-        let effect = Effect::of(&desc("GenericActivate", &[("id", "Nexus Amulet")]));
+    fn a_generic_activate_is_an_area_effect_rather_than_an_unknown_id() {
+        // The name suggests a dispatch on an id and it is nothing of the kind: AEGenericActivate
+        // lays a condition over an area, and every argument it needs is in the attributes. Reading
+        // it as an unknown id left twenty-six items saying "nothing happens".
+        let effect = Effect::of(&desc(
+            "GenericActivate",
+            &[
+                ("condEffect", "Damaging"),
+                ("duration", "5"),
+                ("range", "6"),
+                ("target", "player"),
+                ("center", "player"),
+            ],
+        ));
 
         assert_eq!(
             effect,
-            Effect::Generic {
-                id: "Nexus Amulet".to_string()
+            Effect::GenericArea {
+                effect: Some(ConditionEffect::Damaging),
+                duration_ms: 5000,
+                range: 6.0,
+                targets_players: true,
+                centred_on_aim: false,
             }
         );
     }

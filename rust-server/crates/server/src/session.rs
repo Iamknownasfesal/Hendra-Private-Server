@@ -2164,13 +2164,6 @@ async fn settle(
             }
         }
 
-        // Dispatched on an id in the original, and nothing here reads one yet. Reported rather
-        // than ignored, so an item that does nothing says so instead of looking broken.
-        Effect::Generic { id } => {
-            tracing::debug!(%id, "an item asked for something this server does not do");
-            say(link, "nothing happens").await;
-        }
-
         Effect::Unsupported { name } => {
             tracing::debug!(%name, "an unimplemented activate was used");
         }
