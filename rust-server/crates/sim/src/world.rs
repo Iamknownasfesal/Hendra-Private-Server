@@ -695,11 +695,23 @@ impl World {
             // Objects first, then tiles. A behaviour names both an enemy to spawn and a ground to
             // lay down, and looking in only one place left every ground change silently doing
             // nothing.
+            // Objects first, then groups, then tiles. A behaviour names all three, and a name that
+            // is a group holds several: `heal_group("Crystals")` means every crystal there is, and
+            // looking a group name up as an object finds nothing at all.
             let unknown = program.resolve(|name| {
+                if let Some(found) = catalog.type_of(name) {
+                    return vec![found.0];
+                }
+
+                let group = catalog.types_in_group(name);
+                if !group.is_empty() {
+                    return group.into_iter().map(|found| found.0).collect();
+                }
+
                 catalog
-                    .type_of(name)
-                    .map(|found| found.0)
-                    .or_else(|| catalog.tile_type_of(name).map(|found| found.0))
+                    .tile_type_of(name)
+                    .map(|found| vec![found.0])
+                    .unwrap_or_default()
             });
             if !unknown.is_empty() {
                 tracing::warn!(
@@ -1312,6 +1324,27 @@ struct SenseScalars {
     damage_taken: i32,
 }
 
+/// What a name in a behaviour points at, as a list of object types.
+///
+/// `None` means the behaviour named nothing, which is how "anything nearby" is written. `Some` of
+/// an empty list means it named something the catalog does not have, which matches nothing at all:
+/// a heal aimed at a group that is not there should reach nobody rather than everybody, and reading
+/// the two the same way turns a typo into a boss that heals the room.
+fn named_kinds(
+    program: &hendra_behavior::Program,
+    name: Option<hendra_behavior::program::NameRef>,
+) -> Option<Vec<ObjectType>> {
+    let name = name?;
+
+    Some(
+        program
+            .kinds_of(name)
+            .iter()
+            .map(|kind| ObjectType(*kind))
+            .collect(),
+    )
+}
+
 /// How long before a player may teleport again.
 pub const TELEPORT_COOLDOWN_MS: u32 = 10_000;
 
@@ -1702,7 +1735,11 @@ impl World {
                 state,
                 delay_ms,
             } => {
-                let Some(kind) = program.kind_of(*child).map(ObjectType) else {
+                // One of them, chosen fresh, when the name is a group: `SpawnGroup` picks a member
+                // per spawn, which is what makes a dwarf camp a mix rather than a row of the same
+                // dwarf.
+                let choices = named_kinds(program, Some(*child)).unwrap_or_default();
+                let Some(kind) = self.choose(&choices) else {
                     return;
                 };
                 let Some((x, y)) = self.entities.get(handle).map(|e| (e.x, e.y)) else {
@@ -1805,9 +1842,9 @@ impl World {
                 kind,
                 state,
             } => {
-                let wanted = kind.and_then(|name| program.kind_of(name)).map(ObjectType);
+                let wanted = named_kinds(program, *kind);
                 let state = state.clone();
-                self.each_nearby(handle, *radius, false, wanted, |world, other| {
+                self.each_nearby(handle, *radius, false, wanted.as_deref(), |world, other| {
                     world.order_into(catalog, behaviours, other, &state);
                 });
             }
@@ -1818,15 +1855,21 @@ impl World {
                 kind,
                 players,
             } => {
-                let wanted = kind.and_then(|name| program.kind_of(name)).map(ObjectType);
+                let wanted = named_kinds(program, *kind);
                 let amount = *amount;
-                self.each_nearby(handle, *radius, *players, wanted, |world, other| {
-                    if let Some(entity) = world.entities.get_mut(other)
-                        && !crate::effects::Rules::of(entity.conditions).sick
-                    {
-                        entity.hp = (entity.hp + amount).min(entity.max_hp);
-                    }
-                });
+                self.each_nearby(
+                    handle,
+                    *radius,
+                    *players,
+                    wanted.as_deref(),
+                    |world, other| {
+                        if let Some(entity) = world.entities.get_mut(other)
+                            && !crate::effects::Rules::of(entity.conditions).sick
+                        {
+                            entity.hp = (entity.hp + amount).min(entity.max_hp);
+                        }
+                    },
+                );
             }
 
             Action::Grenade {
@@ -1973,8 +2016,8 @@ impl World {
             }
 
             Action::RemoveNearby { radius, kind } => {
-                let wanted = kind.and_then(|name| program.kind_of(name)).map(ObjectType);
-                self.each_nearby(handle, *radius, false, wanted, |world, other| {
+                let wanted = named_kinds(program, *kind);
+                self.each_nearby(handle, *radius, false, wanted.as_deref(), |world, other| {
                     if let Some(entity) = world.entities.get_mut(other) {
                         entity.dead = true;
                         entity.no_experience = true;
@@ -2110,12 +2153,33 @@ impl World {
     ///
     /// The handles are collected before anything is run, because the closure writes to the world
     /// and iterating the grid while it changes is how an entity gets visited twice or not at all.
+    /// One of several, drawn from the world's own roll so a run is reproducible from its seed.
+    fn choose(&mut self, from: &[ObjectType]) -> Option<ObjectType> {
+        match from.len() {
+            0 => None,
+            1 => Some(from[0]),
+            many => {
+                let index = (self.roll() * many as f32) as usize;
+                from.get(index.min(many - 1)).copied()
+            }
+        }
+    }
+
+    /// Everything near this entity that matches, one at a time.
+    ///
+    /// `kinds` is `None` for "anything", and otherwise holds every kind that counts: one for an
+    /// object, several for a group, and none at all for a name the catalog does not have.
+    ///
+    /// The behaviour makes the same check before it asks for anything, so either one alone is
+    /// enough and no single change to one of them can be seen from outside. Both are kept because
+    /// they answer different questions: the behaviour asks whether it is worth spending a cooldown,
+    /// and this decides who is actually touched.
     fn each_nearby(
         &mut self,
         from: Handle,
         radius: f32,
         players: bool,
-        kind: Option<ObjectType>,
+        kinds: Option<&[ObjectType]>,
         mut each: impl FnMut(&mut World, Handle),
     ) {
         let Some((x, y)) = self.entities.get(from).map(|e| (e.x, e.y)) else {
@@ -2134,7 +2198,7 @@ impl World {
             };
             if entity.dead
                 || (entity.kind == Kind::Player) != players
-                || kind.is_some_and(|wanted| entity.object_type != wanted)
+                || kinds.is_some_and(|wanted| !wanted.contains(&entity.object_type))
             {
                 continue;
             }
@@ -4339,8 +4403,8 @@ impl World {
             }
 
             DeathEffect::RemoveObjects { radius, kind } => {
-                let wanted = kind.and_then(|name| program.kind_of(name)).map(ObjectType);
-                self.each_nearby(handle, *radius, false, wanted, |world, other| {
+                let wanted = named_kinds(program, *kind);
+                self.each_nearby(handle, *radius, false, wanted.as_deref(), |world, other| {
                     if let Some(entity) = world.entities.get_mut(other) {
                         entity.dead = true;
                         entity.no_experience = true;
@@ -4353,9 +4417,9 @@ impl World {
                 kind,
                 state,
             } => {
-                let wanted = kind.and_then(|name| program.kind_of(name)).map(ObjectType);
+                let wanted = named_kinds(program, *kind);
                 let state = state.clone();
-                self.each_nearby(handle, *radius, false, wanted, |world, other| {
+                self.each_nearby(handle, *radius, false, wanted.as_deref(), |world, other| {
                     world.order_into(catalog, behaviours, other, &state);
                 });
             }
@@ -4363,8 +4427,8 @@ impl World {
             // What it could still have taken, dealt to whatever it was standing with. This is how
             // the game's linked bosses die together.
             DeathEffect::TransferDamage { radius, kind } => {
-                let wanted = kind.and_then(|name| program.kind_of(name)).map(ObjectType);
-                self.each_nearby(handle, *radius, false, wanted, |world, other| {
+                let wanted = named_kinds(program, *kind);
+                self.each_nearby(handle, *radius, false, wanted.as_deref(), |world, other| {
                     if let Some(entity) = world.entities.get_mut(other) {
                         entity.hp -= hp;
                         entity.damage_since_tick += hp;
@@ -4501,6 +4565,10 @@ mod tests {
           <MaxHitPoints>10</MaxHitPoints></Object>
         <Object type="0x508" id="Hobbit Mage"><Class>Character</Class><Enemy/>
           <Level>5</Level><MaxHitPoints>200</MaxHitPoints></Object>
+        <Object type="0x509" id="Red Crystal"><Class>Character</Class><Enemy/>
+          <Group>Crystals</Group><MaxHitPoints>100</MaxHitPoints></Object>
+        <Object type="0x50a" id="Blue Crystal"><Class>Character</Class><Enemy/>
+          <Group>Crystals</Group><MaxHitPoints>100</MaxHitPoints></Object>
         <Object type="0x506" id="Doorway"><Class>Portal</Class></Object>
         <Object type="0x600" id="Hero"><Class>Player</Class><Player/></Object>
         <Object type="0x030e" id="Wizard"><Class>Player</Class><Player/>
@@ -7488,6 +7556,122 @@ mod tests {
             0.0,
             "an invisible player was chased"
         );
+    }
+
+    #[test]
+    fn healing_a_group_reaches_every_kind_in_it() {
+        // A group name is not an object name. Read as one it finds nothing, and a boss healing an
+        // empty set looks exactly like a boss whose heal works.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let healer = {
+            let mut entity = Entity::fixture(ObjectType(0x509), 10.0, 10.0);
+            entity.kind = Kind::Enemy;
+            entity.hp = 100;
+            entity.max_hp = 100;
+            world.spawn(entity).unwrap()
+        };
+
+        // One of each kind in the group, both hurt.
+        let hurt: Vec<Handle> = [ObjectType(0x509), ObjectType(0x50a)]
+            .into_iter()
+            .enumerate()
+            .map(|(index, kind)| {
+                let mut entity = Entity::fixture(kind, 11.0 + index as f32, 10.0);
+                entity.kind = Kind::Enemy;
+                entity.max_hp = 100;
+                entity.hp = 10;
+                world.spawn(entity).unwrap()
+            })
+            .collect();
+
+        // A slime standing among them, which is in no group at all.
+        let stranger = {
+            let mut entity = Entity::fixture(ObjectType(0x502), 12.0, 10.0);
+            entity.kind = Kind::Enemy;
+            entity.max_hp = 100;
+            entity.hp = 10;
+            world.spawn(entity).unwrap()
+        };
+
+        let source = r#"enemy "Red Crystal" {
+            state healing { heal_group(5, "Crystals", heal_amount: 50, cooldown: 100) }
+        }"#;
+        let (programs, diagnostics) = hendra_behavior::compile::compile(
+            &hendra_behavior::parse::parse(source).expect("behaviour should parse"),
+        );
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        world.set_behaviours(&catalog, programs);
+
+        for _ in 0..4 {
+            world.advance(&catalog, 50);
+        }
+
+        for handle in &hurt {
+            let entity = world.get(*handle).unwrap();
+            assert!(
+                entity.hp > 10,
+                "a {} in the group was not healed",
+                catalog.object(entity.object_type).unwrap().id
+            );
+        }
+
+        // And nothing outside the group. Healing a group that resolved to nothing would look like
+        // this working, so what makes the test mean anything is the thing that must not be healed.
+        assert_eq!(
+            world.get(stranger).unwrap().hp,
+            10,
+            "something outside the group was healed"
+        );
+
+        let _ = healer;
+    }
+
+    #[test]
+    fn healing_a_group_that_is_not_there_heals_nobody() {
+        // The original does this twice by accident: it heals "Lair Ghost" where the content says
+        // "Lair Ghosts", and "Mask Men" where it says "Jungle Men". A name that resolves to nothing
+        // has to match nothing, or a typo turns into a boss that heals the whole room.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let healer = {
+            let mut entity = Entity::fixture(ObjectType(0x509), 10.0, 10.0);
+            entity.kind = Kind::Enemy;
+            entity.hp = 100;
+            entity.max_hp = 100;
+            world.spawn(entity).unwrap()
+        };
+
+        let hurt = {
+            let mut entity = Entity::fixture(ObjectType(0x50a), 11.0, 10.0);
+            entity.kind = Kind::Enemy;
+            entity.max_hp = 100;
+            entity.hp = 10;
+            world.spawn(entity).unwrap()
+        };
+
+        let source = r#"enemy "Red Crystal" {
+            state healing { heal_group(5, "Crystalls", heal_amount: 50, cooldown: 100) }
+        }"#;
+        let (programs, diagnostics) = hendra_behavior::compile::compile(
+            &hendra_behavior::parse::parse(source).expect("behaviour should parse"),
+        );
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        world.set_behaviours(&catalog, programs);
+
+        for _ in 0..4 {
+            world.advance(&catalog, 50);
+        }
+
+        assert_eq!(
+            world.get(hurt).unwrap().hp,
+            10,
+            "a heal aimed at a group that does not exist healed somebody"
+        );
+
+        let _ = healer;
     }
 
     #[test]

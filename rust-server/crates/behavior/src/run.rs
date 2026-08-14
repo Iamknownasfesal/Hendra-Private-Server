@@ -565,11 +565,17 @@ impl Mind {
                 // Counted from what is actually standing there rather than from what this entity
                 // remembers making. Killing the children lets it make more, and its own death does
                 // not leak a count that nothing will ever decrement.
-                if let Some(kind) = program.kind_of(*child) {
+                // Every kind the name holds counts toward the crowd. A spawner told to make
+                // dwarves makes one of several, and counting only the first would let it fill the
+                // room with the other two.
+                let kinds = program.kinds_of(*child);
+                if !kinds.is_empty() {
                     let crowd = senses
                         .nearby
                         .iter()
-                        .filter(|other| other.kind == kind && other.distance <= *density_radius)
+                        .filter(|other| {
+                            kinds.contains(&other.kind) && other.distance <= *density_radius
+                        })
                         .count();
                     if crowd >= *density_max as usize {
                         return 1;
@@ -880,11 +886,14 @@ impl Mind {
                 }
 
                 // Nothing to heal is not a reason to spend the cooldown.
-                let wanted = kind.and_then(|name| program.kind_of(name));
+                //
+                // A name that is a group holds several kinds and any of them counts, which is what
+                // healing a group means: a crystal heals every other crystal there is.
+                let wanted = kind.map(|name| program.kinds_of(name));
                 let anyone = senses.nearby.iter().any(|other| {
                     other.distance <= *radius
                         && other.player == *players
-                        && wanted.is_none_or(|kind| other.kind == kind)
+                        && wanted.is_none_or(|kinds| kinds.contains(&other.kind))
                         && other.hp < other.max_hp
                 });
                 if !anyone {
@@ -1748,8 +1757,9 @@ mod tests {
         program.resolve(|name| {
             known
                 .iter()
-                .find(|(held, _)| *held == name)
+                .filter(|(held, _)| *held == name)
                 .map(|(_, kind)| *kind)
+                .collect()
         });
         program
     }
@@ -2005,7 +2015,7 @@ mod tests {
                  state awake { }
                }"#,
         );
-        program.resolve(|_| None);
+        program.resolve(|_| Vec::new());
 
         let mut mind = Mind::new(&program, 1);
         let mut out = Vec::new();
@@ -2250,7 +2260,13 @@ mod tests {
     fn resolving_reports_the_names_the_host_does_not_have() {
         let mut program =
             program(r#"enemy "X" { state a { order(10, "Real", "go") spawn("Missing") } }"#);
-        let missing = program.resolve(|name| (name == "Real").then_some(900));
+        let missing = program.resolve(|name| {
+            if name == "Real" {
+                vec![900]
+            } else {
+                Vec::new()
+            }
+        });
 
         assert_eq!(missing, vec!["Missing"]);
     }

@@ -242,7 +242,7 @@ fn compile_enemy(enemy: &ast::Enemy, diagnostics: &mut Vec<Diagnostic>) -> Progr
         root: 0,
         slots: slot_base,
         // Unresolved: the host fills these in at load, when it has a catalog.
-        kinds: vec![None; interner.entries.len()],
+        kinds: vec![Vec::new(); interner.entries.len()],
         names: interner.entries,
         states,
         loot: enemy.loot.iter().filter_map(loot).collect(),

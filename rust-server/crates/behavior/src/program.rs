@@ -759,9 +759,14 @@ pub struct Program {
     /// without one. The host calls [`Program::resolve`] once at load.
     pub names: Vec<String>,
 
-    /// What the host resolved each name to. `None` for a name it does not have, which is a content
+    /// What the host resolved each name to. Empty for a name it does not have, which is a content
     /// problem worth reporting rather than a reason to refuse the enemy.
-    pub kinds: Vec<Option<u16>>,
+    ///
+    /// A list rather than one type, because a name in the content is either one object or a whole
+    /// group of them: `heal_group("Crystals")` means every crystal, and `spawn_group("Dwarves")`
+    /// means one dwarf chosen from the several the group holds. Reading a group name as an object
+    /// name finds nothing, which is a boss healing an empty set and looking as though it works.
+    pub kinds: Vec<Vec<u16>>,
 }
 
 /// One entry in a loot table.
@@ -808,20 +813,31 @@ impl Program {
     ///
     /// The unknown names are owned rather than borrowed, so the caller can still read the program
     /// it just resolved, since reporting which enemy has the problem needs its name.
-    pub fn resolve(&mut self, mut lookup: impl FnMut(&str) -> Option<u16>) -> Vec<String> {
+    pub fn resolve(&mut self, mut lookup: impl FnMut(&str) -> Vec<u16>) -> Vec<String> {
         self.kinds = self.names.iter().map(|name| lookup(name)).collect();
 
         self.names
             .iter()
             .zip(&self.kinds)
-            .filter(|(_, kind)| kind.is_none())
+            .filter(|(_, kinds)| kinds.is_empty())
             .map(|(name, _)| name.clone())
             .collect()
     }
 
     /// What a name resolved to, or `None` if it was never resolved or is not known.
+    ///
+    /// The first, for everything that means one kind of thing. A name that turned out to be a group
+    /// has several, and the callers that mean "any of these" ask [`Program::kinds_of`] instead.
     pub fn kind_of(&self, name: NameRef) -> Option<u16> {
-        self.kinds.get(name.index()).copied().flatten()
+        self.kinds.get(name.index())?.first().copied()
+    }
+
+    /// Everything a name resolved to, which is more than one when the name is a group.
+    pub fn kinds_of(&self, name: NameRef) -> &[u16] {
+        self.kinds
+            .get(name.index())
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
     }
 
     /// The text behind a name reference, for diagnostics.

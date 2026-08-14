@@ -506,6 +506,22 @@ impl Catalog {
         self.tiles_by_id.get(id).copied()
     }
 
+    /// Every object in a named group.
+    ///
+    /// A group is how the content says "these several things are the same thing for this purpose":
+    /// a boss heals its crystals, a spawner produces one of its dwarves. Empty for a name that is
+    /// not a group, which is how a caller tells the two apart.
+    ///
+    /// A scan, because this is asked once at load per name and never in a tick.
+    pub fn types_in_group(&self, group: &str) -> Vec<ObjectType> {
+        self.objects
+            .iter()
+            .flatten()
+            .filter(|desc| desc.group.as_deref() == Some(group))
+            .map(|desc| desc.object_type)
+            .collect()
+    }
+
     pub fn by_name(&self, id: &str) -> Option<&ObjectDesc> {
         self.object(self.type_of(id)?)
     }
@@ -554,6 +570,70 @@ impl Catalog {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_groups_the_behaviours_name_are_groups_the_content_has() {
+        // Seventeen names in the converted behaviours are groups rather than objects, and looking
+        // one up as an object finds nothing: a crystal healing an empty set, a spawner making
+        // nothing, both looking exactly like a behaviour that works.
+        let Ok((catalog, _)) =
+            Catalog::load_dir(std::path::Path::new("../../../godot-client/assets/xml"))
+        else {
+            eprintln!("skipping: the content files are not where the test looks for them");
+            return;
+        };
+
+        // Every group named by a `heal_group` or `spawn_group` in the shipped behaviours.
+        let named = [
+            "Crystals",
+            "Dragon Gods",
+            "Dwarves",
+            "Hallowrena",
+            "Healers",
+            "Heros",
+            "Master",
+            "Oasis",
+            "OrcKings",
+            "Papers",
+            "Pyre",
+            "Rocks",
+            "Shield Orcs",
+            "Steels",
+            "Wargs",
+        ];
+
+        for group in named {
+            let members = catalog.types_in_group(group);
+            assert!(
+                !members.is_empty(),
+                "the behaviours name the group {group} and the content has nothing in it"
+            );
+
+            // And a group is not an object, which is why reading one as the other found nothing.
+            assert!(
+                catalog.type_of(group).is_none(),
+                "{group} is both a group and an object, so the two cannot be told apart"
+            );
+        }
+
+        // A few hold several, which is the whole point: healing one crystal is healing all of them.
+        assert!(catalog.types_in_group("Crystals").len() > 1);
+        assert!(catalog.types_in_group("Dwarves").len() > 1);
+
+        // Two of the seventeen are bugs in the original, kept because they are. `BehaviorDb` heals
+        // "Lair Ghost" where the content spells the group "Lair Ghosts", and heals "Mask Men" where
+        // the content calls them "Jungle Men". Neither heal has ever matched anything, in either
+        // server. Named here so they read as known bugs rather than as an unexplained silence, and
+        // so that whoever corrects one corrects this test with it.
+        for (asked, meant) in [("Lair Ghost", "Lair Ghosts"), ("Mask Men", "Jungle Men")] {
+            assert!(catalog.types_in_group(asked).is_empty());
+            assert!(catalog.type_of(asked).is_none());
+            assert!(
+                !catalog.types_in_group(meant).is_empty(),
+                "{meant} is what {asked} was meant to say, and it is not there either"
+            );
+        }
+    }
+
     #[test]
     fn every_consumable_that_names_a_successor_names_one_that_exists_and_stops() {
         // An elixir with seven charges is seven items, each naming the next one down. If a name in

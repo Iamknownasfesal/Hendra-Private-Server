@@ -1107,3 +1107,27 @@ category by category. It found thirteen things, one of them a mechanic that sile
 
   Found by reading `Utils.GetNearestEntities`, which is where the original puts the filter and the
   way out of it in the same four lines.
+
+### 18.25 Groups — **M**
+
+- [x] A name in a behaviour can be a group, not just an object
+
+  Found by reading `Utils.GetNearestEntitiesByGroup`. Twenty-three uses in the converted behaviours
+  name a group: `heal_group("Crystals")`, `spawn_group("Dwarves")`. A group is how the content says
+  "these several things are the same thing for this purpose", and we looked every name up as an
+  object, which found nothing.
+
+  Worse than nothing, as it turned out. A name that resolved to nothing was being read as "no name
+  given", which in every one of these behaviours means *anything nearby*, so a crystal meant to heal
+  crystals was healing every enemy in the room and a boss that heals its guards was healing the
+  players' problems for them.
+
+  So a name now resolves to a list: one entry for an object, several for a group, and none for a name
+  the catalog does not have. Named-and-unknown matches nothing, which is the distinction that was
+  missing. Spawning from a group picks a member per spawn, as `SpawnGroup` does, which is what makes
+  a dwarf camp a mix rather than a row of the same dwarf.
+
+  Two of the seventeen group names are bugs in the original and are kept as such: it heals
+  "Lair Ghost" where the content spells the group "Lair Ghosts", and "Mask Men" where the content
+  says "Jungle Men". Neither heal has ever matched anything in either server. Both are named in a
+  test, so they read as known bugs rather than as an unexplained silence.
