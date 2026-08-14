@@ -82,9 +82,9 @@ and [40](40-packets.md).
 **All of `common/`** — now read; see [page 42](42-between-servers.md). The only file skipped is
 `WeakDictionary.cs`, a generic container with no callers in this tree.
 
-**15 of the 61 `logic/db/BehaviorDb.*.cs` scripts.** The other 46 were read line by line, and all 61
+**19 of the 61 `logic/db/BehaviorDb.*.cs` scripts.** The other 42 were read line by line, and all 61
 were censused for every constructor and named argument — see [page 43](43-the-behaviour-scripts.md).
-The 15 unread ones are the largest dungeon files, and the census establishes that they use no
+The 19 unread ones are the largest dungeon files, and the census establishes that they use no
 construct the read ones do not. What the census cannot establish is a *specific* oddity inside one of
 them, which is how the `MoveTo2` and `Body Segment G` notes on page 43 were found in the ones that
 were read.

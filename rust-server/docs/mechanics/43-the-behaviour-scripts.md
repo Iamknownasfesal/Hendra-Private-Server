@@ -3,18 +3,32 @@
 The 61 files of `logic/db/` — 24,392 lines. This is the game's *content*, written in C# as a
 constructor-expression DSL, and it is what our converter consumes.
 
-**How this page was read.** **46 of the 61 files were read line by line** — every file under 500
-lines, plus `Oryx`, `RockDragon`, `EntAncient`, `IceCave`, `Crystal`, `CaveTT`, `SpriteWorld`,
-`DavyJones`, `Lich`, `Janus`, `OryxChicken`, `Belladonna`, `CrawlingDepths`, `GhostKing` and
-`Lowland`. The remaining 15 are the largest dungeon files — `Shatters`, `Avatar`, `HauntedCeme`,
-`Draconis`, `Midland`, `Highland`, `Encore`, `Tomb`, `Catacombs`, `Lab`, `OryxCastle`, `UndeadLair`,
-`SnakePit`, `Mountain`, `Candyland`, `Puppet`, `OceanTrench`, `GarnetJade`, `GhostShip` — and they
-were surveyed by extracting **every constructor call and every named argument in all 61 files**,
-which is the census below.
+**How this page was read.** **42 of the 61 files were read line by line.** Counted, not estimated:
+
+```
+Misc BeachBum BeerGod ForbiddenJungle SkullShrine Oasis RedDemon Beachzone Pentaract
+CubeGod Forest Phoenix Sphinx Tutorial Cyclops Hermit
+Manor LotLL DeadwaterDocks Jungle Shore PirateCave
+Woodland Abyss Deathmage SpiderDen Golems
+CaveTT RockDragon EntAncient IceCave Crystal
+Oryx SpriteWorld DavyJones Lich Janus
+OryxChicken Belladonna CrawlingDepths GhostKing Lowland
+```
+
+**The 19 not read line by line** are the largest dungeon files:
+
+```
+Shatters Avatar HauntedCeme Draconis Midland Highland Encore Tomb Catacombs
+Lab OryxCastle UndeadLair SnakePit Mountain Candyland Puppet OceanTrench
+GarnetJade GhostShip
+```
+
+Those 19 were surveyed by extracting **every constructor call and every named argument in all 61
+files**, which is the census below.
 
 That census is complete and is what establishes the negative claims (the 28 unused constructs). The
-line-by-line reading is what the notes at the end come from, and those notes do not cover the 15
-unread files.
+line-by-line reading is what the notes at the end come from, and **those notes do not cover the 19
+unread files** — a specific oddity inside one of them would not have been found.
 
 ## What the content actually uses
 
