@@ -300,7 +300,7 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
                 }
             }
 
-            Outcome::Buy(sale) => buy(&mut link, &context, &player, sale).await,
+            Outcome::Buy(sale) => buy(&mut link, &context, &player, &placement, sale).await,
 
             Outcome::BuyHallUpgrade(upgrade) => {
                 buy_hall_upgrade(&mut link, &context, &player, upgrade).await;
@@ -333,7 +333,7 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
             }
 
             Outcome::Market(command) => {
-                market(&mut link, &context, &player, command).await;
+                market(&mut link, &context, &player, &placement, command).await;
             }
 
             Outcome::EditList { list, name, add } => {
@@ -1436,7 +1436,14 @@ async fn run_command(
 
         Action::Market(what) => match what {
             MarketAction::Browse => {
-                market(link, context, player, hendra_net::MarketCommand::Browse).await;
+                market(
+                    link,
+                    context,
+                    player,
+                    placement,
+                    hendra_net::MarketCommand::Browse,
+                )
+                .await;
             }
             MarketAction::Mine => my_market(link, context, player).await,
             // Taking back the last thing listed, which is what somebody who mistyped a price wants
@@ -1450,6 +1457,7 @@ async fn run_command(
                     link,
                     context,
                     player,
+                    placement,
                     hendra_net::MarketCommand::Cancel { listing },
                 )
                 .await;
@@ -2506,6 +2514,7 @@ async fn buy(
     link: &mut Link,
     context: &Context,
     player: &crate::accounts::Session,
+    placement: &Placement,
     sale: crate::world_task::Sale,
 ) {
     // A player's listing is bought from the market, which moves the item from whoever owns it and
@@ -2515,6 +2524,7 @@ async fn buy(
             link,
             context,
             player,
+            placement,
             hendra_net::MarketCommand::Buy {
                 listing: listing as u64,
             },
@@ -2645,9 +2655,28 @@ async fn market(
     link: &mut Link,
     context: &Context,
     player: &crate::accounts::Session,
+    placement: &Placement,
     command: hendra_net::MarketCommand,
 ) {
     use hendra_net::MarketCommand as Ask;
+
+    // The marketplace is a place, as the vault is. Listing an item from the middle of a dungeon
+    // would make the room decoration, and where somebody is standing is not something a client is in
+    // a position to be trusted about.
+    //
+    // Browsing is allowed from anywhere: reading what is for sale takes nothing out of the world.
+    if !matches!(command, Ask::Browse) && placement.world.name.as_ref() != "Marketplace" {
+        return say(link, "you are not at the marketplace").await;
+    }
+
+    // Not while a trade is open. The trade would fail on its own when the item moved, since it
+    // checks that what was offered is still there, but failing a trade for a reason the other player
+    // cannot see is worse than refusing the listing.
+    if matches!(command, Ask::List { .. })
+        && context.trades.partner(&player.character.name).is_some()
+    {
+        return say(link, "you cannot list an item while trading").await;
+    }
 
     match command {
         Ask::Browse => {

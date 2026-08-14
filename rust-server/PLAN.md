@@ -1078,3 +1078,18 @@ category by category. It found thirteen things, one of them a mechanic that sile
   Stars is what makes it a gate: five is a character taken to two thousand fame, and no amount of
   money or time buys it. Only that one shop asks, and a test says so, since a second one appearing is
   a reason to read the rule again rather than assume it carries over.
+
+### 18.24 The marketplace is a place — **S**
+
+- [x] `AddToMarket`'s two refusals
+
+  Listing an item worked from anywhere. The original refuses unless the player is standing in the
+  Marketplace, which is the same rule the vault already has here and for the same reason: a market
+  reachable from the middle of a dungeon makes the room decoration, and where somebody is standing is
+  not a thing a client is in a position to be trusted about.
+
+  Browsing is still allowed from anywhere. Reading what is for sale takes nothing out of the world.
+
+  Listing while a trade is open is refused too. The trade would fail on its own when the item moved,
+  since it checks that what was offered is still there, but failing a trade for a reason the other
+  player cannot see is worse than refusing the listing.
