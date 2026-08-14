@@ -26,44 +26,50 @@ GarnetJade GhostShip
 
 Alongside the reading, **every constructor call and every named argument in all 61 files** was
 extracted mechanically; that is the census below, and it is what establishes the negative claims (the
-28 unused constructs). Counting is the only way to prove a construct is *not* used; reading is the
+33 unused constructs). Counting is the only way to prove a construct is *not* used; reading is the
 only way to find the oddities in the section at the end. Both were done.
 
 ## What the content actually uses
 
+**These are live counts.** An earlier census counted textual constructor calls without stripping
+comments, and the difference matters: 24 of the `State` calls, 12 of the `Shoot` calls and — decisive
+for the list below — *every* apparent use of five constructs are inside `//` or `/* */`. The
+commented total is small (about 130 calls) but it is concentrated in exactly the rare constructs
+whose counts are being used to decide whether to implement them.
+
 | Behaviour | Uses | | Behaviour | Uses |
 | --- | --- | --- | --- | --- |
-| `Shoot` | **4,498** | | `ReturnToSpawn` | 33 |
-| `ConditionalEffect` | 641 | | `MoveTo2` | 29 |
-| `Wander` | 555 | | `Charge` | 28 |
-| `Prioritize` | 459 | | `MoveTo` | 23 |
+| `Shoot` | **4,486** | | `ReturnToSpawn` | 33 |
+| `ConditionalEffect` | 626 | | `MoveTo2` | 29 |
+| `Wander` | 550 | | `Charge` | 28 |
+| `Prioritize` | 457 | | `MoveTo` | 23 |
 | `TossObject` | 389 | | `Timed` | 22 |
-| `Follow` | 376 | | `HealGroup` | 18 |
-| `Spawn` | 366 | | `ChangeGroundOnDeath` | 17 |
-| `Taunt` | 312 | | `RemoveEntity` | 16 |
-| `SetAltTexture` | 261 | | `HealSelf` | 16 |
-| `Order` | 255 | | `Transform` | 14 |
-| `Orbit` | 167 | | `RealmPortalDrop` | 13 |
-| `Flash` | 162 | | `RemoveObjectOnDeath` | 12 |
-| `Suicide` | 141 | | `Swirl` / `OrderOnce` / `BackAndForth` | 10 each |
-| `Protect` | 121 | | `HealEntity` | 8 |
-| `StayCloseToSpawn` | 113 | | `RemoveConditionalEffect` | 7 |
-| `StayAbove` | 113 | | `SpawnGroup` / `SetNoXP` / `Sequence` / `GroundTransform` | 5 each |
-| `Reproduce` | 90 | | `RemoveTileObject` / `CopyDamageOnDeath` / `ApplySetpiece` | 4 each |
-| `TransformOnDeath` | 69 | | `TransferDamageOnDeath` / `SpawnOnDeath` / `Random` / `MoveLine` | 3 each |
-| `Grenade` | 69 | | `ScaleHP` / `ReplaceTile` / `OrderOnDeath` / `Buzz` | 2 each |
-| `ChangeSize` | 63 | | `ReproduceChildren` / `OpenGate` / `OnDeathBehavior` / `If` / `HealPlayer` | 1 each |
+| `Follow` | 374 | | `HealGroup` | 18 |
+| `Spawn` | 364 | | `HealSelf` / `RemoveEntity` | 16 each |
+| `Taunt` | 311 | | `Transform` / `ChangeGroundOnDeath` | 14 each |
+| `SetAltTexture` | 255 | | `RemoveObjectOnDeath` / `RealmPortalDrop` | 12 each |
+| `Order` | 253 | | `Swirl` / `OrderOnce` / `BackAndForth` | 10 each |
+| `Orbit` | 167 | | `HealEntity` | 8 |
+| `Flash` | 162 | | `RemoveConditionalEffect` | 7 |
+| `Suicide` | 138 | | `SpawnGroup` / `SetNoXP` / `Sequence` / `GroundTransform` | 5 each |
+| `Protect` | 121 | | `RemoveTileObject` / `CopyDamageOnDeath` / `ApplySetpiece` | 4 each |
+| `StayCloseToSpawn` | 113 | | `TransferDamageOnDeath` / `MoveLine` | 3 each |
+| `StayAbove` | 113 | | `ScaleHP` / `ReplaceTile` / `OrderOnDeath` / `Buzz` | 2 each |
+| `Reproduce` | 90 | | `ReproduceChildren` / `OnDeathBehavior` / `HealPlayer` | 1 each |
+| `TransformOnDeath` | 68 | | | |
+| `Grenade` | 66 | | | |
+| `ChangeSize` | 60 | | | |
 | `StayBack` | 50 | | | |
-| `Decay` | 49 | | | |
+| `Decay` | 48 | | | |
 | `InvisiToss` | 46 | | | |
-| `DropPortalOnDeath` | 40 | | | |
+| `DropPortalOnDeath` | 39 | | | |
 
 | Transition | Uses |
 | --- | --- |
-| `TimedTransition` | **1,370** |
-| `HpLessTransition` | 248 |
-| `PlayerWithinTransition` | 136 |
-| `EntityNotExistsTransition` | 123 |
+| `TimedTransition` | **1,361** |
+| `HpLessTransition` | 247 |
+| `PlayerWithinTransition` | 135 |
+| `EntityNotExistsTransition` | 120 |
 | `EntitiesNotExistsTransition` | 112 |
 | `NoPlayerWithinTransition` | 21 |
 | `EntityExistsTransition` | 20 |
@@ -71,19 +77,22 @@ only way to find the oddities in the section at the end. Both were done.
 | `PlayerTextTransition` | 8 |
 | `DamageTakenTransition` | 8 |
 | `NotMovingTransition` | 1 |
-| `EntityNotExistTransition` | 1 (the one-letter subclass from `PortedTransitions.cs`) |
 
-## Twenty-eight constructs the content never uses
+`Cooldown` appears 41 times as an explicit `new Cooldown(min, max)` in place of a bare number — a
+randomised cooldown, not a constant one.
 
-**Nine transitions with zero uses:**
+## Thirty-three constructs the content never uses
+
+**Ten transitions with zero uses:**
 
 ```
 AnyEntityWithinTransition   EntitiesNotExistTransition   EntityHpLessTransition
 EntityWithinTransition      GroundTransition             GroupNotExistTransition
 HpBoundaryTransition        NoEntityWithinTransition     OnParentDeathTransition
+EntityNotExistTransition    (the one-letter subclass from PortedTransitions.cs)
 ```
 
-**Nineteen behaviours with zero uses:**
+**Twenty-three behaviours with zero uses:**
 
 ```
 AnnounceOnDeath   BringEnemy         ChangeMusic          ChangeMusicOnDeath
@@ -91,14 +100,25 @@ ConditionEffectRegion   DestroyOnDeath   Duration          HealPlayerMP
 KillPlayer        MultiplyLootValue  MutePlayer           Ported
 RelativeSpawn     RemoveConditionEffect   ReproduceGroup   TeleporttoTarget
 WhileEntityNotWithin    WhileEntityWithin       WhileWatched
+If                OpenGate           Random               SpawnOnDeath
 ```
+
+**The last five entries are the correction.** Each looked used until the comments were stripped:
+
+| Construct | Where its only "uses" are |
+| --- | --- |
+| `If` (and its `EntityCountGreaterThan` condition) | inside `CrawlingDepths`'s `/* */` draft of Son of Arachna |
+| `OpenGate` | inside a `//` block in `Shatters`, next to the switch it would have opened |
+| `EntityNotExistTransition` | the same commented `Shatters` block |
+| `SpawnOnDeath` | three `//` lines in `UndeadLair`'s slime chain |
+| `Random` | three `//` lines in `Oryx` — and they are `System.Random`, not the behaviour at all |
 
 This changes the priority of several defects recorded elsewhere:
 
 - **`OnParentDeathTransition`'s shared-field bug affects nothing** — no script uses it.
 - **`ReproduceGroup`'s region-filter bug affects nothing** — no script uses it.
 - **`RelativeSpawn`'s double-counted children affects nothing**; the identical bug in `Spawn` affects
-  **366** uses.
+  **364** uses.
 - **`HpBoundaryTransition` measuring against the content maximum rather than the scaled one** is a
   distinction with no consequence, because no script uses it.
 - **`GroundTransition` and the `TileRegion` parameter** are both unused, which is the second
@@ -110,24 +130,26 @@ places.
 
 ## The argument census, and what it says about `Shoot`
 
+Live counts, comments stripped, as above.
+
 | Argument | Uses | | Argument | Uses |
 | --- | --- | --- | --- | --- |
-| `coolDown` | **3,611** | | `speed` | 151 |
-| `coolDownOffset` | **2,693** | | `defaultAngle` | 112 |
-| `projectileIndex` | 2,516 | | `protectionRange` | 100 |
-| `count` | 2,037 | | `givesNoXp` | 72 |
-| `fixedAngle` | 1,814 | | `reprotectRange` | 69 |
-| `shootAngle` | 1,501 | | `radiusVariance` | 67 |
-| `range` | 495 | | `duration` | 53 |
-| `maxChildren` | 295 | | `densityMax` | 44 |
-| `predictive` | 291 | | `speedVariance` | 25 |
+| `coolDown` | **3,595** | | `speed` | 151 |
+| `coolDownOffset` | **2,689** | | `defaultAngle` | 112 |
+| `projectileIndex` | 2,505 | | `protectionRange` | 100 |
+| `count` | 2,031 | | `givesNoXp` | 72 |
+| `fixedAngle` | 1,811 | | `reprotectRange` | 69 |
+| `shootAngle` | 1,496 | | `radiusVariance` | 67 |
+| `range` | 491 | | `duration` | 53 |
+| `maxChildren` | 293 | | `densityMax` | 44 |
+| `predictive` | 281 | | `speedVariance` | 25 |
 | `angle` | 246 | | `rotateAngle` | 12 |
-| `initialSpawn` | 227 | | `seeInvis` | 10 |
+| `initialSpawn` | 225 | | `seeInvis` | 10 |
 | `angleOffset` | 203 | | `orbitClockwise` | 3 |
-| `radius` | 191 | | `healAmount` | 3 |
-| `acquireRange` | 181 | | | |
+| `radius` | 188 | | `healAmount` | 3 |
+| `acquireRange` | 180 | | | |
 
-**`coolDownOffset` is used 2,693 times.** It is the second most common argument in the entire content
+**`coolDownOffset` is used 2,689 times.** It is the second most common argument in the entire content
 after `coolDown` itself, and the way most bosses build a rotating or staggered pattern: a dozen
 `Shoot` behaviours with the same enormous `coolDown` and offsets 200 ms apart, so each fires once in
 sequence and then never again. `Golden Oryx Effigy`'s "Attack2" is 34 `Shoot`s with
@@ -136,8 +158,8 @@ sequence and then never again. `Golden Oryx Effigy`'s "Attack2" is 34 `Shoot`s w
 Dropping `coolDownOffset` does not make those bosses slightly wrong — it makes them **fire everything
 at once**, once, and then stand still.
 
-`radius` as `Shoot`'s acquire range appears 191 times named and 4,300 more times positionally as the
-first argument.
+`radius` as `Shoot`'s acquire range appears 188 times named and about 4,300 more times positionally
+as the first argument.
 
 ## Loot templates
 
@@ -277,11 +299,11 @@ programs than there are entries, and that is correct.
 Our converter is measured by the `gaps` census, which reports every construct it could not translate.
 This page is what that census should be compared against:
 
-- **The 28 unused constructs need no implementation at all**, and four documented "bugs in the
+- **The 33 unused constructs need no implementation at all**, and four documented "bugs in the
   original" turn out to affect nothing.
-- **`coolDownOffset` is the single highest-value missing argument.** 2,693 uses, and dropping it
+- **`coolDownOffset` is the single highest-value missing argument.** 2,689 uses, and dropping it
   collapses a staggered boss pattern into one simultaneous volley.
-- **`Shoot`'s acquire radius** is the other one: 4,498 uses, all positional.
+- **`Shoot`'s acquire radius** is the other one: 4,486 uses, all positional.
 - A converter should **not** normalise a huge `coolDown` — it is load-bearing idiom.
 - Deep state nesting with behaviour inheritance is the norm, not the exception; a flat state machine
   cannot represent this content.

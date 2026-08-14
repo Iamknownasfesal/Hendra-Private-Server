@@ -63,7 +63,7 @@ inside the game: a different data structure, a different loop, a different order
 | [40-packets.md](40-packets.md) | Registration, framing, and every wire shape | 105 of 105 |
 | [41-the-account-server.md](41-the-account-server.md) | 37 routes, the auth model, and the leaderboard that returns nothing | 48 of 48 |
 | [42-between-servers.md](42-between-servers.md) | The Redis bus, configuration defaults, byte order, locking | rest of `common/` |
-| [43-the-behaviour-scripts.md](43-the-behaviour-scripts.md) | What the content actually uses, and the 28 constructs it never does | 61 of 61 read in full, all 61 censused |
+| [43-the-behaviour-scripts.md](43-the-behaviour-scripts.md) | What the content actually uses, and the 33 constructs it never does | 61 of 61 read in full, all 61 censused |
 
 Page 25 lists exactly what was read. See "How much of this is actually read" below before trusting
 any of it.
