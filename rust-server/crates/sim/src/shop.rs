@@ -26,7 +26,11 @@ pub struct Shop {
     pub region: Region,
     pub currency: Currency,
 
-    /// The account rank needed to buy here at all.
+    /// How many stars somebody needs to buy here at all.
+    ///
+    /// Stars rather than any other standing, as `SellableObject.ValidateCustomer` has it: a shop
+    /// that asks for a rank is asking what you have done with a character, not what you have been
+    /// given.
     pub rank: i16,
 
     /// What it sells, as `(name, price)`, in the order it is dealt out.
@@ -47,6 +51,18 @@ pub const MARKET_ROWS: &[(Region, &str)] = &[
 ];
 
 /// Every shop, from `MerchantLists.Shops`.
+/// Whether somebody may buy from a shop that asks for a rank.
+///
+/// `SellableObject.ValidateCustomer` compares the requirement against the player's stars, which is
+/// what makes the gate mean something: five stars is a character taken to two thousand fame, and no
+/// amount of money or time buys it.
+///
+/// An administrator is admitted regardless, since being unable to look at a shop is not a useful
+/// thing to be unable to do.
+pub fn admits(shop_rank: i16, stars: u8, admin_rank: i16) -> bool {
+    shop_rank <= 0 || stars as i16 >= shop_rank || admin_rank >= shop_rank
+}
+
 pub const SHOPS: &[Shop] = &[
     Shop {
         region: Region::Store1,
@@ -475,5 +491,42 @@ mod prestige_tests {
             );
             assert!(*price > 0, "{name} costs nothing");
         }
+    }
+}
+
+#[cfg(test)]
+mod rank {
+    use super::*;
+
+    #[test]
+    fn a_shop_that_asks_for_nothing_admits_everybody() {
+        assert!(admits(0, 0, 0));
+    }
+
+    #[test]
+    fn a_shop_that_asks_for_stars_wants_stars() {
+        // Five is a character taken to two thousand fame, which is the point of the gate: no amount
+        // of money or time buys it.
+        assert!(!admits(5, 4, 0));
+        assert!(admits(5, 5, 0));
+        assert!(admits(5, 9, 0));
+    }
+
+    #[test]
+    fn an_administrator_is_admitted_regardless() {
+        assert!(admits(5, 0, 5));
+    }
+
+    #[test]
+    fn exactly_one_shop_in_the_game_asks_for_a_rank() {
+        // The fame shop. If a second one appears, the gate is worth reading again rather than
+        // assuming it means what it meant for this one.
+        let gated: Vec<i16> = SHOPS
+            .iter()
+            .filter(|shop| shop.rank > 0)
+            .map(|shop| shop.rank)
+            .collect();
+
+        assert_eq!(gated, vec![5]);
     }
 }

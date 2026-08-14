@@ -2522,13 +2522,7 @@ async fn buy(
         .await;
     }
 
-    let account = match context.store.account(player.account.id).await {
-        Ok(account) => account,
-        Err(_) => return say(link, "try again shortly").await,
-    };
-
-    // The one shop the original gates. Buying fame with fame is the thing it asks a rank for.
-    if sale.rank > 0 && account.admin_rank < sale.rank && account.fame < sale.rank as i32 {
+    if !hendra_sim::shop::admits(sale.rank, player.stars, player.account.admin_rank) {
         return say(link, "Insufficient rank.").await;
     }
 

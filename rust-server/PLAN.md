@@ -1068,3 +1068,13 @@ category by category. It found thirteen things, one of them a mechanic that sile
 
   A census rather than a note, so a map added later that asks for something nothing listens for is
   something somebody is told about rather than something that quietly does nothing.
+
+- [x] A shop's rank requirement means stars
+
+  `SellableObject.ValidateCustomer` compares the requirement against the player's stars. We compared
+  it against an administrator rank or against fame, and five fame is the first minute of play, so the
+  fame shop was gated by a number everybody already had.
+
+  Stars is what makes it a gate: five is a character taken to two thousand fame, and no amount of
+  money or time buys it. Only that one shop asks, and a test says so, since a second one appearing is
+  a reason to read the rule again rather than assume it carries over.
