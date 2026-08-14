@@ -1093,3 +1093,17 @@ category by category. It found thirteen things, one of them a mechanic that sile
   Listing while a trade is open is refused too. The trade would fail on its own when the item moved,
   since it checks that what was offered is still there, but failing a trade for a reason the other
   player cannot see is worse than refusing the listing.
+
+- [x] `seeInvis`, which the visibility rule above would otherwise have switched off
+
+  Ten enemies in the game are written `PlayerWithinTransition(seeInvis: true)`, and they mean it: a
+  Candyland enemy that runs from you is meant to run whether or not you are hiding, and a sprite that
+  teleports away is meant to escape an invisible pursuer.
+
+  The converter carried the flag into our behaviour files and the compiler dropped it, which cost
+  nothing while nothing was hidden from an enemy. Hiding invisible players made it cost those ten
+  enemies their reason for existing, so both were done together: the senses now carry the nearest
+  player an enemy can see and the nearest player of any kind, and the flag picks between them.
+
+  Found by reading `Utils.GetNearestEntities`, which is where the original puts the filter and the
+  way out of it in the same four lines.

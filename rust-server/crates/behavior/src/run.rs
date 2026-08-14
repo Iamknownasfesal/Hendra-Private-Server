@@ -312,9 +312,15 @@ impl Mind {
                     .is_none_or(|kind| !senses.any_within(kind, *radius))
             }),
 
-            Condition::PlayerWithin { radius } => senses
-                .nearest_player
-                .is_some_and(|player| player.distance <= *radius),
+            Condition::PlayerWithin { radius, see_invis } => {
+                let nearest = if *see_invis {
+                    senses.nearest_player_hiding
+                } else {
+                    senses.nearest_player
+                };
+
+                nearest.is_some_and(|player| player.distance <= *radius)
+            }
 
             Condition::NoPlayerWithin { radius } => senses
                 .nearest_player
@@ -1172,6 +1178,7 @@ mod speech {
             spawn_x: 0.0,
             spawn_y: 0.0,
             nearest_player: None,
+            nearest_player_hiding: None,
             nearby: &[],
             said,
             damage_taken: 0,
@@ -1260,6 +1267,7 @@ mod tests {
             spawn_x: 10.0,
             spawn_y: 10.0,
             nearest_player: None,
+            nearest_player_hiding: None,
             nearby: &[],
             said: &[],
             damage_taken: 0,
@@ -1269,12 +1277,57 @@ mod tests {
     fn with_player_at(x: f32, y: f32) -> Senses<'static> {
         let mut senses = alone();
         let (dx, dy) = (x - senses.x, y - senses.y);
-        senses.nearest_player = Some(Nearby {
+        let there = Some(Nearby {
             x,
             y,
             distance: (dx * dx + dy * dy).sqrt(),
         });
+
+        senses.nearest_player = there;
+        senses.nearest_player_hiding = there;
         senses
+    }
+
+    /// A player standing there who an enemy cannot normally see.
+    fn with_hidden_player_at(x: f32, y: f32) -> Senses<'static> {
+        let mut senses = with_player_at(x, y);
+        senses.nearest_player = None;
+        senses
+    }
+
+    #[test]
+    fn an_enemy_does_not_notice_somebody_hiding() {
+        let program = program(
+            r#"enemy "X" {
+                state idle { on player_within(dist: 10) -> awake }
+                state awake { }
+            }"#,
+        );
+
+        let mut mind = Mind::new(&program, 1);
+        let mut out = Vec::new();
+
+        mind.tick(&program, &with_hidden_player_at(12.0, 10.0), 50, &mut out);
+        assert_eq!(mind.state_name(&program), "idle");
+    }
+
+    #[test]
+    fn an_enemy_written_to_see_the_invisible_notices_them() {
+        // Ten enemies in the game are written this way and mean it: a Candyland enemy that runs
+        // from you is meant to run whether or not you are hiding, and a sprite that teleports away
+        // is meant to escape an invisible pursuer.
+        let program = program(
+            r#"enemy "X" {
+                state idle { on player_within(dist: 10, see_invis: true) -> awake }
+                state awake { }
+            }"#,
+        );
+
+        let mut mind = Mind::new(&program, 1);
+        let mut out = Vec::new();
+
+        mind.tick(&program, &with_hidden_player_at(12.0, 10.0), 50, &mut out);
+        assert_eq!(mind.state_name(&program), "awake");
     }
 
     #[test]

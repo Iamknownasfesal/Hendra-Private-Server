@@ -882,6 +882,10 @@ fn condition(call: &Call, names: &mut Names, diagnostics: &mut Vec<Diagnostic>) 
 
         "player_within" => Condition::PlayerWithin {
             radius: number(call, "radius", 0, 10.0) as f32,
+            see_invis: call
+                .argument("see_invis", 1)
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
         },
 
         "no_player_within" => Condition::NoPlayerWithin {

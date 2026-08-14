@@ -32,8 +32,17 @@ pub struct Senses<'a> {
     pub spawn_x: f32,
     pub spawn_y: f32,
 
-    /// The closest player, and how far away they are.
+    /// The closest player an enemy can see, and how far away they are.
+    ///
+    /// Invisible, paused and newly arrived players are left out, which is what `IsVisibleToEnemy`
+    /// decides. Almost everything reads this one.
     pub nearest_player: Option<Nearby>,
+
+    /// The closest player of any kind, hiding or not.
+    ///
+    /// Read only by the handful of behaviours the game marks `seeInvis`, which are written that way
+    /// on purpose: an enemy that runs from you is meant to run whether or not you are hiding.
+    pub nearest_player_hiding: Option<Nearby>,
 
     /// What players nearby have said this tick, with how far away each speaker was.
     ///
@@ -624,6 +633,13 @@ pub enum Condition {
 
     PlayerWithin {
         radius: f32,
+
+        /// Whether a player an enemy cannot normally see counts.
+        ///
+        /// Ten enemies in the game are written this way, and they are written that way on purpose:
+        /// a Candyland enemy that runs from you is meant to run whether or not you are hiding, and a
+        /// sprite that teleports away is meant to escape an invisible pursuer.
+        see_invis: bool,
     },
     NoPlayerWithin {
         radius: f32,

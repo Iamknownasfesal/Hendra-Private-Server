@@ -1269,6 +1269,7 @@ impl World {
                 spawn_x: scalars.spawn_x,
                 spawn_y: scalars.spawn_y,
                 nearest_player: scalars.nearest_player,
+                nearest_player_hiding: scalars.nearest_player_hiding,
                 nearby: &neighbours,
                 said: &spoken,
                 damage_taken: scalars.damage_taken,
@@ -1303,6 +1304,11 @@ struct SenseScalars {
     spawn_x: f32,
     spawn_y: f32,
     nearest_player: Option<Nearby>,
+
+    /// The closest player of any kind, which the handful of behaviours written to see through
+    /// invisibility read instead.
+    nearest_player_hiding: Option<Nearby>,
+
     damage_taken: i32,
 }
 
@@ -1555,6 +1561,7 @@ impl World {
         into.clear();
 
         let mut nearest: Option<Nearby> = None;
+        let mut hiding: Option<Nearby> = None;
         for found in &self.nearby {
             if *found == handle {
                 continue;
@@ -1594,6 +1601,16 @@ impl World {
                 && other.unseen_ms == 0
                 && !crate::effects::Rules::of(other.conditions).unseen_by_enemies;
 
+            // Both answers, because the two differ only for somebody hiding and the handful of
+            // behaviours written to see through it read the wider one.
+            if player && seen && hiding.is_none_or(|closest| distance < closest.distance) {
+                hiding = Some(Nearby {
+                    x: other.x,
+                    y: other.y,
+                    distance,
+                });
+            }
+
             if worth_attacking && seen && nearest.is_none_or(|closest| distance < closest.distance)
             {
                 nearest = Some(Nearby {
@@ -1612,6 +1629,7 @@ impl World {
             spawn_x,
             spawn_y,
             nearest_player: nearest,
+            nearest_player_hiding: hiding,
             damage_taken,
         })
     }
@@ -7469,6 +7487,55 @@ mod tests {
             chased(&mut world, &catalog, enemy),
             0.0,
             "an invisible player was chased"
+        );
+    }
+
+    #[test]
+    fn an_enemy_written_to_see_the_invisible_still_chases() {
+        // Ten enemies in the game are written this way. Hiding these players from every enemy
+        // would have quietly turned each of them off, since the flag is the whole reason they were
+        // written.
+        let catalog = catalog();
+        let squares = (0..32 * 32).map(|_| square(0x10, ObjectType::NONE.0));
+        let map = Map::from_squares(32, 32, squares).unwrap();
+        let mut world = World::new("Arena", Terrain::build(map, &catalog), &catalog);
+
+        let mut slime = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
+        slime.kind = Kind::Enemy;
+        slime.hp = 500;
+        slime.max_hp = 500;
+        let enemy = world.spawn(slime).unwrap();
+
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 14.0, 10.0, 800))
+            .unwrap();
+
+        if let Some(entity) = world.get_mut(player) {
+            entity
+                .conditions
+                .insert(hendra_content::ConditionEffect::Invisible);
+        }
+
+        let source = r#"enemy "Slime" {
+            state waiting { on player_within(dist: 10, see_invis: true) -> awake }
+            state awake { wander(0.4) }
+        }"#;
+        let (programs, diagnostics) = hendra_behavior::compile::compile(
+            &hendra_behavior::parse::parse(source).expect("behaviour should parse"),
+        );
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        world.set_behaviours(&catalog, programs);
+
+        // One tick to fill the index the senses are drawn from, and the state read after it, since
+        // an enemy that noticed nothing on the first tick has not been asked the question yet.
+        world.advance(&catalog, 50);
+        let waiting = world.get(enemy).unwrap().mind.as_ref().unwrap().state();
+        world.advance(&catalog, 50);
+
+        assert_ne!(
+            world.get(enemy).unwrap().mind.as_ref().unwrap().state(),
+            waiting,
+            "an enemy written to see through invisibility did not"
         );
     }
 
