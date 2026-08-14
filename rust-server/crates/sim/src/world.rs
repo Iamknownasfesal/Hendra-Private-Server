@@ -222,6 +222,13 @@ pub struct Entity {
     /// is still drawing it is a death nobody could have avoided.
     pub unseen_ms: u32,
 
+    /// How many stars this player has earned, which is what everybody else sees beside their name.
+    ///
+    /// A record of the account rather than of this character: the sum over every class of what its
+    /// best fame is worth. Read when they join a world, since nothing that happens inside one can
+    /// change it.
+    pub stars: u8,
+
     /// Which enemy this player's quest arrow points at.
     ///
     /// Held rather than worked out when asked, because two rules depend on which enemy it *was*
@@ -337,6 +344,7 @@ impl Entity {
             seen: None,
             quest_target: None,
             unseen_ms: 0,
+            stars: 0,
             texture: 0,
             resizing: None,
             no_experience: false,
@@ -388,6 +396,7 @@ impl Entity {
             seen: None,
             quest_target: None,
             unseen_ms: 0,
+            stars: 0,
             texture: 0,
             resizing: None,
             no_experience: false,
@@ -424,6 +433,7 @@ impl Entity {
             } else {
                 [0; 8]
             },
+            stars: self.stars,
         }
     }
 }
@@ -7326,6 +7336,29 @@ mod tests {
         }
 
         (world, player, enemy)
+    }
+
+    #[test]
+    fn a_players_stars_reach_the_wire() {
+        // The seam this crosses is where it went wrong before: the count was worked out, tested and
+        // sent to nobody, so no other player ever saw a star.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 10.0, 10.0, 800))
+            .unwrap();
+
+        if let Some(entity) = world.get_mut(player) {
+            entity.stars = 9;
+        }
+        assert_eq!(world.get(player).unwrap().state().stars, 9);
+
+        // And nothing that is not a player claims any.
+        let mut slime = Entity::fixture(ObjectType(0x502), 12.0, 10.0);
+        slime.kind = Kind::Enemy;
+        let enemy = world.spawn(slime).unwrap();
+        assert_eq!(world.get(enemy).unwrap().state().stars, 0);
     }
 
     #[test]

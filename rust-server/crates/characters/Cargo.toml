@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 hendra-content = { path = "../content" }
+hendra-sim = { path = "../sim" }
 hendra-store = { path = "../store" }
 tracing.workspace = true
 uuid = { version = "1" }

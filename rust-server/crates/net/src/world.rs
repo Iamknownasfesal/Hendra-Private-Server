@@ -414,6 +414,7 @@ mod tests {
             name: None,
             texture: 0,
             stats: [0; 8],
+            stars: 0,
         }
     }
 

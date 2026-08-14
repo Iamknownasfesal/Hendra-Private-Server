@@ -111,7 +111,21 @@ impl Unlocks {
         })
     }
 
-    /// Why this class cannot be played, if it cannot.
+    /// How many stars this account has earned.
+    ///
+    /// Every class contributes what its best fame is worth, which is why it is a record of an
+    /// account rather than of whichever character is being looked at: somebody standing there on a
+    /// new wizard still has the five stars their knight earned.
+    pub fn stars(&self) -> u8 {
+        let total: i32 = self
+            .progress
+            .values()
+            .map(|(_, best_fame)| hendra_sim::leveling::stars(*best_fame))
+            .sum();
+
+        total.clamp(0, u8::MAX as i32) as u8
+    }
+
     /// Why this class cannot be played, if it cannot.
     ///
     /// Takes the catalog because progress is keyed by identity and the unlock names a runtime
@@ -446,5 +460,54 @@ mod slots {
 
         // A carried slot has no opinion, which is what makes it carried.
         assert!(slot_accepts(&catalog, class, 6, tome));
+    }
+}
+
+#[cfg(test)]
+mod stars {
+    use super::*;
+
+    fn earned(best_fames: &[i32]) -> u8 {
+        let progress = best_fames
+            .iter()
+            .enumerate()
+            .map(|(index, fame)| (uuid::Uuid::from_u128(index as u128 + 1), (20i16, *fame)))
+            .collect();
+
+        Unlocks {
+            progress,
+            purchased: Vec::new(),
+        }
+        .stars()
+    }
+
+    #[test]
+    fn an_account_that_has_done_nothing_has_no_stars() {
+        assert_eq!(earned(&[]), 0);
+        assert_eq!(earned(&[0, 19]), 0);
+    }
+
+    #[test]
+    fn every_class_contributes_what_its_best_fame_is_worth() {
+        // A record of the account rather than of whichever character is being looked at: somebody
+        // standing there on a new wizard still has the five stars their knight earned.
+        assert_eq!(earned(&[2000]), 5);
+        assert_eq!(earned(&[2000, 800]), 9);
+        assert_eq!(earned(&[20, 150, 400, 800, 2000]), 1 + 2 + 3 + 4 + 5);
+    }
+
+    #[test]
+    fn a_class_counts_once_at_its_best_rather_than_per_character() {
+        // The store keeps one row per class holding the best, which is what makes this true. Ten
+        // knights that each reached four hundred fame are three stars, not thirty.
+        assert_eq!(earned(&[400]), 3);
+    }
+
+    #[test]
+    fn a_count_too_large_to_show_is_held_at_the_largest_that_fits() {
+        // Fourteen classes at five stars is seventy, so this cannot arise from the content as it
+        // stands. It is here because the wire field is one byte and the arithmetic is not.
+        let many: Vec<i32> = (0..300).map(|_| 2000).collect();
+        assert_eq!(earned(&many), u8::MAX);
     }
 }

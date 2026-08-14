@@ -523,6 +523,7 @@ mod tests {
             seen: None,
             quest_target: None,
             unseen_ms: 0,
+            stars: 0,
             last_hurt_by: None,
             loot_drop: 1.0,
             boosts: Vec::new(),

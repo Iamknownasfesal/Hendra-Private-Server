@@ -35,6 +35,12 @@ pub struct Session {
     /// One for everybody without one. Read once when the session starts rather than at every door:
     /// a boost lasts half an hour and a player walks through a dozen doors in one.
     pub loot_drop: f32,
+
+    /// How many stars this account has earned, which is what everybody else sees beside the name.
+    ///
+    /// A record of the account rather than of the character being played, and nothing that happens
+    /// inside a world moves it, so it is read once here.
+    pub stars: u8,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -95,10 +101,12 @@ pub async fn log_in(
         && character.alive
     {
         let loot_drop = loot_drop_for(store, account.id).await;
+        let stars = stars_for(store, account.id).await;
         return Ok(Session {
             account,
             character,
             loot_drop,
+            stars,
         });
     }
 
@@ -107,10 +115,12 @@ pub async fn log_in(
         && let Ok(character) = store.character(first.id).await
     {
         let loot_drop = loot_drop_for(store, account.id).await;
+        let stars = stars_for(store, account.id).await;
         return Ok(Session {
             account,
             character,
             loot_drop,
+            stars,
         });
     }
 
@@ -130,11 +140,25 @@ pub async fn log_in(
         other => LoginError::NoCharacter(other.to_string()),
     })?;
     let loot_drop = loot_drop_for(store, account.id).await;
+    let stars = stars_for(store, account.id).await;
     Ok(Session {
         account,
         character,
         loot_drop,
+        stars,
     })
+}
+
+/// How many stars an account has earned.
+///
+/// Every class contributes what its best fame is worth. An account whose progress cannot be read
+/// shows none rather than refusing the login: a star is a decoration, and losing one for a moment
+/// is better than not being let in.
+async fn stars_for(store: &Store, account_id: i64) -> u8 {
+    match hendra_characters::Unlocks::load(store, account_id).await {
+        Ok(unlocks) => unlocks.stars(),
+        Err(_) => 0,
+    }
 }
 
 /// How much likelier an account is to be given loot right now.

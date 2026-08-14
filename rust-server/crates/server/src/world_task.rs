@@ -664,6 +664,9 @@ pub struct Arrival {
     /// everybody without one.
     pub loot_drop: f32,
 
+    /// How many stars the account has earned, for everybody else to see beside the name.
+    pub stars: u8,
+
     pub hp: i32,
     pub max_hp: i32,
     pub weapon: Option<ObjectType>,
@@ -852,6 +855,7 @@ fn handle(
             let mut entity = Entity::player(avatar, x, y, max_hp);
             entity.stats = arrival.stats;
             entity.loot_drop = arrival.loot_drop;
+            entity.stars = arrival.stars;
             entity.stats.set_equipment(arrival.boosts);
             entity.hp = arrival.hp.clamp(1, max_hp);
             entity.name = Some(name.as_str().into());

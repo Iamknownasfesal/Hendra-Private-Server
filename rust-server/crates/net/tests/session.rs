@@ -155,6 +155,7 @@ fn entity(id: u32, x: f32) -> (EntityId, EntityState) {
             name: None,
             texture: 0,
             stats: [0; 8],
+            stars: 0,
         },
     )
 }

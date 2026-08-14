@@ -238,6 +238,7 @@ fn world_at(seconds: f32) -> WorldSnapshot {
                     name: None,
                     texture: 0,
                     stats: [0; 8],
+                    stars: 0,
                 },
             )
         })

@@ -37,9 +37,10 @@ impl FieldMask {
     pub const OBJECT_TYPE: FieldMask = FieldMask(1 << 8);
     pub const TEXTURE: FieldMask = FieldMask(1 << 9);
     pub const STATS: FieldMask = FieldMask(1 << 10);
+    pub const STARS: FieldMask = FieldMask(1 << 11);
 
     /// Every field, for an entity the receiver has never seen.
-    pub const ALL: FieldMask = FieldMask(0x7ff);
+    pub const ALL: FieldMask = FieldMask(0xfff);
 
     pub fn has(self, field: FieldMask) -> bool {
         self.0 & field.0 != 0
@@ -93,6 +94,12 @@ pub struct EntityState {
     /// Only a player's own entity carries meaningful values; everything else sends zeroes, which
     /// cost one byte each as varints and never change, so they never appear in a delta.
     pub stats: [i32; 8],
+
+    /// How many stars this player has earned, which is what everybody else sees beside their name.
+    ///
+    /// The sum over every class of what its best fame is worth, so it is a record of an account
+    /// rather than of the character being looked at. Zero for anything that is not a player.
+    pub stars: u8,
 }
 
 impl EntityState {
@@ -125,6 +132,7 @@ impl EntityState {
         );
         mask.set(FieldMask::TEXTURE, self.texture != baseline.texture);
         mask.set(FieldMask::STATS, self.stats != baseline.stats);
+        mask.set(FieldMask::STARS, self.stars != baseline.stars);
 
         mask
     }
@@ -188,6 +196,9 @@ impl EntityState {
             for stat in self.stats {
                 w.varint_signed(stat as i64);
             }
+        }
+        if mask.has(FieldMask::STARS) {
+            w.varint(self.stars as u64);
         }
     }
 
@@ -257,6 +268,12 @@ impl EntityState {
                 *stat = r.varint_signed()? as i32;
             }
         }
+        if mask.has(FieldMask::STARS) {
+            state.stars = u8::try_from(r.varint()?).map_err(|_| CodecError::InvalidValue {
+                what: "stars",
+                value: 0,
+            })?;
+        }
 
         Ok(state)
     }
@@ -324,7 +341,28 @@ mod tests {
             name: Some("Hobbit Mage".into()),
             texture: 0,
             stats: [0; 8],
+            stars: 0,
         }
+    }
+
+    #[test]
+    fn stars_travel_and_only_when_they_change() {
+        let mut wearing = walking();
+        wearing.stars = 9;
+
+        let (back, _) = round_trip(&wearing, None);
+        assert_eq!(back.stars, 9);
+
+        // Unchanged, so they cost nothing in a delta. A star moves when a character dies, which is
+        // to say almost never, and paying a byte a tick for it would be paying for stillness.
+        assert!(!wearing.changes_from(&wearing).has(FieldMask::STARS));
+
+        let mut more = wearing.clone();
+        more.stars = 10;
+        assert!(more.changes_from(&wearing).has(FieldMask::STARS));
+
+        let (back, _) = round_trip(&more, Some(&wearing));
+        assert_eq!(back.stars, 10);
     }
 
     fn round_trip(current: &EntityState, baseline: Option<&EntityState>) -> (EntityState, usize) {

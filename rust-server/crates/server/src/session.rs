@@ -2258,6 +2258,7 @@ fn arrival_of(player: &crate::accounts::Session, context: &Context) -> crate::wo
         // player walks through a dozen doors in one, so re-reading it per world would be a query
         // per door for a number that has not moved.
         loot_drop: player.loot_drop,
+        stars: player.stars,
 
         stats,
         boosts: worn_boosts(&context.catalog, &player.character.inventory),

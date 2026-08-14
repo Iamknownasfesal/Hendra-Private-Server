@@ -1034,3 +1034,19 @@ category by category. It found thirteen things, one of them a mechanic that sile
   worth saying.
 
   Commands are exempt. Repeating one is how somebody walks to the same place twice.
+
+### 18.22 Stars — **S**
+
+- [x] The count reaches somebody
+
+  `leveling::stars` existed, was tested, and was called by nobody, which is the failure this project
+  keeps finding: built, tested and unreachable. Per-class best fame was stored and read only to
+  decide which classes an account may play.
+
+  Stars are the sum over every class of what its best fame is worth, so they are a record of an
+  account rather than of the character being looked at: somebody standing there on a new wizard still
+  has the five their knight earned. Read when the session starts, since nothing inside a world moves
+  it, and carried on the entity so everybody nearby sees it beside the name.
+
+  A field on the wire, which the mask was built to make cheap: it costs nothing on a tick where it
+  does not change, and it changes when a character dies.

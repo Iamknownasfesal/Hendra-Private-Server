@@ -780,6 +780,7 @@ name = "hendra-characters"
 version = "0.1.0"
 dependencies = [
  "hendra-content",
+ "hendra-sim",
  "hendra-store",
  "sqlx",
  "thiserror",
