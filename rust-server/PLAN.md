@@ -1050,3 +1050,21 @@ category by category. It found thirteen things, one of them a mechanic that sile
 
   A field on the wire, which the mask was built to make cheap: it costs nothing on a tick where it
   does not change, and it changes when a character dies.
+
+### 18.23 What a map says about the things it places — **S**
+
+- [x] A census of the per-object settings
+
+  The original reads a dozen keys off each placed object and this server reads two, which raised the
+  obvious question and then answered it: across all ninety-six shipped maps only four keys appear.
+
+  `name` and `size` are read. `conn`, which appears three and a half thousand times, picks which
+  sprite a wall or fence draws from the way its neighbours join up, and reaches no part of the
+  simulation. The single `xOffset` nudges where one object is drawn; a static object blocks the
+  square it stands on either way, so it changes nothing about walking round it.
+
+  The other keys the original reads are merchant settings, and no map here places a merchant with
+  one: our shops are defined in content rather than drawn into maps.
+
+  A census rather than a note, so a map added later that asks for something nothing listens for is
+  something somebody is told about rather than something that quietly does nothing.
