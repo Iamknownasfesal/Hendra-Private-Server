@@ -91,6 +91,15 @@ impl Stats {
         self.boosts[stat.index()] += amount;
     }
 
+    /// Sets what temporary boosts come to, having already been stacked.
+    ///
+    /// Set rather than added, because the answer is a function of what is held: recomputing it from
+    /// the list every time a boost is given or lapses is what makes a lapse take the right amount
+    /// away rather than whatever was added last.
+    pub fn set_boosts(&mut self, boosts: [i32; 8]) {
+        self.boosts = boosts;
+    }
+
     pub fn clear_boosts(&mut self) {
         self.boosts = [0; 8];
     }
@@ -256,6 +265,95 @@ pub fn equipment_boosts<'a>(worn: impl Iterator<Item = &'a hendra_content::ItemD
         }
     }
     out
+}
+
+/// What a set of temporary boosts on one stat comes to.
+///
+/// Follows `ActivateBoost.GetBoost`. Boosts do not simply add: sorted, the largest counts in full,
+/// the next at a half, the next at a quarter, and so on. Two rings of eight attack are worth twelve
+/// rather than sixteen, which is why stacking the same buff is worth less each time and why a
+/// second one is worth having at all.
+///
+/// Non-stacking boosts are separate and only the largest of them counts, which is what stops two
+/// copies of a buff that says it does not stack from stacking.
+pub fn stacked(stacking: &[i32], separate: &[i32]) -> i32 {
+    let mut sorted: Vec<i32> = stacking.to_vec();
+
+    // Largest first, because the discount is applied by position and the largest is meant to be the
+    // one that counts in full.
+    sorted.sort_unstable_by(|a, b| b.cmp(a));
+
+    let mut total = 0i32;
+    for (index, amount) in sorted.iter().enumerate() {
+        // Halving each time. Past a handful this is zero, which is the point: piling on more of the
+        // same buff stops being worth anything.
+        let share = 0.5f64.powi(index as i32);
+        total += (*amount as f64 * share) as i32;
+    }
+
+    total + separate.iter().copied().max().unwrap_or(0)
+}
+
+#[cfg(test)]
+mod stacking {
+    use super::stacked;
+
+    #[test]
+    fn one_boost_counts_in_full() {
+        assert_eq!(stacked(&[8], &[]), 8);
+    }
+
+    #[test]
+    fn each_boost_after_the_largest_counts_for_half_of_the_last() {
+        // Two rings of eight attack are worth twelve rather than sixteen, which is why stacking the
+        // same buff is worth less each time and why a second one is worth having at all.
+        assert_eq!(stacked(&[8, 8], &[]), 12);
+        assert_eq!(stacked(&[8, 8, 8], &[]), 14);
+        assert_eq!(stacked(&[8, 8, 8, 8], &[]), 15);
+    }
+
+    #[test]
+    fn the_largest_is_the_one_that_counts_in_full_whatever_order_they_arrived_in() {
+        // Sorted rather than taken as given, or a small boost arriving first would take the full
+        // share and the large one behind it would be halved.
+        assert_eq!(stacked(&[2, 20], &[]), stacked(&[20, 2], &[]));
+        assert_eq!(stacked(&[2, 20], &[]), 21);
+    }
+
+    #[test]
+    fn piling_on_more_of_the_same_stops_being_worth_anything() {
+        let many = vec![10; 20];
+        let few = vec![10; 6];
+
+        // Past a handful the halving reaches zero, which is the point of the rule.
+        assert_eq!(stacked(&many, &[]), stacked(&few, &[]));
+    }
+
+    #[test]
+    fn the_kind_that_does_not_stack_takes_only_its_largest() {
+        assert_eq!(stacked(&[], &[5, 5, 5]), 5);
+        assert_eq!(stacked(&[], &[3, 9, 1]), 9);
+    }
+
+    #[test]
+    fn the_two_kinds_are_added_to_each_other() {
+        // They are separate rules rather than one pool: a stacking buff and an aura are both worth
+        // having at once.
+        assert_eq!(stacked(&[8, 8], &[10]), 22);
+    }
+
+    #[test]
+    fn nothing_held_is_nothing() {
+        assert_eq!(stacked(&[], &[]), 0);
+    }
+
+    #[test]
+    fn a_negative_boost_still_counts_against_you() {
+        // Some content lowers a stat, and sorting largest-first means the least bad one counts in
+        // full. That is what the original does with them, and it is the merciful reading.
+        assert_eq!(stacked(&[-10], &[]), -10);
+        assert_eq!(stacked(&[-10, -10], &[]), -15);
+    }
 }
 
 #[cfg(test)]

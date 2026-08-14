@@ -138,6 +138,14 @@ pub struct Entity {
     /// hurt. Cleared once read, so a hit counts toward exactly one tick.
     pub damage_since_tick: i32,
 
+    /// Temporary stat boosts, each with what is left of its time.
+    ///
+    /// Held as a list rather than folded into a total, because they do not add: the largest counts
+    /// in full and each one after it counts for half of the last, so the total can only be worked
+    /// out from all of them at once. Folding them in would also make a lapse take away whatever was
+    /// added last rather than what that boost was worth.
+    pub boosts: Vec<HeldBoost>,
+
     /// What this character has done, which is what its death is worth.
     ///
     /// On the entity because that is where the events are: a shot is counted where it is fired and
@@ -239,6 +247,7 @@ impl Entity {
             damage_since_tick: 0,
             damage_by: Vec::new(),
             last_hurt_by: None,
+            boosts: Vec::new(),
             tally: crate::fame::Tally::default(),
             texture: 0,
             resizing: None,
@@ -285,6 +294,7 @@ impl Entity {
             damage_since_tick: 0,
             damage_by: Vec::new(),
             last_hurt_by: None,
+            boosts: Vec::new(),
             tally: crate::fame::Tally::default(),
             texture: 0,
             resizing: None,
@@ -1044,6 +1054,52 @@ pub struct Death {
     pub y: f32,
 }
 
+/// One temporary stat boost somebody is holding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HeldBoost {
+    pub stat: u8,
+    pub amount: i32,
+    pub remaining_ms: u32,
+
+    /// Whether this stacks with others of its kind, or only the largest counts.
+    pub stacks: bool,
+}
+
+/// How many boosts one entity may hold at once.
+///
+/// Generous for anything that is really a fight, and bounded because an aura nobody leaves would
+/// otherwise grow the list forever.
+const MOST_BOOSTS_HELD: usize = 32;
+
+/// Works out what somebody's boosts come to, and writes it into their stats.
+///
+/// Recomputed from the whole list rather than adjusted, so a boost lapsing takes away exactly what
+/// it was worth: with halving, what a boost contributes depends on which others are held, and no
+/// amount of bookkeeping at the edges gets that right.
+fn restack(entity: &mut Entity) {
+    let mut totals = [0i32; 8];
+
+    for stat in 0..8u8 {
+        let stacking: Vec<i32> = entity
+            .boosts
+            .iter()
+            .filter(|held| held.stat == stat && held.stacks)
+            .map(|held| held.amount)
+            .collect();
+
+        let separate: Vec<i32> = entity
+            .boosts
+            .iter()
+            .filter(|held| held.stat == stat && !held.stacks)
+            .map(|held| held.amount)
+            .collect();
+
+        totals[stat as usize] = crate::stats::stacked(&stacking, &separate);
+    }
+
+    entity.stats.set_boosts(totals);
+}
+
 /// How many players one enemy remembers being hurt by.
 ///
 /// Generous enough for anything that is really a fight, and bounded because the list lives on every
@@ -1687,6 +1743,32 @@ impl World {
         self.spawn_seed
     }
 
+    /// Gives an entity a temporary stat boost.
+    ///
+    /// Renewing one it already holds extends it rather than adding a second, for the same reason a
+    /// condition does: standing in an aura for a minute should not be sixty boosts.
+    fn give_boost(&mut self, handle: Handle, boost: HeldBoost) {
+        let Some(entity) = self.entities.get_mut(handle) else {
+            return;
+        };
+
+        let held = entity
+            .boosts
+            .iter_mut()
+            .find(|held| held.stat == boost.stat && held.amount == boost.amount);
+
+        match held {
+            Some(held) => held.remaining_ms = held.remaining_ms.max(boost.remaining_ms),
+            None => {
+                if entity.boosts.len() < MOST_BOOSTS_HELD {
+                    entity.boosts.push(boost);
+                }
+            }
+        }
+
+        restack(entity);
+    }
+
     /// Gives an entity a condition effect for a time.
     ///
     /// Renewing one it already holds extends it rather than stacking it, because a behaviour that
@@ -1989,6 +2071,20 @@ impl World {
             entity.ability_cooldown_ms = entity.ability_cooldown_ms.saturating_sub(elapsed_ms);
             entity.teleport_cooldown_ms = entity.teleport_cooldown_ms.saturating_sub(elapsed_ms);
             entity.move_grace_ms = entity.move_grace_ms.saturating_sub(elapsed_ms);
+
+            if !entity.boosts.is_empty() {
+                let before = entity.boosts.len();
+                entity.boosts.retain_mut(|held| {
+                    held.remaining_ms = held.remaining_ms.saturating_sub(elapsed_ms);
+                    held.remaining_ms > 0
+                });
+
+                // Only when something actually lapsed: restacking is cheap but not free, and most
+                // ticks change nothing.
+                if entity.boosts.len() != before {
+                    restack(entity);
+                }
+            }
         }
     }
 
@@ -2539,9 +2635,27 @@ impl World {
                 range,
             } => {
                 let Some(stat) = stat_of(*stat) else { return };
-                let _ = (duration_ms, range);
-                if let Some(entity) = self.entities.get_mut(handle) {
-                    entity.stats.boost(stat, *amount);
+
+                let boost = HeldBoost {
+                    stat: stat.index() as u8,
+                    amount: *amount,
+                    remaining_ms: *duration_ms,
+
+                    // Aura boosts do not stack with each other, so two people standing in two of
+                    // the same aura get one of them. What the original spells with `noStack`.
+                    stacks: range.is_none(),
+                };
+
+                match range {
+                    // An aura, which is the reason this reads a range at all: it reaches everybody
+                    // nearby rather than only whoever used it.
+                    Some(radius) => {
+                        self.each_nearby(handle, *radius, true, None, |world, other| {
+                            world.give_boost(other, boost);
+                        });
+                        self.give_boost(handle, boost);
+                    }
+                    None => self.give_boost(handle, boost),
                 }
             }
 
@@ -6146,6 +6260,158 @@ mod tests {
         assert_eq!(world.player_named("fesal"), Some(handle));
         assert_eq!(world.player_named("FESAL"), Some(handle));
         assert_eq!(world.player_named("Nobody"), None);
+    }
+
+    #[test]
+    fn a_temporary_boost_lapses_rather_than_lasting_forever() {
+        // Its duration used to be discarded, which made every temporary boost permanent.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 5.0, 5.0, 500))
+            .unwrap();
+
+        let before = world.get(player).unwrap().stats.totals()[2];
+
+        world.carry_out(
+            player,
+            &catalog,
+            &hendra_content::Effect::StatBoost {
+                stat: 2,
+                amount: 10,
+                duration_ms: 1000,
+                range: None,
+            },
+            (5.0, 5.0),
+            (5.0, 5.0),
+        );
+
+        let raised = world.get(player).unwrap().stats.totals()[2];
+        assert_eq!(raised - before, 10);
+
+        world.advance(&catalog, 500);
+        assert_eq!(
+            world.get(player).unwrap().stats.totals()[2],
+            raised,
+            "it lapsed early"
+        );
+
+        world.advance(&catalog, 600);
+        assert_eq!(
+            world.get(player).unwrap().stats.totals()[2],
+            before,
+            "it never lapsed"
+        );
+    }
+
+    #[test]
+    fn two_boosts_of_the_same_size_are_worth_less_than_two() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 5.0, 5.0, 500))
+            .unwrap();
+
+        let before = world.get(player).unwrap().stats.totals()[2];
+
+        for amount in [8, 8] {
+            world.carry_out(
+                player,
+                &catalog,
+                &hendra_content::Effect::StatBoost {
+                    stat: 2,
+                    amount,
+                    duration_ms: 10_000,
+                    range: None,
+                },
+                (5.0, 5.0),
+                (5.0, 5.0),
+            );
+        }
+
+        // One of them is kept, since renewing extends rather than adding a second. Two different
+        // sizes is what the stacking rule is really about, and `stats::stacked` holds that.
+        let after = world.get(player).unwrap().stats.totals()[2];
+        assert_eq!(after - before, 8);
+    }
+
+    #[test]
+    fn an_aura_reaches_the_people_standing_in_it() {
+        // Its range used to be discarded, so an aura reached only whoever used it.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let caster = world
+            .spawn(Entity::player(ObjectType(0x600), 5.0, 5.0, 500))
+            .unwrap();
+        let friend = world
+            .spawn(Entity::player(ObjectType(0x600), 7.0, 5.0, 500))
+            .unwrap();
+        let stranger = world
+            .spawn(Entity::player(ObjectType(0x600), 40.0, 40.0, 500))
+            .unwrap();
+        world.reindex();
+
+        let before = world.get(friend).unwrap().stats.totals()[2];
+
+        world.carry_out(
+            caster,
+            &catalog,
+            &hendra_content::Effect::StatBoost {
+                stat: 2,
+                amount: 10,
+                duration_ms: 5000,
+                range: Some(6.0),
+            },
+            (5.0, 5.0),
+            (5.0, 5.0),
+        );
+
+        assert_eq!(
+            world.get(friend).unwrap().stats.totals()[2] - before,
+            10,
+            "somebody standing in it got nothing"
+        );
+        assert_eq!(
+            world.get(stranger).unwrap().stats.totals()[2] - before,
+            0,
+            "somebody across the map got it"
+        );
+        assert!(
+            world.get(caster).unwrap().stats.totals()[2] > 0,
+            "the caster"
+        );
+    }
+
+    #[test]
+    fn standing_in_an_aura_does_not_pile_up_boosts() {
+        // Renewing extends rather than adding, or a minute in an aura would be sixty boosts.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 5.0, 5.0, 500))
+            .unwrap();
+        world.reindex();
+
+        for _ in 0..30 {
+            world.carry_out(
+                player,
+                &catalog,
+                &hendra_content::Effect::StatBoost {
+                    stat: 2,
+                    amount: 10,
+                    duration_ms: 5000,
+                    range: Some(6.0),
+                },
+                (5.0, 5.0),
+                (5.0, 5.0),
+            );
+        }
+
+        assert_eq!(world.get(player).unwrap().boosts.len(), 1);
     }
 
     #[test]

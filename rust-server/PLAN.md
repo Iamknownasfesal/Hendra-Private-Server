@@ -676,8 +676,19 @@ category by category. It found thirteen things, one of them a mechanic that sile
 
 ### 18.4 Boost stacking — **S**
 
-- [ ] Stacked stat boosts add up flat here. The original halves each one after the largest, and
+- [x] Stacked stat boosts add up flat here. The original halves each one after the largest, and
       takes only the highest of the non-stacking kind
+
+  `stats::stacked` does both. Sorted largest first, each boost after the first counts for half of
+  what the last did, so two rings of eight attack are worth twelve rather than sixteen and piling on
+  a sixth is worth nothing at all. Non-stacking boosts are a separate pool of which only the largest
+  counts, and the two pools add to each other.
+
+  Two larger bugs turned up in the same place, both from the same line. A temporary boost's duration
+  was discarded, so every one of them was permanent; and an aura's range was discarded, so an aura
+  reached only whoever used it. Boosts are now held with their time, run down each tick, and
+  restacked from the whole list when one lapses, because with halving what a boost contributes
+  depends on which others are held and no bookkeeping at the edges gets that right.
 
 ### 18.5 Potion stacking — **S**
 
