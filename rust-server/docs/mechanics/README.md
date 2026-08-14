@@ -54,6 +54,7 @@ inside the game: a different data structure, a different loop, a different order
 | [31-commands.md](31-commands.md) | Registration, ranks, and every command | `Command.cs`, `UnrankedCommands.cs`, `RankedCommands.cs` |
 | [32-fame-bonuses.md](32-fame-bonuses.md) | The 25 statistics and the 20 compounding bonuses | `FameStats.cs` |
 | [33-content-loading.md](33-content-loading.md) | XML passes, duplicate handling, worlds, settings | `XmlData.cs`, `Resources.cs`, `WorldData.cs`, `AppSettings.cs` |
+| [34-persistence.md](34-persistence.md) | The key space, locking, currency, death, the records | `Database.cs`, `DbModels.cs` |
 
 Page 25 lists exactly what was read and states the case for the groups assessed by census rather
 than file by file. See "How much of this is actually read" below before trusting any of it.
@@ -70,7 +71,7 @@ bonus in the game. See [the stats page](08-stats.md).
 
 ## How much of this is actually read
 
-The C# server is **547 files**. About **180** were opened and read, including every behaviour, every
+The C# server is **547 files**. About **185** were opened and read, including every behaviour, every
 transition, every command and every world subclass. The rest was assessed by census,
 by signature, or by call site, which is weaker evidence and is how the first two passes of this audit
 reached wrong conclusions twice.
