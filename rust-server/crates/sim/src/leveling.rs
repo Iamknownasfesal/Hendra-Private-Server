@@ -29,6 +29,13 @@ pub const SHARE_RADIUS: f32 = 25.0;
 /// is always at least ten kills whatever is being fought.
 const LEVEL_SHARE: f32 = 0.1;
 
+/// The share of a level the enemy your quest arrow points at may be worth.
+///
+/// Five times the usual, from `DamageCounter`. It is the whole reason to follow the arrow: the same
+/// enemy killed off your own bat is worth a tenth of a level, and killing the one you were sent to
+/// is worth half of one.
+const QUEST_SHARE: f32 = 0.5;
+
 /// What one enemy is worth before the cap: a tenth of its health, scaled by its own multiplier.
 const HEALTH_PER_EXPERIENCE: f32 = 10.0;
 
@@ -92,13 +99,15 @@ pub fn experience_for_kill(
     experience_multiplier: f32,
     awards_experience: bool,
     player_level: i16,
+    was_quest: bool,
 ) -> i32 {
     if !awards_experience || player_level >= MAX_LEVEL {
         return 0;
     }
 
     let raw = (enemy_max_hp as f32 / HEALTH_PER_EXPERIENCE) * experience_multiplier.max(0.0);
-    let cap = experience_goal(player_level) as f32 * LEVEL_SHARE;
+    let share = if was_quest { QUEST_SHARE } else { LEVEL_SHARE };
+    let cap = experience_goal(player_level) as f32 * share;
 
     raw.min(cap).max(0.0) as i32
 }
@@ -339,16 +348,16 @@ mod tests {
     #[test]
     fn a_kill_is_worth_a_tenth_of_the_enemys_health() {
         // At level ten the cap is ninety-five, so neither of these reaches it.
-        assert_eq!(experience_for_kill(300, 1.0, true, 10), 30);
-        assert_eq!(experience_for_kill(300, 2.0, true, 10), 60);
+        assert_eq!(experience_for_kill(300, 1.0, true, 10, false), 30);
+        assert_eq!(experience_for_kill(300, 2.0, true, 10, false), 60);
     }
 
     #[test]
     fn the_cap_binds_sooner_for_a_low_character_than_a_high_one() {
         // The same enemy is worth less to someone who has barely started, which is what stops one
         // large kill carrying a new character several levels.
-        let low = experience_for_kill(3_000, 1.0, true, 1);
-        let high = experience_for_kill(3_000, 1.0, true, 15);
+        let low = experience_for_kill(3_000, 1.0, true, 1, false);
+        let high = experience_for_kill(3_000, 1.0, true, 15, false);
 
         assert!(low < high, "{low} against {high}");
         assert_eq!(low, (experience_goal(1) as f32 * LEVEL_SHARE) as i32);
@@ -357,19 +366,45 @@ mod tests {
     #[test]
     fn no_kill_is_worth_more_than_a_tenth_of_a_level() {
         // Without the cap, one enormous enemy takes a character from one to twenty.
-        let huge = experience_for_kill(1_000_000, 1.0, true, 1);
+        let huge = experience_for_kill(1_000_000, 1.0, true, 1, false);
         assert_eq!(huge, (experience_goal(1) as f32 * LEVEL_SHARE) as i32);
         assert!(huge < experience_goal(1), "still needs several kills");
     }
 
     #[test]
     fn an_enemy_that_awards_nothing_is_worth_nothing_however_large() {
-        assert_eq!(experience_for_kill(1_000_000, 10.0, false, 1), 0);
+        assert_eq!(experience_for_kill(1_000_000, 10.0, false, 1, false), 0);
     }
 
     #[test]
     fn a_character_at_the_maximum_earns_no_more_experience() {
-        assert_eq!(experience_for_kill(10_000, 1.0, true, MAX_LEVEL), 0);
+        assert_eq!(experience_for_kill(10_000, 1.0, true, MAX_LEVEL, false), 0);
+    }
+
+    #[test]
+    fn the_enemy_you_were_sent_to_is_worth_five_times_the_cap() {
+        // The whole reason to follow the arrow. The same enemy killed off your own bat is worth a
+        // tenth of a level; the one you were sent to is worth half of one.
+        let huge = 10_000_000;
+
+        let ordinary = experience_for_kill(huge, 1.0, true, 10, false);
+        let sent = experience_for_kill(huge, 1.0, true, 10, true);
+
+        assert_eq!(ordinary, (experience_goal(10) as f32 * 0.1) as i32);
+        assert_eq!(sent, (experience_goal(10) as f32 * 0.5) as i32);
+        assert_eq!(sent, ordinary * 5);
+    }
+
+    #[test]
+    fn a_quest_raises_the_ceiling_rather_than_the_reward() {
+        // A small enemy is worth what it is worth. The share is a cap, so raising it does nothing
+        // for something that was never near it.
+        let small = 300;
+
+        assert_eq!(
+            experience_for_kill(small, 1.0, true, 10, true),
+            experience_for_kill(small, 1.0, true, 10, false)
+        );
     }
 
     #[test]

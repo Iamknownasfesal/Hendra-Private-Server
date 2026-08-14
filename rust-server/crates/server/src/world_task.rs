@@ -1464,50 +1464,17 @@ fn show_portals(world: &mut World, catalog: &Catalog, portals: &[PortalSign]) {
     }
 }
 
-/// The most worthwhile enemy near a player, which is what a quest arrow points at.
+/// Where a player's quest arrow points, and what it is called.
 ///
-/// The original marks some objects `Quest` and picks the nearest of those. Ours picks by the same
-/// rule, and answers with nothing rather than the closest enemy when none is marked: an arrow
-/// pointing at a slime is worse than no arrow.
+/// Read from the world rather than worked out here, because the world is what remembers it: killing
+/// the enemy the arrow pointed at counts toward a character's fame and is worth five times the usual
+/// experience, and neither can be answered from a target recomputed after the fact.
 fn nearest_quest(world: &World, catalog: &Catalog, handle: Handle) -> Option<(String, i32, i32)> {
-    use hendra_sim::quest;
+    let target = world.quest_target(handle)?;
+    let entity = world.get(target)?;
+    let desc = catalog.object(entity.object_type)?;
 
-    let player = world.get(handle)?;
-    let level = player.progress.level;
-
-    world
-        .iter()
-        .filter(|(_, entity)| entity.kind == hendra_sim::Kind::Enemy && !entity.dead)
-        .filter_map(|(_, entity)| {
-            let desc = catalog.object(entity.object_type)?;
-
-            // Only what the table names, and only what suits this level. The range is a hard filter
-            // rather than part of the score, or a high enough priority would send a beginner to
-            // something that kills them.
-            let quest = quest::quest_for(&desc.id)?;
-            if !quest::suits(&quest, level) {
-                return None;
-            }
-
-            let (dx, dy) = (entity.x - player.x, entity.y - player.y);
-            let distance = (dx * dx + dy * dy).sqrt();
-
-            Some((
-                quest::score(
-                    quest.priority,
-                    desc.level.unwrap_or(0) as i16,
-                    level,
-                    distance,
-                ),
-                desc,
-                entity,
-            ))
-        })
-        // The most worthwhile thing near enough to be worth walking to, rather than the nearest
-        // thing worth killing. Those are different answers, and the first is why the arrow is
-        // useful at all.
-        .max_by_key(|(score, _, _)| *score)
-        .map(|(_, desc, entity)| (desc.id.clone(), entity.x as i32, entity.y as i32))
+    Some((desc.id.clone(), entity.x as i32, entity.y as i32))
 }
 
 /// What an administrator is doing to the world in front of them.

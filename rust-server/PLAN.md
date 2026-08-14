@@ -928,4 +928,37 @@ category by category. It found thirteen things, one of them a mechanic that sile
   rule, and it is written down in the code as one, because the bits already make a second look count
   for nothing.
 
-  Remaining unfed: `level_up_assists`, which needs parties, and `quests_completed`.
+  Remaining unfed: none. Both of the others are fed below.
+
+### 18.18 The quest arrow, and the three rules that hang off it — **M**
+
+- [x] The arrow is remembered rather than worked out when asked
+
+  We answered `/quest` by scanning for the best enemy at the moment somebody asked, and kept nothing.
+  The original holds `player.Quest` and repoints it every five hundred ticks or as soon as what it
+  was pointing at is gone. Holding it matters because two rules ask what it *was* when an enemy died,
+  and neither can be answered afterwards.
+
+  Chosen in the tick now, after the reaping so an arrow pointing at something dead moves on, and
+  after the kill is awarded so repointing does not erase the thing that says the kill counted.
+
+- [x] Killing what you were sent to is worth five times as much
+
+  `DamageCounter` caps a kill at a tenth of a level, and at half a level when the enemy is the one
+  your arrow points at. We had the tenth and not the half, so following the arrow was worth nothing
+  at all. It is a ceiling rather than a reward: a small enemy is worth what it is worth either way.
+
+- [x] `quests_completed`
+
+  The second of the three counters recorded as unfed. A completed quest is killing the enemy the
+  arrow pointed at, which is what `FameCounter.Killed` counts.
+
+- [x] `level_up_assists`
+
+  The third, and it was recorded as needing parties, which was wrong. `DamageCounter` credits the
+  last hitter with every level *somebody else* reached from that kill. Being near enough to share the
+  experience is what makes it help; no party is involved. Their own level does not count, since an
+  assist is help given rather than progress made.
+
+  Not implemented: `MonsterAssists` and `GodAssists`. The original records both and no bonus reads
+  either, so they are two numbers written to a database and never asked a question.

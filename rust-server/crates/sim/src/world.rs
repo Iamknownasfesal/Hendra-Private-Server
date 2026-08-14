@@ -32,6 +32,14 @@ use crate::tiles::Terrain;
 /// How far a player can see, in tiles. Matches the client's view distance.
 pub const SIGHT_RADIUS: f32 = 20.0;
 
+/// How long a quest arrow holds still before it is worked out again.
+///
+/// The original picks again every five hundred ticks, and picks immediately when what it was
+/// pointing at is gone. Ten seconds is that interval at its tick rate, and the point of it is the
+/// same either way: the scan is over every enemy for every player, and an arrow that swings about
+/// as enemies wander is worse than one that holds still.
+const QUEST_INTERVAL_MS: u32 = 10_000;
+
 /// Which squares of one world a player has laid eyes on.
 ///
 /// A bit per square rather than a byte, because this is held per player and a realm is four million
@@ -207,6 +215,13 @@ pub struct Entity {
     /// its own accuracy will report whatever earns the most.
     pub tally: crate::fame::Tally,
 
+    /// Which enemy this player's quest arrow points at.
+    ///
+    /// Held rather than worked out when asked, because two rules depend on which enemy it *was*
+    /// when it died: killing it counts toward the character's fame, and it is worth five times the
+    /// experience anything else is capped at. Neither can be answered after the fact.
+    pub quest_target: Option<Handle>,
+
     /// Which squares of this world this player has laid eyes on, for the count a character's fame
     /// is partly made of.
     ///
@@ -313,6 +328,7 @@ impl Entity {
             boosts: Vec::new(),
             tally: crate::fame::Tally::default(),
             seen: None,
+            quest_target: None,
             texture: 0,
             resizing: None,
             no_experience: false,
@@ -362,6 +378,7 @@ impl Entity {
             boosts: Vec::new(),
             tally: crate::fame::Tally::default(),
             seen: None,
+            quest_target: None,
             texture: 0,
             resizing: None,
             no_experience: false,
@@ -521,6 +538,9 @@ pub struct World {
     /// because every enemy in earshot has to hear the same thing.
     heard: Vec<(f32, f32, Box<str>)>,
 
+    /// How long since the quest arrows were last worked out.
+    since_quests_ms: u32,
+
     /// Players who have died since the last drain.
     deaths: Vec<Death>,
 
@@ -628,6 +648,7 @@ impl World {
             spawn_squares: std::collections::HashMap::new(),
             allows_teleport: true,
             heard: Vec::new(),
+            since_quests_ms: 0,
             deaths: Vec::new(),
             keys_found: Vec::new(),
             refused_squares: 0,
@@ -904,6 +925,88 @@ impl World {
         }
     }
 
+    /// Points each player's quest arrow at the most worthwhile enemy near them.
+    ///
+    /// Follows `Player.HandleQuest`, which picks again every five hundred ticks or as soon as what
+    /// it was pointing at is gone. Rarely, in other words: a scan over every enemy for every player
+    /// is not something to do each tick, and an arrow that swings about every time an enemy wanders
+    /// is worse than one that holds still.
+    ///
+    /// What it points at is not the nearest thing worth killing but the most worthwhile thing near
+    /// enough to be worth walking to, which is what `quest::score` weighs.
+    fn choose_quests(&mut self, catalog: &Catalog, elapsed_ms: u32) {
+        self.since_quests_ms = self.since_quests_ms.saturating_add(elapsed_ms);
+        let due = self.since_quests_ms >= QUEST_INTERVAL_MS;
+        if due {
+            self.since_quests_ms = 0;
+        }
+
+        self.handles.clear();
+        self.handles.extend(
+            self.entities
+                .iter()
+                .filter(|(_, entity)| entity.kind == Kind::Player && !entity.dead)
+                .filter(|(_, entity)| {
+                    // Whether it is time, or what it was pointing at has died or left.
+                    due || entity
+                        .quest_target
+                        .is_none_or(|target| self.entities.get(target).is_none_or(|at| at.dead))
+                })
+                .map(|(handle, _)| handle),
+        );
+
+        if self.handles.is_empty() {
+            return;
+        }
+
+        let asking = std::mem::take(&mut self.handles);
+        for player in &asking {
+            let Some(entity) = self.entities.get(*player) else {
+                continue;
+            };
+            let (x, y, level) = (entity.x, entity.y, entity.progress.level);
+
+            let chosen = self
+                .entities
+                .iter()
+                .filter(|(_, other)| other.kind == Kind::Enemy && !other.dead)
+                .filter_map(|(handle, other)| {
+                    let desc = catalog.object(other.object_type)?;
+
+                    // Only what the table names, and only what suits this level. The range is a
+                    // hard filter rather than part of the score, or a high enough priority would
+                    // send a beginner to something that kills them.
+                    let quest = crate::quest::quest_for(&desc.id)?;
+                    if !crate::quest::suits(&quest, level) {
+                        return None;
+                    }
+
+                    let (dx, dy) = (other.x - x, other.y - y);
+                    let score = crate::quest::score(
+                        quest.priority,
+                        desc.level.unwrap_or(0) as i16,
+                        level,
+                        (dx * dx + dy * dy).sqrt(),
+                    );
+
+                    Some((score, handle))
+                })
+                .max_by_key(|(score, _)| *score)
+                .map(|(_, handle)| handle);
+
+            if let Some(entity) = self.entities.get_mut(*player) {
+                entity.quest_target = chosen;
+            }
+        }
+
+        self.handles = asking;
+    }
+
+    /// What one player's arrow points at, for whoever asks.
+    pub fn quest_target(&self, handle: Handle) -> Option<Handle> {
+        self.entities.get(handle)?.quest_target
+    }
+
     /// Counts the squares this player can see and has not seen before.
     ///
     /// The original reveals the map a circle at a time and counts what it sends; we send the whole
@@ -1060,6 +1163,11 @@ impl World {
         self.run_death_effects(catalog);
         self.note_deaths(catalog);
         self.reap();
+
+        // After the reaping, so an arrow that was pointing at something now dead is pointed
+        // somewhere else. Before it, the kill has not been awarded yet, and re-pointing the arrow
+        // first would erase the very thing that says the kill was a completed quest.
+        self.choose_quests(catalog, elapsed_ms);
 
         // A word is heard when it is said. Cleared after the thinking, so everything in earshot has
         // had its chance and nothing reacts to an echo on the next tick.
@@ -3922,7 +4030,9 @@ impl World {
 
             // Whoever struck last is the one credited with the kill, as the original credits its
             // last hitter. Everybody nearby still shares the experience.
-            if let Some(killer) = entity.last_hurt_by
+            let killer = entity.last_hurt_by;
+
+            if let Some(killer) = killer
                 && let Some(player) = self.entities.get_mut(killer)
                 && player.kind == Kind::Player
             {
@@ -3942,6 +4052,10 @@ impl World {
             self.grid
                 .within(x, y, crate::leveling::SHARE_RADIUS, &mut self.nearby);
             let nearby = std::mem::take(&mut self.nearby);
+
+            // Who levelled up off this kill, so the last hitter can be credited with everybody
+            // else's. Their own does not count: an assist is help given rather than progress made.
+            let mut levelled: Vec<Handle> = Vec::new();
 
             for player in &nearby {
                 let earns = self.entities.get(*player).is_some_and(|entity| {
@@ -3968,7 +4082,22 @@ impl World {
                     .map(|entity| entity.progress.level)
                     .unwrap_or(1);
 
-                let earned = crate::leveling::experience_for_kill(max_hp, multiplier, true, level);
+                // Whatever the arrow was pointing at is worth five times what anything else is
+                // capped at, and killing it is what a completed quest is. Both read the target as
+                // it was a moment ago, which is why it is remembered rather than worked out here.
+                let was_quest = self
+                    .entities
+                    .get(*player)
+                    .is_some_and(|entity| entity.quest_target == Some(*handle));
+
+                if was_quest && let Some(entity) = self.entities.get_mut(*player) {
+                    entity.tally.quests_completed += 1;
+                    entity.quest_target = None;
+                }
+
+                let earned = crate::leveling::experience_for_kill(
+                    max_hp, multiplier, true, level, was_quest,
+                );
                 if earned <= 0 {
                     continue;
                 }
@@ -3995,7 +4124,27 @@ impl World {
                         entity.hp = entity.max_hp;
                         entity.mp = entity.max_mp;
                     }
+
+                    if advance.levels_gained > 0 {
+                        levelled.push(*player);
+                    }
                 }
+            }
+
+            // The last hitter is credited with every level somebody else reached off this kill,
+            // which is `DamageCounter`'s `LevelUpAssist(lvlUps)`. No party is needed for it: being
+            // near enough to share the experience is what makes it help.
+            let helped = levelled
+                .iter()
+                .filter(|player| Some(**player) != killer)
+                .count() as i32;
+
+            if helped > 0
+                && let Some(killer) = killer
+                && let Some(player) = self.entities.get_mut(killer)
+                && player.kind == Kind::Player
+            {
+                player.tally.level_up_assists += helped;
             }
 
             self.nearby = nearby;
@@ -4276,6 +4425,8 @@ mod tests {
           <MaxHitPoints>200</MaxHitPoints><Defense>30</Defense></Object>
         <Object type="0x505" id="Spawnling"><Class>Character</Class><Enemy/>
           <MaxHitPoints>10</MaxHitPoints></Object>
+        <Object type="0x508" id="Hobbit Mage"><Class>Character</Class><Enemy/>
+          <Level>5</Level><MaxHitPoints>200</MaxHitPoints></Object>
         <Object type="0x506" id="Doorway"><Class>Portal</Class></Object>
         <Object type="0x600" id="Hero"><Class>Player</Class><Player/></Object>
         <Object type="0x030e" id="Wizard"><Class>Player</Class><Player/>
@@ -7104,6 +7255,142 @@ mod tests {
             0,
             "a world should not keep firing for someone who has gone"
         );
+    }
+
+    /// A world with a player and one enemy the quest table names.
+    fn quest_arena(catalog: &Catalog) -> (World, Handle, Handle) {
+        let squares = (0..64 * 64).map(|_| square(0x10, ObjectType::NONE.0));
+        let map = Map::from_squares(64, 64, squares).unwrap();
+        let mut world = World::new("Field", Terrain::build(map, catalog), catalog);
+
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 32.0, 32.0, 800))
+            .unwrap();
+
+        // A Hobbit Mage, which the table names for levels three to eight.
+        let kind = catalog.type_of("Hobbit Mage").expect("the hobbit");
+        let mut hobbit = Entity::fixture(kind, 36.0, 32.0);
+        hobbit.kind = Kind::Enemy;
+        hobbit.hp = 200;
+        hobbit.max_hp = 200;
+        let enemy = world.spawn(hobbit).unwrap();
+
+        if let Some(entity) = world.get_mut(player) {
+            entity.progress.level = 5;
+        }
+
+        (world, player, enemy)
+    }
+
+    #[test]
+    fn an_arrow_points_at_something_worth_walking_to() {
+        let catalog = catalog();
+        let (mut world, player, enemy) = quest_arena(&catalog);
+
+        world.advance(&catalog, 50);
+        assert_eq!(world.quest_target(player), Some(enemy));
+    }
+
+    #[test]
+    fn killing_what_the_arrow_pointed_at_is_a_completed_quest() {
+        // The counter is the whole reason the target is remembered rather than worked out when
+        // asked: once the enemy is dead there is nothing left to compare against.
+        let catalog = catalog();
+        let (mut world, player, enemy) = quest_arena(&catalog);
+
+        world.advance(&catalog, 50);
+        assert_eq!(world.quest_target(player), Some(enemy));
+
+        if let Some(entity) = world.get_mut(enemy) {
+            entity.dead = true;
+            entity.last_hurt_by = Some(player);
+        }
+        world.advance(&catalog, 50);
+
+        assert_eq!(
+            world.get(player).unwrap().tally.quests_completed,
+            1,
+            "killing the enemy the arrow pointed at counted for nothing"
+        );
+    }
+
+    #[test]
+    fn an_enemy_nobody_was_sent_to_is_not_a_completed_quest() {
+        let catalog = catalog();
+        let (mut world, player, _) = quest_arena(&catalog);
+
+        world.advance(&catalog, 50);
+
+        // Something else entirely, which no arrow ever pointed at.
+        let mut slime = Entity::fixture(ObjectType(0x502), 33.0, 32.0);
+        slime.kind = Kind::Enemy;
+        slime.hp = 100;
+        slime.max_hp = 100;
+        let other = world.spawn(slime).unwrap();
+
+        if let Some(entity) = world.get_mut(other) {
+            entity.dead = true;
+            entity.last_hurt_by = Some(player);
+        }
+        world.advance(&catalog, 50);
+
+        assert_eq!(world.get(player).unwrap().tally.quests_completed, 0);
+    }
+
+    #[test]
+    fn whoever_lands_the_kill_is_credited_with_the_levels_others_reached() {
+        // `DamageCounter.LevelUpAssist`. No party is needed for it: being near enough to share the
+        // experience is what makes it help.
+        let catalog = catalog();
+        let squares = (0..64 * 64).map(|_| square(0x10, ObjectType::NONE.0));
+        let map = Map::from_squares(64, 64, squares).unwrap();
+        let mut world = World::new("Field", Terrain::build(map, &catalog), &catalog);
+
+        let killer = world
+            .spawn(Entity::player(ObjectType(0x600), 32.0, 32.0, 800))
+            .unwrap();
+        let helped = world
+            .spawn(Entity::player(ObjectType(0x600), 33.0, 32.0, 800))
+            .unwrap();
+
+        // Both are a hair from a level. A kill is capped at a tenth of one, so this is the only
+        // way a single kill can raise anybody at all.
+        let goal = crate::leveling::experience_goal(1);
+        for player in [killer, helped] {
+            if let Some(entity) = world.get_mut(player) {
+                entity.progress.level = 1;
+                entity.progress.experience = goal - 1;
+            }
+        }
+
+        let mut enemy = Entity::fixture(ObjectType(0x502), 32.5, 32.0);
+        enemy.kind = Kind::Enemy;
+        enemy.max_hp = 1_000_000;
+        let enemy = world.spawn(enemy).unwrap();
+
+        // One tick alive first, so everybody is in the index the share is drawn from. Experience
+        // reaches whoever is near the kill, and near is a question the grid answers.
+        world.advance(&catalog, 50);
+
+        if let Some(entity) = world.get_mut(enemy) {
+            entity.dead = true;
+            entity.last_hurt_by = Some(killer);
+        }
+        world.advance(&catalog, 50);
+
+        assert!(
+            world.get(helped).unwrap().progress.level > 1,
+            "the other player did not level up, so there was nothing to assist"
+        );
+        assert_eq!(
+            world.get(killer).unwrap().tally.level_up_assists,
+            1,
+            "the killer was not credited with the level somebody else reached"
+        );
+
+        // And not credited for their own, since an assist is help given rather than progress made.
+        assert!(world.get(killer).unwrap().progress.level > 1);
+        assert_eq!(world.get(helped).unwrap().tally.level_up_assists, 0);
     }
 
     #[test]
