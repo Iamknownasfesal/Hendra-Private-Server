@@ -84,12 +84,12 @@ public static class StatApplier
 
             case StatsType.MaxMp when player != null: player.MaxMp = stat.IntValue; break;
             case StatsType.Mp when player != null: player.Mp = stat.IntValue; break;
+            case StatsType.Breath when player != null: player.Breath = stat.IntValue; break;
             case StatsType.Attack when player != null: player.Attack = stat.IntValue; break;
             case StatsType.Speed when player != null: player.Speed = stat.IntValue; break;
             case StatsType.Vitality when player != null: player.Vitality = stat.IntValue; break;
             case StatsType.Wisdom when player != null: player.Wisdom = stat.IntValue; break;
             case StatsType.Dexterity when player != null: player.Dexterity = stat.IntValue; break;
-            case StatsType.Breath when player != null: player.Breath = stat.IntValue; break;
             case StatsType.Credits when player != null: player.Credits = stat.IntValue; break;
             case StatsType.CurrentFame when player != null: player.Fame = stat.IntValue; break;
             case StatsType.GuildName: entity.Guild = stat.StringValue; break;

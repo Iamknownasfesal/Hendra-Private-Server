@@ -95,6 +95,15 @@ public partial class HudView : Control
     private HudBar _mana;
     private PotionCounter _manaPotions;
 
+    /// <summary>
+    /// Air, shown only where there is any to lose.
+    ///
+    /// One dungeon takes it away and every other world leaves it full. A gauge that is always
+    /// there and always full stops being read, and this one has to be read the moment it starts
+    /// moving, so it appears when the first breath is spent and goes when it is back to full.
+    /// </summary>
+    private HudBar _breath;
+
     private ContainerPanel _containerPanel;
     private VaultView _vaultView;
     private MerchantPanel _merchantPanel;
@@ -842,6 +851,13 @@ public partial class HudView : Control
         _mana = Bar(Style.MpFill, barLeft, Row * 2f);
         _manaPotions = Potions(false, potionLeft, Row * 2f);
 
+        // Above the other three rather than below them. The cluster is anchored to the bottom of
+        // the viewport and sized from VitalRows, so a fourth row would hang off the edge; and a
+        // bar that comes and goes must not shove the three that are always there up and down the
+        // screen when it does.
+        _breath = Bar(Style.BreathFill, barLeft, -Row);
+        _breath.Visible = false;
+
         // No button back to the Nexus. It was a plate with a temple drawn on it, and that temple
         // was a mark invented for one button. Escaping to the Nexus is a key, it has always been a
         // key, and the button never did anything the key did not.
@@ -853,6 +869,9 @@ public partial class HudView : Control
         var desc = _data?.GetObject(id ?? string.Empty);
         return desc == null ? default : (_textures?.Resolve(desc.Texture) ?? default).Still;
     }
+
+    /// <summary>A full breath, matching the server's own ceiling.</summary>
+    private const int FullBreath = 100;
 
     private HudBar Bar(Color fill, float x, float y)
     {
@@ -1380,6 +1399,12 @@ public partial class HudView : Control
 
         _health.Set(player.Hp, player.MaxHp, "HP", $"{player.Hp}/{player.MaxHp}", Bonus(player.Boosts[0]));
         _mana.Set(player.Mp, player.MaxMp, "MP", $"{player.Mp}/{player.MaxMp}", Bonus(player.Boosts[1]));
+
+        // Hidden at full, because everywhere but the trench it is always full.
+        var drowning = player.Breath < FullBreath;
+        _breath.Visible = drowning;
+        if (drowning)
+            _breath.Set(player.Breath, FullBreath, "AIR", $"{player.Breath}%");
 
         _healthPotions.Set(player.HealthPotions);
         _manaPotions.Set(player.MagicPotions);

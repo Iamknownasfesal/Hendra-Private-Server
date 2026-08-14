@@ -92,6 +92,9 @@ public static class Style
     public static readonly Color HpFill = new("e02b2b");
     public static readonly Color MpFill = new("3f7fd0");
     public static readonly Color XpFill = new("5fbb2e");
+
+    /// <summary>The air left in a drowning world. Pale, so a bar that is emptying reads as cold.</summary>
+    public static readonly Color BreathFill = new("6fd8e8");
     public static readonly Color BarTrack = new("2b2b2b");
     public static readonly Color BarEdge = new("141414");
     public static readonly Color BarHighlight = new(1f, 1f, 1f, 0.28f);

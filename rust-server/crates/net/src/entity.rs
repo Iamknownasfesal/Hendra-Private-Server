@@ -38,9 +38,10 @@ impl FieldMask {
     pub const TEXTURE: FieldMask = FieldMask(1 << 9);
     pub const STATS: FieldMask = FieldMask(1 << 10);
     pub const STARS: FieldMask = FieldMask(1 << 11);
+    pub const OXYGEN: FieldMask = FieldMask(1 << 12);
 
     /// Every field, for an entity the receiver has never seen.
-    pub const ALL: FieldMask = FieldMask(0xfff);
+    pub const ALL: FieldMask = FieldMask(0x1fff);
 
     pub fn has(self, field: FieldMask) -> bool {
         self.0 & field.0 != 0
@@ -100,6 +101,13 @@ pub struct EntityState {
     /// The sum over every class of what its best fame is worth, so it is a record of an account
     /// rather than of the character being looked at. Zero for anything that is not a player.
     pub stars: u8,
+
+    /// How much air a player has left, from 100 down to 0.
+    ///
+    /// Only a drowning world spends it, and everywhere else it sits at full and never appears in a
+    /// delta. A player at zero is taking damage every tick, so the bar is the only warning they
+    /// get before it starts.
+    pub oxygen: u8,
 }
 
 impl EntityState {
@@ -133,6 +141,7 @@ impl EntityState {
         mask.set(FieldMask::TEXTURE, self.texture != baseline.texture);
         mask.set(FieldMask::STATS, self.stats != baseline.stats);
         mask.set(FieldMask::STARS, self.stars != baseline.stars);
+        mask.set(FieldMask::OXYGEN, self.oxygen != baseline.oxygen);
 
         mask
     }
@@ -199,6 +208,9 @@ impl EntityState {
         }
         if mask.has(FieldMask::STARS) {
             w.varint(self.stars as u64);
+        }
+        if mask.has(FieldMask::OXYGEN) {
+            w.varint(self.oxygen as u64);
         }
     }
 
@@ -274,6 +286,12 @@ impl EntityState {
                 value: 0,
             })?;
         }
+        if mask.has(FieldMask::OXYGEN) {
+            state.oxygen = u8::try_from(r.varint()?).map_err(|_| CodecError::InvalidValue {
+                what: "oxygen",
+                value: 0,
+            })?;
+        }
 
         Ok(state)
     }
@@ -342,6 +360,7 @@ mod tests {
             texture: 0,
             stats: [0; 8],
             stars: 0,
+            oxygen: 100,
         }
     }
 

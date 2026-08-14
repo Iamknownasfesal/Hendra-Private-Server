@@ -232,6 +232,29 @@ public class HudLayoutTests
     }
 
     /// <summary>
+    /// The air bar sits above the cluster and does not resize it.
+    /// </summary>
+    /// <remarks>
+    /// One dungeon takes air away and every other world leaves it full, so the bar comes and goes.
+    /// The cluster is anchored to the bottom of the viewport and sized from
+    /// <see cref="HudLayout.VitalRows"/>: a fourth row would hang off the bottom edge, and growing
+    /// the cluster to fit one would shove the three permanent bars up the screen every time a
+    /// player swam into the trench.
+    /// </remarks>
+    [Fact]
+    public void TheAirBarDoesNotMoveTheBarsThatAreAlwaysThere()
+    {
+        Assert.Equal(3, HudLayout.VitalRows);
+
+        var layout = new HudLayout(new Vector2(HudLayout.ReferenceWidth, HudLayout.ReferenceHeight));
+        var row = HudLayout.VitalBarHeight + HudLayout.VitalRowGap;
+
+        // Drawn one row above the cluster's own top, which is inside the viewport at the reference
+        // resolution and clear of everything anchored to the bottom.
+        Assert.True(layout.Vitals.Position.Y - row > 0f);
+    }
+
+    /// <summary>
     /// The reference's own measurements, at the resolution they were taken.
     /// </summary>
     /// <remarks>

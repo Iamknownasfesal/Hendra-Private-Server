@@ -28,6 +28,12 @@ use hendra_sim::{Terrain, World};
 
 use crate::world_task::{self, Loadout, WorldHandle};
 
+/// The one world where a player away from air drowns.
+///
+/// Named rather than flagged in the content, as the original names it in
+/// `HandleOceanTrenchGround`.
+const DROWNING_WORLD: &str = "OceanTrench";
+
 /// The world definition that fills itself with enemies and closes half an hour later.
 ///
 /// Named rather than flagged because that is how the original decides: `DynamicWorld` matches a
@@ -273,6 +279,10 @@ impl Worlds {
         // nothing. A dungeon asks for rooms; the realm asks for nothing and is meant to be seen
         // across.
         world.sight = hendra_sim::Sight::from_blocking(definition.blocking);
+
+        // One world takes the air away, and it is the whole shape of that dungeon: the vents are
+        // where a fight can be held and everywhere else is a walk you can only make so far.
+        world.drowns = name == DROWNING_WORLD;
 
         report_portals(&world, self);
 

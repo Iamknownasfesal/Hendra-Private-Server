@@ -38,6 +38,7 @@ fn spawn(id: u32) -> (EntityId, EntityState) {
             texture: 0,
             stats: [0; 8],
             stars: 0,
+            oxygen: 100,
         },
     )
 }

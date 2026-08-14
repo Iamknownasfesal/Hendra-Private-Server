@@ -45,7 +45,15 @@ public sealed class LocalPlayer : Entity
     public int Wisdom;
     public int Mp;
     public int MaxMp;
-    public int Breath = -1;
+
+    /// <summary>
+    /// How much air is left, from 100 down to 0.
+    ///
+    /// Only one dungeon spends it. Full everywhere else, which is why the bar shows itself only
+    /// once something has been taken off it: a gauge that is always there and always full is
+    /// furniture, and this one has to be read the moment it starts moving.
+    /// </summary>
+    public int Breath = 100;
 
     /// <summary>Gold, and the fame the character has banked. Both are spent at vendors.</summary>
     public int Credits;

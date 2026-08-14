@@ -173,6 +173,12 @@ pub struct Entity {
     /// How long until this player's next burn, in milliseconds.
     pub burn_due_ms: u32,
 
+    /// How much air is left, from a hundred down to nothing.
+    ///
+    /// Full everywhere but a drowning world, where standing away from a vent spends it and
+    /// standing at one refills it. At nothing it is health that goes instead.
+    pub oxygen: i32,
+
     /// Whether killing this is worth experience.
     ///
     /// False for anything a spawner made, and for anything one of those made in turn. The original
@@ -341,6 +347,7 @@ impl Entity {
             cooldown_ms: 0,
             awards_experience: true,
             burn_due_ms: 0,
+            oxygen: FULL_OXYGEN,
             spawn_x: x,
             spawn_y: y,
             mind: None,
@@ -395,6 +402,7 @@ impl Entity {
             cooldown_ms: 0,
             awards_experience: true,
             burn_due_ms: 0,
+            oxygen: FULL_OXYGEN,
             spawn_x: x,
             spawn_y: y,
             mind: None,
@@ -440,6 +448,7 @@ impl Entity {
             size: self.size,
             name: self.name.clone(),
             texture: self.texture,
+            oxygen: self.oxygen.clamp(0, FULL_OXYGEN) as u8,
             // Only players carry meaningful stats. Everything else sends zeroes, which cost a byte
             // each as varints and never change, so they never appear in a delta.
             stats: if self.kind == Kind::Player {
@@ -547,6 +556,15 @@ pub struct World {
 
     /// What this world lets a player see through.
     pub sight: Sight,
+
+    /// Whether a player away from air drowns here.
+    ///
+    /// One world does: `HandleOceanTrenchGround` checks the name and does nothing anywhere else.
+    /// A flag rather than the name, so the tick is a comparison rather than a string.
+    pub drowns: bool,
+
+    /// How long until the next breath is counted.
+    since_breath_ms: u32,
 
     terrain: Terrain,
     entities: Slab<Entity>,
@@ -706,6 +724,8 @@ impl World {
         let grid = Grid::new(terrain.width(), terrain.height());
         let mut world = World {
             sight: Sight::default(),
+            drowns: false,
+            since_breath_ms: 0,
             name,
             terrain,
             entities,
@@ -1244,6 +1264,7 @@ impl World {
         self.think(catalog, elapsed_ms);
         self.spring_traps(catalog);
         self.apply_hazards(catalog, elapsed_ms);
+        self.apply_suffocation(catalog, elapsed_ms);
         self.apply_effect_health(elapsed_ms);
         self.regenerate(elapsed_ms);
         self.advance_projectiles(catalog, elapsed_ms);
@@ -1441,6 +1462,22 @@ const CHUNK_SIZE: f32 = 16.0;
 fn chunk_of(x: f32, y: f32) -> (i32, i32) {
     ((x / CHUNK_SIZE) as i32, (y / CHUNK_SIZE) as i32)
 }
+
+/// A full breath.
+pub const FULL_OXYGEN: i32 = 100;
+
+/// How often air is counted, in milliseconds.
+const BREATH_PERIOD_MS: u32 = 100;
+
+/// What one count away from air costs, and what one at a vent restores.
+const BREATH_COST: i32 = 2;
+const BREATH_GAIN: i32 = 8;
+
+/// What a count with no air left costs in health instead.
+const DROWNING_DAMAGE: i32 = 10;
+
+/// The object a player breathes from.
+const OXYGEN_SOURCE: &str = "Ocean Vent";
 
 /// How often ground that hurts takes its toll.
 ///
@@ -2749,6 +2786,78 @@ impl World {
 
             if let Some(entity) = self.entities.get_mut(handle) {
                 entity.hp -= damage;
+                if entity.hp <= 0 {
+                    entity.dead = true;
+                }
+            }
+        }
+    }
+
+    /// Spends and restores the air players are breathing.
+    ///
+    /// `HandleOceanTrenchGround`, on its own hundred-millisecond clock. Standing within a tile of a
+    /// vent restores eight; standing anywhere else costs two, and once there is nothing left it
+    /// costs ten health instead. Hidden players are exempt, which is what makes the rogue's cloak
+    /// worth something down there.
+    fn apply_suffocation(&mut self, catalog: &Catalog, elapsed_ms: u32) {
+        if !self.drowns {
+            return;
+        }
+
+        self.since_breath_ms += elapsed_ms;
+        if self.since_breath_ms < BREATH_PERIOD_MS {
+            return;
+        }
+        self.since_breath_ms = 0;
+
+        // Where the air is. Few enough per world that finding them once a tick beats indexing
+        // them, and they never move.
+        let vents: Vec<(f32, f32)> = self
+            .entities
+            .iter()
+            .filter(|(_, entity)| {
+                catalog
+                    .object(entity.object_type)
+                    .is_some_and(|desc| desc.id == OXYGEN_SOURCE)
+            })
+            .map(|(_, entity)| (entity.x, entity.y))
+            .collect();
+
+        self.handles.clear();
+        self.handles.extend(
+            self.entities
+                .iter()
+                .filter_map(|(handle, entity)| (entity.kind == Kind::Player).then_some(handle)),
+        );
+
+        for index in 0..self.handles.len() {
+            let handle = self.handles[index];
+            let Some(entity) = self.entities.get(handle) else {
+                continue;
+            };
+            if entity.dead || entity.conditions.contains(hendra_content::ConditionEffect::Hidden) {
+                continue;
+            }
+
+            let (x, y) = (entity.x, entity.y);
+            let breathing = vents.iter().any(|(vx, vy)| {
+                let (dx, dy) = (x - vx, y - vy);
+                dx * dx + dy * dy < 1.0
+            });
+
+            let Some(entity) = self.entities.get_mut(handle) else {
+                continue;
+            };
+
+            if breathing {
+                entity.oxygen = (entity.oxygen + BREATH_GAIN).min(FULL_OXYGEN);
+                continue;
+            }
+
+            if entity.oxygen > 0 {
+                entity.oxygen = (entity.oxygen - BREATH_COST).max(0);
+            } else {
+                entity.hp -= DROWNING_DAMAGE;
                 if entity.hp <= 0 {
                     entity.dead = true;
                 }
@@ -4748,13 +4857,20 @@ impl World {
             }
 
             // Named by what last hurt them, which is the only thing that reads as an answer to
-            // "what killed me". Falling back to the world says something true when nothing did.
+            // "what killed me". Falling back to the world says something true when nothing did,
+            // except where the world drowns people and the answer is what it did to them.
             let killer = entity
                 .last_hurt_by
                 .and_then(|by| self.entities.get(by))
                 .and_then(|by| catalog.object(by.object_type))
                 .map(|desc| desc.id.clone())
-                .unwrap_or_else(|| self.name.to_string());
+                .unwrap_or_else(|| {
+                    if self.drowns && entity.oxygen <= 0 {
+                        "suffocation".to_string()
+                    } else {
+                        self.name.to_string()
+                    }
+                });
 
             self.deaths.push(Death {
                 who: handle,
@@ -4834,6 +4950,7 @@ mod tests {
         <Object type="0x500" id="Wall"><Class>GameObject</Class><FullOccupy/><Static/></Object>
         <Object type="0x501" id="Sign"><Class>GameObject</Class><Static/></Object>
         <Object type="0x50f" id="Thicket"><Class>GameObject</Class><BlocksSight/><Static/></Object>
+        <Object type="0x731" id="Ocean Vent"><Class>GameObject</Class></Object>
         <Object type="0x504" id="Tree"><Class>GameObject</Class><BlocksSight/><Static/></Object>
         <Object type="0x502" id="Slime"><Class>Character</Class><Enemy/>
           <MaxHitPoints>200</MaxHitPoints>
@@ -4911,6 +5028,9 @@ mod tests {
     }
 
     /// An open 32×32 field of grass.
+    /// The object a player breathes from, in the fixture above.
+    const VENT: u16 = 0x731;
+
     fn field(catalog: &Catalog) -> World {
         let squares = (0..32 * 32).map(|_| square(0x10, ObjectType::NONE.0));
         let map = Map::from_squares(32, 32, squares).unwrap();
@@ -5647,6 +5767,72 @@ mod tests {
             !sees(&mut world),
             "and a world that asks for occlusion gets it"
         );
+    }
+
+    #[test]
+    fn a_drowning_world_spends_air_and_a_vent_gives_it_back() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+        world.drowns = true;
+
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 20.0, 20.0, 500))
+            .unwrap();
+        world.reindex();
+
+        // Away from any vent, air runs out two at a time on a tenth of a second.
+        for _ in 0..10 {
+            world.advance(&catalog, 100);
+        }
+        assert_eq!(world.get(player).unwrap().oxygen, FULL_OXYGEN - 20);
+
+        // At a vent it comes back four times as fast, and stops at full.
+        world
+            .spawn(Entity::fixture(ObjectType(VENT), 20.0, 20.0))
+            .unwrap();
+        world.reindex();
+        for _ in 0..10 {
+            world.advance(&catalog, 100);
+        }
+        assert_eq!(world.get(player).unwrap().oxygen, FULL_OXYGEN);
+    }
+
+    #[test]
+    fn with_no_air_left_it_is_health_that_goes() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+        world.drowns = true;
+
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 20.0, 20.0, 500))
+            .unwrap();
+        world.get_mut(player).unwrap().oxygen = 0;
+        world.reindex();
+
+        let before = world.get(player).unwrap().hp;
+        world.advance(&catalog, 100);
+
+        assert_eq!(world.get(player).unwrap().hp, before - 10);
+    }
+
+    #[test]
+    fn a_hidden_player_does_not_drown() {
+        // Which is what makes the cloak worth carrying down there.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+        world.drowns = true;
+
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 20.0, 20.0, 500))
+            .unwrap();
+        let hidden = hendra_content::ConditionEffect::Hidden.index() as u8;
+        world.give_effect(player, hidden, 60_000);
+        world.reindex();
+
+        for _ in 0..10 {
+            world.advance(&catalog, 100);
+        }
+        assert_eq!(world.get(player).unwrap().oxygen, FULL_OXYGEN);
     }
 
     #[test]

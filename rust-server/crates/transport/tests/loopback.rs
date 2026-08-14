@@ -71,6 +71,7 @@ fn world_of(count: u32) -> WorldSnapshot {
                         texture: 0,
                         stats: [0; 8],
                         stars: 0,
+                        oxygen: 100,
                     },
                 )
             })
