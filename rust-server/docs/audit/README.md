@@ -36,12 +36,16 @@ argument census counts names.
 | [01-content.md](01-content.md) | `hendra-content` | 13 |
 | [02-behaviour.md](02-behaviour.md) | `hendra-behavior` | 9 |
 | [03-sim-loop.md](03-sim-loop.md) | `hendra-sim`, the loop | the tick, entities, movement |
+| [04-sim-combat.md](04-sim-combat.md) | `hendra-sim`, combat | damage, experience, abilities |
 
 ## Findings so far, worst first
 
 | What | Reach | Where |
 | --- | --- | --- |
 | Every stat potion but Life raises the wrong stat | 24 potions, 690 item bonuses | [01](01-content.md) |
+| A player's defence is never read, so armour does nothing | every hit on every player | [04](04-sim-combat.md) |
+| Spawned minions are worth full experience | 364 spawners | [04](04-sim-combat.md) |
+| Wisdom does nothing for abilities | 38 abilities | [04](04-sim-combat.md) |
 | Area damage ignores invulnerability and uses the wrong floor | every grenade and spell | [01](01-content.md) |
 | Ground damage is averaged, continuous, and burns enemies | every hazard tile | [01](01-content.md) |
 | `GenericActivate` does nothing | 26 items | [01](01-content.md) |

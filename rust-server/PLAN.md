@@ -1215,7 +1215,13 @@ implementations side by side.
   constant. What differs is scheduling: the original has a second, slower loop we do not, and it
   ticks only the enemies within three chunks of a player where we tick all of them — so a boss walks
   its phases here while nobody is in the room.
-- [ ] `sim`, part two: combat, stats, items — against pages 05, 07, 08, 11, 13, 18, 21, 23.
+- [x] `sim`, part two: combat, stats, items — against pages 05, 07, 08, 11, 13, 18, 21, 23.
+
+  In [`docs/audit/04-sim-combat.md`](docs/audit/04-sim-combat.md). Every curve and every fame bonus
+  matches. Three that do not: a player's defence is read from the class descriptor rather than from
+  their stats, so it is zero and armour does nothing; spawned minions are worth full experience
+  where the original gives none; and `useWisMod` is parsed and never read, so wisdom does nothing
+  for the 38 abilities that ask for it.
 - [ ] `sim`, part three: worlds, setpieces, realm, shops — against pages 06, 10, 14, 15, 16, 24.
 - [ ] `net` — 6 files. Against pages 19, 37, 40.
 - [ ] `server` — 12 files. Against pages 22, 26, 29, 30, 31, 38.
