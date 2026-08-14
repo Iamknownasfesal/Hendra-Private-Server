@@ -32,6 +32,53 @@ use crate::tiles::Terrain;
 /// How far a player can see, in tiles. Matches the client's view distance.
 pub const SIGHT_RADIUS: f32 = 20.0;
 
+/// Which squares of one world a player has laid eyes on.
+///
+/// A bit per square rather than a byte, because this is held per player and a realm is four million
+/// squares: half a megabyte each instead of four. The original keeps a byte apiece to remember how
+/// stale each square is, which is a question a server that sends the map whole does not have.
+#[derive(Debug, Clone)]
+pub struct Seen {
+    bits: Vec<u64>,
+
+    /// The square the player was standing on when this was last brought up to date. Nothing is
+    /// walked while it is unchanged, since a player who has not left their square has not uncovered
+    /// anything.
+    ///
+    /// A saving rather than a rule: the bits already make a second look at the same ground count for
+    /// nothing, so removing this changes how much work an input costs and not what it produces. No
+    /// test can tell the two apart, which is why it is written down here.
+    standing_at: Option<(i32, i32)>,
+}
+
+impl Seen {
+    fn over(width: u32, height: u32) -> Seen {
+        let squares = width as usize * height as usize;
+        Seen {
+            bits: vec![0; squares.div_ceil(64)],
+            standing_at: None,
+        }
+    }
+
+    /// Marks a square as seen, and says whether that was news.
+    fn look_at(&mut self, x: u32, y: u32, width: u32) -> bool {
+        let index = y as usize * width as usize + x as usize;
+        let (word, bit) = (index / 64, index % 64);
+
+        let Some(held) = self.bits.get_mut(word) else {
+            return false;
+        };
+
+        let mask = 1u64 << bit;
+        if *held & mask != 0 {
+            return false;
+        }
+
+        *held |= mask;
+        true
+    }
+}
+
 /// What an entity is, for the rules that treat them differently.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
@@ -160,6 +207,14 @@ pub struct Entity {
     /// its own accuracy will report whatever earns the most.
     pub tally: crate::fame::Tally,
 
+    /// Which squares of this world this player has laid eyes on, for the count a character's fame
+    /// is partly made of.
+    ///
+    /// Only players carry one, and only once they have looked at something. Per world rather than
+    /// per character, as the original's is: walking back into a dungeon you cleared last week shows
+    /// you the same ground again, and the count is of ground seen rather than ground new to you.
+    pub seen: Option<Box<Seen>>,
+
     /// What last took health off this, which is what a death is named after.
     pub last_hurt_by: Option<Handle>,
 
@@ -257,6 +312,7 @@ impl Entity {
             loot_drop: 1.0,
             boosts: Vec::new(),
             tally: crate::fame::Tally::default(),
+            seen: None,
             texture: 0,
             resizing: None,
             no_experience: false,
@@ -305,6 +361,7 @@ impl Entity {
             loot_drop: 1.0,
             boosts: Vec::new(),
             tally: crate::fame::Tally::default(),
+            seen: None,
             texture: 0,
             resizing: None,
             no_experience: false,
@@ -835,10 +892,64 @@ impl World {
 
     /// Applies a resolved move.
     pub fn place(&mut self, handle: Handle, outcome: MoveOutcome) {
-        if let Some(entity) = self.entities.get_mut(handle) {
-            entity.x = outcome.x;
-            entity.y = outcome.y;
+        let Some(entity) = self.entities.get_mut(handle) else {
+            return;
+        };
+
+        entity.x = outcome.x;
+        entity.y = outcome.y;
+
+        if entity.kind == Kind::Player {
+            self.look_around(handle);
         }
+    }
+
+    /// Counts the squares this player can see and has not seen before.
+    ///
+    /// The original reveals the map a circle at a time and counts what it sends; we send the whole
+    /// map at once, so the count has to be taken here or the two fame bonuses that rest on it are
+    /// unreachable. What is counted is the same either way: squares this character has laid eyes on.
+    ///
+    /// Nothing is walked unless the player has crossed into a new square, which is what makes this
+    /// affordable to do on every accepted move rather than on a timer.
+    pub fn look_around(&mut self, handle: Handle) {
+        let (width, height) = (self.terrain.width(), self.terrain.height());
+
+        let Some(entity) = self.entities.get_mut(handle) else {
+            return;
+        };
+
+        let (at_x, at_y) = (entity.x.floor() as i32, entity.y.floor() as i32);
+        let seen = entity
+            .seen
+            .get_or_insert_with(|| Box::new(Seen::over(width, height)));
+
+        if seen.standing_at == Some((at_x, at_y)) {
+            return;
+        }
+        seen.standing_at = Some((at_x, at_y));
+
+        let radius = SIGHT_RADIUS.ceil() as i32;
+        let mut fresh = 0i32;
+
+        for dy in -radius..=radius {
+            for dx in -radius..=radius {
+                if (dx * dx + dy * dy) as f32 > SIGHT_RADIUS * SIGHT_RADIUS {
+                    continue;
+                }
+
+                let (x, y) = (at_x + dx, at_y + dy);
+                if x < 0 || y < 0 || x as u32 >= width || y as u32 >= height {
+                    continue;
+                }
+
+                if seen.look_at(x as u32, y as u32, width) {
+                    fresh += 1;
+                }
+            }
+        }
+
+        entity.tally.tiles_seen = entity.tally.tiles_seen.saturating_add(fresh);
     }
 
     /// How many projectiles are in flight.
@@ -6992,6 +7103,114 @@ mod tests {
             world.projectile_count(),
             0,
             "a world should not keep firing for someone who has gone"
+        );
+    }
+
+    #[test]
+    fn a_player_counts_the_ground_they_have_looked_at() {
+        // The count two fame bonuses rest on. The original gets it from the tiles it sends as it
+        // reveals the map; we send the map whole, so it is taken here instead.
+        let catalog = catalog();
+        let squares = (0..64 * 64).map(|_| square(0x10, ObjectType::NONE.0));
+        let map = Map::from_squares(64, 64, squares).unwrap();
+        let mut world = World::new("Field", Terrain::build(map, &catalog), &catalog);
+
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 32.0, 32.0, 800))
+            .unwrap();
+        world.look_around(player);
+
+        let first = world.get(player).unwrap().tally.tiles_seen;
+
+        // A circle of radius twenty, which is a bit over twelve hundred squares.
+        assert!(
+            (1_100..1_400).contains(&first),
+            "a circle of sight was {first} squares"
+        );
+
+        // Standing still uncovers nothing, however long they stand there.
+        for _ in 0..10 {
+            world.place(
+                player,
+                MoveOutcome {
+                    x: 32.2,
+                    y: 32.4,
+                    refused: None,
+                },
+            );
+        }
+        assert_eq!(
+            world.get(player).unwrap().tally.tiles_seen,
+            first,
+            "standing still uncovered ground"
+        );
+
+        // Walking uncovers what is newly in front and not what was already behind.
+        world.place(
+            player,
+            MoveOutcome {
+                x: 33.0,
+                y: 32.0,
+                refused: None,
+            },
+        );
+        let after = world.get(player).unwrap().tally.tiles_seen;
+
+        assert!(after > first, "walking uncovered nothing");
+        assert!(
+            after - first < 100,
+            "one step uncovered {} squares, so ground already seen was counted again",
+            after - first
+        );
+
+        // And walking back over the same ground is not new ground.
+        world.place(
+            player,
+            MoveOutcome {
+                x: 32.0,
+                y: 32.0,
+                refused: None,
+            },
+        );
+        assert_eq!(
+            world.get(player).unwrap().tally.tiles_seen,
+            after,
+            "ground already walked was counted twice"
+        );
+    }
+
+    #[test]
+    fn sight_stops_at_the_edge_of_the_map() {
+        // A player in a corner sees a quarter of a circle. Counting the squares that are not there
+        // would make a small map worth more than a large one.
+        let catalog = catalog();
+        let squares = (0..64 * 64).map(|_| square(0x10, ObjectType::NONE.0));
+        let map = Map::from_squares(64, 64, squares).unwrap();
+        let mut world = World::new("Field", Terrain::build(map, &catalog), &catalog);
+
+        let player = world
+            .spawn(Entity::player(ObjectType(0x600), 0.0, 0.0, 800))
+            .unwrap();
+        world.look_around(player);
+
+        let corner = world.get(player).unwrap().tally.tiles_seen;
+        assert!(
+            (250..400).contains(&corner),
+            "a corner of the map was worth {corner} squares"
+        );
+
+        // The far corner, where an overrun does not fall off the end of the array but wraps into
+        // the beginning of the next row: ground the player cannot see, counted as seen, on the
+        // opposite side of the map.
+        let far = world
+            .spawn(Entity::player(ObjectType(0x600), 63.5, 63.5, 800))
+            .unwrap();
+        world.look_around(far);
+
+        assert_eq!(
+            world.get(far).unwrap().tally.tiles_seen,
+            corner,
+            "the far corner saw more than the near one"
         );
     }
 

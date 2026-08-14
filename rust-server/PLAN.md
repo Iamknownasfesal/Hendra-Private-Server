@@ -796,6 +796,8 @@ category by category. It found thirteen things, one of them a mechanic that sile
   Not done: the luck stat, which the original reads as boost index ten. This server models eight
   stats and has no tenth, so there is nothing to read. Faking it would be inventing a number.
 
+  Since resolved: `tiles_seen`, which is fed below.
+
 ### 18.13 Pets — **not wanted**
 
 - [x] Pets are stored, chosen and never enter a world
@@ -905,3 +907,25 @@ category by category. It found thirteen things, one of them a mechanic that sile
   Not a gap: the four further worn slots. The original gives a class eight typed slots, of which
   ours models four; slot types 52 to 55 are the other four and no item in the content has one, so
   they are four slots that can hold nothing.
+
+### 18.17 The ground a character has looked at — **M**
+
+- [x] `tiles_seen`, and the two fame bonuses that rest on it
+
+  One of the three counters recorded as unfed. The original reveals the map a circle at a time and
+  counts the squares it sends, in `Player.Update.SendUpdate` by way of `FameCounter.TileSent`. We
+  send the map whole when a player arrives, so there was nothing to count and both bonuses that
+  depend on it, at a million squares and four million, could never be earned.
+
+  The count is taken where the player moves instead. A bit per square per player rather than the
+  original's byte: half a megabyte for a realm instead of four, and the byte was there to remember
+  how stale each square is, which is a question a server that sends the map whole does not have.
+
+  Per world, as the original's is. Walking back into a dungeon you cleared last week shows you the
+  same ground again, and what is counted is ground seen rather than ground new to you.
+
+  The circle is walked only when the player crosses into a new square. That is a saving rather than a
+  rule, and it is written down in the code as one, because the bits already make a second look count
+  for nothing.
+
+  Remaining unfed: `level_up_assists`, which needs parties, and `quests_completed`.

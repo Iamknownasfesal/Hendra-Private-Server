@@ -862,6 +862,10 @@ fn handle(
                 return;
             };
 
+            // The ground around where they arrived counts as seen, without waiting for them to take
+            // a step. A player who walks into a room and stands still has still looked at it.
+            world.look_around(handle);
+
             // The encoder takes its budget from the connection rather than the default, because the
             // negotiated limit is what actually governs whether a datagram is accepted.
             let budget = sender

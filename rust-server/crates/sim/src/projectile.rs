@@ -407,6 +407,7 @@ mod tests {
             glow: 0,
             belongs_to: None,
             damage_by: Vec::new(),
+            seen: None,
             last_hurt_by: None,
             loot_drop: 1.0,
             boosts: Vec::new(),
