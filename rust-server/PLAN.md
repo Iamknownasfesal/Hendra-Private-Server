@@ -1222,7 +1222,12 @@ implementations side by side.
   their stats, so it is zero and armour does nothing; spawned minions are worth full experience
   where the original gives none; and `useWisMod` is parsed and never read, so wisdom does nothing
   for the 38 abilities that ask for it.
-- [ ] `sim`, part three: worlds, setpieces, realm, shops — against pages 06, 10, 14, 15, 16, 24.
+- [x] `sim`, part three: worlds, setpieces, realm, shops — against pages 06, 10, 14, 15, 16, 24.
+
+  In [`docs/audit/05-sim-worlds.md`](docs/audit/05-sim-worlds.md). The realm is faithful to the
+  constant, loot has the right two-tier shape. Missing: the world-wide loot table on `World.cs:27`,
+  one line that gives every enemy in the game a 3% tier-1 potion and is the whole baseline of the
+  potion economy.
 - [ ] `net` — 6 files. Against pages 19, 37, 40.
 - [ ] `server` — 12 files. Against pages 22, 26, 29, 30, 31, 38.
 - [ ] `store` — 12 files. Against page 34.
