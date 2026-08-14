@@ -13,6 +13,7 @@
 
 mod accounts;
 mod chat;
+mod commands;
 mod session;
 mod trades;
 mod world_task;
@@ -292,6 +293,7 @@ async fn main() {
 
     let context = Arc::new(session::Context {
         trades: Arc::clone(&trades),
+        started: std::time::Instant::now(),
         worlds: Arc::clone(&registry),
         store,
         catalog: Arc::clone(&catalog),

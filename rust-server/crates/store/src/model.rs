@@ -71,6 +71,7 @@ pub enum Currency {
     Gold,
     Fame,
     Tokens,
+    Prestige,
 }
 
 impl Currency {
@@ -84,6 +85,7 @@ impl Currency {
             Currency::Gold => "gold",
             Currency::Fame => "fame",
             Currency::Tokens => "tokens",
+            Currency::Prestige => "prestige",
         }
     }
 }
@@ -692,6 +694,35 @@ impl Store {
     }
 
     /// Bans or unbans an account.
+    /// Sets one of an account's currencies outright.
+    ///
+    /// For an administrator setting a number, which is the only thing that should ever assign one
+    /// rather than add to or subtract from it: every other path is a transaction that has to be
+    /// conditional on the balance.
+    pub async fn set_currency(
+        &self,
+        account_id: i64,
+        currency: Currency,
+        amount: i32,
+    ) -> Result<()> {
+        if amount < 0 {
+            return Err(StoreError::Refused("that is not an amount"));
+        }
+
+        let column = currency.column_name();
+        let changed = sqlx::query(&format!("UPDATE account SET {column} = $2 WHERE id = $1"))
+            .bind(account_id)
+            .bind(amount)
+            .execute(self.pool())
+            .await?;
+
+        if changed.rows_affected() == 0 {
+            return Err(StoreError::Refused("no such account"));
+        }
+
+        Ok(())
+    }
+
     pub async fn set_banned(&self, account_id: i64, banned: bool) -> Result<()> {
         sqlx::query("UPDATE account SET banned = $2 WHERE id = $1")
             .bind(account_id)

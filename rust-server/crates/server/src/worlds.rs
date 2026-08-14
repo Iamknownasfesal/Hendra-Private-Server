@@ -28,9 +28,6 @@ use hendra_sim::{Terrain, World};
 
 use crate::world_task::{self, Loadout, WorldHandle};
 
-/// Where a player who escapes ends up, and where everybody arrives.
-pub const NEXUS: &str = "Nexus";
-
 /// The world definition that fills itself with enemies and closes half an hour later.
 ///
 /// Named rather than flagged because that is how the original decides: `DynamicWorld` matches a

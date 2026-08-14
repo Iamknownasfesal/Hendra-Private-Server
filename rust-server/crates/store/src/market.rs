@@ -42,6 +42,11 @@ impl Currency {
             Currency::Gold => 0,
             Currency::Fame => 1,
             Currency::Tokens => 2,
+
+            // The market does not take prestige, and a listing that claimed to would be a listing
+            // nobody could pay for. Mapped to gold so a stored code is never ambiguous, and
+            // refused before it reaches here.
+            Currency::Prestige => 0,
         }
     }
 
@@ -115,6 +120,33 @@ impl Store {
              LIMIT $1",
         )
         .bind(limit.clamp(1, MAX_LISTINGS_READ))
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(id, seller_id, seller, item, currency, price)| Listing {
+                id,
+                seller_id,
+                seller,
+                item,
+                currency: Currency::from_code(currency),
+                price,
+            })
+            .collect())
+    }
+
+    /// What one account has listed, oldest first.
+    pub async fn listings_of(&self, seller_id: i64) -> Result<Vec<Listing>> {
+        let rows = sqlx::query_as::<_, (i64, i64, String, uuid::Uuid, i16, i32)>(
+            "SELECT listing.id, listing.seller_id, account.name,
+                    listing.item, listing.currency, listing.price
+             FROM listing
+             JOIN account ON account.id = listing.seller_id
+             WHERE listing.seller_id = $1 AND listing.status = 'open'
+             ORDER BY listing.listed_at",
+        )
+        .bind(seller_id)
         .fetch_all(self.pool())
         .await?;
 

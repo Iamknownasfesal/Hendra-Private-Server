@@ -219,6 +219,34 @@ impl Trades {
         Step::Done
     }
 
+    /// Everybody online, by name.
+    ///
+    /// The roster is here because this is what already knows who is connected and how to reach
+    /// them; `/who` and `/online` need exactly that and nothing else.
+    pub fn present(&self) -> Vec<String> {
+        let Ok(state) = self.inner.lock() else {
+            return Vec::new();
+        };
+
+        let mut names: Vec<String> = state.present.keys().cloned().collect();
+        names.sort();
+        names
+    }
+
+    /// Ends somebody's connection.
+    ///
+    /// Closing the sender is what a kick is: the session sees its link go and shuts down the same
+    /// way it does when somebody quits, so a kick and a disconnection leave the same state behind.
+    pub fn kick(&self, name: &str) {
+        let Ok(mut state) = self.inner.lock() else {
+            return;
+        };
+
+        if let Some(sender) = state.senders.remove(name) {
+            sender.close("kicked");
+        }
+    }
+
     /// Who somebody is trading with, if anybody.
     pub fn partner(&self, name: &str) -> Option<String> {
         let state = self.inner.lock().ok()?;

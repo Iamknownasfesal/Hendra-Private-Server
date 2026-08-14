@@ -483,3 +483,33 @@ The first run said 82%. Nine packets had nothing behind them, and four were real
   is worth implementing.
 
 `cargo run -p hendra-server --example handlers` counts the protocol. It carries its own tests.
+
+## Phase 14 — Commands, which nothing had counted
+
+Asked a fifth time whether the server was complete, and rather than answer from memory, counted a
+surface nobody had counted: what a player can type. The original has 95 across
+`realm/commands/`. This server had five.
+
+- [x] `crates/server/src/commands.rs`, a table rather than a match
+
+  A match with ninety-one arms is not something anybody can compare against another server. A table
+  can be walked, printed and checked, and `cargo run -p hendra-server --example commands` prints it
+  from the same file the server compiles rather than from a copy.
+
+- [x] The 49 that are game mechanics
+
+  Talking, going places, guilds, the market, the lists, and what the server knows about itself. Each
+  goes through the machinery the protocol already uses: `/tp` is the world's teleport with all its
+  refusals, `/trade` is the trade registry, `/ignore` is the list the whisper path reads. A command
+  that reached past those would be a second, weaker door into the same room.
+
+- [x] `/who`, `/online`, `/pos`, `/uptime`, `/lefttomax`, and guild chat that crosses worlds
+
+  Each needed something the server did not expose: the world can now say who is in it and where
+  somebody is standing, and the roster can say who is connected.
+
+- [ ] The 46 that are left, which are administrators' tools rather than mechanics
+
+  `spawn`, `gimme`, `max`, `level20`, `killAll`, `glow`, `size`, `hide`, `quake`, `setpiece`,
+  `lootspawn`, `clearinv`, `banip`, `debug`, `reboot`, `wipeServer` and the rest. Nothing a player
+  can reach depends on any of them, which is why they are last rather than skipped.

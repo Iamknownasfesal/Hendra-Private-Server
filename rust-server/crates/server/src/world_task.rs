@@ -157,6 +157,23 @@ pub enum ToWorld {
         reply: tokio::sync::oneshot::Sender<Option<Sale>>,
     },
 
+    /// Where a player is standing.
+    Where {
+        handle: Handle,
+        reply: tokio::sync::oneshot::Sender<Option<(i32, i32)>>,
+    },
+
+    /// A player's base stats, as the character has them.
+    Stats {
+        handle: Handle,
+        reply: tokio::sync::oneshot::Sender<Option<[i32; 8]>>,
+    },
+
+    /// Who is in this world.
+    Who {
+        reply: tokio::sync::oneshot::Sender<Vec<String>>,
+    },
+
     /// A line meant for one named player.
     Tell {
         to: String,
@@ -827,6 +844,32 @@ fn handle(
             reply,
         } => {
             let _ = reply.send(world_sale(world, handle, merchant));
+        }
+
+        ToWorld::Where { handle, reply } => {
+            let at = world
+                .get(handle)
+                .map(|entity| (entity.x as i32, entity.y as i32));
+            let _ = reply.send(at);
+        }
+
+        ToWorld::Stats { handle, reply } => {
+            // Base stats rather than what equipment makes them, because "how far from maximum" is a
+            // question about the character, and a ring can be taken off.
+            let held = world.get(handle).map(|entity| {
+                let mut base = [0i32; 8];
+                for (index, stat) in hendra_content::STATS.iter().enumerate() {
+                    base[index] = entity.stats.base(*stat);
+                }
+                base
+            });
+            let _ = reply.send(held);
+        }
+
+        ToWorld::Who { reply } => {
+            let mut names: Vec<String> = players.iter().map(|player| player.name.clone()).collect();
+            names.sort();
+            let _ = reply.send(names);
         }
 
         ToWorld::Tell { to, from, text } => {

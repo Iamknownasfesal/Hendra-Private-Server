@@ -69,8 +69,11 @@ pub struct Context {
     /// Verifies session tokens. This process cannot mint one.
     pub key: hendra_auth::TokenKey,
 
-    /// Who is trading with whom.
+    /// Who is trading with whom, and who is online.
     pub trades: Arc<crate::trades::Trades>,
+
+    /// When the server started, which is all `/uptime` needs.
+    pub started: std::time::Instant,
 }
 
 /// Turns a wire slot into a durable one.
@@ -185,7 +188,21 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
             }
 
             Outcome::Chat(line) => {
-                say_something(&mut link, &context, &player, &placement, &mut limit, &line).await;
+                if let Some((command, rest)) =
+                    say_something(&mut link, &context, &player, &placement, &mut limit, &line).await
+                {
+                    run_command(
+                        &mut link,
+                        &context,
+                        &player,
+                        &name,
+                        &mut placement,
+                        &to_session,
+                        &command,
+                        &rest,
+                    )
+                    .await;
+                }
             }
 
             Outcome::UseItem { slot, x, y } => {
@@ -208,7 +225,7 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
                     &placement,
                     &name,
                     player.account.id,
-                    crate::worlds::NEXUS,
+                    crate::commands::NEXUS,
                     &context.worlds,
                     arrival_of(&player, &context),
                     &to_session,
@@ -1013,13 +1030,25 @@ async fn save_progress(
 ///
 /// The rank is read fresh rather than taken from the session, so raising or lowering somebody takes
 /// effect without waiting for them to reconnect, exactly as a mute does.
-async fn moderate(
+/// Carries out what a player typed.
+///
+/// Reading what they meant is `crate::commands::read`, which needs no world, store or connection.
+/// This is the half that does need them, and every one of these goes through the same machinery the
+/// protocol does: `/tp` is the world's teleport with all its refusals, `/trade` is the trade
+/// registry, `/ignore` is the same list the whisper path reads. A command that reached past those
+/// would be a second, weaker door into the same room.
+#[allow(clippy::too_many_arguments)]
+async fn run_command(
     link: &mut Link,
     context: &Context,
     player: &crate::accounts::Session,
+    name: &str,
+    placement: &mut Placement,
+    to_session: &mpsc::Sender<crate::world_task::Order>,
     command: &str,
     rest: &str,
 ) {
+    use crate::commands::{Action, GuildAction, MarketAction};
     use hendra_store::Admin;
 
     let rank = match context.store.account(player.account.id).await {
@@ -1027,73 +1056,114 @@ async fn moderate(
         Err(_) => Admin::None,
     };
 
-    // A player who is not a moderator is told the command does not exist rather than that they may
-    // not use it, so the command list is not something anyone can enumerate by trying.
+    // Somebody who may not use a command is told it does not exist rather than that they may not,
+    // so the list of what a moderator can do is not something anyone can find by trying.
     let unknown = format!("there is no /{command}");
 
-    let (name, tail) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
-    let name = name.trim();
+    let Some(known) = crate::commands::find(command) else {
+        return say(link, &unknown).await;
+    };
+    if !known.needs.met_by(rank) {
+        return say(link, &unknown).await;
+    }
 
-    match command {
-        "mute" | "unmute" | "ban" | "unban" if rank == Admin::None => say(link, &unknown).await,
+    let action = match crate::commands::read(command, rest) {
+        Ok(action) => action,
+        Err(why) => return say(link, &why).await,
+    };
 
-        "mute" | "unmute" | "ban" | "unban" if name.is_empty() => {
-            say(link, &format!("/{command} needs a name")).await;
+    match action {
+        Action::Say(text) => {
+            placement
+                .world
+                .send(ToWorld::Chat {
+                    handle: placement.handle,
+                    text,
+                })
+                .await;
         }
 
-        "mute" | "unmute" => {
-            if !rank.may_mute() {
-                say(link, &unknown).await;
-                return;
-            }
+        Action::Tell { to, text } => {
+            tell(link, context, player, placement, &to, &text).await;
+        }
 
-            let Ok(target) = context.store.account_by_name(name).await else {
-                say(link, "no such player").await;
-                return;
+        Action::GuildSay(text) => guild_say(link, context, player, &text).await,
+
+        Action::GoTo(world) => {
+            if let Some(next) = go_to(
+                link,
+                placement,
+                name,
+                player.account.id,
+                world,
+                &context.worlds,
+                arrival_of(player, context),
+                to_session,
+            )
+            .await
+            {
+                *placement = next;
+                send_terrain(link, placement).await;
+            } else {
+                say(link, "you cannot go there from here").await;
+            }
+        }
+
+        Action::TeleportTo(to) => teleport(link, context, player, placement, &to).await,
+
+        Action::Trade(with) => {
+            trade(link, context, player, name, Trade::Request(with)).await;
+        }
+
+        Action::List {
+            kind,
+            name: who,
+            add,
+        } => {
+            list_person(link, context, player, kind, &who, add).await;
+        }
+
+        Action::Guild(what) => {
+            let asked = match what {
+                GuildAction::Create(name) => GuildAsk::Create(name),
+                GuildAction::Invite(name) | GuildAction::Join(name) => GuildAsk::Invite(name),
+                GuildAction::Kick(name) => GuildAsk::Remove(name),
+                GuildAction::Rank(name, rank) => GuildAsk::SetRank(name, guild_rank_named(&rank)),
+                GuildAction::Board(text) => GuildAsk::SetBoard(text),
+                GuildAction::Leave => GuildAsk::Leave,
+                GuildAction::Who => return guild_who(link, context, player).await,
             };
 
-            // Minutes, defaulting to an hour. A mute with no end is a ban that nobody remembers
-            // applying, so this one always has one.
-            let until = (command == "mute").then(|| {
-                let minutes = tail
-                    .trim()
-                    .parse::<i64>()
-                    .unwrap_or(60)
-                    .clamp(1, 60 * 24 * 30);
-                chrono::Utc::now() + chrono::Duration::minutes(minutes)
-            });
-
-            match context.store.mute(target.id, until).await {
-                Ok(()) => say(link, &format!("{} is {command}d", target.name)).await,
-                Err(_) => say(link, "that could not be done").await,
-            }
+            guild(link, context, player, name, asked).await;
         }
 
-        "ban" | "unban" => {
-            if !rank.may_ban() {
-                say(link, &unknown).await;
-                return;
+        Action::Market(what) => match what {
+            MarketAction::Browse => {
+                market(link, context, player, hendra_net::MarketCommand::Browse).await;
             }
+            MarketAction::Mine => my_market(link, context, player).await,
+            // Taking back the last thing listed, which is what somebody who mistyped a price wants
+            // and cannot express any other way: they do not know the number.
+            MarketAction::Oops => {
+                let Some(listing) = last_listing(context, player).await else {
+                    return say(link, "you have not listed anything").await;
+                };
 
-            let Ok(target) = context.store.account_by_name(name).await else {
-                say(link, "no such player").await;
-                return;
-            };
-
-            // A moderator cannot ban somebody who outranks them, which is what stops one
-            // disagreement removing everyone above it.
-            if Admin::from_number(target.admin_rank) >= rank {
-                say(link, "you cannot do that to them").await;
-                return;
+                market(
+                    link,
+                    context,
+                    player,
+                    hendra_net::MarketCommand::Cancel { listing },
+                )
+                .await;
             }
+        },
 
-            match context.store.set_banned(target.id, command == "ban").await {
-                Ok(()) => say(link, &format!("{} is {command}ned", target.name)).await,
-                Err(_) => say(link, "that could not be done").await,
-            }
+        Action::Report(what) => report(link, context, player, placement, what).await,
+
+        Action::Moderate { what, name, rest } => {
+            moderate(link, context, what, &name, &rest).await;
         }
-
-        _ => say(link, &unknown).await,
     }
 }
 
@@ -1373,12 +1443,12 @@ async fn say_something(
     placement: &Placement,
     limit: &mut crate::chat::Limit,
     line: &str,
-) {
+) -> Option<(String, String)> {
     use crate::chat::Said;
 
     let said = crate::chat::read(line);
     if said == Said::Nothing {
-        return;
+        return None;
     }
 
     // Read fresh rather than from the session's copy, so a mute applied while someone is playing
@@ -1389,12 +1459,12 @@ async fn say_something(
             .is_some_and(|until| until > chrono::Utc::now())
     {
         say(link, "you cannot speak at the moment").await;
-        return;
+        return None;
     }
 
     if !limit.allow(std::time::Instant::now()) {
         say(link, "you are speaking too quickly").await;
-        return;
+        return None;
     }
 
     match said {
@@ -1412,7 +1482,7 @@ async fn say_something(
             // Whispering to yourself is a typo rather than a message.
             if to.eq_ignore_ascii_case(&player.character.name) {
                 say(link, "you cannot whisper to yourself").await;
-                return;
+                return None;
             }
 
             // Somebody who has ignored you does not hear you. Checked here rather than in the
@@ -1429,7 +1499,7 @@ async fn say_something(
                     .await
                     .unwrap_or(false)
             {
-                return;
+                return None;
             }
 
             placement
@@ -1442,12 +1512,14 @@ async fn say_something(
                 .await;
         }
 
-        Said::Command { name, rest } => {
-            moderate(link, context, player, &name, &rest).await;
-        }
+        // Handed back rather than run here, because carrying one out can move the player between
+        // worlds and the placement belongs to the caller.
+        Said::Command { name, rest } => return Some((name, rest)),
 
         Said::Nothing => {}
     }
+
+    None
 }
 
 /// Uses what is in a slot.
@@ -2337,6 +2409,455 @@ async fn buy_with_prestige(
                 %name,
                 "prestige was spent and the item could not be delivered"
             );
+            say(link, "try again shortly").await;
+        }
+    }
+}
+
+/// Whispers to a named player.
+///
+/// Split out because two things reach it: `/tell` and the older bare form the chat reader still
+/// understands. Somebody who has ignored you does not hear you, and is answered as though they had.
+async fn tell(
+    link: &mut Link,
+    context: &Context,
+    player: &crate::accounts::Session,
+    placement: &Placement,
+    to: &str,
+    text: &str,
+) {
+    if to.eq_ignore_ascii_case(&player.character.name) {
+        return say(link, "you cannot whisper to yourself").await;
+    }
+
+    if let Ok(target) = context.store.account_by_name(to).await
+        && context
+            .store
+            .is_listed(
+                target.id,
+                player.account.id,
+                hendra_store::ListKind::Ignored,
+            )
+            .await
+            .unwrap_or(false)
+    {
+        return;
+    }
+
+    placement
+        .world
+        .send(ToWorld::Tell {
+            to: to.to_string(),
+            from: player.character.name.clone(),
+            text: text.to_string(),
+        })
+        .await;
+}
+
+/// Says something to everybody in the caller's guild, wherever they are.
+///
+/// Guild chat crosses worlds, which is what makes it different from saying something aloud, so it
+/// goes through the roster rather than through any one world.
+async fn guild_say(
+    link: &mut Link,
+    context: &Context,
+    player: &crate::accounts::Session,
+    text: &str,
+) {
+    let Ok(Some((guild, _))) = context.store.guild_of(player.account.id).await else {
+        return say(link, "you are not in a guild").await;
+    };
+
+    let Ok(members) = context.store.guild_members(guild).await else {
+        return say(link, "try again shortly").await;
+    };
+
+    let line = ServerMessage::Chat {
+        from: &format!("{} [guild]", player.character.name),
+        text,
+    };
+
+    for member in members {
+        context.trades.send(&member.name, &line);
+    }
+}
+
+/// Who is in the caller's guild.
+async fn guild_who(link: &mut Link, context: &Context, player: &crate::accounts::Session) {
+    let Ok(Some((guild, _))) = context.store.guild_of(player.account.id).await else {
+        return say(link, "you are not in a guild").await;
+    };
+
+    let Ok(members) = context.store.guild_members(guild).await else {
+        return say(link, "try again shortly").await;
+    };
+
+    let named: Vec<String> = members
+        .iter()
+        .map(|member| format!("{} ({:?})", member.name, member.rank))
+        .collect();
+
+    say(link, &format!("{}: {}", members.len(), named.join(", "))).await;
+}
+
+/// Reads a guild rank the way somebody would type it.
+fn guild_rank_named(text: &str) -> u8 {
+    use hendra_store::Rank;
+
+    let rank = match text.trim().to_ascii_lowercase().as_str() {
+        "founder" => Rank::Founder,
+        "officer" | "leader" => Rank::Officer,
+        "member" => Rank::Member,
+        _ => Rank::Initiate,
+    };
+
+    rank.number().max(0) as u8
+}
+
+/// Adds somebody to one of the account's lists, or takes them off it.
+async fn list_person(
+    link: &mut Link,
+    context: &Context,
+    player: &crate::accounts::Session,
+    kind: hendra_store::ListKind,
+    name: &str,
+    add: bool,
+) {
+    let Ok(target) = context.store.account_by_name(name).await else {
+        return say(link, "no such player").await;
+    };
+
+    if target.id == player.account.id {
+        return say(link, "you cannot list yourself").await;
+    }
+
+    let outcome = if add {
+        context
+            .store
+            .add_to_list(player.account.id, target.id, kind)
+            .await
+    } else {
+        context
+            .store
+            .remove_from_list(player.account.id, target.id, kind)
+            .await
+    };
+
+    match outcome {
+        Ok(()) => {
+            let what = if add { "added to" } else { "removed from" };
+            say(link, &format!("{} was {what} your list.", target.name)).await;
+        }
+        Err(hendra_store::StoreError::Refused(why)) => say(link, why).await,
+        Err(_) => say(link, "try again shortly").await,
+    }
+}
+
+/// What the caller has listed on the market.
+async fn my_market(link: &mut Link, context: &Context, player: &crate::accounts::Session) {
+    let listings = context
+        .store
+        .listings_of(player.account.id)
+        .await
+        .unwrap_or_default();
+
+    if listings.is_empty() {
+        return say(link, "you have not listed anything").await;
+    }
+
+    for listing in listings {
+        let name = context
+            .catalog
+            .type_of_uuid(listing.item)
+            .and_then(|kind| context.catalog.object(kind))
+            .map(|desc| desc.id.as_str())
+            .unwrap_or("something");
+
+        say(
+            link,
+            &format!("#{} {} for {} gold", listing.id, name, listing.price),
+        )
+        .await;
+    }
+}
+
+/// The most recent thing the caller listed, for `/oops`.
+async fn last_listing(context: &Context, player: &crate::accounts::Session) -> Option<u64> {
+    let listings = context.store.listings_of(player.account.id).await.ok()?;
+    listings.last().map(|listing| listing.id as u64)
+}
+
+/// Tells a player something the server knows.
+async fn report(
+    link: &mut Link,
+    context: &Context,
+    player: &crate::accounts::Session,
+    placement: &Placement,
+    what: crate::commands::Report,
+) {
+    use crate::commands::Report;
+
+    match what {
+        Report::Position => {
+            let (reply, answer) = tokio::sync::oneshot::channel();
+            placement
+                .world
+                .send(ToWorld::Where {
+                    handle: placement.handle,
+                    reply,
+                })
+                .await;
+
+            match answer.await {
+                Ok(Some((x, y))) => say(link, &format!("You are at {x}, {y}.")).await,
+                _ => say(link, "nowhere in particular").await,
+            }
+        }
+
+        Report::Who => {
+            let (reply, answer) = tokio::sync::oneshot::channel();
+            placement.world.send(ToWorld::Who { reply }).await;
+
+            match answer.await {
+                Ok(names) if !names.is_empty() => {
+                    say(link, &format!("{}: {}", names.len(), names.join(", "))).await;
+                }
+                _ => say(link, "nobody but you").await,
+            }
+        }
+
+        Report::Online => {
+            let names = context.trades.present();
+            say(
+                link,
+                &format!("{} online: {}", names.len(), names.join(", ")),
+            )
+            .await;
+        }
+
+        Report::Uptime => {
+            let up = context.started.elapsed();
+            let (hours, minutes) = (up.as_secs() / 3600, (up.as_secs() % 3600) / 60);
+            say(link, &format!("Up for {hours}h {minutes}m.")).await;
+        }
+
+        Report::Commands => {
+            let rank = context
+                .store
+                .account(player.account.id)
+                .await
+                .map(|account| hendra_store::Admin::from_number(account.admin_rank))
+                .unwrap_or(hendra_store::Admin::None);
+
+            // Only what they may actually use. Listing the rest would be telling everybody what a
+            // moderator can do and inviting them to try.
+            for command in crate::commands::ALL
+                .iter()
+                .filter(|command| command.needs.met_by(rank))
+            {
+                say(link, &format!("/{} — {}", command.name, command.summary)).await;
+            }
+        }
+
+        Report::Prestige => match context.store.prestige_of(player.account.id).await {
+            Ok((held, total)) => {
+                say(link, &format!("{held} prestige, {total} earned in all.")).await;
+            }
+            Err(_) => say(link, "try again shortly").await,
+        },
+
+        Report::LeftToMax => {
+            let Some(class) = context
+                .catalog
+                .type_of_uuid(player.character.class)
+                .and_then(|kind| {
+                    context
+                        .catalog
+                        .classes()
+                        .iter()
+                        .find(|class| class.object_type == kind)
+                })
+            else {
+                return say(link, "nothing to say about that class").await;
+            };
+
+            let (reply, answer) = tokio::sync::oneshot::channel();
+            placement
+                .world
+                .send(ToWorld::Stats {
+                    handle: placement.handle,
+                    reply,
+                })
+                .await;
+
+            let Ok(Some(base)) = answer.await else {
+                return say(link, "try again shortly").await;
+            };
+
+            let left: Vec<String> = STAT_NAMES
+                .iter()
+                .enumerate()
+                .filter_map(|(index, name)| {
+                    let ceiling = class.stats.get(index)?.maximum;
+                    let held = base[index];
+                    (ceiling > held).then(|| format!("{name} {}", ceiling - held))
+                })
+                .collect();
+
+            if left.is_empty() {
+                say(link, "You are at maximum.").await;
+            } else {
+                say(link, &left.join(", ")).await;
+            }
+        }
+
+        // The original answers both of these with a joke rather than a fact, and there is nothing
+        // behind either to answer with instead.
+        Report::CurrentSong => say(link, "Whatever your client is playing.").await,
+        Report::Time => say(link, "Time for you to get a watch.").await,
+    }
+}
+
+/// What each of the eight stats is called, in the order the content lists them.
+const STAT_NAMES: [&str; 8] = [
+    "HP",
+    "MP",
+    "Attack",
+    "Defense",
+    "Speed",
+    "Dexterity",
+    "Vitality",
+    "Wisdom",
+];
+
+/// Something a moderator or administrator does to somebody.
+async fn moderate(
+    link: &mut Link,
+    context: &Context,
+    what: crate::commands::Moderation,
+    name: &str,
+    rest: &str,
+) {
+    use crate::commands::Moderation;
+
+    // An announcement names nobody, so it is answered before anybody is looked up.
+    if what == Moderation::Announce {
+        let line = ServerMessage::Chat {
+            from: "Server",
+            text: rest,
+        };
+        for who in context.trades.present() {
+            context.trades.send(&who, &line);
+        }
+        return say(link, "Said.").await;
+    }
+
+    let Ok(target) = context.store.account_by_name(name).await else {
+        return say(link, "no such player").await;
+    };
+
+    let outcome = match what {
+        Moderation::Mute | Moderation::Unmute => {
+            // Minutes, defaulting to an hour. A mute with no end is a ban nobody remembers
+            // applying, so this one always has one.
+            let until = (what == Moderation::Mute).then(|| {
+                let minutes = rest
+                    .trim()
+                    .parse::<i64>()
+                    .unwrap_or(60)
+                    .clamp(1, 60 * 24 * 30);
+                chrono::Utc::now() + chrono::Duration::minutes(minutes)
+            });
+
+            context.store.mute(target.id, until).await.map(|()| {
+                let what = if until.is_some() { "muted" } else { "unmuted" };
+                format!("{} is {what}.", target.name)
+            })
+        }
+
+        Moderation::Ban | Moderation::Unban => {
+            let banned = what == Moderation::Ban;
+            context.store.set_banned(target.id, banned).await.map(|()| {
+                let what = if banned { "banned" } else { "unbanned" };
+                format!("{} is {what}.", target.name)
+            })
+        }
+
+        Moderation::Kick => {
+            // Ending the connection is the session's, and the roster is what can reach it.
+            context.trades.kick(&target.name);
+            Ok(format!("{} was kicked.", target.name))
+        }
+
+        Moderation::Rank => {
+            let rank = match rest.trim().to_ascii_lowercase().as_str() {
+                "admin" | "administrator" => hendra_store::Admin::Administrator,
+                "mod" | "moderator" => hendra_store::Admin::Moderator,
+                _ => hendra_store::Admin::None,
+            };
+
+            context
+                .store
+                .set_admin_rank(target.id, rank)
+                .await
+                .map(|()| format!("{} is now {rank:?}.", target.name))
+        }
+
+        Moderation::SetFame | Moderation::SetGold | Moderation::SetPrestige => {
+            let Ok(amount) = rest.trim().parse::<i32>() else {
+                return say(link, "how much?").await;
+            };
+
+            let currency = match what {
+                Moderation::SetGold => hendra_store::Currency::Gold,
+                Moderation::SetPrestige => hendra_store::Currency::Prestige,
+                _ => hendra_store::Currency::Fame,
+            };
+
+            context
+                .store
+                .set_currency(target.id, currency, amount)
+                .await
+                .map(|()| format!("{} now has {amount}.", target.name))
+        }
+
+        Moderation::Gift => {
+            let Some(item) = context
+                .catalog
+                .type_of(rest.trim())
+                .and_then(|kind| context.catalog.object(kind))
+            else {
+                return say(link, "there is no such item").await;
+            };
+
+            context
+                .store
+                .add_gift(target.id, item.uuid)
+                .await
+                .map(|_| format!("{} was sent {}.", target.name, item.id))
+        }
+
+        Moderation::Rename => context
+            .store
+            .rename_account(target.id, rest.trim())
+            .await
+            .map(|()| format!("{} is now {}.", target.name, rest.trim())),
+
+        Moderation::Unname => context
+            .store
+            .rename_account(target.id, &format!("Player{}", target.id))
+            .await
+            .map(|()| format!("{} was unnamed.", target.name)),
+
+        Moderation::Announce => unreachable!("answered above"),
+    };
+
+    match outcome {
+        Ok(said) => say(link, &said).await,
+        Err(hendra_store::StoreError::Refused(why)) => say(link, why).await,
+        Err(hendra_store::StoreError::NameTaken) => say(link, "that name is taken").await,
+        Err(err) => {
+            tracing::warn!(%err, "a moderation command failed");
             say(link, "try again shortly").await;
         }
     }
