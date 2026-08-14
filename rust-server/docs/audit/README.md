@@ -39,6 +39,7 @@ argument census counts names.
 | [04-sim-combat.md](04-sim-combat.md) | `hendra-sim`, combat | damage, experience, abilities |
 | [05-sim-worlds.md](05-sim-worlds.md) | `hendra-sim`, worlds | loot, the realm, setpieces |
 | [06-net.md](06-net.md) | `hendra-net` | visibility, the wire |
+| [07-server.md](07-server.md) | `hendra-server` | commands, verification, sessions |
 
 ## Findings so far, worst first
 
@@ -58,5 +59,6 @@ argument census counts names.
 | `Shoot` drops its acquire range and its stagger | 4,486 and 2,663 uses | [02](02-behaviour.md) |
 | Projectile damage rolls can hit the maximum | every projectile | [01](01-content.md) |
 | A thrown object lands 700ms before it should | 389 uses | [02](02-behaviour.md) |
+| The staff rank ladder is three rungs where the original has eight | 54 ranked commands | [07](07-server.md) |
 | Enemies think with nobody in the room | every enemy, every world | [03](03-sim-loop.md) |
 | No slow tick, where the original has two clocks | world timers, dungeon logic | [03](03-sim-loop.md) |

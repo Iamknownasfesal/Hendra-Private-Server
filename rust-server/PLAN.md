@@ -1235,7 +1235,13 @@ implementations side by side.
   divergence: the original picks one of four occlusion modes per world and defaults to *none*, so a
   player in the realm sees through walls; we ray-walk every world, which is the one mode no world in
   the content selects.
-- [ ] `server` — 12 files. Against pages 22, 26, 29, 30, 31, 38.
+- [x] `server` — 12 files. Against pages 22, 26, 29, 30, 31, 38.
+
+  In [`docs/audit/07-server.md`](docs/audit/07-server.md). All 95 commands answered and the strike
+  counter matches. Most of page 26's verification surface turns out to be moot rather than missing —
+  this client cannot claim a hit, a shot origin or ground damage, so there is nothing to find
+  plausible. What is real is the rank ladder: eight levels in the original, three here, so the
+  eleven most-privileged commands sit behind the same check as the fifteen least.
 - [ ] `store` — 12 files. Against page 34.
 - [ ] `app`, `auth`, `transport`, `characters` — against pages 41, 42.
 - [ ] A refactor list, ordered by how many players notice.
