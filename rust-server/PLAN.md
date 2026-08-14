@@ -1228,7 +1228,13 @@ implementations side by side.
   constant, loot has the right two-tier shape. Missing: the world-wide loot table on `World.cs:27`,
   one line that gives every enemy in the game a 3% tier-1 potion and is the whole baseline of the
   potion economy.
-- [ ] `net` — 6 files. Against pages 19, 37, 40.
+- [x] `net` — 6 files. Against pages 19, 37, 40.
+
+  In [`docs/audit/06-net.md`](docs/audit/06-net.md). The wire pages describe a protocol we
+  deliberately do not speak. What compares is what a client is told, and there sight is the
+  divergence: the original picks one of four occlusion modes per world and defaults to *none*, so a
+  player in the realm sees through walls; we ray-walk every world, which is the one mode no world in
+  the content selects.
 - [ ] `server` — 12 files. Against pages 22, 26, 29, 30, 31, 38.
 - [ ] `store` — 12 files. Against page 34.
 - [ ] `app`, `auth`, `transport`, `characters` — against pages 41, 42.

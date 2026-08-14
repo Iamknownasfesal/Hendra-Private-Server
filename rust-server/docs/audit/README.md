@@ -38,6 +38,7 @@ argument census counts names.
 | [03-sim-loop.md](03-sim-loop.md) | `hendra-sim`, the loop | the tick, entities, movement |
 | [04-sim-combat.md](04-sim-combat.md) | `hendra-sim`, combat | damage, experience, abilities |
 | [05-sim-worlds.md](05-sim-worlds.md) | `hendra-sim`, worlds | loot, the realm, setpieces |
+| [06-net.md](06-net.md) | `hendra-net` | visibility, the wire |
 
 ## Findings so far, worst first
 
@@ -52,6 +53,7 @@ argument census counts names.
 | `GenericActivate` does nothing | 26 items | [01](01-content.md) |
 | No world-wide loot table, so no baseline potion drops | every enemy in the game | [05](05-sim-worlds.md) |
 | Ocean Trench has no oxygen | one dungeon, entirely | [01](01-content.md) |
+| Sight is blocked in every world; the original defaults to off | the realm and every code-built world | [06](06-net.md) |
 | Everything that orbits, orbits the player | 137 of 167 orbits | [02](02-behaviour.md) |
 | `Shoot` drops its acquire range and its stagger | 4,486 and 2,663 uses | [02](02-behaviour.md) |
 | Projectile damage rolls can hit the maximum | every projectile | [01](01-content.md) |
