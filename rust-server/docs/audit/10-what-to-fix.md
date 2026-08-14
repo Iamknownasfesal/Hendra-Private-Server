@@ -6,9 +6,15 @@ players notice and how often.
 The ordering is deliberate. A defect that touches every hit a player takes outranks one that touches
 a dungeon, however wrong the dungeon is. Counts are from the content this server loads.
 
-## First: things a player feels in the first hour
+## Status
 
-**1. The stat numbering.** [01](01-content.md)
+Everything in "first" is done, along with items 5 and 6 from "second". Each was committed with a
+test that fails against the old behaviour; the sections below are left as written so the reasoning
+survives, with the fix noted.
+
+## First: things a player feels in the first hour — **all fixed**
+
+**1. The stat numbering.** ✅ **Fixed.** [01](01-content.md)
 
 Twenty-one of the game's twenty-four potions raise max HP. A Potion of Attack raises max HP; a Potion
 of Mana raises defence. 619 of 690 worn item bonuses are dropped or land on the wrong stat.
@@ -17,7 +23,7 @@ The fix is one eight-row table applied at parse time in both `desc.rs` and `acti
 downstream ever sees a content number. Do not translate at the point of use — two call sites each
 translating differently is why this survived.
 
-**2. A player's defence is never read.** [04](04-sim-combat.md)
+**2. A player's defence is never read.** ✅ **Fixed.** [04](04-sim-combat.md)
 
 `resolve_hits` takes defence from the class descriptor, which is the level-one base and usually zero.
 `Stats::defence()` exists and is called from nowhere. Armour, defence rings and levelling all do
@@ -26,31 +32,31 @@ nothing.
 One line, and it compounds with the first: a player's defence bonuses are mostly dropped at load,
 the survivors raise the wrong stat, and whatever survives is not read when they are hit.
 
-**3. `Shoot` drops its acquire range.** [02](02-behaviour.md)
+**3. `Shoot` drops its acquire range.** ✅ **Fixed.** [02](02-behaviour.md)
 
 4,486 uses, every one of them positional. Enemies acquire at the 20-tile sense radius instead of
 their own, which is often four to eight, so they snipe across the screen and nothing has a safe
 distance.
 
-**4. `Shoot` drops its cooldown offset.** [02](02-behaviour.md)
+**4. `Shoot` drops its cooldown offset.** ✅ **Fixed.** [02](02-behaviour.md)
 
 2,663 uses. A staggered pattern becomes one simultaneous volley, once, and then silence. This is what
 a boss's pattern *is*.
 
 ## Second: things that change how a fight reads
 
-**5. Everything that orbits, orbits the player.** [02](02-behaviour.md)
+**5. Everything that orbits, orbits the player.** ✅ **Fixed.** [02](02-behaviour.md)
 
 137 of 167 orbits name an entity to circle and we drop the name. The ring the player is meant to move
 around becomes a ring that follows them.
 
-**6. Area damage ignores invulnerability.** [01](01-content.md)
+**6. Area damage ignores invulnerability.** ✅ **Fixed.** [01](01-content.md)
 
 `explode` uses a second copy of the damage formula with a 0.15 floor instead of 0.25 and no
 conditions at all. An invulnerable boss takes full damage from a spell. Delete the free function and
 route through `Rules`.
 
-**7. Spawned minions are worth full experience.** [04](04-sim-combat.md)
+**7. Spawned minions are worth full experience.** *(next)* [04](04-sim-combat.md)
 
 The original abandons the award for anything `Spawned` and defaults `givesNoXp` to true across 364
 spawners. Here every minion is worth `max_hp / 10`, which is a standing farm next to any spawner.
@@ -141,3 +147,17 @@ neither read nor named in an explicit ignore list. That check would have caught 
 
 The same discipline applies to the endpoint census, which says 40 of 40 and
 [has not been checked](09-app-auth-transport.md).
+
+
+## Found while fixing
+
+Two things the audit had not seen, both turned up by writing the tests:
+
+- **`Mind::new` never armed a state's cooldowns.** Only `enter` did, so an enemy's *first* state
+  ignored every `coolDownOffset` and only later states staggered. A boss that opens with a volley
+  never transitions before firing it, so the offsets would have gone on being ignored exactly where
+  they matter most. Both paths now go through `arm_cooldowns`.
+- **Three of `Shoot`'s positional indices were wrong** — `shoot_angle` read the C# `coolDownOffset`
+  slot, `cooldown` read `predictive`, `projectile` read `defaultAngle`. Every converted use names
+  its arguments so none of it reached the content, but it is the same silent-guess failure the
+  parameter check is meant to end.
