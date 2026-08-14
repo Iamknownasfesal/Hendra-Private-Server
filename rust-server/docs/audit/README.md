@@ -40,6 +40,8 @@ argument census counts names.
 | [05-sim-worlds.md](05-sim-worlds.md) | `hendra-sim`, worlds | loot, the realm, setpieces |
 | [06-net.md](06-net.md) | `hendra-net` | visibility, the wire |
 | [07-server.md](07-server.md) | `hendra-server` | commands, verification, sessions |
+| [08-store.md](08-store.md) | `hendra-store` | persistence, the economy |
+| [09-app-auth-transport.md](09-app-auth-transport.md) | `app`, `auth`, `transport` | endpoints, the wire |
 
 ## Findings so far, worst first
 

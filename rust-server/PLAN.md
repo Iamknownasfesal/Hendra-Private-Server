@@ -1242,6 +1242,17 @@ implementations side by side.
   this client cannot claim a hit, a shot origin or ground damage, so there is nothing to find
   plausible. What is real is the rank ladder: eight levels in the original, three here, so the
   eleven most-privileged commands sit behind the same check as the fifteen least.
-- [ ] `store` — 12 files. Against page 34.
-- [ ] `app`, `auth`, `transport`, `characters` — against pages 41, 42.
+- [x] `store` — 12 files. Against page 34.
+
+  In [`docs/audit/08-store.md`](docs/audit/08-store.md). Stronger than the original everywhere it
+  differs — Argon2 rather than SHA-1, conditional spend in one statement, `GREATEST` so lifetime
+  totals cannot fall — and none of the fork's economy bugs were carried over. Written down so
+  nobody restores parity by weakening it.
+- [x] `app`, `auth`, `transport`, `characters` — against pages 41, 42.
+
+  In [`docs/audit/09-app-auth-transport.md`](docs/audit/09-app-auth-transport.md). 40 of 40
+  endpoints, with the caveat that every other census in this project over-reported once its
+  denominator was checked and this one has not been. The Redis bus and its one-second `TimedLock`
+  have no counterpart because this is one process, which removes a failure mode rather than leaving
+  a gap.
 - [ ] A refactor list, ordered by how many players notice.
