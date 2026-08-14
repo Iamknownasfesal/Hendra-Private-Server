@@ -63,10 +63,10 @@ inside the game: a different data structure, a different loop, a different order
 | [40-packets.md](40-packets.md) | Registration, framing, and every wire shape | 105 of 105 |
 | [41-the-account-server.md](41-the-account-server.md) | 37 routes, the auth model, and the leaderboard that returns nothing | 48 of 48 |
 | [42-between-servers.md](42-between-servers.md) | The Redis bus, configuration defaults, byte order, locking | rest of `common/` |
-| [43-the-behaviour-scripts.md](43-the-behaviour-scripts.md) | What the content actually uses, and the 28 constructs it never does | 42 of 61 read in full, all 61 censused |
+| [43-the-behaviour-scripts.md](43-the-behaviour-scripts.md) | What the content actually uses, and the 28 constructs it never does | 61 of 61 read in full, all 61 censused |
 
-Page 25 lists exactly what was read and states the case for the groups assessed by census rather
-than file by file. See "How much of this is actually read" below before trusting any of it.
+Page 25 lists exactly what was read. See "How much of this is actually read" below before trusting
+any of it.
 
 ## The largest defect found
 
@@ -80,10 +80,15 @@ bonus in the game. See [the stats page](08-stats.md).
 
 ## How much of this is actually read
 
-The C# server is **547 files**. About **514** were opened and read, including every behaviour, every
-transition, every command, every world subclass, every setpiece, every handler and every packet. The rest was assessed by census,
-by signature, or by call site, which is weaker evidence and is how the first two passes of this audit
-reached wrong conclusions twice.
+The C# server is **547 files**, and **546 of them have now been read line by line** — every
+behaviour, every transition, every command, every world subclass, every setpiece, every handler,
+every packet, the whole HTTP tree, all of `common/`, and all 61 behaviour-script files. The one
+exception is `common/WeakDictionary.cs`, a generic container with no callers anywhere in the tree.
+
+Reading was done alongside mechanical censuses, not instead of them: a census is the only way to
+prove a construct is *never* used, and reading is the only way to find a specific oddity. Where a
+claim on these pages rests on a census alone, distrust it first — that is how the first two passes of
+this audit reached wrong conclusions twice.
 
 The Rust server is **101 files, 62,838 lines**, and **none of it was read end to end.** Every claim
 in these pages about what *this* server does was checked by looking up the one function named. That
@@ -170,6 +175,13 @@ deliberately ignored, so the next one cannot be silent.
   budget, the other a population cap, and we treat both as the latter.
 - `StayCloseToSpawn` anchors to the position where the *state* was entered; `ReturnToSpawn` anchors
   to the entity's spawn point. We use the spawn point for both.
+- **Object-id lookup is case-insensitive in the original and case-sensitive here.**
+  `XmlData.IdToObjectType` is built with `StringComparer.InvariantCultureIgnoreCase`, and the
+  behaviour scripts rely on it: Shatters names `"Shtrs Bridge Closer4"` where the entity is
+  registered as `shtrs Bridge Closer4`, and `"shtrs Lava Souls Maker"` where it is
+  `shtrs Lava Souls maker`. Our `Catalog::by_id` is a plain `HashMap<String, _>`, so those miss. The
+  original also has a fallback the miss would land in: an unresolvable name becomes **`Pirate`**,
+  with a log warning and no error.
 
 Pages are added as the reading proceeds. A page is only written from files actually read, never from
 a grep of their names: an earlier pass of this audit compared surfaces with scripts and concluded

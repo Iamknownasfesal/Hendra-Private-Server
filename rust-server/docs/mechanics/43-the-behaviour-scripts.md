@@ -3,7 +3,8 @@
 The 61 files of `logic/db/` — 24,392 lines. This is the game's *content*, written in C# as a
 constructor-expression DSL, and it is what our converter consumes.
 
-**How this page was read.** **42 of the 61 files were read line by line.** Counted, not estimated:
+**How this page was read.** **All 61 files were read line by line**, in two passes. The first pass
+covered 42 files:
 
 ```
 Misc BeachBum BeerGod ForbiddenJungle SkullShrine Oasis RedDemon Beachzone Pentaract
@@ -15,7 +16,7 @@ Oryx SpriteWorld DavyJones Lich Janus
 OryxChicken Belladonna CrawlingDepths GhostKing Lowland
 ```
 
-**The 19 not read line by line** are the largest dungeon files:
+The second pass covered the 19 largest dungeon files, which had until then only been censused:
 
 ```
 Shatters Avatar HauntedCeme Draconis Midland Highland Encore Tomb Catacombs
@@ -23,12 +24,10 @@ Lab OryxCastle UndeadLair SnakePit Mountain Candyland Puppet OceanTrench
 GarnetJade GhostShip
 ```
 
-Those 19 were surveyed by extracting **every constructor call and every named argument in all 61
-files**, which is the census below.
-
-That census is complete and is what establishes the negative claims (the 28 unused constructs). The
-line-by-line reading is what the notes at the end come from, and **those notes do not cover the 19
-unread files** — a specific oddity inside one of them would not have been found.
+Alongside the reading, **every constructor call and every named argument in all 61 files** was
+extracted mechanically; that is the census below, and it is what establishes the negative claims (the
+28 unused constructs). Counting is the only way to prove a construct is *not* used; reading is the
+only way to find the oddities in the section at the end. Both were done.
 
 ## What the content actually uses
 
@@ -209,6 +208,69 @@ programs than there are entries, and that is correct.
   measures how fast its health drops over six seconds and branches to `HugeMob` / `Mob` /
   `SmallGroup` / `Solo`. That is the original's group-size detector, and it is built entirely from
   four `HpLessTransition`s in descending order.
+
+## Notes from the nineteen large dungeon files
+
+- **A misspelled entity name is not an error — it becomes a Pirate.** `Behavior.GetObjType` looks the
+  name up in `XmlData.IdToObjectType` and, on a miss, returns the type of `"Pirate"` with a log
+  warning. Every `Spawn`, `Order`, `TossObject`, `EntityNotExistsTransition` and friend goes through
+  it. The lookup dictionary is built with `StringComparer.InvariantCultureIgnoreCase`, so the case
+  mismatches that litter the content — `"Shtrs Bridge Closer4"` against the registered
+  `shtrs Bridge Closer4`, `"shtrs Lava Souls Maker"` against `shtrs Lava Souls maker` — resolve
+  correctly and are harmless. **Our catalog's `by_id` is a plain case-sensitive `HashMap`**
+  (`crates/content/src/catalog.rs`), so those same names would miss. Object-id lookup must be
+  case-insensitive.
+- **`PlayerTextTransition` has exactly two users.** `HauntedCeme` and `Draconis`, four each — the
+  whole census of 8. Haunted Cemetery's four area controllers all wait on the word `"Ready"`;
+  Draconis's four souls wait on `"Red"`, `"Blue"`, `"Green"` and `"Black"`. Because the transition
+  keeps its match in a field shared by every host running it
+  ([the behaviour engine page](01-behaviour-engine.md)), one player saying "Ready" advances every
+  controller in every open Cemetery at once.
+- **`HauntedCeme` names three states that do not exist**: `Order` targets `"aren3wave2"`,
+  `"aren4wave1"` and `"aren4wave2"`. Unlike a bad entity name, a bad *state* name has no fallback —
+  the order simply matches nothing.
+- **`Tomb`** has `Shoot(11 + 1 / 5, ...)`: C# integer division makes `1 / 5` zero, so the acquire
+  radius is 11, not 11.2. It also has `HpLessTransition(60, "stun")`, where the threshold is a
+  *fraction* — 60 means 6,000% health, so the transition is always true.
+- **`Midland`'s Warrior Wasp** passes `predictive: 200` where the parameter is a 0–1 probability.
+  Anything above 1 is just "always". Its Big Green Slime carries four separate `TransformOnDeath`
+  behaviours rather than one with a count.
+- **`OceanTrench`** declares its script field as `_ OceanTrench = ...` with no `private` modifier.
+  `BindingFlags.NonPublic` still finds it, because the C# default for a field is private — a reminder
+  that the registration rule is "a field of delegate type `_`", not "a field marked private".
+- **`Sea Slurp Home`** passes `initialSpawn: 0.5` explicitly, which is the parameter's own default.
+  It is a fraction of `maxChildren` — `_initialSpawn = (int)(maxChildren * initialSpawn)` — so a
+  fractional value is the normal case, not a typo, and only the truncated integer matters.
+- **`Draconis`'s `lod Ivory Wyvern` has `RealmPortalDrop()` twice**, so it rolls the portal drop
+  twice.
+- **`OryxCastle`'s two Stone Guardians disagree**: their "Start" states transition to different
+  targets, `"Lets go"` and `"Together is better"`.
+- **`Catacombs`'s Tridorno** is the clearest `Sequence(Timed(...), Timed(...), Timed(...))` in the
+  tree, and it uses `HealSelf(coolDown: 99999, amount: 62500)` as a one-shot full heal — the huge
+  cooldown idiom applied to healing.
+- **`PuppetEncore`** holds the tree's only `OnDeathBehavior`, and the only six-argument
+  `MoveTo2(x, y, speed, isMapPosition, once, ...)`.
+- **`Shatters` is where the staggered-volley idiom is taken to its limit.** Each of the six Bridge
+  Obelisks has a "Shoot" state containing **51 `Shoot` behaviours** that are identical except for
+  `coolDownOffset`, stepping 200 ms at a time from 0 to 10,000, all with `coolDown: 10000`. Six
+  obelisks × 51 is 306 `Shoot` behaviours expressing one ten-second sweep. A converter that drops
+  `coolDownOffset` turns each obelisk into a single simultaneous burst of 51 volleys.
+- **Shatters wires its timing through two controller entities.** `shtrs obelisk controller` and
+  `shtrs obelisk timer` are invincible, invisible hosts that do nothing but `Order` the four obelisks
+  between "Shoot", "Pause" and "guardiancheck" on a 10s/7s cycle, each waiting on the other's
+  `EntitiesNotExistsTransition`. `shtrs king timer` does the same for The Forgotten King: its 28
+  second timer is the only path into the King's "heheh" state, which is otherwise unreachable.
+- **`shtrs Firebomb`** puts `Shoot(...)` and `Suicide()` in the same state. Both tick on the same
+  frame, in list order, so the shot lands and the entity dies in one tick — behaviour ordering within
+  a state is load-bearing.
+- **`shtrs Ice Mage`** spawns its shield with `coolDown: 750000000` (8.7 days): the huge-cooldown
+  idiom again, at an absurd magnitude.
+- **The Forgotten King's crystal phase gates on four spawned crystals.** Only the Green Crystal
+  carries `HealGroup(30, "Crystals", healAmount: 1500)`, so it is the one that must die first; the
+  other three orbit `shtrs Crystal Tracker`, a `Follow(2, 10, 1)` entity that exists solely as a
+  moving orbit anchor.
+- **`ReplaceTile("Dark Cobblestone", "Hot Lava", 0)`** — radius 0. The two `shtrs king lava` entities
+  are placed where the lava should appear and convert only their own tile.
 
 ## What this server does differently
 

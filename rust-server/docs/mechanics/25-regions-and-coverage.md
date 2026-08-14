@@ -70,29 +70,29 @@ Every file below was opened and read, not grepped.
 | World subclasses | all of `worlds/logic/`, plus `DynamicWorld` and `DungeonTemplates` |
 | `common/` | `Database`, `DbModels`, `FameStats`, `XmlData`, `XmlDescriptors`, `Resources`, `AppSettings`, `WorldData`, `WeeklyQuest`, `Utils`, `Json2Wmap`, `TerrainTile` |
 
-## What has not been read, and why that is defensible
+## What has not been read
 
-**37 of the 38 setpieces** — now read; see [page 24](24-setpieces.md).
+**One file: `common/WeakDictionary.cs`**, a generic container with no callers anywhere in the tree.
 
-**The 103 packet definitions and 51 handlers** — now read; see [pages 38](38-handlers.md)
-and [40](40-packets.md).
+Everything else compiled by `wServer.csproj` and `server.csproj` has been read line by line. The
+categories that were open questions during the audit are all closed:
 
-**The 48 files of the `server/` HTTP tree** — now read; see [page 41](41-the-account-server.md).
+| Was outstanding | Now |
+| --- | --- |
+| 37 of the 38 setpieces | read — [page 24](24-setpieces.md) |
+| 103 packet definitions, 51 handlers | read — [pages 38](38-handlers.md) and [40](40-packets.md) |
+| The 48 files of the `server/` HTTP tree | read — [page 41](41-the-account-server.md) |
+| All of `common/` | read — [page 42](42-between-servers.md) |
+| 19 of the 61 `logic/db/BehaviorDb.*.cs` scripts | read — [page 43](43-the-behaviour-scripts.md) |
 
-**All of `common/`** — now read; see [page 42](42-between-servers.md). The only file skipped is
-`WeakDictionary.cs`, a generic container with no callers in this tree.
+The behaviour scripts were also censused mechanically for every constructor and named argument,
+because counting is the only way to prove a construct is *never* used and reading is the only way to
+find a specific oddity. The second pass over the 19 large dungeon files found several things the
+census could not have: the `Pirate` fallback for unknown entity names, `Tomb`'s always-true
+`HpLessTransition(60, ...)`, and Shatters' 51-behaviour obelisk states.
 
-**19 of the 61 `logic/db/BehaviorDb.*.cs` scripts.** The other 42 were read line by line, and all 61
-were censused for every constructor and named argument — see [page 43](43-the-behaviour-scripts.md).
-The 19 unread ones are the largest dungeon files, and the census establishes that they use no
-construct the read ones do not. What the census cannot establish is a *specific* oddity inside one of
-them, which is how the `MoveTo2` and `Body Segment G` notes on page 43 were found in the ones that
-were read.
-
-**`common/WeakDictionary.cs`**, a generic container with no callers in this tree.
-
-If either of those turns out to matter, the census that covers it is the thing to distrust first —
-one of them was under-reporting for the life of the project before this audit.
+Where a claim on these pages rests on a census rather than on reading, the census is the thing to
+distrust first — one of them was under-reporting for the life of the project before this audit.
 
 ## Dead code in the C# tree, so nobody ports it
 
