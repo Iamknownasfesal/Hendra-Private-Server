@@ -29,7 +29,7 @@ pub use market::{Listing, MarketPurchase};
 pub use model::{Account, Admin, Character, CharacterSummary, Currency};
 pub use moves::{Location, MoveOutcome, Placed, Purchase};
 pub use news::{Calendar, News};
-pub use social::{Friend, Message};
+pub use social::{Friend, ListKind, Message};
 pub use trade::{Offer, TradeOutcome};
 pub use wardrobe::{Boost, DyeSlot, Pet};
 

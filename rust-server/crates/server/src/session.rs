@@ -196,6 +196,66 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
                 trade(&mut link, &context, &player, &name, asked).await;
             }
 
+            Outcome::Say(line) => say(&mut link, &line).await,
+
+            Outcome::TeleportTo(to) => {
+                teleport(&mut link, &context, &player, &placement, &to).await;
+            }
+
+            Outcome::Escape => {
+                if let Some(next) = go_to(
+                    &mut link,
+                    &placement,
+                    &name,
+                    player.account.id,
+                    crate::worlds::NEXUS,
+                    &context.worlds,
+                    arrival_of(&player, &context),
+                    &to_session,
+                )
+                .await
+                {
+                    placement = next;
+                    send_terrain(&mut link, &placement).await;
+                }
+            }
+
+            Outcome::Buy(sale) => buy(&mut link, &context, &player, sale).await,
+
+            Outcome::Prestige => {
+                match context
+                    .store
+                    .prestige(player.account.id, player.character.id)
+                    .await
+                {
+                    Ok(earned) => {
+                        say(&mut link, &format!("You earned {earned} prestige.")).await;
+
+                        // The character is level one with nothing now, so the world is holding a
+                        // body that no longer matches what is stored. Leaving is the honest end.
+                        break;
+                    }
+                    Err(hendra_store::StoreError::Refused(why)) => say(&mut link, why).await,
+                    Err(_) => say(&mut link, "try again shortly").await,
+                }
+            }
+
+            Outcome::PrestigeBuy(offer) => {
+                buy_with_prestige(&mut link, &context, &player, offer).await;
+            }
+
+            Outcome::Guild(asked) => {
+                guild(&mut link, &context, &player, &name, asked).await;
+            }
+
+            Outcome::Market(command) => {
+                market(&mut link, &context, &player, command).await;
+            }
+
+            Outcome::EditList { list, name, add } => {
+                edit_list(&mut link, &context, &player, list, &name, add).await;
+            }
+
             Outcome::Travel(portal_type) => {
                 match travel(
                     &mut link,
@@ -261,6 +321,32 @@ enum Trade {
     Cancel,
 }
 
+/// A guild command with its names owned, so it can outlive the buffer it was decoded from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum GuildAsk {
+    Create(String),
+    Invite(String),
+    Join(String),
+    Remove(String),
+    SetRank(String, u8),
+    SetBoard(String),
+    Leave,
+}
+
+fn owned_guild(command: hendra_net::GuildCommand<'_>) -> GuildAsk {
+    use hendra_net::GuildCommand as From;
+
+    match command {
+        From::Create { name } => GuildAsk::Create(name.to_owned()),
+        From::Invite { name } => GuildAsk::Invite(name.to_owned()),
+        From::Join { name } => GuildAsk::Join(name.to_owned()),
+        From::Remove { name } => GuildAsk::Remove(name.to_owned()),
+        From::SetRank { name, rank } => GuildAsk::SetRank(name.to_owned(), rank),
+        From::SetBoard { text } => GuildAsk::SetBoard(text.to_owned()),
+        From::Leave => GuildAsk::Leave,
+    }
+}
+
 enum Outcome {
     Continue,
     Stop,
@@ -285,6 +371,40 @@ enum Outcome {
     /// Handled by the caller for the same reason a move is: a trade is two connections and a
     /// durable inventory, and the world holds neither.
     Trade(Trade),
+
+    /// The player is leaving for the nexus.
+    Escape,
+
+    /// The player wants to be where another player is.
+    ///
+    /// Handled by the caller rather than sent straight to the world, because whether the other
+    /// player has locked them out is an account question and the world holds no accounts.
+    TeleportTo(String),
+
+    /// Something to say to the player and nothing else.
+    Say(String),
+
+    /// The player is buying what a merchant is selling.
+    Buy(crate::world_task::Sale),
+
+    /// The player is giving up this character's fame for prestige.
+    Prestige,
+
+    /// The player is buying one of the things prestige buys.
+    PrestigeBuy(u8),
+
+    /// Something to do with a guild.
+    Guild(GuildAsk),
+
+    /// Something to do with the market.
+    Market(hendra_net::MarketCommand),
+
+    /// Add or remove somebody from one of the account's lists.
+    EditList {
+        list: hendra_net::AccountList,
+        name: String,
+        add: bool,
+    },
 
     /// The player wants to use what is in a slot.
     ///
@@ -1295,6 +1415,23 @@ async fn say_something(
                 return;
             }
 
+            // Somebody who has ignored you does not hear you. Checked here rather than in the
+            // world, which knows about bodies and not about accounts, and answered as though they
+            // heard: telling the sender they were ignored is telling them to use another account.
+            if let Ok(target) = context.store.account_by_name(&to).await
+                && context
+                    .store
+                    .is_listed(
+                        target.id,
+                        player.account.id,
+                        hendra_store::ListKind::Ignored,
+                    )
+                    .await
+                    .unwrap_or(false)
+            {
+                return;
+            }
+
             placement
                 .world
                 .send(ToWorld::Tell {
@@ -1737,6 +1874,48 @@ async fn dispatch(received: &Received, placement: &Placement) -> Outcome {
         }
         ClientMessage::CancelTrade => return Outcome::Trade(Trade::Cancel),
 
+        // Not a portal: there is nothing to step into, and somebody stuck has to be able to leave.
+        ClientMessage::Escape => return Outcome::Escape,
+
+        ClientMessage::Teleport { name } => {
+            // The locked-out list is an account question, so it is answered by the caller rather
+            // than by the world.
+            return Outcome::TeleportTo(name.to_owned());
+        }
+
+        ClientMessage::Buy { merchant } => {
+            let (reply, answer) = tokio::sync::oneshot::channel();
+            if !world
+                .send(ToWorld::Buy {
+                    handle,
+                    merchant,
+                    reply,
+                })
+                .await
+            {
+                return Outcome::Stop;
+            }
+
+            // What is for sale is the world's to say. A client that named the item could name a
+            // cheaper one.
+            return match answer.await {
+                Ok(Some(sale)) => Outcome::Buy(sale),
+                _ => Outcome::Say("There is nothing to buy here.".to_string()),
+            };
+        }
+
+        ClientMessage::Prestige => return Outcome::Prestige,
+        ClientMessage::PrestigeBuy { offer } => return Outcome::PrestigeBuy(offer),
+        ClientMessage::Guild(command) => return Outcome::Guild(owned_guild(command)),
+        ClientMessage::Market(command) => return Outcome::Market(command),
+        ClientMessage::EditList { list, name, add } => {
+            return Outcome::EditList {
+                list,
+                name: name.to_owned(),
+                add,
+            };
+        }
+
         ClientMessage::Pong { .. } => true,
     };
 
@@ -1761,4 +1940,404 @@ async fn ask_portal(world: &WorldHandle, handle: Handle, portal: EntityId) -> Op
         return None;
     }
     answer.await.ok().flatten()
+}
+
+/// Buys what a merchant is selling.
+///
+/// The price and the item come from the world, which read them from where the merchant stands. The
+/// payment and the item move together in one transaction, so a purchase that cannot be delivered is
+/// a purchase that was not paid for.
+async fn buy(
+    link: &mut Link,
+    context: &Context,
+    player: &crate::accounts::Session,
+    sale: crate::world_task::Sale,
+) {
+    let account = match context.store.account(player.account.id).await {
+        Ok(account) => account,
+        Err(_) => return say(link, "try again shortly").await,
+    };
+
+    // The one shop the original gates. Buying fame with fame is the thing it asks a rank for.
+    if sale.rank > 0 && account.admin_rank < sale.rank && account.fame < sale.rank as i32 {
+        return say(link, "Insufficient rank.").await;
+    }
+
+    let item = match context.catalog.object(sale.item) {
+        Some(desc) => desc.uuid,
+        None => return say(link, "There is nothing to buy here.").await,
+    };
+
+    let bought = context
+        .store
+        .buy_item(hendra_store::Purchase {
+            account_id: player.account.id,
+            character_id: player.character.id,
+            item,
+            currency: sale.currency,
+            price: sale.price,
+            first_slot: EQUIPPED_SLOTS as i16,
+            last_slot: LAST_CARRIED_SLOT,
+        })
+        .await;
+
+    match bought {
+        Ok(_) => {
+            send_containers(link, &context.catalog, &context.store, player).await;
+            say(link, "Purchase successful.").await;
+        }
+        Err(hendra_store::StoreError::Refused(why)) => say(link, why).await,
+        Err(err) => {
+            tracing::error!(%err, "a purchase failed");
+            say(link, "try again shortly").await;
+        }
+    }
+}
+
+/// Carries out a guild command.
+///
+/// Every rule lives in the store, which decides them against rows rather than against what a client
+/// claims: who is in which guild, who outranks whom, and whether a name is taken.
+async fn guild(
+    link: &mut Link,
+    context: &Context,
+    player: &crate::accounts::Session,
+    name: &str,
+    asked: GuildAsk,
+) {
+    use hendra_store::Rank;
+
+    let me = player.account.id;
+
+    let outcome = match asked {
+        GuildAsk::Create(guild_name) => context
+            .store
+            .found_guild(me, guild_name.trim())
+            .await
+            .map(|guild| format!("{} founded.", guild.name)),
+
+        // An invitation and a join are the same row from two sides: the store decides whether the
+        // caller may add somebody, so this is one path rather than two.
+        GuildAsk::Invite(who) | GuildAsk::Join(who) => {
+            match context.store.account_by_name(who.trim()).await {
+                Ok(target) => context
+                    .store
+                    .invite_to_guild(me, target.id)
+                    .await
+                    .map(|_| format!("{} joined.", target.name)),
+                Err(_) => Err(hendra_store::StoreError::Refused("no such account")),
+            }
+        }
+
+        GuildAsk::Remove(who) => match context.store.account_by_name(who.trim()).await {
+            Ok(target) => context
+                .store
+                .remove_from_guild(me, target.id)
+                .await
+                .map(|()| format!("{} was removed.", target.name)),
+            Err(_) => Err(hendra_store::StoreError::Refused("no such account")),
+        },
+
+        GuildAsk::SetRank(who, rank) => match context.store.account_by_name(who.trim()).await {
+            Ok(target) => {
+                let rank = Rank::from_number(rank as i16);
+                context
+                    .store
+                    .set_guild_rank(me, target.id, rank)
+                    .await
+                    .map(|()| format!("{} is now {rank:?}.", target.name))
+            }
+            Err(_) => Err(hendra_store::StoreError::Refused("no such account")),
+        },
+
+        GuildAsk::SetBoard(text) => context
+            .store
+            .set_guild_board(me, text.trim())
+            .await
+            .map(|()| "The board was changed.".to_string()),
+
+        GuildAsk::Leave => context
+            .store
+            .leave_guild(me)
+            .await
+            .map(|()| format!("{name} left the guild.")),
+    };
+
+    match outcome {
+        Ok(said) => say(link, &said).await,
+        Err(hendra_store::StoreError::Refused(why)) => say(link, why).await,
+        Err(hendra_store::StoreError::NameTaken) => say(link, "that name is taken").await,
+        Err(err) => {
+            tracing::warn!(%err, "a guild command failed");
+            say(link, "try again shortly").await;
+        }
+    }
+}
+
+/// Carries out a market command.
+///
+/// Listing takes the item out of the inventory and buying puts it into another, both in one
+/// transaction each, so an item is never in two places and never in none.
+async fn market(
+    link: &mut Link,
+    context: &Context,
+    player: &crate::accounts::Session,
+    command: hendra_net::MarketCommand,
+) {
+    use hendra_net::MarketCommand as Ask;
+
+    match command {
+        Ask::Browse => {
+            let listings = context
+                .store
+                .listings(MARKET_PAGE)
+                .await
+                .unwrap_or_default();
+
+            for listing in listings {
+                let name = context
+                    .catalog
+                    .type_of_uuid(listing.item)
+                    .and_then(|kind| context.catalog.object(kind))
+                    .map(|desc| desc.id.as_str())
+                    .unwrap_or("something");
+
+                say(
+                    link,
+                    &format!("#{} {} for {} gold", listing.id, name, listing.price),
+                )
+                .await;
+            }
+        }
+
+        Ask::List { slot, price } => {
+            let slot = (slot as i16).saturating_add(EQUIPPED_SLOTS as i16);
+
+            let held = context
+                .store
+                .character(player.character.id)
+                .await
+                .ok()
+                .and_then(|character| {
+                    character
+                        .inventory
+                        .iter()
+                        .find(|(at, _)| *at == slot)
+                        .map(|(_, item)| *item)
+                });
+
+            let Some(item) = held else {
+                return say(link, "there is nothing in that slot").await;
+            };
+
+            match context
+                .store
+                .list_item(
+                    player.account.id,
+                    player.character.id,
+                    slot,
+                    item,
+                    hendra_store::Currency::Gold,
+                    price,
+                )
+                .await
+            {
+                Ok(listing) => {
+                    send_containers(link, &context.catalog, &context.store, player).await;
+                    say(link, &format!("Listed as #{listing}.")).await;
+                }
+                Err(hendra_store::StoreError::Refused(why)) => say(link, why).await,
+                Err(_) => say(link, "try again shortly").await,
+            }
+        }
+
+        Ask::Cancel { listing } => {
+            match context
+                .store
+                .cancel_listing(
+                    player.account.id,
+                    listing as i64,
+                    player.character.id,
+                    EQUIPPED_SLOTS as i16,
+                    LAST_CARRIED_SLOT,
+                )
+                .await
+            {
+                Ok(_) => {
+                    send_containers(link, &context.catalog, &context.store, player).await;
+                    say(link, "Listing withdrawn.").await;
+                }
+                Err(hendra_store::StoreError::Refused(why)) => say(link, why).await,
+                Err(_) => say(link, "try again shortly").await,
+            }
+        }
+
+        Ask::Buy { listing } => {
+            let bought = context
+                .store
+                .buy_listing(hendra_store::MarketPurchase {
+                    buyer_id: player.account.id,
+                    character_id: player.character.id,
+                    listing_id: listing as i64,
+                    first_slot: EQUIPPED_SLOTS as i16,
+                    last_slot: LAST_CARRIED_SLOT,
+                })
+                .await;
+
+            match bought {
+                Ok(_) => {
+                    send_containers(link, &context.catalog, &context.store, player).await;
+                    say(link, "Bought.").await;
+                }
+                Err(hendra_store::StoreError::Refused(why)) => say(link, why).await,
+                Err(_) => say(link, "try again shortly").await,
+            }
+        }
+    }
+}
+
+/// How many listings one browse shows.
+const MARKET_PAGE: i64 = 20;
+
+/// Adds or removes somebody from one of the account's lists.
+async fn edit_list(
+    link: &mut Link,
+    context: &Context,
+    player: &crate::accounts::Session,
+    list: hendra_net::AccountList,
+    name: &str,
+    add: bool,
+) {
+    let Ok(target) = context.store.account_by_name(name.trim()).await else {
+        return say(link, "no such account").await;
+    };
+
+    if target.id == player.account.id {
+        return say(link, "you cannot list yourself").await;
+    }
+
+    let kind = match list {
+        hendra_net::AccountList::Ignored => hendra_store::ListKind::Ignored,
+        hendra_net::AccountList::Locked => hendra_store::ListKind::LockedOut,
+    };
+
+    let outcome = if add {
+        context
+            .store
+            .add_to_list(player.account.id, target.id, kind)
+            .await
+    } else {
+        context
+            .store
+            .remove_from_list(player.account.id, target.id, kind)
+            .await
+    };
+
+    match outcome {
+        Ok(()) => {
+            let what = if add { "added to" } else { "removed from" };
+            say(link, &format!("{} was {what} your list.", target.name)).await;
+        }
+        Err(hendra_store::StoreError::Refused(why)) => say(link, why).await,
+        Err(_) => say(link, "try again shortly").await,
+    }
+}
+
+/// Moves a player to another player, if the other player allows it.
+///
+/// Two checks, in two places, because they answer different questions. Whether the other player has
+/// locked this one out is an account question, answered here. Whether the move itself is allowed,
+/// which is the world's rules about cooldowns, invisibility and where teleporting is permitted at
+/// all, is the world's, and answered there.
+async fn teleport(
+    link: &mut Link,
+    context: &Context,
+    player: &crate::accounts::Session,
+    placement: &Placement,
+    to: &str,
+) {
+    if let Ok(target) = context.store.account_by_name(to).await
+        && context
+            .store
+            .is_listed(
+                target.id,
+                player.account.id,
+                hendra_store::ListKind::LockedOut,
+            )
+            .await
+            .unwrap_or(false)
+    {
+        // Said as though they were not there. Telling somebody they have been locked out is telling
+        // them to come back on another account.
+        return say(link, &format!("{to} is not here.")).await;
+    }
+
+    let (reply, answer) = tokio::sync::oneshot::channel();
+    if !placement
+        .world
+        .send(ToWorld::Teleport {
+            handle: placement.handle,
+            to: to.to_string(),
+            reply,
+        })
+        .await
+    {
+        return;
+    }
+
+    if let Ok(Some(why)) = answer.await {
+        say(link, &why).await;
+    }
+}
+
+/// Buys one of the things prestige buys.
+///
+/// The offer is named by its place in the list rather than by item, so a client cannot ask for
+/// something expensive at a cheap price. Paid first: a purchase that cannot be delivered leaves the
+/// prestige alone, and the reverse order would need a refund that can itself fail.
+async fn buy_with_prestige(
+    link: &mut Link,
+    context: &Context,
+    player: &crate::accounts::Session,
+    offer: u8,
+) {
+    let Some((name, price)) = hendra_sim::shop::PRESTIGE_OFFERS.get(offer as usize) else {
+        return say(link, "there is no such offer").await;
+    };
+
+    let Some(item) = context
+        .catalog
+        .type_of(name)
+        .and_then(|kind| context.catalog.object(kind))
+    else {
+        return say(link, "that is not for sale here").await;
+    };
+
+    if let Err(err) = context
+        .store
+        .spend_prestige(player.account.id, *price)
+        .await
+    {
+        return match err {
+            hendra_store::StoreError::Refused(why) => say(link, why).await,
+            _ => say(link, "try again shortly").await,
+        };
+    }
+
+    // The vault rather than the inventory, as the original does: it goes to the gift chest, which
+    // is where something bought outside the world arrives.
+    match context.store.add_gift(player.account.id, item.uuid).await {
+        Ok(_) => say(link, &format!("{name} was sent to your gift chest.")).await,
+        Err(err) => {
+            // Paid for and not delivered is the one outcome worth shouting about, because the
+            // player is now owed something the server cannot hand over.
+            tracing::error!(
+                %err,
+                account = player.account.id,
+                %name,
+                "prestige was spent and the item could not be delivered"
+            );
+            say(link, "try again shortly").await;
+        }
+    }
 }

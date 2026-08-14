@@ -290,6 +290,92 @@ fn skin_identity(skin: i32) -> uuid::Uuid {
     uuid::Uuid::from_u128(skin as u128)
 }
 
+/// How many slots the gift chest holds.
+///
+/// The same eight every container in the game holds. A gift that arrives with the chest full is
+/// refused rather than dropped, so the sender's side can say the purchase did not go through.
+pub const GIFT_SLOTS: i16 = 8;
+
+/// The gift chest: where something bought outside the world arrives.
+///
+/// A separate place from the vault, because a gift is not something the player put there. The
+/// original's `AddGift` writes to its own list for the same reason, and the chest in the vault is
+/// where it is read from.
+impl Store {
+    /// Puts an item in the first free gift slot.
+    ///
+    /// The slot is chosen and claimed inside one transaction with the rows locked, so two gifts
+    /// arriving at once cannot both choose the same slot and one silently overwrite the other.
+    pub async fn add_gift(&self, account_id: i64, item: uuid::Uuid) -> Result<i16> {
+        let mut transaction = self.pool().begin().await?;
+
+        sqlx::query("SELECT slot FROM gift_slot WHERE account_id = $1 FOR UPDATE")
+            .bind(account_id)
+            .fetch_all(&mut *transaction)
+            .await?;
+
+        let taken = sqlx::query_as::<_, (i16,)>("SELECT slot FROM gift_slot WHERE account_id = $1")
+            .bind(account_id)
+            .fetch_all(&mut *transaction)
+            .await?;
+
+        let free = (0..GIFT_SLOTS)
+            .find(|slot| !taken.iter().any(|(used,)| used == slot))
+            .ok_or(StoreError::Refused("your gift chest is full"))?;
+
+        let written = sqlx::query(
+            "INSERT INTO gift_slot (account_id, slot, item) VALUES ($1, $2, $3)
+             ON CONFLICT (account_id, slot) DO NOTHING",
+        )
+        .bind(account_id)
+        .bind(free)
+        .bind(item)
+        .execute(&mut *transaction)
+        .await?;
+
+        if written.rows_affected() == 0 {
+            return Err(StoreError::Refused("your gift chest is full"));
+        }
+
+        transaction.commit().await?;
+        Ok(free)
+    }
+
+    /// What is in the gift chest.
+    pub async fn gifts(&self, account_id: i64) -> Result<Vec<(i16, uuid::Uuid)>> {
+        let rows = sqlx::query_as::<_, (i16, uuid::Uuid)>(
+            "SELECT slot, item FROM gift_slot WHERE account_id = $1 ORDER BY slot",
+        )
+        .bind(account_id)
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(rows)
+    }
+
+    /// Takes a gift out, but only if that slot still holds what the caller expects.
+    ///
+    /// The condition is what makes two simultaneous requests for the same gift resolve to one item
+    /// rather than two.
+    pub async fn take_gift(&self, account_id: i64, slot: i16, expected: uuid::Uuid) -> Result<()> {
+        let removed =
+            sqlx::query("DELETE FROM gift_slot WHERE account_id = $1 AND slot = $2 AND item = $3")
+                .bind(account_id)
+                .bind(slot)
+                .bind(expected)
+                .execute(self.pool())
+                .await?;
+
+        if removed.rows_affected() == 0 {
+            return Err(StoreError::Refused(
+                "that gift is no longer where you left it",
+            ));
+        }
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

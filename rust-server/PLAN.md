@@ -434,3 +434,52 @@ parser bugs cost 119 enemies and went unnoticed because the total looked like su
 
 The client cutover is not in this plan by request. It remains the only thing between all of this
 and a game anyone can play.
+
+## Phase 13 — What the protocol census found
+
+Written because the answer to "is this complete" had been wrong three times, and each time the thing
+that found the gap was counting something rather than reasoning about it. So the protocol got
+counted: one row per handler in `wServer/networking/handlers/`, and what answers it here.
+
+The first run said 82%. Nine packets had nothing behind them, and four were real mechanics.
+
+- [x] The five remaining app endpoints
+
+  Two link a Discord account and are administrators-only, as in the original. One serves the texture
+  pack. `security/gameData` is an empty class in the original, so reproducing it faithfully means
+  having nothing. `security/securityProtocols` is client attestation: the client sends SHA-256 of its
+  own hardcoded rate of fire and cooldown and is let in if they match. That secures nothing, so the
+  endpoint answers with the numbers the server itself enforces and says which side decides.
+
+- [x] Escape, and Teleport
+
+  Escape leaves for the nexus with no portal to step into. Teleport carries all seven of the
+  original's refusals, and a grace period so the server's own teleport is not read as somebody
+  moving too fast.
+
+- [x] Shops, which nothing had
+
+  Ten of them, from `MerchantLists.cs`, placed on the squares their region marks and dealt out
+  around them. Two of the original's own item names differ from the content only in capitals, so the
+  lookup does not insist on them.
+
+- [x] Guild invite and remove, market commands, and the ignore and lock-out lists
+
+  The store had guilds and a market and no way to reach either. The lists did not exist at all, and
+  both now do something: somebody who has ignored you does not hear you, and somebody who has locked
+  you out cannot be teleported to. Both answer as though the person simply is not there, because
+  telling somebody they have been blocked is telling them to use another account.
+
+- [x] Prestige, and the gift chest it delivers into
+
+  Every fifteen hundred fame becomes one prestige and the character starts over, both in one
+  transaction. Gifts had nowhere to go, so there is a gift chest now.
+
+- [x] The five handlers that are left do nothing, and the reason is checked rather than claimed
+
+  The forge, the crystal and the marks ask for object types the shipped content does not have, and
+  the gamble and the unbox call methods the original does not define. `WITHOUT_CONTENT` lists the
+  types, and a test re-checks them: if a later content drop adds any, it fails and says the handler
+  is worth implementing.
+
+`cargo run -p hendra-server --example handlers` counts the protocol. It carries its own tests.

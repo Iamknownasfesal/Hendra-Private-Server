@@ -23,3 +23,9 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"
 tracing.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror.workspace = true
+
+# The census carries its own checks: one that nothing is left unanswered, and one that the reasons
+# it gives about the content are still true.
+[[example]]
+name = "handlers"
+test = true

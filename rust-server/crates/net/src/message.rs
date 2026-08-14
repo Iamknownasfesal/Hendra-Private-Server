@@ -36,6 +36,14 @@ pub mod client_id {
     pub const CHANGE_TRADE: u16 = 0x000b;
     pub const ACCEPT_TRADE: u16 = 0x000c;
     pub const CANCEL_TRADE: u16 = 0x000d;
+    pub const ESCAPE: u16 = 0x000e;
+    pub const TELEPORT: u16 = 0x000f;
+    pub const BUY: u16 = 0x0010;
+    pub const GUILD: u16 = 0x0011;
+    pub const MARKET: u16 = 0x0012;
+    pub const EDIT_LIST: u16 = 0x0013;
+    pub const PRESTIGE: u16 = 0x0014;
+    pub const PRESTIGE_BUY: u16 = 0x0015;
 }
 
 /// Messages travelling from server to client.
@@ -330,6 +338,208 @@ pub enum ClientMessage<'a> {
 
     /// Ends the trade, from either side.
     CancelTrade,
+
+    /// Leave for the nexus.
+    ///
+    /// Not a portal: there is no portal to step into, and a player who is stuck or in trouble has to
+    /// be able to leave from wherever they are.
+    Escape,
+
+    /// Move to another player, by name.
+    ///
+    /// The server decides whether it is allowed: a world can forbid it, and a player who cannot be
+    /// seen cannot be reached.
+    Teleport {
+        name: &'a str,
+    },
+
+    /// Buy what a merchant in the world is selling.
+    ///
+    /// Names the merchant rather than the item, because what it sells is the server's to know. A
+    /// client that names an item is a client that can name a cheaper one.
+    Buy {
+        merchant: EntityId,
+    },
+
+    /// Something to do with a guild.
+    Guild(GuildCommand<'a>),
+
+    /// Something to do with the market.
+    Market(MarketCommand),
+
+    /// Give up this character's fame for prestige, and start it over.
+    Prestige,
+
+    /// Buy one of the things prestige buys.
+    ///
+    /// Names which of the shop's offers rather than the item, for the same reason buying from a
+    /// merchant does: a client that names the item can name a cheaper one.
+    PrestigeBuy {
+        offer: u8,
+    },
+
+    /// Add or remove somebody from one of the account's lists.
+    EditList {
+        list: AccountList,
+        name: &'a str,
+        add: bool,
+    },
+}
+
+/// What a player wants done about a guild.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GuildCommand<'a> {
+    Create { name: &'a str },
+    Invite { name: &'a str },
+    Join { name: &'a str },
+    Remove { name: &'a str },
+    SetRank { name: &'a str, rank: u8 },
+    SetBoard { text: &'a str },
+    Leave,
+}
+
+/// What a player wants done about the market.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MarketCommand {
+    /// Everything for sale.
+    Browse,
+
+    /// Offer what is in a slot at a price.
+    List { slot: u8, price: i32 },
+
+    /// Take back a listing.
+    Cancel { listing: u64 },
+
+    /// Buy one.
+    Buy { listing: u64 },
+}
+
+/// One of the lists an account keeps about other people.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccountList {
+    /// People whose messages are not shown.
+    Ignored,
+
+    /// People who may not teleport to this player.
+    Locked,
+}
+
+impl AccountList {
+    fn number(self) -> u64 {
+        match self {
+            AccountList::Ignored => 0,
+            AccountList::Locked => 1,
+        }
+    }
+
+    fn from_number(number: u32) -> Option<AccountList> {
+        Some(match number {
+            0 => AccountList::Ignored,
+            1 => AccountList::Locked,
+            _ => return None,
+        })
+    }
+}
+
+impl GuildCommand<'_> {
+    fn encode(&self, w: &mut Writer<'_>) {
+        match self {
+            GuildCommand::Create { name } => {
+                w.u8(0);
+                w.string(name);
+            }
+            GuildCommand::Invite { name } => {
+                w.u8(1);
+                w.string(name);
+            }
+            GuildCommand::Join { name } => {
+                w.u8(2);
+                w.string(name);
+            }
+            GuildCommand::Remove { name } => {
+                w.u8(3);
+                w.string(name);
+            }
+            GuildCommand::SetRank { name, rank } => {
+                w.u8(4);
+                w.string(name);
+                w.u8(*rank);
+            }
+            GuildCommand::SetBoard { text } => {
+                w.u8(5);
+                w.string(text);
+            }
+            GuildCommand::Leave => w.u8(6),
+        }
+    }
+
+    fn decode<'b>(r: &mut Reader<'b>) -> Result<GuildCommand<'b>, CodecError> {
+        let kind = r.u8()?;
+        Ok(match kind {
+            0 => GuildCommand::Create { name: r.string()? },
+            1 => GuildCommand::Invite { name: r.string()? },
+            2 => GuildCommand::Join { name: r.string()? },
+            3 => GuildCommand::Remove { name: r.string()? },
+            4 => GuildCommand::SetRank {
+                name: r.string()?,
+                rank: r.u8()?,
+            },
+            5 => GuildCommand::SetBoard { text: r.string()? },
+            6 => GuildCommand::Leave,
+            _ => {
+                return Err(CodecError::InvalidValue {
+                    what: "guild command",
+                    value: kind as u64,
+                });
+            }
+        })
+    }
+}
+
+impl MarketCommand {
+    fn encode(&self, w: &mut Writer<'_>) {
+        match self {
+            MarketCommand::Browse => w.u8(0),
+            MarketCommand::List { slot, price } => {
+                w.u8(1);
+                w.u8(*slot);
+                w.varint(*price as u64);
+            }
+            MarketCommand::Cancel { listing } => {
+                w.u8(2);
+                w.varint(*listing);
+            }
+            MarketCommand::Buy { listing } => {
+                w.u8(3);
+                w.varint(*listing);
+            }
+        }
+    }
+
+    fn decode(r: &mut Reader<'_>) -> Result<MarketCommand, CodecError> {
+        let kind = r.u8()?;
+        Ok(match kind {
+            0 => MarketCommand::Browse,
+            1 => MarketCommand::List {
+                slot: r.u8()?,
+                // A price is never negative, so it travels unsigned and a client that wants to be
+                // paid for taking something cannot say so.
+                price: r.varint_u32()? as i32,
+            },
+            2 => MarketCommand::Cancel {
+                listing: r.varint_u32()? as u64,
+            },
+            3 => MarketCommand::Buy {
+                listing: r.varint_u32()? as u64,
+            },
+            _ => {
+                return Err(CodecError::InvalidValue {
+                    what: "market command",
+                    value: kind as u64,
+                });
+            }
+        })
+    }
 }
 
 /// One inventory slot, as the other side of a trade sees it.
@@ -419,6 +629,14 @@ impl ClientMessage<'_> {
             ClientMessage::ChangeTrade { .. } => client_id::CHANGE_TRADE,
             ClientMessage::AcceptTrade { .. } => client_id::ACCEPT_TRADE,
             ClientMessage::CancelTrade => client_id::CANCEL_TRADE,
+            ClientMessage::Escape => client_id::ESCAPE,
+            ClientMessage::Teleport { .. } => client_id::TELEPORT,
+            ClientMessage::Buy { .. } => client_id::BUY,
+            ClientMessage::Guild(_) => client_id::GUILD,
+            ClientMessage::Market(_) => client_id::MARKET,
+            ClientMessage::EditList { .. } => client_id::EDIT_LIST,
+            ClientMessage::Prestige => client_id::PRESTIGE,
+            ClientMessage::PrestigeBuy { .. } => client_id::PRESTIGE_BUY,
         }
     }
 
@@ -461,6 +679,19 @@ impl ClientMessage<'_> {
                 write_offer(w, theirs);
             }
             ClientMessage::CancelTrade => {}
+
+            ClientMessage::Escape => {}
+            ClientMessage::Teleport { name } => w.string(name),
+            ClientMessage::Buy { merchant } => w.varint(merchant.0 as u64),
+            ClientMessage::Guild(command) => command.encode(w),
+            ClientMessage::Market(command) => command.encode(w),
+            ClientMessage::Prestige => {}
+            ClientMessage::PrestigeBuy { offer } => w.u8(*offer),
+            ClientMessage::EditList { list, name, add } => {
+                w.varint(list.number());
+                w.string(name);
+                w.u8(u8::from(*add));
+            }
         }
     }
 
@@ -476,6 +707,27 @@ impl ClientMessage<'_> {
                 theirs: read_offer(r)?,
             },
             client_id::CANCEL_TRADE => ClientMessage::CancelTrade,
+
+            client_id::ESCAPE => ClientMessage::Escape,
+            client_id::TELEPORT => ClientMessage::Teleport { name: r.string()? },
+            client_id::BUY => ClientMessage::Buy {
+                merchant: EntityId(r.varint_u32()?),
+            },
+            client_id::GUILD => ClientMessage::Guild(GuildCommand::decode(r)?),
+            client_id::MARKET => ClientMessage::Market(MarketCommand::decode(r)?),
+            client_id::PRESTIGE => ClientMessage::Prestige,
+            client_id::PRESTIGE_BUY => ClientMessage::PrestigeBuy { offer: r.u8()? },
+            client_id::EDIT_LIST => ClientMessage::EditList {
+                list: {
+                    let number = r.varint_u32()?;
+                    AccountList::from_number(number).ok_or(CodecError::InvalidValue {
+                        what: "account list",
+                        value: number as u64,
+                    })?
+                },
+                name: r.string()?,
+                add: r.u8()? != 0,
+            },
 
             client_id::HELLO => ClientMessage::Hello {
                 protocol: r.varint_u32()?,

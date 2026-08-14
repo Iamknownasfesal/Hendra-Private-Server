@@ -56,7 +56,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use hendra_auth::{Claims, TokenKey, hash_password, mint, now, verify, verify_password};
-use hendra_store::{Store, StoreError};
+use hendra_store::{Admin, Store, StoreError};
 use serde::{Deserialize, Serialize};
 
 pub mod mail;
@@ -84,6 +84,9 @@ pub struct App {
 
     /// How many passwords may be hashed at once.
     pub hashing: tokio::sync::Semaphore,
+
+    /// Where the content is, for the files a client fetches rather than the summaries it reads.
+    pub content: std::path::PathBuf,
 }
 
 impl App {
@@ -102,6 +105,7 @@ impl App {
             common_items,
             throttle: Throttle::new(),
             hashing: tokio::sync::Semaphore::new(throttle::CONCURRENT_HASHES),
+            content: std::path::PathBuf::from("."),
         }
     }
 }
@@ -722,6 +726,153 @@ pub async fn set_name(
         }
     }
 }
+
+#[derive(Deserialize)]
+pub struct DiscordLink {
+    /// Who to link, by account name. An administrator does this on somebody else's behalf.
+    pub account: String,
+    pub discord_id: String,
+}
+
+/// Links an account to a Discord user, for an administrator.
+///
+/// Administrators only, as in the original, where it is gated on the rank-manager flag. Anybody
+/// being able to claim a Discord id for any account would make the link say the opposite of what it
+/// is for: a bot could be told that whoever asked is whoever they named.
+pub async fn register_discord(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Json(body): Json<DiscordLink>,
+) -> Answer<serde_json::Value> {
+    let account_id = administering(&app, &headers, &body.account).await?;
+
+    match app
+        .store
+        .register_discord(account_id, body.discord_id.trim())
+        .await
+    {
+        Ok(()) => Ok(Json(serde_json::json!({}))),
+        Err(StoreError::Refused(why)) => Err(refuse(StatusCode::BAD_REQUEST, why)),
+        Err(err) => {
+            tracing::error!(%err, "could not link a discord account");
+            Err(refuse(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "try again shortly",
+            ))
+        }
+    }
+}
+
+/// Unlinks an account from a Discord user, for an administrator.
+pub async fn unregister_discord(
+    State(app): State<Arc<App>>,
+    headers: HeaderMap,
+    Json(body): Json<DiscordLink>,
+) -> Answer<serde_json::Value> {
+    let account_id = administering(&app, &headers, &body.account).await?;
+
+    match app
+        .store
+        .unregister_discord(account_id, body.discord_id.trim())
+        .await
+    {
+        Ok(()) => Ok(Json(serde_json::json!({}))),
+        Err(StoreError::Refused(why)) => Err(refuse(StatusCode::BAD_REQUEST, why)),
+        Err(err) => {
+            tracing::error!(%err, "could not unlink a discord account");
+            Err(refuse(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "try again shortly",
+            ))
+        }
+    }
+}
+
+/// Checks the caller may administer, and finds the account they named.
+///
+/// The order matters: whether the caller is allowed is decided before the named account is looked
+/// up, so a refusal cannot be used to find out which names exist.
+async fn administering(
+    app: &App,
+    headers: &HeaderMap,
+    name: &str,
+) -> Result<i64, (StatusCode, Json<Refusal>)> {
+    let claims = authenticate(app, headers)?;
+
+    let caller = app
+        .store
+        .account(claims.account_id)
+        .await
+        .map_err(|_| refuse(StatusCode::UNAUTHORIZED, "no such account"))?;
+
+    if Admin::from_number(caller.admin_rank) < Admin::Administrator {
+        return Err(refuse(StatusCode::FORBIDDEN, "no permission"));
+    }
+
+    app.store
+        .account_by_name(name)
+        .await
+        .map(|account| account.id)
+        .map_err(|_| refuse(StatusCode::NOT_FOUND, "no such account"))
+}
+
+/// What the client is expected to enforce for itself, and what the server enforces regardless.
+///
+/// The original answers this with a hash comparison: the client sends SHA-256 of its own hardcoded
+/// rate of fire, mp cost and cooldown, and is let in if they match. That check secures nothing. The
+/// constants are public, the hash is unsalted, and a client that has been changed to cheat can send
+/// the hashes of the values it is supposed to have.
+///
+/// So the endpoint answers, because a client that asks should get an answer, and the numbers it
+/// returns are the ones the server itself uses. They are here to be shown, not to be trusted:
+/// rate of fire, ability cost and cooldown are all decided server-side in `crates/sim`, and a client
+/// that ignores every one of them gets the same result as one that obeys.
+pub async fn security_protocols() -> Json<SecurityProtocols> {
+    Json(SecurityProtocols {
+        rate_of_fire: 1.0,
+        num_projectiles: 1,
+        arc_gap: 11.25,
+        cooldown_ms: 1000,
+        enforced_by: "server",
+    })
+}
+
+#[derive(Serialize)]
+pub struct SecurityProtocols {
+    pub rate_of_fire: f32,
+    pub num_projectiles: u32,
+    pub arc_gap: f32,
+    pub cooldown_ms: u32,
+
+    /// Which side actually decides. Always the server.
+    pub enforced_by: &'static str,
+}
+
+/// The client's texture pack.
+///
+/// The original serves a zip it loaded at boot. This serves the same file from the content
+/// directory when it is there, and says plainly when it is not: a client told "no textures" can ship
+/// its own, and a client handed an empty archive cannot tell that from a corrupt one.
+pub async fn textures(
+    State(app): State<Arc<App>>,
+) -> Result<axum::response::Response, (StatusCode, Json<Refusal>)> {
+    use axum::response::IntoResponse;
+
+    let path = app.content.join(TEXTURE_PACK);
+    let Ok(bytes) = tokio::fs::read(&path).await else {
+        return Err(refuse(StatusCode::NOT_FOUND, "no texture pack"));
+    };
+
+    Ok((
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "application/zip")],
+        bytes,
+    )
+        .into_response())
+}
+
+/// What the texture pack is called in the content directory.
+pub const TEXTURE_PACK: &str = "textures.zip";
 
 #[derive(Serialize)]
 pub struct FriendList {
@@ -1401,6 +1552,12 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/friends", get(friends).post(add_friend))
         .route("/friends/{id}", axum::routing::delete(remove_friend))
         .route("/register", post(register))
+        .route("/textures", get(textures))
+        .route("/security", get(security_protocols))
+        .route(
+            "/discord",
+            post(register_discord).delete(unregister_discord),
+        )
         .route("/login", post(login))
         .route("/characters", get(characters))
         .route("/characters/{id}", axum::routing::delete(delete_character))

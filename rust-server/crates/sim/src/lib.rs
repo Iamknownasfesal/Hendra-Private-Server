@@ -12,6 +12,7 @@ pub mod metrics;
 pub mod projectile;
 pub mod realm;
 pub mod setpiece;
+pub mod shop;
 pub mod slab;
 pub mod stats;
 pub mod tiles;

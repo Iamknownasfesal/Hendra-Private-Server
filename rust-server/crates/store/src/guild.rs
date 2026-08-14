@@ -266,3 +266,127 @@ impl Store {
         Ok(())
     }
 }
+
+impl Store {
+    /// Which guild an account is in, and at what rank.
+    pub async fn guild_of(&self, account_id: i64) -> Result<Option<(i64, Rank)>> {
+        let found = sqlx::query_as::<_, (Option<i64>, i16)>(
+            "SELECT guild_id, guild_rank FROM account WHERE id = $1",
+        )
+        .bind(account_id)
+        .fetch_optional(self.pool())
+        .await?;
+
+        Ok(found.and_then(|(guild, rank)| guild.map(|guild| (guild, Rank::from_number(rank)))))
+    }
+
+    /// Puts somebody into the caller's guild.
+    ///
+    /// Officers and above, as in the original, which gates it at rank twenty. The check is against
+    /// the caller's stored rank rather than anything the client says, and the target must be in no
+    /// guild: joining somebody who is already in one is how a guild takes a member from another.
+    pub async fn invite_to_guild(&self, actor: i64, target: i64) -> Result<i64> {
+        let mut transaction = self.pool().begin().await?;
+
+        // Both rows locked before either is read, so two officers inviting the same person cannot
+        // both find them guildless.
+        let (low, high) = if actor <= target {
+            (actor, target)
+        } else {
+            (target, actor)
+        };
+        for account in [low, high] {
+            sqlx::query("SELECT id FROM account WHERE id = $1 FOR UPDATE")
+                .bind(account)
+                .execute(&mut *transaction)
+                .await?;
+        }
+
+        let mine = sqlx::query_as::<_, (Option<i64>, i16)>(
+            "SELECT guild_id, guild_rank FROM account WHERE id = $1",
+        )
+        .bind(actor)
+        .fetch_optional(&mut *transaction)
+        .await?
+        .ok_or(StoreError::Refused("no such account"))?;
+
+        let Some(guild) = mine.0 else {
+            return Err(StoreError::Refused("you are not in a guild"));
+        };
+        if Rank::from_number(mine.1) < Rank::Officer {
+            return Err(StoreError::Refused("insufficient privileges"));
+        }
+
+        let joined = sqlx::query(
+            "UPDATE account SET guild_id = $2, guild_rank = $3
+             WHERE id = $1 AND guild_id IS NULL",
+        )
+        .bind(target)
+        .bind(guild)
+        .bind(Rank::Initiate.number())
+        .execute(&mut *transaction)
+        .await?;
+
+        if joined.rows_affected() == 0 {
+            return Err(StoreError::Refused("they are already in a guild"));
+        }
+
+        transaction.commit().await?;
+        Ok(guild)
+    }
+
+    /// Takes somebody out of a guild.
+    ///
+    /// Leaving is always allowed. Removing somebody else needs a higher rank than theirs, which is
+    /// what stops a member from throwing out the founder.
+    pub async fn remove_from_guild(&self, actor: i64, target: i64) -> Result<()> {
+        if actor == target {
+            return self.leave_guild(actor).await;
+        }
+
+        let mut transaction = self.pool().begin().await?;
+
+        let (low, high) = if actor <= target {
+            (actor, target)
+        } else {
+            (target, actor)
+        };
+        for account in [low, high] {
+            sqlx::query("SELECT id FROM account WHERE id = $1 FOR UPDATE")
+                .bind(account)
+                .execute(&mut *transaction)
+                .await?;
+        }
+
+        let mine = sqlx::query_as::<_, (Option<i64>, i16)>(
+            "SELECT guild_id, guild_rank FROM account WHERE id = $1",
+        )
+        .bind(actor)
+        .fetch_optional(&mut *transaction)
+        .await?
+        .ok_or(StoreError::Refused("no such account"))?;
+
+        let theirs = sqlx::query_as::<_, (Option<i64>, i16)>(
+            "SELECT guild_id, guild_rank FROM account WHERE id = $1",
+        )
+        .bind(target)
+        .fetch_optional(&mut *transaction)
+        .await?
+        .ok_or(StoreError::Refused("no such account"))?;
+
+        if mine.0.is_none() || mine.0 != theirs.0 {
+            return Err(StoreError::Refused("they are not in your guild"));
+        }
+        if Rank::from_number(mine.1) <= Rank::from_number(theirs.1) {
+            return Err(StoreError::Refused("insufficient privileges"));
+        }
+
+        sqlx::query("UPDATE account SET guild_id = NULL, guild_rank = 0 WHERE id = $1")
+            .bind(target)
+            .execute(&mut *transaction)
+            .await?;
+
+        transaction.commit().await?;
+        Ok(())
+    }
+}

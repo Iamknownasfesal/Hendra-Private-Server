@@ -69,6 +69,12 @@ pub struct Entity {
     pub object_type: ObjectType,
     pub kind: Kind,
 
+    /// What this entity is selling, for a shop merchant.
+    ///
+    /// Held on the entity rather than looked up from its type, because eight merchants of the same
+    /// type sell eight different things: what a stall holds is where it stands, not what it is.
+    pub selling: Option<crate::shop::Stall>,
+
     /// Which of a realm's terrains this enemy was placed on.
     ///
     /// Carried rather than read from the ground, so an enemy that has chased somebody across a
@@ -138,6 +144,15 @@ pub struct Entity {
     /// Time before an ability may be used again.
     pub ability_cooldown_ms: u32,
 
+    /// How long before this player may teleport again.
+    pub teleport_cooldown_ms: u32,
+
+    /// How long a player is forgiven for being somewhere no speed explains.
+    ///
+    /// A teleport moves somebody further in one tick than walking ever could, and the movement
+    /// check cannot tell that from a client claiming to be somewhere it is not.
+    pub move_grace_ms: u32,
+
     /// Level, experience and fame. Only players advance.
     pub progress: crate::leveling::Progress,
 
@@ -173,6 +188,7 @@ impl Entity {
         Entity {
             object_type,
             terrain: hendra_content::Terrain::None,
+            selling: None,
             kind: Kind::Fixture,
             x,
             y,
@@ -199,6 +215,8 @@ impl Entity {
             effects: Vec::new(),
             armed: None,
             ability_cooldown_ms: 0,
+            teleport_cooldown_ms: 0,
+            move_grace_ms: 0,
             progress: crate::leveling::Progress::new(),
             health_fraction: 0.0,
             magic_fraction: 0.0,
@@ -211,6 +229,7 @@ impl Entity {
         Entity {
             object_type,
             terrain: hendra_content::Terrain::None,
+            selling: None,
             kind: Kind::Player,
             x,
             y,
@@ -237,6 +256,8 @@ impl Entity {
             effects: Vec::new(),
             armed: None,
             ability_cooldown_ms: 0,
+            teleport_cooldown_ms: 0,
+            move_grace_ms: 0,
             progress: crate::leveling::Progress::new(),
             health_fraction: 0.0,
             magic_fraction: 0.0,
@@ -368,6 +389,9 @@ pub struct World {
     /// How full this world is and whether it has been cleared. Only a realm uses it.
     realm: crate::realm::Realm,
 
+    /// Whether players may teleport here, from the world definition's `restrictTp`.
+    allows_teleport: bool,
+
     /// How many squares a drawing could not paint, because the map already names as many kinds of
     /// square as an index can hold.
     refused_squares: usize,
@@ -473,6 +497,7 @@ impl World {
             spawn_seed: 0x2545_f491,
             realm: crate::realm::Realm::new(),
             spawn_squares: std::collections::HashMap::new(),
+            allows_teleport: true,
             refused_squares: 0,
             scenery_changes: Vec::new(),
             unknown_setpieces: std::collections::HashSet::new(),
@@ -637,6 +662,17 @@ impl World {
                 y: entity.y,
                 refused: (claimed_x != entity.x || claimed_y != entity.y)
                     .then_some(MoveRefusal::Rooted),
+            });
+        }
+
+        // A player the server itself just moved is where the server put them, and their client is
+        // about to say so. Checking that against a walking speed would refuse the server's own
+        // teleport and snap them back.
+        if entity.move_grace_ms > 0 {
+            return Some(MoveOutcome {
+                x: claimed_x,
+                y: claimed_y,
+                refused: None,
             });
         }
 
@@ -936,6 +972,15 @@ struct SenseScalars {
     nearest_player: Option<Nearby>,
     damage_taken: i32,
 }
+
+/// How long before a player may teleport again.
+pub const TELEPORT_COOLDOWN_MS: u32 = 10_000;
+
+/// How long a teleported player is forgiven for arriving somewhere no speed explains.
+///
+/// A teleport moves somebody further in one tick than walking ever could, and the movement check
+/// cannot tell that from a client claiming to be somewhere it is not.
+pub const MOVE_GRACE_MS: u32 = 1_000;
 
 /// The chest a setpiece leaves its reward in.
 const SETPIECE_CHEST: &str = "Treasure Chest";
@@ -1862,6 +1907,8 @@ impl World {
         for (_, entity) in self.entities.iter_mut() {
             entity.cooldown_ms = entity.cooldown_ms.saturating_sub(elapsed_ms);
             entity.ability_cooldown_ms = entity.ability_cooldown_ms.saturating_sub(elapsed_ms);
+            entity.teleport_cooldown_ms = entity.teleport_cooldown_ms.saturating_sub(elapsed_ms);
+            entity.move_grace_ms = entity.move_grace_ms.saturating_sub(elapsed_ms);
         }
     }
 
@@ -2498,6 +2545,100 @@ impl World {
         catalog.object(square.object).is_some_and(|desc| {
             desc.static_object && !desc.enemy && is_decoration(desc.class.as_str())
         })
+    }
+
+    /// Puts a merchant down with something to sell.
+    pub fn open_stall(
+        &mut self,
+        kind: ObjectType,
+        x: u32,
+        y: u32,
+        selling: crate::shop::Stall,
+    ) -> Option<Handle> {
+        let mut stall = Entity::fixture(kind, x as f32 + 0.5, y as f32 + 0.5);
+        stall.selling = Some(selling);
+        self.spawn(stall)
+    }
+
+    /// Moves a player to another player, if every rule allows it.
+    ///
+    /// The refusals are the original's, in `Player.Teleport`, and each is a real hole otherwise:
+    /// teleporting to somebody invisible finds a player who is hiding, teleporting to somebody
+    /// paused reaches into a place the world has stopped, and teleporting with no cooldown is a way
+    /// to cross a realm faster than anything can chase.
+    ///
+    /// Returns why it was refused, or `None` when it happened.
+    pub fn teleport_to(&mut self, who: Handle, to: Handle) -> Option<&'static str> {
+        if who == to {
+            return Some("You are already at yourself, and always will be.");
+        }
+        if !self.allows_teleport {
+            return Some("You cannot teleport here.");
+        }
+
+        let mover = self.entities.get(who)?;
+        if mover.teleport_cooldown_ms > 0 {
+            return Some("Too soon to teleport again.");
+        }
+        if mover
+            .conditions
+            .contains(hendra_content::ConditionEffect::Paused)
+        {
+            return Some("You cannot teleport while paused.");
+        }
+
+        let Some(target) = self.entities.get(to) else {
+            return Some("They are not here.");
+        };
+        if target.kind != Kind::Player {
+            return Some("You can only teleport to players.");
+        }
+        if target
+            .conditions
+            .contains(hendra_content::ConditionEffect::Invisible)
+        {
+            return Some("You cannot teleport to an invisible player.");
+        }
+        if target
+            .conditions
+            .contains(hendra_content::ConditionEffect::Paused)
+        {
+            return Some("You cannot teleport to a paused player.");
+        }
+
+        let (x, y) = (target.x, target.y);
+
+        if let Some(mover) = self.entities.get_mut(who) {
+            mover.x = x;
+            mover.y = y;
+            mover.teleport_cooldown_ms = TELEPORT_COOLDOWN_MS;
+
+            // The jump arrives at the mover's own client as a position it did not ask for, and at
+            // everyone else's as a move no speed explains. The grace is what stops the server's own
+            // teleport being read as somebody moving too fast.
+            mover.move_grace_ms = MOVE_GRACE_MS;
+        }
+
+        None
+    }
+
+    /// Whether players may teleport in this world, from the world definition.
+    pub fn set_allows_teleport(&mut self, allowed: bool) {
+        self.allows_teleport = allowed;
+    }
+
+    /// Where a player is, by name.
+    pub fn player_named(&self, name: &str) -> Option<Handle> {
+        self.entities
+            .iter()
+            .find(|(_, entity)| {
+                entity.kind == Kind::Player
+                    && entity
+                        .name
+                        .as_deref()
+                        .is_some_and(|held| held.eq_ignore_ascii_case(name))
+            })
+            .map(|(handle, _)| handle)
     }
 
     /// Counts what is alive on each terrain.
@@ -5506,6 +5647,130 @@ mod tests {
 
         assert_eq!(world.get(child).unwrap().terrain, terrain);
         assert_eq!(world.alive_by_terrain()[terrain as usize], 2);
+    }
+
+    #[test]
+    fn teleporting_moves_you_to_them_and_starts_a_cooldown() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mover = world
+            .spawn(Entity::player(ObjectType(0x600), 2.0, 2.0, 500))
+            .unwrap();
+        let target = world
+            .spawn(Entity::player(ObjectType(0x600), 20.0, 24.0, 500))
+            .unwrap();
+        world.get_mut(target).unwrap().name = Some("Bo".into());
+
+        assert_eq!(world.teleport_to(mover, target), None);
+
+        let moved = world.get(mover).unwrap();
+        assert_eq!((moved.x, moved.y), (20.0, 24.0));
+        assert_eq!(moved.teleport_cooldown_ms, TELEPORT_COOLDOWN_MS);
+
+        // And not again straight away, or a realm can be crossed faster than anything can chase.
+        assert!(world.teleport_to(mover, target).is_some());
+    }
+
+    #[test]
+    fn nobody_teleports_to_somebody_hiding_or_paused() {
+        // Both would reach a player the world says cannot be reached: one is hiding, and the other
+        // is somewhere the world has stopped.
+        let catalog = catalog();
+
+        for hidden in [
+            hendra_content::ConditionEffect::Invisible,
+            hendra_content::ConditionEffect::Paused,
+        ] {
+            let mut world = field(&catalog);
+            let mover = world
+                .spawn(Entity::player(ObjectType(0x600), 2.0, 2.0, 500))
+                .unwrap();
+            let target = world
+                .spawn(Entity::player(ObjectType(0x600), 20.0, 24.0, 500))
+                .unwrap();
+
+            world.get_mut(target).unwrap().conditions.insert(hidden);
+
+            assert!(
+                world.teleport_to(mover, target).is_some(),
+                "reached somebody {hidden:?}"
+            );
+            assert_eq!(world.get(mover).unwrap().x, 2.0, "and moved anyway");
+        }
+    }
+
+    #[test]
+    fn a_world_that_forbids_teleporting_forbids_it() {
+        // The nexus and the shops do, in the world definitions.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+        world.set_allows_teleport(false);
+
+        let mover = world
+            .spawn(Entity::player(ObjectType(0x600), 2.0, 2.0, 500))
+            .unwrap();
+        let target = world
+            .spawn(Entity::player(ObjectType(0x600), 20.0, 24.0, 500))
+            .unwrap();
+
+        assert!(world.teleport_to(mover, target).is_some());
+        assert_eq!(world.get(mover).unwrap().x, 2.0);
+    }
+
+    #[test]
+    fn you_cannot_teleport_to_an_enemy_or_to_yourself() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mover = world
+            .spawn(Entity::player(ObjectType(0x600), 2.0, 2.0, 500))
+            .unwrap();
+        let slime = world
+            .spawn(Entity::fixture(ObjectType(0x502), 20.0, 24.0))
+            .unwrap();
+
+        assert!(world.teleport_to(mover, mover).is_some());
+        assert!(world.teleport_to(mover, slime).is_some());
+        assert_eq!(world.get(mover).unwrap().x, 2.0);
+    }
+
+    #[test]
+    fn a_teleported_player_is_not_snapped_back_for_arriving() {
+        // The server moved them. Checking that against a walking speed would refuse its own
+        // teleport, and the player would be dragged back the moment their client agreed.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mover = world
+            .spawn(Entity::player(ObjectType(0x600), 2.0, 2.0, 500))
+            .unwrap();
+        let target = world
+            .spawn(Entity::player(ObjectType(0x600), 20.0, 24.0, 500))
+            .unwrap();
+
+        world.teleport_to(mover, target);
+
+        let outcome = world
+            .resolve_move(mover, &catalog, 20.0, 24.0, 50)
+            .expect("an outcome");
+        assert_eq!((outcome.x, outcome.y), (20.0, 24.0));
+        assert!(outcome.refused.is_none());
+    }
+
+    #[test]
+    fn a_player_can_be_found_by_name_whatever_its_capitals() {
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let handle = world
+            .spawn(Entity::player(ObjectType(0x600), 2.0, 2.0, 500))
+            .unwrap();
+        world.get_mut(handle).unwrap().name = Some("Fesal".into());
+
+        assert_eq!(world.player_named("fesal"), Some(handle));
+        assert_eq!(world.player_named("FESAL"), Some(handle));
+        assert_eq!(world.player_named("Nobody"), None);
     }
 
     #[test]

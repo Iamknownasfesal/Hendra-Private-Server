@@ -34,10 +34,10 @@ const ENDPOINTS: &[(&str, Option<&str>)] = &[
     ("account/verifyage", Some("POST /age")),
     ("account/checkQuestIsDone", Some("GET /quests")),
     ("account/purchaseSkin", Some("POST /skins")),
-    ("account/registerDiscord", None),
-    ("account/unregisterDiscord", None),
+    ("account/registerDiscord", Some("POST /discord")),
+    ("account/unregisterDiscord", Some("DELETE /discord")),
     ("app/getServerXmls", Some("GET /content")),
-    ("app/getTextures", None),
+    ("app/getTextures", Some("GET /textures")),
     ("app/getLanguageStrings", Some("GET /strings/:lang")),
     ("app/globalNews", Some("GET /news")),
     ("char/purchaseClassUnlock", Some("Store::purchase_class")),
@@ -46,8 +46,13 @@ const ENDPOINTS: &[(&str, Option<&str>)] = &[
     ("dailyLogin/fetchCalendar", Some("GET /daily")),
     ("inGameNews/getNews", Some("GET /news/game")),
     ("picture/get", Some("GET /picture/:id")),
-    ("security/gameData", None),
-    ("security/securityProtocols", None),
+    // An empty class in the original: no handler, no base, no answer. Reproducing it faithfully
+    // means having nothing, which is what this is.
+    (
+        "security/gameData",
+        Some("nothing: the original is an empty class"),
+    ),
+    ("security/securityProtocols", Some("GET /security")),
     ("weekQuest/getQuests", Some("GET /quests/weekly")),
 ];
 

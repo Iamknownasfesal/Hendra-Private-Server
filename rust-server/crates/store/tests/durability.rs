@@ -2181,3 +2181,71 @@ async fn an_unlocked_portal_is_recorded_once() {
         vec!["The Shatters".to_string()]
     );
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn one_discord_id_belongs_to_one_account() {
+    // The link exists so something outside the game can say who somebody is. A discord id pointing
+    // at two accounts would let one person answer for another.
+    let Some(store) = store("t_discord_one").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let first = store.create_account("Fesal").await.unwrap();
+    let second = store.create_account("Someone").await.unwrap();
+
+    store.register_discord(first.id, "1234").await.unwrap();
+    assert_eq!(
+        store.account_of_discord("1234").await.unwrap(),
+        Some(first.id)
+    );
+
+    // The same id claimed again moves rather than duplicates.
+    store.register_discord(second.id, "1234").await.unwrap();
+    assert_eq!(
+        store.account_of_discord("1234").await.unwrap(),
+        Some(second.id),
+        "the id should have moved"
+    );
+
+    let left = store.account(first.id).await.unwrap();
+    assert_eq!(left.discord_id, None, "and left the first account");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn unlinking_names_the_id_it_is_removing() {
+    // Naming the id rather than just the account is what stops a stale request from unlinking
+    // whatever happens to be there now.
+    let Some(store) = store("t_discord_stale").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    store.register_discord(account.id, "old").await.unwrap();
+    store.register_discord(account.id, "new").await.unwrap();
+
+    assert!(
+        store.unregister_discord(account.id, "old").await.is_err(),
+        "a stale unlink took the current one"
+    );
+    assert_eq!(
+        store.account_of_discord("new").await.unwrap(),
+        Some(account.id)
+    );
+
+    store.unregister_discord(account.id, "new").await.unwrap();
+    assert_eq!(store.account_of_discord("new").await.unwrap(), None);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_empty_discord_id_is_not_a_link() {
+    let Some(store) = store("t_discord_empty").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    assert!(store.register_discord(account.id, "  ").await.is_err());
+    assert_eq!(store.account(account.id).await.unwrap().discord_id, None);
+}

@@ -233,3 +233,173 @@ pub const MAX_MESSAGE_LENGTH: usize = 1024;
 
 /// The most messages one read may return.
 pub const MAX_MESSAGES_READ: i64 = 100;
+
+/// Linking an account to a Discord user.
+///
+/// The link exists so that something outside the game, a bot or a rank tool, can say who somebody
+/// is. It is deliberately one-to-one in both directions, and that is enforced by a unique index
+/// rather than by a check here: a check in the writer is a check a second writer can race past.
+impl Store {
+    /// Points a Discord id at an account, replacing whatever either of them pointed at before.
+    ///
+    /// Replacing rather than refusing, because the alternative is an account that cannot be relinked
+    /// after somebody changes their Discord. Both old links go in the same transaction as the new
+    /// one, so a failure part way leaves neither half done.
+    pub async fn register_discord(&self, account_id: i64, discord_id: &str) -> Result<()> {
+        if discord_id.trim().is_empty() {
+            return Err(StoreError::Refused("that is not a discord id"));
+        }
+
+        let mut transaction = self.pool().begin().await?;
+
+        // Whoever held this id loses it, and whatever this account held is replaced. Without the
+        // first, the unique index refuses the insert and the caller sees a constraint rather than
+        // an answer.
+        sqlx::query("UPDATE account SET discord_id = NULL WHERE discord_id = $1")
+            .bind(discord_id)
+            .execute(&mut *transaction)
+            .await?;
+
+        let linked = sqlx::query("UPDATE account SET discord_id = $2 WHERE id = $1")
+            .bind(account_id)
+            .bind(discord_id)
+            .execute(&mut *transaction)
+            .await?;
+
+        if linked.rows_affected() == 0 {
+            return Err(StoreError::Refused("no such account"));
+        }
+
+        transaction.commit().await?;
+        Ok(())
+    }
+
+    /// Removes the link, but only if the account actually holds that id.
+    ///
+    /// Naming the id rather than just the account is what stops a stale request from unlinking
+    /// whatever happens to be there now.
+    pub async fn unregister_discord(&self, account_id: i64, discord_id: &str) -> Result<()> {
+        let removed =
+            sqlx::query("UPDATE account SET discord_id = NULL WHERE id = $1 AND discord_id = $2")
+                .bind(account_id)
+                .bind(discord_id)
+                .execute(self.pool())
+                .await?;
+
+        if removed.rows_affected() == 0 {
+            return Err(StoreError::Refused(
+                "that account is not linked to that discord id",
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Which account a Discord id belongs to, if any.
+    pub async fn account_of_discord(&self, discord_id: &str) -> Result<Option<i64>> {
+        let found = sqlx::query_as::<_, (i64,)>("SELECT id FROM account WHERE discord_id = $1")
+            .bind(discord_id)
+            .fetch_optional(self.pool())
+            .await?;
+
+        Ok(found.map(|(id,)| id))
+    }
+}
+
+/// One of the lists an account keeps about other people.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ListKind {
+    /// People whose messages are not shown.
+    Ignored = 0,
+
+    /// People who may not teleport to this player.
+    LockedOut = 1,
+}
+
+impl ListKind {
+    fn number(self) -> i16 {
+        self as i16
+    }
+}
+
+/// Ignoring somebody, and locking somebody out.
+///
+/// Two lists rather than one, because they do different jobs: ignoring hides what somebody says, and
+/// locking stops them arriving where you are. Somebody can be on both, one, or neither.
+impl Store {
+    /// Adds somebody to one of the lists.
+    ///
+    /// Adding somebody already on it is not an error. A client that sends the same request twice,
+    /// or two clients that send it at once, should both end with the person listed once; refusing
+    /// the second would make a doubled request look like a failure.
+    pub async fn add_to_list(&self, owner_id: i64, other_id: i64, kind: ListKind) -> Result<()> {
+        if owner_id == other_id {
+            return Err(StoreError::Refused("you cannot list yourself"));
+        }
+
+        sqlx::query(
+            "INSERT INTO account_list (owner_id, other_id, kind) VALUES ($1, $2, $3)
+             ON CONFLICT (owner_id, other_id, kind) DO NOTHING",
+        )
+        .bind(owner_id)
+        .bind(other_id)
+        .bind(kind.number())
+        .execute(self.pool())
+        .await?;
+
+        Ok(())
+    }
+
+    /// Removes somebody from one of the lists.
+    pub async fn remove_from_list(
+        &self,
+        owner_id: i64,
+        other_id: i64,
+        kind: ListKind,
+    ) -> Result<()> {
+        let removed = sqlx::query(
+            "DELETE FROM account_list WHERE owner_id = $1 AND other_id = $2 AND kind = $3",
+        )
+        .bind(owner_id)
+        .bind(other_id)
+        .bind(kind.number())
+        .execute(self.pool())
+        .await?;
+
+        if removed.rows_affected() == 0 {
+            return Err(StoreError::Refused("they are not on that list"));
+        }
+
+        Ok(())
+    }
+
+    /// Whether somebody is on one of an account's lists.
+    pub async fn is_listed(&self, owner_id: i64, other_id: i64, kind: ListKind) -> Result<bool> {
+        let found = sqlx::query_as::<_, (i64,)>(
+            "SELECT 1 FROM account_list WHERE owner_id = $1 AND other_id = $2 AND kind = $3",
+        )
+        .bind(owner_id)
+        .bind(other_id)
+        .bind(kind.number())
+        .fetch_optional(self.pool())
+        .await?;
+
+        Ok(found.is_some())
+    }
+
+    /// Everybody on one of an account's lists, by name.
+    pub async fn listed(&self, owner_id: i64, kind: ListKind) -> Result<Vec<(i64, String)>> {
+        let rows = sqlx::query_as::<_, (i64, String)>(
+            "SELECT account.id, account.name FROM account_list
+             JOIN account ON account.id = account_list.other_id
+             WHERE account_list.owner_id = $1 AND account_list.kind = $2
+             ORDER BY account.name",
+        )
+        .bind(owner_id)
+        .bind(kind.number())
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(rows)
+    }
+}

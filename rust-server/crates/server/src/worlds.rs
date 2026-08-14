@@ -28,6 +28,9 @@ use hendra_sim::{Terrain, World};
 
 use crate::world_task::{self, Loadout, WorldHandle};
 
+/// Where a player who escapes ends up, and where everybody arrives.
+pub const NEXUS: &str = "Nexus";
+
 /// The world definition that fills itself with enemies and closes half an hour later.
 ///
 /// Named rather than flagged because that is how the original decides: `DynamicWorld` matches a
@@ -163,7 +166,12 @@ impl Worlds {
             "starting world"
         );
 
-        let world = World::new(name.to_string(), terrain, &self.catalog);
+        let mut world = World::new(name.to_string(), terrain, &self.catalog);
+
+        // The nexus and the shops forbid it, in their own definitions. Without this a player could
+        // teleport into a room the map author meant to be walked into.
+        world.set_allows_teleport(!definition.restrict_tp);
+
         report_portals(&world, self);
 
         // Only the world the original calls `Realm` fills itself and closes on a clock. Every other

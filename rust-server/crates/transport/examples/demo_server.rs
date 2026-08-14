@@ -138,7 +138,15 @@ async fn handle(
         ClientMessage::RequestTrade { .. }
         | ClientMessage::ChangeTrade { .. }
         | ClientMessage::AcceptTrade { .. }
-        | ClientMessage::CancelTrade => {}
+        | ClientMessage::CancelTrade
+        | ClientMessage::Escape
+        | ClientMessage::Teleport { .. }
+        | ClientMessage::Buy { .. }
+        | ClientMessage::Guild(_)
+        | ClientMessage::Market(_)
+        | ClientMessage::EditList { .. }
+        | ClientMessage::Prestige
+        | ClientMessage::PrestigeBuy { .. } => {}
         ClientMessage::Hello {
             protocol,
             token,

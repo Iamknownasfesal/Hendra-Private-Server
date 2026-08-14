@@ -142,6 +142,21 @@ pub enum ToWorld {
         reply: tokio::sync::oneshot::Sender<Vec<SceneryRow>>,
     },
 
+    /// A player wants to be where another player is. The world answers with why not, or nothing.
+    Teleport {
+        handle: Handle,
+        to: String,
+        reply: tokio::sync::oneshot::Sender<Option<String>>,
+    },
+
+    /// A player is buying from a merchant standing in the world. The world answers with what it is
+    /// selling and for how much, since only the world knows which merchant that is.
+    Buy {
+        handle: Handle,
+        merchant: hendra_net::EntityId,
+        reply: tokio::sync::oneshot::Sender<Option<Sale>>,
+    },
+
     /// A line meant for one named player.
     Tell {
         to: String,
@@ -172,6 +187,104 @@ pub enum Order {
     /// Go to this world.
     GoTo(String),
 }
+
+/// Puts a merchant on every square a shop's region marks.
+///
+/// One merchant per square, each holding one thing, with the shop's stock dealt out around them and
+/// wrapped. That is what makes a row of nexus stalls show different items.
+fn open_shops(world: &mut World, catalog: &Catalog) -> usize {
+    use hendra_sim::shop;
+
+    let Some(kind) = catalog.type_of(MERCHANT) else {
+        tracing::warn!(
+            merchant = MERCHANT,
+            "the content has no merchant to stand in a shop"
+        );
+        return 0;
+    };
+
+    let mut opened = 0;
+    let mut missing: Vec<&'static str> = Vec::new();
+
+    for shop in shop::SHOPS {
+        let mut places: Vec<(u32, u32)> = world
+            .terrain()
+            .map()
+            .regions()
+            .filter(|(_, _, region)| *region == shop.region)
+            .map(|(x, y, _)| (x, y))
+            .collect();
+        places.sort();
+
+        if places.is_empty() {
+            continue;
+        }
+
+        let (stalls, absent) = shop::deal(shop, places.len(), catalog);
+        missing.extend(absent);
+
+        for ((x, y), stall) in places.iter().zip(stalls) {
+            if world.open_stall(kind, *x, *y, stall).is_some() {
+                opened += 1;
+            }
+        }
+    }
+
+    missing.sort_unstable();
+    missing.dedup();
+    for name in &missing {
+        tracing::warn!(item = %name, "a shop sells something the content does not have");
+    }
+
+    opened
+}
+
+/// The object a shop merchant is.
+const MERCHANT: &str = "Merchant";
+
+/// What a merchant standing in the world is selling.
+///
+/// Read from the world rather than told by the client, because a client that names the item is a
+/// client that can name a cheaper one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Sale {
+    pub item: ObjectType,
+    pub price: i32,
+    pub currency: hendra_store::Currency,
+
+    /// The account rank needed to buy here at all.
+    pub rank: i16,
+}
+
+/// What the merchant a player is standing at is selling.
+///
+/// `None` when they are not at one, when it is out of reach, or when it sells nothing: each is a
+/// refusal rather than a mistake, and telling them apart would tell a client where merchants are.
+fn world_sale(world: &World, handle: Handle, merchant: hendra_net::EntityId) -> Option<Sale> {
+    let stall = world.get(Handle(merchant.0))?;
+    let player = world.get(handle)?;
+
+    // Within reach, as a portal is. Buying from across a map is buying from a shop you are not in.
+    let (dx, dy) = (stall.x - player.x, stall.y - player.y);
+    if (dx * dx + dy * dy).sqrt() > MERCHANT_REACH {
+        return None;
+    }
+
+    let selling = stall.selling?;
+
+    Some(Sale {
+        item: selling.item,
+        price: selling.price,
+        currency: match selling.currency {
+            hendra_sim::shop::Currency::Fame => hendra_store::Currency::Fame,
+            hendra_sim::shop::Currency::Gold => hendra_store::Currency::Gold,
+        },
+        rank: selling.rank,
+    })
+}
+
+/// How close a player must be to buy from a merchant.
+pub const MERCHANT_REACH: f32 = 8.0;
 
 /// One row of the map: which row, and its squares run-length encoded as `(count, tile)`.
 pub type TerrainStrip = (u16, Vec<(u16, u16)>);
@@ -238,6 +351,13 @@ pub async fn run(
 
     // When the world last became empty, or `None` while somebody is in it.
     let mut emptied: Option<Instant> = None;
+
+    // Shops stand wherever a map marks them, which is the nexus and the donor shop rather than any
+    // one world, so this is asked of every world rather than gated on a name.
+    let opened = open_shops(&mut world, &catalog);
+    if opened > 0 {
+        tracing::info!(world = %world.name, merchants = opened, "shops opened");
+    }
 
     // Only the realm populates itself and closes on a clock. Every other world is the map it was
     // drawn as, which is what makes a dungeon a fixed set of rooms. The original decides the same
@@ -690,6 +810,23 @@ fn handle(
                 .map(|y| (y as u16, terrain.row_runs(y, 0, terrain.width())))
                 .collect();
             let _ = reply.send(strips);
+        }
+
+        ToWorld::Teleport { handle, to, reply } => {
+            let answer = match world.player_named(&to) {
+                Some(target) => world.teleport_to(handle, target).map(|why| why.to_string()),
+                None => Some(format!("{to} is not here.")),
+            };
+
+            let _ = reply.send(answer);
+        }
+
+        ToWorld::Buy {
+            handle,
+            merchant,
+            reply,
+        } => {
+            let _ = reply.send(world_sale(world, handle, merchant));
         }
 
         ToWorld::Tell { to, from, text } => {

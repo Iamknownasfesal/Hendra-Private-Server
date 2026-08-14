@@ -145,6 +145,17 @@ async fn main() {
         hendra_characters::CommonItems::new(COMMON_ITEMS.iter().copied()),
     );
     app.servers = game_servers();
+    app.content = std::path::PathBuf::from(&content);
+
+    // The texture pack is one of the few files a client fetches rather than reads a summary of, and
+    // a client that cannot get it falls back to the copy it shipped with. Saying so at boot beats
+    // finding out from a support message.
+    if !app.content.join(hendra_app::TEXTURE_PACK).exists() {
+        tracing::warn!(
+            path = %app.content.join(hendra_app::TEXTURE_PACK).display(),
+            "no texture pack, so clients will use whatever they shipped with"
+        );
+    }
 
     // Delivery is the one part of the flow that leaves the process. Without somewhere to send to,
     // links are logged rather than sent, which is useful on a laptop and wrong in production, so

@@ -25,6 +25,10 @@ pub struct Account {
     /// What this account may do to others. Zero is an ordinary player.
     pub admin_rank: i16,
 
+    /// The Discord user this account is linked to, for anything outside the game that needs to say
+    /// who somebody is.
+    pub discord_id: Option<String>,
+
     /// What it may spend on skins and the like.
     pub credits: i32,
 }
@@ -135,9 +139,10 @@ impl Store {
                 Option<chrono::DateTime<chrono::Utc>>,
                 i16,
                 i32,
+                Option<String>,
             ),>(
             "INSERT INTO account (name) VALUES ($1)
-             RETURNING id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until, admin_rank, credits",
+             RETURNING id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until, admin_rank, credits, discord_id",
         )
         .bind(name)
         .fetch_one(self.pool())
@@ -156,6 +161,7 @@ impl Store {
                 muted_until,
                 admin_rank,
                 credits,
+                discord_id,
             )) => Ok(Account {
                 id,
                 name,
@@ -168,6 +174,7 @@ impl Store {
                 muted_until,
                 admin_rank,
                 credits,
+                discord_id,
             }),
             // The unique index is what decides this, not a prior lookup. A check-then-insert has a
             // window between the two in which someone else inserts the same name.
@@ -194,9 +201,10 @@ impl Store {
                 Option<chrono::DateTime<chrono::Utc>>,
                 i16,
                 i32,
+                Option<String>,
             ),
         >(
-            "SELECT id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until, admin_rank, credits
+            "SELECT id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until, admin_rank, credits, discord_id
              FROM account WHERE lower(name) = lower($1)",
         )
         .bind(name)
@@ -216,6 +224,7 @@ impl Store {
                 muted_until,
                 admin_rank,
                 credits,
+                discord_id,
             )| {
                 Account {
                     id,
@@ -229,6 +238,7 @@ impl Store {
                     muted_until,
                     admin_rank,
                     credits,
+                    discord_id,
                 }
             },
         )
@@ -263,9 +273,10 @@ impl Store {
                 Option<chrono::DateTime<chrono::Utc>>,
                 i16,
                 i32,
+                Option<String>,
             ),
         >(
-            "SELECT id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until, admin_rank, credits
+            "SELECT id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until, admin_rank, credits, discord_id
              FROM account WHERE id = $1",
         )
         .bind(id)
@@ -285,6 +296,7 @@ impl Store {
                 muted_until,
                 admin_rank,
                 credits,
+                discord_id,
             )| {
                 Account {
                     id,
@@ -298,6 +310,7 @@ impl Store {
                     muted_until,
                     admin_rank,
                     credits,
+                    discord_id,
                 }
             },
         )
@@ -839,5 +852,98 @@ impl Store {
         .ok_or(StoreError::Refused("no more vault chests are available"))?;
 
         Ok(chests)
+    }
+}
+
+/// How much fame one prestige costs.
+pub const FAME_PER_PRESTIGE: i32 = 1500;
+
+/// Prestige: what a character's fame becomes when the character is given up.
+///
+/// Follows `PrestigeHandler`: every fifteen hundred fame becomes one prestige, and the character is
+/// returned to level one with nothing. The exchange and the reset are one transaction, because
+/// either half alone is a way to lose a character or to mint prestige from one.
+impl Store {
+    /// Trades a character's fame for prestige and starts it over.
+    ///
+    /// Returns how much prestige was earned.
+    pub async fn prestige(&self, account_id: i64, character_id: i64) -> Result<i32> {
+        let mut transaction = self.pool().begin().await?;
+
+        // The character is locked before its fame is read, so two requests cannot both see the same
+        // fame and both be paid for it.
+        let held = sqlx::query_as::<_, (i32, i64)>(
+            "SELECT fame, account_id FROM character WHERE id = $1 AND alive FOR UPDATE",
+        )
+        .bind(character_id)
+        .fetch_optional(&mut *transaction)
+        .await?
+        .ok_or(StoreError::NoSuchCharacter(character_id))?;
+
+        if held.1 != account_id {
+            return Err(StoreError::Refused("that is not your character"));
+        }
+
+        let earned = held.0 / FAME_PER_PRESTIGE;
+        if earned <= 0 {
+            return Err(StoreError::Refused("you need fifteen hundred fame or more"));
+        }
+
+        // Everything the fame bought goes with it. A character that kept its level would be a
+        // character that could be prestiged again the moment it earned the fame back.
+        sqlx::query("UPDATE character SET fame = 0, experience = 0, level = 1 WHERE id = $1")
+            .bind(character_id)
+            .execute(&mut *transaction)
+            .await?;
+
+        sqlx::query(
+            "UPDATE account SET prestige = prestige + $2, total_prestige = total_prestige + $2
+             WHERE id = $1",
+        )
+        .bind(account_id)
+        .bind(earned)
+        .execute(&mut *transaction)
+        .await?;
+
+        transaction.commit().await?;
+        Ok(earned)
+    }
+
+    /// Spends prestige on something, and says whether there was enough.
+    ///
+    /// Conditional on the balance in the same statement that reduces it, so two requests cannot
+    /// both see enough and both be granted. The lifetime total is untouched: a shop that reduced it
+    /// would make the total mean nothing.
+    pub async fn spend_prestige(&self, account_id: i64, price: i32) -> Result<()> {
+        if price <= 0 {
+            return Err(StoreError::Refused("that is not a price"));
+        }
+
+        let paid = sqlx::query(
+            "UPDATE account SET prestige = prestige - $2 WHERE id = $1 AND prestige >= $2",
+        )
+        .bind(account_id)
+        .bind(price)
+        .execute(self.pool())
+        .await?;
+
+        if paid.rows_affected() == 0 {
+            return Err(StoreError::Refused("you cannot afford that"));
+        }
+
+        Ok(())
+    }
+
+    /// How much prestige an account holds, and how much it has ever earned.
+    pub async fn prestige_of(&self, account_id: i64) -> Result<(i32, i32)> {
+        let held = sqlx::query_as::<_, (i32, i32)>(
+            "SELECT prestige, total_prestige FROM account WHERE id = $1",
+        )
+        .bind(account_id)
+        .fetch_optional(self.pool())
+        .await?
+        .ok_or(StoreError::Refused("no such account"))?;
+
+        Ok(held)
     }
 }
