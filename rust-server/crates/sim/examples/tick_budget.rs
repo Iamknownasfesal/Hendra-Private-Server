@@ -29,12 +29,22 @@ fn main() {
         report.objects, report.tiles
     );
 
+    // Compiled once and shared, as a running server does it. Without these the enemies below
+    // stand where they are put and the measurement is of an empty room.
+    let behaviours = load_behaviours();
+
     let worlds = std::path::PathBuf::from("../Server-Side/XmlDatas/worlds");
-    for (file, players) in [
-        ("Nexus.jm", 60),
-        ("Nexus.jm", 200),
-        ("OryxCastle.jm", 120),
-        ("Losthall.jm", 80),
+    for (file, players, enemies) in [
+        ("Nexus.jm", 60, 0),
+        ("Nexus.jm", 200, 0),
+        ("OryxCastle.jm", 120, 0),
+        ("Losthall.jm", 80, 0),
+        // The heaviest thing the content has, in a heap: eighteen shoots across three states, all
+        // of them inside the players' chunks so every one of them thinks every tick.
+        ("OryxCastle.jm", 120, 100),
+        ("OryxCastle.jm", 120, 250),
+        ("OryxCastle.jm", 20, 500),
+        ("OryxCastle.jm", 120, 500),
     ] {
         let path = worlds.join(file);
         let Ok(raw) = std::fs::read(&path) else {
@@ -47,14 +57,51 @@ fn main() {
             continue;
         };
 
-        measure(file, map, players, &catalog);
+        measure(file, map, players, enemies, &catalog, &behaviours);
     }
 }
 
 /// The weapon players carry in the measurement, so projectile load is real rather than assumed.
 const WEAPON: &str = "Wand of Dark Magic";
 
-fn measure(label: &str, map: Map, players: u32, catalog: &Catalog) {
+/// The enemy the heavy scenarios stack up.
+const BOSS: &str = "Oryx the Mad God 2";
+
+/// Reads and compiles the shipped behaviours.
+fn load_behaviours() -> hendra_behavior::program::Programs {
+    let mut all = hendra_behavior::program::Programs::default();
+
+    let Ok(entries) = std::fs::read_dir("content/behaviours") else {
+        eprintln!("no behaviours found; enemies will stand still");
+        return all;
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("beh") {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(parsed) = hendra_behavior::parse::parse(&text) else {
+            continue;
+        };
+        let (compiled, _) = hendra_behavior::compile::compile(&parsed);
+        all.programs.extend(compiled.programs);
+    }
+
+    all
+}
+
+fn measure(
+    label: &str,
+    map: Map,
+    players: u32,
+    enemies: u32,
+    catalog: &Catalog,
+    behaviours: &hendra_behavior::program::Programs,
+) {
     let (width, height) = (map.width(), map.height());
     let terrain = Terrain::build(map, catalog);
     let walkable = terrain.walkable_count();
@@ -88,10 +135,38 @@ fn measure(label: &str, map: Map, players: u32, catalog: &Catalog) {
         }
     }
 
+    // Placed among the players rather than across the map, so every one of them is inside an
+    // awake chunk. Anything further away would be frozen, which is the point of the gating and
+    // would make this measure the wrong thing.
+    if enemies > 0
+        && let Some(kind) = catalog.type_of(BOSS)
+    {
+        let mut made = 0;
+        while made < enemies {
+            let x = centre_x + ((next() % 4000) as f32 / 100.0) - 20.0;
+            let y = centre_y + ((next() % 4000) as f32 / 100.0) - 20.0;
+            if !world.terrain().walkable_at(x, y) {
+                continue;
+            }
+
+            let mut boss = Entity::fixture(kind, x, y);
+            boss.kind = hendra_sim::Kind::Enemy;
+            boss.max_hp = catalog.object(kind).map(|d| d.max_hp).unwrap_or(1000).max(1);
+            boss.hp = boss.max_hp;
+            if world.spawn(boss).is_some() {
+                made += 1;
+            }
+        }
+
+        // After spawning, because this is what gives everything already in the world a mind.
+        world.set_behaviours(catalog, behaviours.clone());
+    }
+
     let mut metrics = TickMetrics::for_rate(TICKS_PER_SECOND);
     let elapsed_ms = 1000 / TICKS_PER_SECOND;
     let mut snapshot_entities = 0usize;
     let mut peak_projectiles = 0usize;
+    let (mut advance_ns, mut snapshot_ns, mut worst_advance_ns) = (0u128, 0u128, 0u128);
 
     for tick in 0..TICKS {
         let started = Instant::now();
@@ -119,12 +194,18 @@ fn measure(label: &str, map: Map, players: u32, catalog: &Catalog) {
             world.shoot(*handle, catalog, angle);
         }
 
+        let at_advance = Instant::now();
         world.advance(catalog, elapsed_ms);
+        let took = at_advance.elapsed().as_nanos();
+        advance_ns += took;
+        worst_advance_ns = worst_advance_ns.max(took);
         peak_projectiles = peak_projectiles.max(world.projectile_count());
 
+        let at_snapshot = Instant::now();
         for handle in &placed {
             snapshot_entities += world.snapshot_for(*handle, SIGHT_RADIUS).len();
         }
+        snapshot_ns += at_snapshot.elapsed().as_nanos();
 
         metrics.record(started.elapsed());
     }
@@ -136,6 +217,15 @@ fn measure(label: &str, map: Map, players: u32, catalog: &Catalog) {
     };
 
     println!("{label}: {width}x{height}, {walkable} walkable, {fixtures} fixtures");
+    if enemies > 0 {
+        println!("  {enemies} × {BOSS}");
+    }
+    println!(
+        "  advance {:.2}ms mean ({:.2}ms worst), snapshots {:.2}ms mean",
+        advance_ns as f64 / TICKS as f64 / 1e6,
+        worst_advance_ns as f64 / 1e6,
+        snapshot_ns as f64 / TICKS as f64 / 1e6,
+    );
     println!(
         "  {players} players, {per_tick} entities encoded per tick, {peak_projectiles} projectiles at peak"
     );
