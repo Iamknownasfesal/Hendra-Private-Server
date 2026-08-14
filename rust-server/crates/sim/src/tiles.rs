@@ -408,6 +408,15 @@ impl Terrain {
             .unwrap_or(1.0)
     }
 
+    /// The object standing on a square, if any.
+    pub fn object_at(&self, x: f32, y: f32) -> Option<hendra_content::ObjectType> {
+        if x < 0.0 || y < 0.0 {
+            return None;
+        }
+        let object = self.map.at(x as u32, y as u32)?.object;
+        (!object.is_none()).then_some(object)
+    }
+
     /// Damage the ground deals per second at a position, if any.
     pub fn hazard_at(&self, catalog: &Catalog, x: f32, y: f32) -> Option<(i32, i32)> {
         if x < 0.0 || y < 0.0 {

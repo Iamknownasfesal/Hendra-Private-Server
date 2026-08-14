@@ -529,6 +529,7 @@ mod tests {
             last_hurt_by: None,
             loot_drop: 1.0,
             awards_experience: true,
+            burn_due_ms: 0,
             boosts: Vec::new(),
             tally: crate::fame::Tally::default(),
             teleport_cooldown_ms: 0,

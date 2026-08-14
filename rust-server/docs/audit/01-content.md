@@ -156,7 +156,7 @@ The original's is in `wServer/realm/entities/player/Player.Ground.cs` and is pre
 | Cadence | one roll per **500 ms** burn | prorated every tick |
 | Amount | `NextIntRange(min, max)`, one draw | `(min + max) / 2`, no draw |
 | Who burns | **players only** | every living entity, enemies included |
-| Requires | the tile's `<Damaging/>` element | `max_damage > 0` |
+| Requires | either damage element to be present | `max_damage > 0` — near enough, and now explicit |
 | Skipped when | `Paused` or `Invincible` | never |
 | Skipped when | an object on the tile has `ProtectFromGroundDamage` | never |
 | Defence | bypassed — `HP -= dmg` | bypassed, same |
@@ -170,8 +170,12 @@ the same burn from the same shared random stream, and *both sides must not roll*
 stepped once here and twice there desynchronises every later shot. See
 [page 36](../mechanics/36-the-shared-random-stream.md).
 
-We parse `ObjectDesc::protect_from_ground_damage` and never read it, and we do not parse `Damaging`
-at all.
+We parse `ObjectDesc::protect_from_ground_damage` and never read it.
+
+`TileDesc.Damaging` turned out **not** to be a written flag: the original derives it from the
+presence of `MinDamage` or `MaxDamage`, and no content file contains a `<Damaging/>` element. An
+earlier draft of this page had it as a separate element the content sets, which would have made
+lava stop hurting. It is derived here now too, and the distinction costs nothing.
 
 ## Ocean Trench has no oxygen
 

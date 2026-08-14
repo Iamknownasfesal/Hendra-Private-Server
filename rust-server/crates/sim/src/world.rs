@@ -170,6 +170,9 @@ pub struct Entity {
     /// How long until it may shoot again, in milliseconds.
     pub cooldown_ms: u32,
 
+    /// How long until this player's next burn, in milliseconds.
+    pub burn_due_ms: u32,
+
     /// Whether killing this is worth experience.
     ///
     /// False for anything a spawner made, and for anything one of those made in turn. The original
@@ -337,6 +340,7 @@ impl Entity {
             weapon: None,
             cooldown_ms: 0,
             awards_experience: true,
+            burn_due_ms: 0,
             spawn_x: x,
             spawn_y: y,
             mind: None,
@@ -390,6 +394,7 @@ impl Entity {
             weapon: None,
             cooldown_ms: 0,
             awards_experience: true,
+            burn_due_ms: 0,
             spawn_x: x,
             spawn_y: y,
             mind: None,
@@ -1353,6 +1358,18 @@ fn named_kinds(
             .collect(),
     )
 }
+
+/// How often ground that hurts takes its toll.
+///
+/// `GroundDamagePeriodMs`. One roll per half-second rather than a drain, which is what makes
+/// crossing a corner of lava different from standing in it.
+const GROUND_DAMAGE_PERIOD_MS: u32 = 500;
+
+/// The chance every enemy in the game carries of dropping a tier-one potion.
+///
+/// `World.WorldLoot`, set on the base class and overridden by no world, and merged into every
+/// enemy's own table before it is rolled.
+const WORLD_POTION_CHANCE: f32 = 0.03;
 
 /// How long before a player may teleport again.
 pub const TELEPORT_COOLDOWN_MS: u32 = 10_000;
@@ -2569,27 +2586,80 @@ impl World {
         &self.hits
     }
 
-    /// Damages anything standing on ground that hurts.
+    /// Burns players standing on ground that hurts.
+    ///
+    /// Players only, and on the half-second the original burns on rather than smeared across every
+    /// tick. `Player.Ground.cs` rolls once per burn and takes the whole amount, so a player crossing
+    /// a corner of lava may cross it for nothing, and standing in it is a series of distinct hits
+    /// rather than a drain. Enemies never burn at all: several dungeons stand them on hazards.
+    ///
+    /// Defence does not apply, as it does not there: the roll is subtracted from health directly.
     fn apply_hazards(&mut self, catalog: &Catalog, elapsed_ms: u32) {
         self.handles.clear();
         self.handles.extend(
             self.entities
                 .iter()
-                .filter_map(|(handle, entity)| entity.kind.is_alive_kind().then_some(handle)),
+                .filter_map(|(handle, entity)| (entity.kind == Kind::Player).then_some(handle)),
         );
 
         for index in 0..self.handles.len() {
             let handle = self.handles[index];
+
             let Some(entity) = self.entities.get(handle) else {
                 continue;
             };
-            let Some((min, max)) = self.terrain.hazard_at(catalog, entity.x, entity.y) else {
+            if entity.dead {
+                continue;
+            }
+
+            // Paused and invincible are refused before anything is rolled, which is what
+            // `ForceGroundHit` checks first.
+            let rules = crate::effects::Rules::of(entity.conditions);
+            if rules.paused || rules.no_damage {
+                continue;
+            }
+
+            let (x, y) = (entity.x, entity.y);
+            let Some((min, max)) = self.terrain.hazard_at(catalog, x, y) else {
+                // Off the hazard, so the next step onto one burns immediately rather than
+                // inheriting whatever was left of the last one's clock.
+                if let Some(entity) = self.entities.get_mut(handle) {
+                    entity.burn_due_ms = 0;
+                }
                 continue;
             };
 
-            // Ground damage is quoted per second, so a tick takes its share.
-            let per_second = (min + max) / 2;
-            let damage = (per_second * elapsed_ms as i32) / 1000;
+            // An object standing on the tile can shelter what stands with it.
+            if self
+                .terrain
+                .object_at(x, y)
+                .and_then(|object| catalog.object(object))
+                .is_some_and(|desc| desc.protect_from_ground_damage)
+            {
+                continue;
+            }
+
+            let due = {
+                let Some(entity) = self.entities.get_mut(handle) else {
+                    continue;
+                };
+                if entity.burn_due_ms > elapsed_ms {
+                    entity.burn_due_ms -= elapsed_ms;
+                    false
+                } else {
+                    entity.burn_due_ms = GROUND_DAMAGE_PERIOD_MS;
+                    true
+                }
+            };
+            if !due {
+                continue;
+            }
+
+            let damage = if max > min {
+                min + (self.roll() * (max - min) as f32) as i32
+            } else {
+                min
+            };
             if damage <= 0 {
                 continue;
             }
@@ -2746,6 +2816,19 @@ impl World {
                 if let Some(item) = self.roll_loot(entry, catalog) {
                     dropped.push(item);
                 }
+            }
+
+            // And the table every world carries, which `World.cs` puts on the base class and no
+            // world overrides: a three per cent chance of a tier-one potion on anything that dies.
+            // It is where a player's potions come from when they are not farming one boss, so its
+            // absence is felt as an economy rather than as a missing drop.
+            let world_loot = hendra_behavior::program::LootEntry::Tier {
+                tier: 1,
+                kind: "potion".to_string(),
+                chance: WORLD_POTION_CHANCE,
+            };
+            if let Some(item) = self.roll_loot(&world_loot, catalog) {
+                dropped.push(item);
             }
 
             // And everything that belongs to whoever earned it. Rolled once per player who took

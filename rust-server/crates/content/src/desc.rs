@@ -531,6 +531,12 @@ pub struct TileDesc {
     pub sink: bool,
     pub push: bool,
 
+    /// Whether standing on this hurts at all.
+    ///
+    /// Derived rather than written: the original sets it when either damage element is present,
+    /// and there is no `<Damaging/>` element in any content file.
+    pub damaging: bool,
+
     /// Damage dealt per second while stood on.
     pub min_damage: i32,
     pub max_damage: i32,
@@ -560,6 +566,7 @@ impl TileDesc {
             no_walk: node.has("NoWalk"),
             sink: node.has("Sink"),
             push: node.has("Push"),
+            damaging: node.int("MinDamage").is_some() || node.int("MaxDamage").is_some(),
             min_damage: node.int("MinDamage").unwrap_or(0) as i32,
             max_damage: node.int("MaxDamage").unwrap_or(0) as i32,
             blend_priority: node.int("BlendPriority").unwrap_or(0) as i32,
@@ -567,7 +574,7 @@ impl TileDesc {
     }
 
     pub fn hurts(&self) -> bool {
-        self.max_damage > 0
+        self.damaging && self.max_damage > 0
     }
 }
 
