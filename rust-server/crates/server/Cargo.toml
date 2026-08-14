@@ -37,3 +37,7 @@ test = true
 [[example]]
 name = "worlds"
 test = true
+
+[[example]]
+name = "entities"
+test = true

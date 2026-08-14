@@ -582,3 +582,22 @@ rolled two.
 
 `cargo run -p hendra-behavior --example gaps` counts loot kinds alongside behaviours and conditions,
 and carries a test that walks a threshold from C# through the converter and the compiler.
+
+## Phase 17 — Entity kinds, the last category without a counter
+
+- [x] The player merchant, which nothing had
+
+  A market listing could only be reached by typing `/market`. It now stands as a merchant in the
+  marketplace, in the row its kind belongs to, refreshed on the same timer as the nexus portals. A
+  listing bought from a stall goes through the market rather than through a shop's till, since a
+  shop's stock is endless and a listing is one item somebody else owns until it is bought.
+
+- [x] The guild hall portal, which was a second door into a different room
+
+  Found by writing the census row and checking whether it was true. `/ghall` routed per guild and
+  chose the map by level; stepping into the portal object went through the ordinary door and got one
+  hall per account at map zero. One path now, used by both.
+
+`cargo run -p hendra-server --example entities` counts the kinds of thing a world holds. Names differ
+from the original's on purpose, so the rows say which is which rather than matching names and calling
+every one a gap.

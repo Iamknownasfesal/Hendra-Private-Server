@@ -178,6 +178,14 @@ pub enum ToWorld {
         reply: tokio::sync::oneshot::Sender<Vec<String>>,
     },
 
+    /// Stand a merchant for each of these listings, in the row its kind belongs to.
+    ///
+    /// The marketplace is the only world that asks. A listing nobody can walk up to is one that can
+    /// only be found by typing, which is not what a marketplace is for.
+    ShowListings {
+        listings: Vec<Listed>,
+    },
+
     /// Show a portal to each of these worlds, at the squares the map marks for them.
     ///
     /// The nexus is the only world that asks: it is the one place a player picks where to go, and
@@ -321,6 +329,10 @@ pub struct Sale {
 
     /// The account rank needed to buy here at all.
     pub rank: i16,
+
+    /// The market listing this is, where it is one. A shop's stock is endless; a player's listing
+    /// is one item somebody else owns until it is bought, and the two are paid for differently.
+    pub listing: Option<i64>,
 }
 
 /// What the merchant a player is standing at is selling.
@@ -347,6 +359,7 @@ fn world_sale(world: &World, handle: Handle, merchant: hendra_net::EntityId) -> 
             hendra_sim::shop::Currency::Gold => hendra_store::Currency::Gold,
         },
         rank: selling.rank,
+        listing: selling.listing,
     })
 }
 
@@ -908,6 +921,10 @@ fn handle(
             let _ = reply.send(world.keys_found());
         }
 
+        ToWorld::ShowListings { listings } => {
+            show_listings(world, catalog, &listings);
+        }
+
         ToWorld::ShowPortals { portals } => {
             show_portals(world, catalog, &portals);
         }
@@ -1140,6 +1157,95 @@ fn place_gift_chest(world: &mut World, catalog: &Catalog, slots: &[(u16, u16)]) 
     }
 
     placed
+}
+
+/// One thing a player has for sale, as the marketplace needs it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Listed {
+    pub listing: i64,
+    pub item: ObjectType,
+    pub price: i32,
+
+    /// Which row it stands in, from what kind of thing it is.
+    pub slot_type: i32,
+}
+
+/// Stands a merchant for each listing, in the row its kind belongs to.
+///
+/// Replaced outright each refresh, like the nexus portals: the set changes whenever anybody buys or
+/// lists, and a merchant left standing for something already sold is a stall that refuses everybody
+/// who walks up to it.
+fn show_listings(world: &mut World, catalog: &Catalog, listings: &[Listed]) {
+    use hendra_sim::shop;
+
+    let Some(kind) = catalog.type_of(MERCHANT) else {
+        return;
+    };
+
+    for (region, wanted) in shop::MARKET_ROWS {
+        let mut places: Vec<(u32, u32)> = world
+            .terrain()
+            .map()
+            .regions()
+            .filter(|(_, _, held)| held == region)
+            .map(|(x, y, _)| (x, y))
+            .collect();
+        places.sort();
+
+        if places.is_empty() {
+            continue;
+        }
+
+        let standing: Vec<Handle> = world
+            .iter()
+            .filter(|(_, entity)| {
+                entity.selling.is_some()
+                    && places
+                        .iter()
+                        .any(|(x, y)| entity.x == *x as f32 + 0.5 && entity.y == *y as f32 + 0.5)
+            })
+            .map(|(handle, _)| handle)
+            .collect();
+        for handle in standing {
+            world.despawn(handle);
+        }
+
+        // Only what belongs in this row, so a marketplace reads as rows of a kind rather than one
+        // heap somebody has to search.
+        let mine = listings
+            .iter()
+            .filter(|listed| slot_row(listed.slot_type) == *wanted);
+
+        for ((x, y), listed) in places.iter().zip(mine) {
+            world.open_stall(
+                kind,
+                *x,
+                *y,
+                shop::Stall {
+                    item: listed.item,
+                    price: listed.price,
+                    currency: hendra_sim::shop::Currency::Fame,
+                    rank: 0,
+                    listing: Some(listed.listing),
+                },
+            );
+        }
+    }
+}
+
+/// Which marketplace row a slot type belongs in.
+///
+/// The content numbers slots and the marketplace groups them, so this is the one place that knows
+/// a wand and a bow are both weapons.
+fn slot_row(slot_type: i32) -> &'static str {
+    match slot_type {
+        1 | 2 | 3 | 8 | 17 | 24 => "Weapon",
+        4 | 5 | 11 | 12 | 13 | 15 | 16 | 18 | 19 | 20 | 21 | 22 | 23 | 25 => "Ability",
+        6 | 14 | 27 => "Armor",
+        9 => "Ring",
+        10 | 26 => "Potion",
+        _ => "Other",
+    }
 }
 
 /// One world a nexus portal leads to, and how busy it is.

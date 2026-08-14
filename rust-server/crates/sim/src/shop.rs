@@ -33,6 +33,19 @@ pub struct Shop {
     pub stock: &'static [(&'static str, i32)],
 }
 
+/// Where a player's own listings stand in the marketplace, by what they are.
+///
+/// From `Market.GetItemType`, which maps a region to a kind of item so a marketplace has a row for
+/// weapons, a row for abilities and so on rather than one heap.
+pub const MARKET_ROWS: &[(Region, &str)] = &[
+    (Region::Store9, "Weapon"),
+    (Region::Store10, "Ability"),
+    (Region::Store11, "Armor"),
+    (Region::Store12, "Ring"),
+    (Region::Store13, "Potion"),
+    (Region::Store14, "Other"),
+];
+
 /// Every shop, from `MerchantLists.Shops`.
 pub const SHOPS: &[Shop] = &[
     Shop {
@@ -268,6 +281,13 @@ pub struct Stall {
     pub price: i32,
     pub currency: Currency,
     pub rank: i16,
+
+    /// The market listing this is, where it is one.
+    ///
+    /// A shop's stock is endless and a player's listing is one item that somebody else owns until
+    /// it is bought, so the two are bought through different paths and this is what tells them
+    /// apart.
+    pub listing: Option<i64>,
 }
 
 /// Deals a shop's stock out over the squares its region marks.
@@ -304,6 +324,7 @@ pub fn deal(
             price,
             currency: shop.currency,
             rank: shop.rank,
+            listing: None,
         });
     }
 

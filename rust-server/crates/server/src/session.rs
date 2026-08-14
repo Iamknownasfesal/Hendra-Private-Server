@@ -285,6 +285,26 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
             }
 
             Outcome::Travel(portal_type) => {
+                // Stepping into the guild hall portal has to mean what typing the command means,
+                // or the two are different doors into different rooms.
+                if context.worlds.destination_of(portal_type) == Some(crate::commands::GUILD_HALL) {
+                    if let Some(next) = enter_guild_hall(
+                        &mut link,
+                        &context,
+                        &player,
+                        &placement,
+                        &name,
+                        &to_session,
+                    )
+                    .await
+                    {
+                        placement = next;
+                        context.trades.moved(&name, &placement.world.name);
+                        send_terrain(&mut link, &placement).await;
+                    }
+                    continue;
+                }
+
                 match travel(
                     &mut link,
                     &placement,
@@ -1141,29 +1161,8 @@ async fn run_command(
         // The guild hall is one room per guild rather than one per player, and which map it loads
         // depends on what the guild has paid for, so it does not go through the ordinary door.
         Action::GoTo(world) if world == crate::commands::GUILD_HALL => {
-            let Ok(Some((guild, _))) = context.store.guild_of(player.account.id).await else {
-                return say(link, "you are not in a guild").await;
-            };
-            let level = context
-                .store
-                .guild(guild)
-                .await
-                .map(|guild| guild.level)
-                .unwrap_or(0);
-
-            let Some(hall) = context.worlds.get_or_start_hall(world, guild, level) else {
-                return say(link, "your hall is not available").await;
-            };
-
-            if let Some(next) = enter(
-                link,
-                placement,
-                name,
-                hall,
-                arrival_of(player, context),
-                to_session,
-            )
-            .await
+            if let Some(next) =
+                enter_guild_hall(link, context, player, placement, name, to_session).await
             {
                 *placement = next;
                 context.trades.moved(name, &placement.world.name);
@@ -2151,6 +2150,20 @@ async fn buy(
     player: &crate::accounts::Session,
     sale: crate::world_task::Sale,
 ) {
+    // A player's listing is bought from the market, which moves the item from whoever owns it and
+    // pays them. Buying it as though it were a shop's stock would mint a second copy and pay nobody.
+    if let Some(listing) = sale.listing {
+        return market(
+            link,
+            context,
+            player,
+            hendra_net::MarketCommand::Buy {
+                listing: listing as u64,
+            },
+        )
+        .await;
+    }
+
     let account = match context.store.account(player.account.id).await {
         Ok(account) => account,
         Err(_) => return say(link, "try again shortly").await,
@@ -3473,3 +3486,39 @@ fn colour_named(text: &str) -> Option<i32> {
 
 /// The highest level a character reaches.
 const MAX_LEVEL: i16 = 20;
+
+/// Takes a player to their own guild's hall.
+///
+/// One path, used by the command and by the portal alike: a hall is one room per guild and the
+/// level chooses its map, and two doors that decided those differently would be two different rooms
+/// with one name.
+async fn enter_guild_hall(
+    link: &mut Link,
+    context: &Context,
+    player: &crate::accounts::Session,
+    from: &Placement,
+    name: &str,
+    orders: &mpsc::Sender<crate::world_task::Order>,
+) -> Option<Placement> {
+    let Ok(Some((guild, _))) = context.store.guild_of(player.account.id).await else {
+        say(link, "you are not in a guild").await;
+        return None;
+    };
+
+    let level = context
+        .store
+        .guild(guild)
+        .await
+        .map(|guild| guild.level)
+        .unwrap_or(0);
+
+    let Some(hall) = context
+        .worlds
+        .get_or_start_hall(crate::commands::GUILD_HALL, guild, level)
+    else {
+        say(link, "your hall is not available").await;
+        return None;
+    };
+
+    enter(link, from, name, hall, arrival_of(player, context), orders).await
+}

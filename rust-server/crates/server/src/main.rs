@@ -82,8 +82,41 @@ fn parse_options() -> Options {
     options
 }
 
-/// How often the nexus's portal labels are brought up to date.
+/// How often the nexus's portal labels and the marketplace's stalls are brought up to date.
 const PORTAL_REFRESH: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// The world a player's own listings stand in.
+const MARKETPLACE: &str = "Marketplace";
+
+/// How many listings the marketplace stands merchants for.
+///
+/// More than any map has squares for, so the limit that decides what is shown is the map rather
+/// than this.
+const LISTINGS_SHOWN: i64 = 200;
+
+/// What is for sale, as the marketplace needs it.
+async fn shop_listings(
+    store: &hendra_store::Store,
+    catalog: &hendra_content::Catalog,
+) -> Vec<world_task::Listed> {
+    store
+        .listings(LISTINGS_SHOWN)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|listing| {
+            let kind = catalog.type_of_uuid(listing.item)?;
+            let desc = catalog.object(kind)?;
+
+            Some(world_task::Listed {
+                listing: listing.id,
+                item: kind,
+                price: listing.price,
+                slot_type: desc.item.as_ref().map(|item| item.slot_type).unwrap_or(0),
+            })
+        })
+        .collect()
+}
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
@@ -301,6 +334,8 @@ async fn main() {
         let registry = Arc::clone(&registry);
         let roster = Arc::clone(&trades);
         let nexus = entry.clone();
+        let store = store.clone();
+        let catalog = Arc::clone(&catalog);
 
         tokio::spawn(async move {
             let mut every = tokio::time::interval(PORTAL_REFRESH);
@@ -316,6 +351,18 @@ async fn main() {
                 {
                     break;
                 }
+
+                // The marketplace stands a merchant for every listing, in the row its kind belongs
+                // to. Refreshed on the same timer: the set changes whenever anybody buys or lists,
+                // and a stall for something already sold refuses whoever walks up to it.
+                let Some(marketplace) = registry.get_or_start_for(MARKETPLACE, 0) else {
+                    continue;
+                };
+
+                let listings = shop_listings(&store, &catalog).await;
+                let _ = marketplace
+                    .send(world_task::ToWorld::ShowListings { listings })
+                    .await;
             }
         });
     }
