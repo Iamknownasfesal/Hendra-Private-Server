@@ -2236,17 +2236,21 @@ impl World {
                 continue;
             }
 
-            let defence = self
+            // The same reduction a projectile gets, through the same path. A second copy of the
+            // formula is how this came to use a different floor and to ignore every condition:
+            // an invulnerable boss took full damage from a blast while shrugging off bullets.
+            let taken = self
                 .entities
                 .get(*handle)
-                .and_then(|entity| catalog.object(entity.object_type))
-                .map(|desc| desc.defense)
+                .map(|entity| {
+                    let defence = crate::projectile::defence_of(entity, catalog);
+                    crate::effects::Rules::of(entity.conditions).damage_after_defence(
+                        damage, defence, false,
+                    )
+                })
                 .unwrap_or(0);
 
             if let Some(entity) = self.entities.get_mut(*handle) {
-                // Armour applies, as it does to a projectile. An explosion that ignored it would
-                // make every point of defence worthless in exactly the fights that use these.
-                let taken = crate::projectile::after_defence(damage, defence, false);
                 entity.hp -= taken;
                 entity.damage_since_tick += taken;
                 entity.last_hurt_by = from;
@@ -5311,6 +5315,41 @@ mod tests {
         let hurt = world.get(victim).unwrap().hp;
         assert!(hurt < 500, "should have been caught in the blast");
         assert!(hurt > 0, "but not killed outright");
+    }
+
+    #[test]
+    fn a_blast_cannot_touch_something_invulnerable() {
+        // Explosions had their own copy of the damage formula, with a different floor and no
+        // conditions at all, so a boss that had gone invulnerable between phases shrugged off
+        // bullets and took a spell in full.
+        let catalog = catalog();
+        let mut world = field(&catalog);
+
+        let mut boss = Entity::fixture(ObjectType(0x502), 10.0, 10.0);
+        boss.kind = Kind::Enemy;
+        boss.max_hp = 200;
+        boss.hp = 200;
+        world.spawn(boss).unwrap();
+
+        let victim = world
+            .spawn(Entity::player(ObjectType(0x600), 12.0, 10.0, 500))
+            .unwrap();
+        let invulnerable = hendra_content::ConditionEffect::Invulnerable.index() as u8;
+        world.give_effect(victim, invulnerable, 10_000);
+
+        behaving(
+            &mut world,
+            &catalog,
+            r#"enemy "Slime" { state a { grenade(4, 100, 20, cooldown: 100000) } }"#,
+        );
+        world.reindex();
+        world.advance(&catalog, 50);
+
+        assert_eq!(
+            world.get(victim).unwrap().hp,
+            500,
+            "an invulnerable target takes nothing from a blast, as it takes nothing from a shot"
+        );
     }
 
     #[test]

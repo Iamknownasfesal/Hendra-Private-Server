@@ -250,17 +250,22 @@ pub struct Hit {
     pub fatal: bool,
 }
 
-/// Damage after the target's defence, which never falls to nothing.
+/// How much defence an entity has against a hit.
 ///
-/// A floor matters: without it, enough defence makes an entity immune, and the game's balance
-/// assumes a heavily armoured target is slow to kill rather than impossible.
-pub fn after_defence(raw: i32, defence: i32, armor_piercing: bool) -> i32 {
-    if armor_piercing {
-        return raw.max(0);
+/// The two kinds keep it in different places, and using the wrong one is silent. An enemy's defence
+/// is a property of its type and lives in the content. A player's is a stat: it starts at the class
+/// base, rises with every level, and is added to by armour, rings and boosts. Reading a player's
+/// from the descriptor gets the level-one base, which for most classes is zero — armour, rings and
+/// levelling all stop counting and nothing says so.
+pub fn defence_of(entity: &Entity, catalog: &Catalog) -> i32 {
+    if entity.kind == Kind::Player {
+        return entity.stats.defence();
     }
-    let reduced = raw - defence.max(0);
-    let floor = (raw as f32 * 0.15).round() as i32;
-    reduced.max(floor).max(0)
+
+    catalog
+        .object(entity.object_type)
+        .map(|desc| desc.defense)
+        .unwrap_or(0)
 }
 
 /// Every projectile in one world.
@@ -410,10 +415,7 @@ impl Projectiles {
                 continue;
             }
 
-            let defence = catalog
-                .object(entity.object_type)
-                .map(|desc| desc.defense)
-                .unwrap_or(0);
+            let defence = defence_of(entity, catalog);
 
             // Armour and curses belong to the target. The shooter's own multipliers were applied
             // when the projectile was made, because its state at the moment of firing is what
@@ -1013,19 +1015,44 @@ mod tests {
 
     #[test]
     fn defence_reduces_damage_but_never_to_nothing() {
-        assert_eq!(after_defence(100, 10, false), 90);
-        assert_eq!(after_defence(100, 0, false), 100);
+        let plain = crate::effects::Rules::NONE;
 
-        // Enough defence to cancel the shot outright still lets 15% through, so a heavily armoured
-        // target is slow to kill rather than immune.
-        assert_eq!(after_defence(100, 1000, false), 15);
-        assert_eq!(after_defence(20, 1000, false), 3);
+        assert_eq!(plain.damage_after_defence(100, 10, false), 90);
+        assert_eq!(plain.damage_after_defence(100, 0, false), 100);
+
+        // Enough defence to cancel the shot outright still lets a quarter through, so a heavily
+        // armoured target is slow to kill rather than immune.
+        assert_eq!(plain.damage_after_defence(100, 1000, false), 25);
+        assert_eq!(plain.damage_after_defence(20, 1000, false), 5);
 
         // Armour piercing ignores it entirely.
-        assert_eq!(after_defence(100, 1000, true), 100);
+        assert_eq!(plain.damage_after_defence(100, 1000, true), 100);
 
         // Nothing goes negative.
-        assert_eq!(after_defence(0, 50, false), 0);
+        assert_eq!(plain.damage_after_defence(0, 50, false), 0);
+    }
+
+    #[test]
+    fn a_player_is_defended_by_their_stats_and_an_enemy_by_its_type() {
+        // Reading one from the other's place is silent: an enemy has no stats and a player's
+        // descriptor holds the level-one class base, which for most classes is zero.
+        let catalog = catalog();
+
+        // A player wearing seventeen points of defence.
+        let mut player = enemy(0x503, 0.0, 0.0, 100);
+        player.kind = Kind::Player;
+        player.stats.set_equipment([0, 0, 0, 17, 0, 0, 0, 0]);
+        assert_eq!(defence_of(&player, &catalog), 17);
+
+        // The same object type read as an enemy answers from the content instead, which is a
+        // different number: this is what made a player's armour count for nothing.
+        let armoured = enemy(0x503, 0.0, 0.0, 100);
+        let from_content = catalog
+            .object(armoured.object_type)
+            .map(|desc| desc.defense)
+            .unwrap_or(0);
+        assert_ne!(from_content, 17);
+        assert_eq!(defence_of(&armoured, &catalog), from_content);
     }
 
     #[test]
