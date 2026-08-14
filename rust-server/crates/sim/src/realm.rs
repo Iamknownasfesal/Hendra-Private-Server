@@ -415,6 +415,16 @@ impl Realm {
         self.changed_at_ms = self.age_ms;
     }
 
+    /// Closes this realm now, wherever its clock had got to.
+    ///
+    /// For an administrator, and it starts the same sequence the clock would: the warning, then the
+    /// close, then the castle. Skipping to the end would leave everybody in it with no notice.
+    pub fn close_now(&mut self) {
+        if self.phase == Phase::Open {
+            self.age_ms = REALM_LIFETIME_MS;
+        }
+    }
+
     /// What to do about the population, given what is alive on each terrain.
     ///
     /// Held in a band rather than at a number: below three quarters of its target a terrain is

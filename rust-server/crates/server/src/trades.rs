@@ -41,6 +41,9 @@ pub const FIRST_TRADEABLE: usize = 4;
 /// Somebody who could be traded with.
 struct Party {
     character_id: i64,
+
+    /// Which world they are in, for `/visit` and for anybody looking for them.
+    world: String,
 }
 
 /// One side of a trade in progress.
@@ -113,9 +116,13 @@ impl Trades {
             return;
         };
 
-        state
-            .present
-            .insert(name.to_string(), Party { character_id });
+        state.present.insert(
+            name.to_string(),
+            Party {
+                character_id,
+                world: String::new(),
+            },
+        );
         state.senders.insert(name.to_string(), sender);
     }
 
@@ -217,6 +224,28 @@ impl Trades {
         );
 
         Step::Done
+    }
+
+    /// Notes which world somebody has moved to.
+    pub fn moved(&self, name: &str, world: &str) {
+        let Ok(mut state) = self.inner.lock() else {
+            return;
+        };
+
+        if let Some(party) = state.present.get_mut(name) {
+            party.world = world.to_string();
+        }
+    }
+
+    /// Which world somebody is in.
+    pub fn world_of(&self, name: &str) -> Option<String> {
+        let state = self.inner.lock().ok()?;
+        state
+            .present
+            .iter()
+            .find(|(held, _)| held.eq_ignore_ascii_case(name))
+            .map(|(_, party)| party.world.clone())
+            .filter(|world| !world.is_empty())
     }
 
     /// Everybody online, by name.
@@ -439,9 +468,13 @@ mod tests {
         let Ok(mut state) = trades.inner.lock() else {
             return;
         };
-        state
-            .present
-            .insert(name.to_string(), Party { character_id });
+        state.present.insert(
+            name.to_string(),
+            Party {
+                character_id,
+                world: String::new(),
+            },
+        );
     }
 
     fn offering(slots: &[usize]) -> Vec<bool> {

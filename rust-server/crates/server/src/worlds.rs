@@ -113,6 +113,21 @@ impl Worlds {
         self.destinations.get(&portal_type).map(String::as_str)
     }
 
+    /// Which worlds are ticking, by their instance key.
+    pub fn running(&self) -> Vec<String> {
+        let Ok(running) = self.running.lock() else {
+            return Vec::new();
+        };
+
+        let mut keys: Vec<String> = running
+            .iter()
+            .filter(|(_, handle)| !handle.inbox.is_closed())
+            .map(|(key, _)| key.clone())
+            .collect();
+        keys.sort();
+        keys
+    }
+
     pub fn known(&self) -> usize {
         self.definitions.len()
     }
@@ -131,13 +146,26 @@ impl Worlds {
         if self.is_personal(name) {
             // The instance key includes the account, so two players asking for the vault get two
             // rooms. The world's own name stays as it was, so the client is told "Vault".
-            self.start(name, &format!("{name}#{account_id}"))
+            self.start(name, &format!("{name}#{account_id}"), 0)
         } else {
-            self.start(name, name)
+            self.start(name, name, 0)
         }
     }
 
-    fn start(&self, name: &str, key: &str) -> Option<WorldHandle> {
+    /// A guild's hall, which is one room per guild rather than one per player.
+    ///
+    /// Per guild because that is the point of it: a hall nobody else could walk into would be a
+    /// second vault. The level chooses which of the shipped maps is loaded, so a guild that has paid
+    /// for a larger hall gets one.
+    pub fn get_or_start_hall(&self, name: &str, guild_id: i64, level: i16) -> Option<WorldHandle> {
+        self.start(
+            name,
+            &format!("{name}#guild{guild_id}"),
+            level.clamp(0, hendra_store::MAX_GUILD_LEVEL) as usize,
+        )
+    }
+
+    fn start(&self, name: &str, key: &str, map: usize) -> Option<WorldHandle> {
         // Held across the build, so that two players stepping into the same unopened dungeon
         // in the same tick must get the same world, not two of them.
         let mut running = self.running.lock().ok()?;
@@ -152,7 +180,7 @@ impl Worlds {
         }
 
         let (definition, stem) = self.definitions.get(name)?;
-        let map = self.load_map(definition, stem)?;
+        let map = self.load_map(definition, stem, map)?;
 
         let terrain = Terrain::build(map, &self.catalog);
         tracing::info!(
@@ -188,13 +216,22 @@ impl Worlds {
         Some(handle)
     }
 
-    fn load_map(&self, definition: &WorldDef, stem: &str) -> Option<Map> {
+    fn load_map(&self, definition: &WorldDef, stem: &str, which: usize) -> Option<Map> {
         // Ten of the game's forty-two definitions have no `maps` field, including the vault. The
         // convention -- undocumented, and enforced only by the loader that happened to implement it
         // -- is that such a world takes the sibling file of the same name. Without this they are
         // all silently unreachable, which is exactly how it presented: a portal that did nothing.
         let fallback = format!("{stem}.jm");
-        let file = definition.first_map().unwrap_or(&fallback);
+
+        // A definition listing several maps is offering a choice: the realm picks one at random in
+        // the original and the guild hall picks by level. Asking past the end takes the last, so a
+        // guild whose level outruns the maps gets the largest rather than nothing.
+        let file = definition
+            .maps
+            .get(which)
+            .or_else(|| definition.maps.last())
+            .map(String::as_str)
+            .unwrap_or(&fallback);
 
         let path = self.directory.join(file);
 

@@ -2249,3 +2249,71 @@ async fn an_empty_discord_id_is_not_a_link() {
     assert!(store.register_discord(account.id, "  ").await.is_err());
     assert_eq!(store.account(account.id).await.unwrap().discord_id, None);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_gift_taken_twice_is_taken_once() {
+    // The gift chest holds durable items. Taking one has to remove the row, and without that the
+    // same gift is handed out on every visit.
+    let Some(store) = store("t_gift_twice").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    let character = store
+        .create_character(account.id, uuid::Uuid::nil(), "Fesal", 100)
+        .await
+        .unwrap();
+
+    let item = uuid::Uuid::new_v4();
+    let slot = store.add_gift(account.id, item).await.unwrap();
+
+    let from = Location::Gift {
+        account_id: account.id,
+        slot,
+    };
+    let to = Location::Inventory {
+        character_id: character.id,
+        slot: 4,
+    };
+
+    store.move_item(from, to, Some(item)).await.unwrap();
+
+    // The second take finds nothing, because the first removed it.
+    assert!(store.move_item(from, to, Some(item)).await.is_err());
+    assert!(store.gifts(account.id).await.unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn nothing_goes_into_a_gift_chest() {
+    // A chest that took deposits would be vault space nobody paid for.
+    let Some(store) = store("t_gift_oneway").await else {
+        eprintln!("skipping: HENDRA_TEST_DATABASE is not set");
+        return;
+    };
+
+    let account = store.create_account("Fesal").await.unwrap();
+    let character = store
+        .create_character(account.id, uuid::Uuid::nil(), "Fesal", 100)
+        .await
+        .unwrap();
+
+    let item = uuid::Uuid::new_v4();
+    store.give_item(character.id, item, 4, 11).await.unwrap();
+
+    let outcome = store
+        .move_item(
+            Location::Inventory {
+                character_id: character.id,
+                slot: 4,
+            },
+            Location::Gift {
+                account_id: account.id,
+                slot: 0,
+            },
+            Some(item),
+        )
+        .await;
+
+    assert!(outcome.is_err(), "the gift chest took a deposit");
+}

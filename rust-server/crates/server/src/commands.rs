@@ -83,6 +83,9 @@ pub enum Action {
     /// Tell the player something the server knows.
     Report(Report),
 
+    /// Something a moderator or administrator does to the world in front of them.
+    Wield { what: Wielded, rest: String },
+
     /// Something a moderator or administrator does to somebody.
     Moderate {
         what: Moderation,
@@ -144,6 +147,23 @@ pub enum MarketAction {
     Oops,
 }
 
+/// Something an administrator does to the world rather than to an account.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Wielded {
+    Spawn,
+    Give,
+    KillAll,
+    MaxStats,
+    MaxLevel,
+    Size,
+    Hide,
+    ClearPack,
+    Quake,
+    CloseRealm,
+    Visit,
+    Worlds,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Moderation {
     Ban,
@@ -159,6 +179,9 @@ pub enum Moderation {
     Announce,
     Rename,
     Unname,
+
+    /// Keep an address out, rather than an account.
+    BanAddress,
 }
 
 /// One command: what it is called, what it needs, and one line on what it does.
@@ -478,6 +501,97 @@ pub const ALL: &[Command] = &[
         needs: Needs::Administrator,
         summary: "take an account's name away",
     },
+    // Tools for looking at the world rather than at an account.
+    Command {
+        name: "spawn",
+        aliases: &["summon"],
+        needs: Needs::Administrator,
+        summary: "put an enemy in front of you",
+    },
+    Command {
+        name: "gimme",
+        aliases: &["give"],
+        needs: Needs::Administrator,
+        summary: "put an item in your pack",
+    },
+    Command {
+        name: "killall",
+        aliases: &[],
+        needs: Needs::Administrator,
+        summary: "kill every enemy of a kind here",
+    },
+    Command {
+        name: "max",
+        aliases: &[],
+        needs: Needs::Administrator,
+        summary: "set your stats to their maximum",
+    },
+    Command {
+        name: "level20",
+        aliases: &["maxlevel"],
+        needs: Needs::Administrator,
+        summary: "set your level to twenty",
+    },
+    Command {
+        name: "size",
+        aliases: &[],
+        needs: Needs::Administrator,
+        summary: "set how large you are drawn",
+    },
+    Command {
+        name: "hide",
+        aliases: &[],
+        needs: Needs::Moderator,
+        summary: "become invisible, or stop being",
+    },
+    Command {
+        name: "clearinv",
+        aliases: &[],
+        needs: Needs::Administrator,
+        summary: "empty your pack",
+    },
+    Command {
+        name: "quake",
+        aliases: &[],
+        needs: Needs::Administrator,
+        summary: "send everyone here to another world",
+    },
+    Command {
+        name: "closerealm",
+        aliases: &[],
+        needs: Needs::Administrator,
+        summary: "close this realm now",
+    },
+    Command {
+        name: "visit",
+        aliases: &[],
+        needs: Needs::Moderator,
+        summary: "go to the world a player is in",
+    },
+    Command {
+        name: "resetfame",
+        aliases: &[],
+        needs: Needs::Administrator,
+        summary: "set a player's fame to nothing",
+    },
+    Command {
+        name: "removeallgold",
+        aliases: &[],
+        needs: Needs::Administrator,
+        summary: "set a player's gold to nothing",
+    },
+    Command {
+        name: "banip",
+        aliases: &[],
+        needs: Needs::Administrator,
+        summary: "keep an address out",
+    },
+    Command {
+        name: "uptimeall",
+        aliases: &["worlds"],
+        needs: Needs::Moderator,
+        summary: "which worlds are running",
+    },
 ];
 
 /// Finds a command by what was typed, whatever its spelling or capitals.
@@ -520,7 +634,7 @@ pub fn read(name: &str, rest: &str) -> Result<Action, String> {
         "nexus" => Action::GoTo(NEXUS),
         "realm" => Action::GoTo("Realm"),
         "vault" => Action::GoTo("Vault"),
-        "ghall" => Action::GoTo("Guild Hall"),
+        "ghall" => Action::GoTo(GUILD_HALL),
         "marketplace" => Action::GoTo("Marketplace"),
         "donorshop" => Action::GoTo("Donor Shop"),
 
@@ -574,6 +688,55 @@ pub fn read(name: &str, rest: &str) -> Result<Action, String> {
         "currentsong" => Action::Report(Report::CurrentSong),
         "time" => Action::Report(Report::Time),
 
+        "spawn" | "gimme" | "killall" | "max" | "level20" | "size" | "hide" | "clearinv"
+        | "quake" | "closerealm" | "visit" | "uptimeall" => {
+            let what = match command.name {
+                "spawn" => Wielded::Spawn,
+                "gimme" => Wielded::Give,
+                "killall" => Wielded::KillAll,
+                "max" => Wielded::MaxStats,
+                "level20" => Wielded::MaxLevel,
+                "size" => Wielded::Size,
+                "hide" => Wielded::Hide,
+                "clearinv" => Wielded::ClearPack,
+                "quake" => Wielded::Quake,
+                "closerealm" => Wielded::CloseRealm,
+                "visit" => Wielded::Visit,
+                _ => Wielded::Worlds,
+            };
+
+            // Each of these names what it acts on, except the four that act on the caller or on
+            // the world they are standing in.
+            let needs_words = matches!(
+                what,
+                Wielded::Spawn | Wielded::Give | Wielded::KillAll | Wielded::Size | Wielded::Visit
+            );
+            if needs_words && rest.is_empty() {
+                return Err("what?".to_string());
+            }
+
+            Action::Wield {
+                what,
+                rest: rest.to_string(),
+            }
+        }
+
+        "resetfame" => Action::Moderate {
+            what: Moderation::SetFame,
+            name: nonempty(first, "who?")?.to_string(),
+            rest: "0".to_string(),
+        },
+        "removeallgold" => Action::Moderate {
+            what: Moderation::SetGold,
+            name: nonempty(first, "who?")?.to_string(),
+            rest: "0".to_string(),
+        },
+        "banip" => Action::Moderate {
+            what: Moderation::BanAddress,
+            name: nonempty(first, "which address?")?.to_string(),
+            rest: String::new(),
+        },
+
         other => {
             let what = match other {
                 "mute" => Moderation::Mute,
@@ -617,6 +780,9 @@ pub fn read(name: &str, rest: &str) -> Result<Action, String> {
 /// Named here because this is the file that has to name every world a command can reach, and one
 /// place naming them all beats two places agreeing.
 pub const NEXUS: &str = "Nexus";
+
+/// The guild hall, which is one room per guild rather than one per player.
+pub const GUILD_HALL: &str = "GuildHall";
 
 /// Where `/gland` puts somebody, from the original.
 ///
@@ -701,13 +867,28 @@ mod tests {
     }
 
     #[test]
-    fn only_moderation_asks_for_a_rank() {
-        // Everything a player types about their own game should be theirs to type.
+    fn only_moderation_and_tools_ask_for_a_rank() {
+        // Everything a player types about their own game should be theirs to type. A command that
+        // asked for a rank and then did something ordinary would be one nobody could reach.
         for command in ALL.iter().filter(|command| command.needs != Needs::Nobody) {
             let action = read(command.name, "somebody something").expect("it reads");
             assert!(
-                matches!(action, Action::Moderate { .. }),
-                "/{} asks for a rank but is not moderation",
+                matches!(action, Action::Moderate { .. } | Action::Wield { .. }),
+                "/{} asks for a rank but is neither moderation nor a tool",
+                command.name
+            );
+        }
+    }
+
+    #[test]
+    fn nothing_a_player_types_asks_for_a_rank() {
+        // The other direction, which is the one that matters: a mechanic gated behind a rank is a
+        // mechanic nobody can use.
+        for command in ALL.iter().filter(|command| command.needs == Needs::Nobody) {
+            let action = read(command.name, "somebody something").expect("it reads");
+            assert!(
+                !matches!(action, Action::Moderate { .. } | Action::Wield { .. }),
+                "/{} is a tool but anybody may use it",
                 command.name
             );
         }

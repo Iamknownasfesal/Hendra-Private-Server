@@ -24,14 +24,14 @@ mod trade;
 pub mod wardrobe;
 
 pub use extras::{Offer as CreditOffer, Quest};
-pub use guild::{Guild, Member, Rank};
+pub use guild::{Guild, MAX_GUILD_LEVEL, Member, Rank};
 pub use market::{Listing, MarketPurchase};
 pub use model::{Account, Admin, Character, CharacterSummary, Currency};
 pub use moves::{Location, MoveOutcome, Placed, Purchase};
 pub use news::{Calendar, News};
 pub use social::{Friend, ListKind, Message};
 pub use trade::{Offer, TradeOutcome};
-pub use wardrobe::{Boost, DyeSlot, Pet};
+pub use wardrobe::{Boost, DyeSlot, GIFT_SLOTS, Pet};
 
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;

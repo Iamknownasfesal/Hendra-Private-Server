@@ -61,7 +61,13 @@ pub struct Guild {
     pub name: String,
     pub board: String,
     pub fame: i32,
+
+    /// How large the hall is, from zero to three.
+    pub level: i16,
 }
+
+/// The largest a guild hall gets, which is how many maps the content ships for it.
+pub const MAX_GUILD_LEVEL: i16 = 3;
 
 /// One member.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -133,6 +139,7 @@ impl Store {
             name: name.to_string(),
             board: String::new(),
             fame: 0,
+            level: 0,
         })
     }
 
@@ -165,20 +172,67 @@ impl Store {
 
     /// A guild by id.
     pub async fn guild(&self, guild_id: i64) -> Result<Guild> {
-        let row = sqlx::query_as::<_, (i64, String, String, i32)>(
-            "SELECT id, name, board, fame FROM guild WHERE id = $1",
+        let row = sqlx::query_as::<_, (i64, String, String, i32, i16)>(
+            "SELECT id, name, board, fame, level FROM guild WHERE id = $1",
         )
         .bind(guild_id)
         .fetch_optional(self.pool())
         .await?;
 
-        row.map(|(id, name, board, fame)| Guild {
+        row.map(|(id, name, board, fame, level)| Guild {
             id,
             name,
             board,
             fame,
+            level,
         })
         .ok_or(StoreError::Refused("there is no such guild"))
+    }
+
+    /// Raises a guild's hall to a level, which is what the hall merchant sells.
+    ///
+    /// Only upward, and only by one at a time as the merchant offers it. A level that could be set
+    /// to anything would be a level an administrator's typo could take away.
+    pub async fn raise_guild_level(&self, guild_id: i64, to: i16) -> Result<()> {
+        if !(1..=MAX_GUILD_LEVEL).contains(&to) {
+            return Err(StoreError::Refused("that is not a hall size"));
+        }
+
+        let raised = sqlx::query("UPDATE guild SET level = $2 WHERE id = $1 AND level < $2")
+            .bind(guild_id)
+            .bind(to)
+            .execute(self.pool())
+            .await?;
+
+        if raised.rows_affected() == 0 {
+            return Err(StoreError::Refused(
+                "your hall is already at least that large",
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Spends a guild's fame, and says whether there was enough.
+    ///
+    /// Conditional on the balance in the same statement that reduces it, so two officers buying at
+    /// once cannot both see enough and both be granted.
+    pub async fn spend_guild_fame(&self, guild_id: i64, price: i32) -> Result<()> {
+        if price <= 0 {
+            return Err(StoreError::Refused("that is not a price"));
+        }
+
+        let paid = sqlx::query("UPDATE guild SET fame = fame - $2 WHERE id = $1 AND fame >= $2")
+            .bind(guild_id)
+            .bind(price)
+            .execute(self.pool())
+            .await?;
+
+        if paid.rows_affected() == 0 {
+            return Err(StoreError::Refused("your guild cannot afford that"));
+        }
+
+        Ok(())
     }
 
     /// Everyone in a guild, highest rank first.

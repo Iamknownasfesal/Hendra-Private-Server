@@ -27,6 +27,12 @@ pub enum Location {
 
     /// A slot in an account's vault.
     Vault { account_id: i64, slot: i16 },
+
+    /// A slot in an account's gift chest.
+    ///
+    /// A place of its own rather than part of the vault, because a gift is not something the player
+    /// put there: mixing them would let a full vault refuse a purchase already paid for.
+    Gift { account_id: i64, slot: i16 },
 }
 
 impl Location {
@@ -36,6 +42,7 @@ impl Location {
         match self {
             Location::Inventory { character_id, slot } => (0, *character_id, *slot),
             Location::Vault { account_id, slot } => (1, *account_id, *slot),
+            Location::Gift { account_id, slot } => (2, *account_id, *slot),
         }
     }
 }
@@ -69,6 +76,13 @@ impl Store {
     ) -> Result<MoveOutcome> {
         if from == to {
             return Err(StoreError::Refused("moving a slot onto itself"));
+        }
+
+        // A gift chest is one-way, as the original's `OneWayContainer` is: what is in it is what the
+        // server put there. A chest that took deposits would be vault space nobody paid for, and
+        // refusing here rather than in the session is what makes that true of every path into it.
+        if matches!(to, Location::Gift { .. }) {
+            return Err(StoreError::Refused("nothing goes into a gift chest"));
         }
 
         let mut transaction = self.pool().begin().await?;
@@ -327,6 +341,22 @@ async fn lock_and_read(
             .fetch_one(&mut **transaction)
             .await?
         }
+        Location::Gift { account_id, slot } => {
+            // The gift table takes no nulls, so an empty slot is an absent row and locking it means
+            // locking the account rather than a row that is not there. Two takes of the same gift
+            // still serialise, which is what stops one gift becoming two.
+            sqlx::query("SELECT id FROM account WHERE id = $1 FOR UPDATE")
+                .bind(account_id)
+                .execute(&mut **transaction)
+                .await?;
+
+            sqlx::query_as("SELECT item FROM gift_slot WHERE account_id = $1 AND slot = $2")
+                .bind(account_id)
+                .bind(slot)
+                .fetch_optional(&mut **transaction)
+                .await?
+                .unwrap_or((None,))
+        }
     };
 
     Ok(item)
@@ -370,6 +400,24 @@ async fn write(
                 .bind(item)
                 .execute(&mut **transaction)
                 .await?;
+        }
+        (Location::Gift { account_id, slot }, None) => {
+            sqlx::query("DELETE FROM gift_slot WHERE account_id = $1 AND slot = $2")
+                .bind(account_id)
+                .bind(slot)
+                .execute(&mut **transaction)
+                .await?;
+        }
+        (Location::Gift { account_id, slot }, Some(item)) => {
+            sqlx::query(
+                "INSERT INTO gift_slot (account_id, slot, item) VALUES ($1, $2, $3)
+                 ON CONFLICT (account_id, slot) DO UPDATE SET item = $3",
+            )
+            .bind(account_id)
+            .bind(slot)
+            .bind(item)
+            .execute(&mut **transaction)
+            .await?;
         }
     }
 

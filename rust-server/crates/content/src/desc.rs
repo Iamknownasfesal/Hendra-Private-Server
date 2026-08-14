@@ -372,6 +372,14 @@ pub struct ObjectDesc {
     /// How many of this appear at once when a realm places it. Absent means one.
     pub spawn_count: Option<SpawnCount>,
 
+    /// What this sells to a guild, and what it costs.
+    ///
+    /// The hall upgrades are the only ones: three objects that raise a guild's hall a level each,
+    /// with the price and the resulting hall named in the content rather than here.
+    pub guild_item: Option<String>,
+    pub guild_item_param: Option<String>,
+    pub price: Option<i32>,
+
     pub projectiles: Vec<ProjectileDesc>,
 
     /// Present when the object can be held in a slot.
@@ -456,6 +464,9 @@ impl ObjectDesc {
             spawn_probability: node.float("SpawnProbability").unwrap_or(0.0) as f32,
             per_realm_max: node.int("PerRealmMax").map(|v| v as i32),
             spawn_count: node.child("Spawn").map(SpawnCount::parse),
+            guild_item: node.field("GuildItem").map(str::to_owned),
+            guild_item_param: node.field("GuildItemParam").map(str::to_owned),
+            price: node.int("Price").map(|price| price as i32),
             projectiles,
             item: node.has("Item").then(|| ItemDesc::parse(node)),
             // `DungeonName` falls back to `DisplayId`, matching how portals are labelled.

@@ -100,6 +100,11 @@ fn locate(where_: SlotLocation, character_id: i64, account_id: i64) -> Option<Lo
         },
 
         // Neither a bag nor the ground is durable; both are handled before this is reached.
+        SlotLocation::Gift { slot } => Location::Gift {
+            account_id,
+            slot: slot as i16,
+        },
+
         SlotLocation::Bag { .. } | SlotLocation::Ground => return None,
     })
 }
@@ -131,6 +136,7 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
     context
         .trades
         .arrived(&name, player.character.id, link.sender());
+    context.trades.moved(&name, &placement.world.name);
 
     // The ground first, because a client that has not been told the map cannot place anything it
     // is about to be told about.
@@ -233,11 +239,16 @@ pub async fn serve(mut link: Link, context: Arc<Context>, entry: WorldHandle) {
                 .await
                 {
                     placement = next;
+                    context.trades.moved(&name, &placement.world.name);
                     send_terrain(&mut link, &placement).await;
                 }
             }
 
             Outcome::Buy(sale) => buy(&mut link, &context, &player, sale).await,
+
+            Outcome::BuyHallUpgrade(upgrade) => {
+                buy_hall_upgrade(&mut link, &context, &player, upgrade).await;
+            }
 
             Outcome::Prestige => {
                 match context
@@ -403,6 +414,9 @@ enum Outcome {
 
     /// The player is buying what a merchant is selling.
     Buy(crate::world_task::Sale),
+
+    /// The player is buying a larger hall for their guild.
+    BuyHallUpgrade(crate::world_task::HallUpgrade),
 
     /// The player is giving up this character's fame for prestige.
     Prestige,
@@ -706,6 +720,32 @@ async fn place_chests(context: &Context, player: &crate::accounts::Session, plac
         let placed = answer.await.unwrap_or(0);
         tracing::debug!(placed, account = player.account.id, "placed vault chests");
     }
+
+    // The gift chest stands in the same room, wherever the map marks one. Placed here rather than
+    // separately because a player who walks into their vault should find everything waiting at
+    // once, and because a gift with nowhere to be opened is a player owed something they cannot
+    // reach.
+    let gifts: Vec<(u16, u16)> = context
+        .store
+        .gifts(player.account.id)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|(slot, item)| Some((slot as u16, number(&context.catalog, item)?)))
+        .collect();
+
+    let (reply, answer) = tokio::sync::oneshot::channel();
+    if placement
+        .world
+        .send(ToWorld::PlaceGiftChest {
+            slots: gifts,
+            reply,
+        })
+        .await
+    {
+        let placed = answer.await.unwrap_or(0);
+        tracing::debug!(placed, account = player.account.id, "placed the gift chest");
+    }
 }
 
 /// Takes an item out of a bag and into the player's inventory.
@@ -759,7 +799,9 @@ async fn take_from_bag(
             .await
             .map(|_| ()),
 
-        Some(Location::Vault { .. }) | None => {
+        // A gift chest takes nothing back, so something taken from a bag and aimed at one goes to
+        // the first free carried slot instead.
+        Some(Location::Vault { .. }) | Some(Location::Gift { .. }) | None => {
             // Anywhere else, or nowhere in particular: the first free carried slot.
             context
                 .store
@@ -867,6 +909,13 @@ async fn read_slot(store: &Store, at: Location) -> Option<uuid::Uuid> {
             .map(|(_, item)| *item),
         Location::Vault { account_id, slot } => store
             .vault(account_id)
+            .await
+            .ok()?
+            .iter()
+            .find(|(index, _)| *index == slot)
+            .map(|(_, item)| *item),
+        Location::Gift { account_id, slot } => store
+            .gifts(account_id)
             .await
             .ok()?
             .iter()
@@ -1089,6 +1138,39 @@ async fn run_command(
 
         Action::GuildSay(text) => guild_say(link, context, player, &text).await,
 
+        // The guild hall is one room per guild rather than one per player, and which map it loads
+        // depends on what the guild has paid for, so it does not go through the ordinary door.
+        Action::GoTo(world) if world == crate::commands::GUILD_HALL => {
+            let Ok(Some((guild, _))) = context.store.guild_of(player.account.id).await else {
+                return say(link, "you are not in a guild").await;
+            };
+            let level = context
+                .store
+                .guild(guild)
+                .await
+                .map(|guild| guild.level)
+                .unwrap_or(0);
+
+            let Some(hall) = context.worlds.get_or_start_hall(world, guild, level) else {
+                return say(link, "your hall is not available").await;
+            };
+
+            if let Some(next) = enter(
+                link,
+                placement,
+                name,
+                hall,
+                arrival_of(player, context),
+                to_session,
+            )
+            .await
+            {
+                *placement = next;
+                context.trades.moved(name, &placement.world.name);
+                send_terrain(link, placement).await;
+            }
+        }
+
         Action::GoTo(world) => {
             if let Some(next) = go_to(
                 link,
@@ -1103,6 +1185,7 @@ async fn run_command(
             .await
             {
                 *placement = next;
+                context.trades.moved(name, &placement.world.name);
                 send_terrain(link, placement).await;
             } else {
                 say(link, "you cannot go there from here").await;
@@ -1160,6 +1243,10 @@ async fn run_command(
         },
 
         Action::Report(what) => report(link, context, player, placement, what).await,
+
+        Action::Wield { what, rest } => {
+            wield(link, context, player, placement, what, &rest).await;
+        }
 
         Action::Moderate { what, name, rest } => {
             moderate(link, context, what, &name, &rest).await;
@@ -1956,6 +2043,21 @@ async fn dispatch(received: &Received, placement: &Placement) -> Outcome {
         }
 
         ClientMessage::Buy { merchant } => {
+            // A guild hall upgrade is bought from something standing in the world like anything
+            // else, but what it buys is the hall rather than an item, so it is asked about first.
+            let (reply, answer) = tokio::sync::oneshot::channel();
+            if world
+                .send(ToWorld::BuyHallUpgrade {
+                    handle,
+                    merchant,
+                    reply,
+                })
+                .await
+                && let Ok(Some(upgrade)) = answer.await
+            {
+                return Outcome::BuyHallUpgrade(upgrade);
+            }
+
             let (reply, answer) = tokio::sync::oneshot::channel();
             if !world
                 .send(ToWorld::Buy {
@@ -2752,6 +2854,15 @@ async fn moderate(
         return say(link, "Said.").await;
     }
 
+    // An address is not an account, so it is answered before anybody is looked up.
+    if what == Moderation::BanAddress {
+        return match context.store.ban_address(name).await {
+            Ok(()) => say(link, &format!("{name} is banned.")).await,
+            Err(hendra_store::StoreError::Refused(why)) => say(link, why).await,
+            Err(_) => say(link, "try again shortly").await,
+        };
+    }
+
     let Ok(target) = context.store.account_by_name(name).await else {
         return say(link, "no such player").await;
     };
@@ -2849,6 +2960,7 @@ async fn moderate(
             .await
             .map(|()| format!("{} was unnamed.", target.name)),
 
+        Moderation::BanAddress => unreachable!("answered above"),
         Moderation::Announce => unreachable!("answered above"),
     };
 
@@ -2862,3 +2974,245 @@ async fn moderate(
         }
     }
 }
+
+/// Moves a player into a world that has already been chosen.
+///
+/// The other half of `go_to`, for the worlds whose instance is decided by something other than a
+/// name: a guild hall belongs to a guild rather than to whoever asked for it.
+async fn enter(
+    link: &mut Link,
+    from: &Placement,
+    name: &str,
+    world: WorldHandle,
+    arrival: crate::world_task::Arrival,
+    orders: &mpsc::Sender<crate::world_task::Order>,
+) -> Option<Placement> {
+    let handle = join(link, &world, name, arrival, orders).await?;
+
+    from.world
+        .send(ToWorld::Leave {
+            handle: from.handle,
+        })
+        .await;
+
+    Some(Placement { world, handle })
+}
+
+/// Buys a larger hall for the caller's guild.
+///
+/// Paid from the guild's fame rather than the buyer's, because the hall belongs to the guild. Only
+/// an officer or above may, for the same reason: a hall is something the guild owns and a member
+/// spending its fame is a member spending everyone's.
+async fn buy_hall_upgrade(
+    link: &mut Link,
+    context: &Context,
+    player: &crate::accounts::Session,
+    upgrade: crate::world_task::HallUpgrade,
+) {
+    use hendra_store::Rank;
+
+    let Ok(Some((guild, rank))) = context.store.guild_of(player.account.id).await else {
+        return say(link, "you are not in a guild").await;
+    };
+
+    if rank < Rank::Officer {
+        return say(link, "insufficient privileges").await;
+    }
+
+    // Paid first, and only then raised. A purchase that cannot be applied leaves the fame alone,
+    // and the reverse order would need a refund that can itself fail.
+    if let Err(err) = context.store.spend_guild_fame(guild, upgrade.price).await {
+        return match err {
+            hendra_store::StoreError::Refused(why) => say(link, why).await,
+            _ => say(link, "try again shortly").await,
+        };
+    }
+
+    match context.store.raise_guild_level(guild, upgrade.level).await {
+        Ok(()) => {
+            say(
+                link,
+                "Your hall has been upgraded. It will be larger next time you enter.",
+            )
+            .await;
+        }
+        Err(err) => {
+            // Paid for and not applied is worth shouting about: the guild is now owed a hall.
+            tracing::error!(%err, guild, "guild fame was spent and the hall was not raised");
+            say(link, "try again shortly").await;
+        }
+    }
+}
+
+/// Carries out an administrator's tool.
+///
+/// Split by where the answer lives: some are the world's, some are the store's, and one is both.
+async fn wield(
+    link: &mut Link,
+    context: &Context,
+    player: &crate::accounts::Session,
+    placement: &Placement,
+    what: crate::commands::Wielded,
+    rest: &str,
+) {
+    use crate::commands::Wielded;
+    use crate::world_task::Wielding;
+
+    // The world's, and each answers with a line to repeat.
+    let in_world = match what {
+        Wielded::Spawn => {
+            // "Slime 5" or just "Slime". A number at the end is how many, because that is how
+            // somebody types it and there is nothing else it could mean.
+            let (name, count) = match rest.rsplit_once(char::is_whitespace) {
+                Some((name, tail)) => match tail.parse::<usize>() {
+                    Ok(count) => (name.trim(), count),
+                    Err(_) => (rest, 1),
+                },
+                None => (rest, 1),
+            };
+
+            Some(Wielding::Spawn {
+                name: name.to_string(),
+                count,
+            })
+        }
+        Wielded::KillAll => Some(Wielding::KillAll {
+            name: rest.to_string(),
+        }),
+        Wielded::Size => match rest.trim().parse::<u16>() {
+            Ok(percent) => Some(Wielding::Size { percent }),
+            Err(_) => return say(link, "how large?").await,
+        },
+        Wielded::Hide => Some(Wielding::Hide),
+        Wielded::CloseRealm => Some(Wielding::CloseRealm),
+        _ => None,
+    };
+
+    if let Some(what) = in_world {
+        let (reply, answer) = tokio::sync::oneshot::channel();
+        if placement
+            .world
+            .send(ToWorld::Wield {
+                handle: placement.handle,
+                what,
+                reply,
+            })
+            .await
+            && let Ok(said) = answer.await
+        {
+            say(link, &said).await;
+        }
+        return;
+    }
+
+    // The rest are the store's, or the registry's.
+    match what {
+        Wielded::Give => {
+            let Some(item) = context
+                .catalog
+                .type_of(rest.trim())
+                .and_then(|kind| context.catalog.object(kind))
+            else {
+                return say(link, "there is no such item").await;
+            };
+
+            match context
+                .store
+                .give_item(
+                    player.character.id,
+                    item.uuid,
+                    EQUIPPED_SLOTS as i16,
+                    LAST_CARRIED_SLOT,
+                )
+                .await
+            {
+                Ok(_) => {
+                    send_containers(link, &context.catalog, &context.store, player).await;
+                    say(link, &format!("{} is yours.", item.id)).await;
+                }
+                Err(hendra_store::StoreError::Refused(why)) => say(link, why).await,
+                Err(_) => say(link, "try again shortly").await,
+            }
+        }
+
+        Wielded::ClearPack => {
+            let Ok(character) = context.store.character(player.character.id).await else {
+                return say(link, "try again shortly").await;
+            };
+
+            let mut emptied = 0;
+            for (slot, item) in character.inventory {
+                if slot < EQUIPPED_SLOTS as i16 {
+                    continue;
+                }
+                if context
+                    .store
+                    .take_item(player.character.id, slot, item)
+                    .await
+                    .is_ok()
+                {
+                    emptied += 1;
+                }
+            }
+
+            send_containers(link, &context.catalog, &context.store, player).await;
+            say(link, &format!("{emptied} taken out.")).await;
+        }
+
+        Wielded::MaxStats | Wielded::MaxLevel => {
+            // Both are the same write: the character's own numbers, which the world reads on the
+            // next arrival. Applied durably rather than to the body, so it survives walking out.
+            let outcome = if what == Wielded::MaxLevel {
+                context
+                    .store
+                    .set_level(player.character.id, MAX_LEVEL)
+                    .await
+            } else {
+                context.store.max_stats(player.character.id).await
+            };
+
+            match outcome {
+                Ok(()) => say(link, "Done. It takes effect when you next arrive.").await,
+                Err(_) => say(link, "try again shortly").await,
+            }
+        }
+
+        Wielded::Quake => {
+            let destination = if rest.trim().is_empty() {
+                crate::commands::NEXUS
+            } else {
+                rest.trim()
+            };
+
+            let (reply, answer) = tokio::sync::oneshot::channel();
+            placement.world.send(ToWorld::Who { reply }).await;
+            let here = answer.await.unwrap_or_default();
+
+            placement
+                .world
+                .send(ToWorld::SendEveryoneTo {
+                    world: destination.to_string(),
+                })
+                .await;
+
+            say(link, &format!("{} sent to {destination}.", here.len())).await;
+        }
+
+        Wielded::Visit => {
+            let Some(world) = context.trades.world_of(rest.trim()) else {
+                return say(link, "they are not here").await;
+            };
+            say(link, &format!("They are in {world}.")).await;
+        }
+
+        Wielded::Worlds => {
+            let running = context.worlds.running();
+            say(link, &format!("{}: {}", running.len(), running.join(", "))).await;
+        }
+
+        _ => {}
+    }
+}
+
+/// The highest level a character reaches.
+const MAX_LEVEL: i16 = 20;

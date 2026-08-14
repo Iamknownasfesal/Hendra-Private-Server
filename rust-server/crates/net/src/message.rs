@@ -139,6 +139,12 @@ pub enum SlotLocation {
     /// The account's vault.
     Vault { slot: u16 },
 
+    /// The account's gift chest.
+    ///
+    /// Its own place rather than a bag, because what is in it is durable: taking a gift has to
+    /// remove the row, and a bag that forgot to would hand the same gift out on every visit.
+    Gift { slot: u16 },
+
     /// A bag or chest in the world.
     Bag { entity: EntityId, slot: u8 },
 
@@ -158,6 +164,7 @@ impl SlotLocation {
             SlotLocation::Vault { .. } => 2,
             SlotLocation::Bag { .. } => 3,
             SlotLocation::Ground => 4,
+            SlotLocation::Gift { .. } => 5,
         }
     }
 
@@ -165,7 +172,7 @@ impl SlotLocation {
         w.u8(self.tag());
         match self {
             SlotLocation::Inventory { slot } | SlotLocation::Equipment { slot } => w.u8(*slot),
-            SlotLocation::Vault { slot } => w.varint(*slot as u64),
+            SlotLocation::Vault { slot } | SlotLocation::Gift { slot } => w.varint(*slot as u64),
             SlotLocation::Bag { entity, slot } => {
                 w.varint(entity.0 as u64);
                 w.u8(*slot);
@@ -187,6 +194,9 @@ impl SlotLocation {
                 slot: r.u8()?,
             },
             4 => SlotLocation::Ground,
+            5 => SlotLocation::Gift {
+                slot: r.varint_u32()? as u16,
+            },
             other => {
                 return Err(CodecError::InvalidValue {
                     what: "slot location",

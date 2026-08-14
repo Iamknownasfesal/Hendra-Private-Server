@@ -978,3 +978,85 @@ impl Store {
         Ok(held)
     }
 }
+
+/// An administrator setting a character's numbers outright.
+///
+/// Written durably rather than to the body in the world, so it survives walking out. The world
+/// reads them on the next arrival, which is why both say so.
+impl Store {
+    pub async fn set_level(&self, character_id: i64, level: i16) -> Result<()> {
+        let changed = sqlx::query("UPDATE character SET level = $2 WHERE id = $1")
+            .bind(character_id)
+            .bind(level.clamp(1, 20))
+            .execute(self.pool())
+            .await?;
+
+        if changed.rows_affected() == 0 {
+            return Err(StoreError::NoSuchCharacter(character_id));
+        }
+
+        Ok(())
+    }
+
+    /// Sets a character's health and magic to the most its class allows.
+    ///
+    /// The eight stats live in the world rather than in a column, so what is stored is the two that
+    /// are: everything else the world recomputes from the class when the character arrives.
+    pub async fn max_stats(&self, character_id: i64) -> Result<()> {
+        let changed = sqlx::query("UPDATE character SET hp = max_hp, mp = max_mp WHERE id = $1")
+            .bind(character_id)
+            .execute(self.pool())
+            .await?;
+
+        if changed.rows_affected() == 0 {
+            return Err(StoreError::NoSuchCharacter(character_id));
+        }
+
+        Ok(())
+    }
+}
+
+/// Addresses kept out, rather than accounts.
+///
+/// A different question from an account ban: that stops one person playing, and this stops whoever
+/// is behind an address making another account and carrying on.
+impl Store {
+    pub async fn ban_address(&self, address: &str) -> Result<()> {
+        let address = address.trim();
+        if address.is_empty() {
+            return Err(StoreError::Refused("that is not an address"));
+        }
+
+        sqlx::query(
+            "INSERT INTO banned_address (address) VALUES ($1) ON CONFLICT (address) DO NOTHING",
+        )
+        .bind(address)
+        .execute(self.pool())
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn unban_address(&self, address: &str) -> Result<()> {
+        sqlx::query("DELETE FROM banned_address WHERE address = $1")
+            .bind(address.trim())
+            .execute(self.pool())
+            .await?;
+
+        Ok(())
+    }
+
+    /// Whether an address is kept out.
+    ///
+    /// Asked at the handshake, before anything else is done with a connection, so a banned address
+    /// costs one query rather than a login.
+    pub async fn address_banned(&self, address: &str) -> Result<bool> {
+        let found =
+            sqlx::query_as::<_, (String,)>("SELECT address FROM banned_address WHERE address = $1")
+                .bind(address.trim())
+                .fetch_optional(self.pool())
+                .await?;
+
+        Ok(found.is_some())
+    }
+}

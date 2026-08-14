@@ -32,7 +32,11 @@ pub enum ContainerKind {
     /// Persistent storage.
     Vault,
 
-    /// A shop's stock. Items may be taken but not put back.
+    /// A shop's stock, or a gift chest. Items may be taken but not put back.
+    ///
+    /// The original calls this a `OneWayContainer`, and the gift chest is one: a gift is something
+    /// the server put there, and a chest you could also put things into would be extra vault space
+    /// that nobody paid for.
     Merchant,
 }
 

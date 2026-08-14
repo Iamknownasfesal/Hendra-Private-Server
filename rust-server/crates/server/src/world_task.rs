@@ -78,6 +78,15 @@ pub enum ToWorld {
         reply: tokio::sync::oneshot::Sender<Option<u16>>,
     },
 
+    /// Places the account's gift chest, where the map marks one.
+    ///
+    /// A gift is not something the player put there, so it does not go in the vault: mixing them
+    /// would let a full vault refuse a purchase that has already been paid for.
+    PlaceGiftChest {
+        slots: Vec<(u16, u16)>,
+        reply: tokio::sync::oneshot::Sender<usize>,
+    },
+
     /// Places the account's vault chests, one per `Vault` region the map marks.
     ///
     /// The world does not know about accounts, so the contents arrive with the request. Chests are
@@ -149,12 +158,34 @@ pub enum ToWorld {
         reply: tokio::sync::oneshot::Sender<Option<String>>,
     },
 
+    /// A player is buying a guild hall upgrade. The world answers with which one and its price.
+    BuyHallUpgrade {
+        handle: Handle,
+        merchant: hendra_net::EntityId,
+        reply: tokio::sync::oneshot::Sender<Option<HallUpgrade>>,
+    },
+
     /// A player is buying from a merchant standing in the world. The world answers with what it is
     /// selling and for how much, since only the world knows which merchant that is.
     Buy {
         handle: Handle,
         merchant: hendra_net::EntityId,
         reply: tokio::sync::oneshot::Sender<Option<Sale>>,
+    },
+
+    /// Send everybody here to another world, which is what a quake is.
+    SendEveryoneTo {
+        world: String,
+    },
+
+    /// An administrator's tool: do something to the world in front of them.
+    ///
+    /// One message rather than six, because each is a line of world state and the world is the only
+    /// thing that can answer any of them.
+    Wield {
+        handle: Handle,
+        what: Wielding,
+        reply: tokio::sync::oneshot::Sender<String>,
     },
 
     /// Where a player is standing.
@@ -838,12 +869,34 @@ fn handle(
             let _ = reply.send(answer);
         }
 
+        ToWorld::BuyHallUpgrade {
+            handle,
+            merchant,
+            reply,
+        } => {
+            let _ = reply.send(hall_upgrade(world, catalog, handle, merchant));
+        }
+
         ToWorld::Buy {
             handle,
             merchant,
             reply,
         } => {
             let _ = reply.send(world_sale(world, handle, merchant));
+        }
+
+        ToWorld::SendEveryoneTo { world: destination } => {
+            for player in players.iter() {
+                let _ = player.orders.try_send(Order::GoTo(destination.clone()));
+            }
+        }
+
+        ToWorld::Wield {
+            handle,
+            what,
+            reply,
+        } => {
+            let _ = reply.send(wield_in_world(world, catalog, handle, what));
         }
 
         ToWorld::Where { handle, reply } => {
@@ -923,6 +976,10 @@ fn handle(
             let _ = reply.send(resolve_portal(world, handle, portal));
         }
 
+        ToWorld::PlaceGiftChest { slots, reply } => {
+            let _ = reply.send(place_gift_chest(world, catalog, &slots));
+        }
+
         ToWorld::PlaceVaultChests {
             slots,
             unlocked,
@@ -983,6 +1040,232 @@ fn handle(
         }
     }
 }
+
+/// Rebuilds the gift chest from what the account has been sent.
+///
+/// One chest, wherever the map marks a gifting square, holding everything waiting. A prestige
+/// purchase or an administrator's gift arrives in the store; without this there is nowhere to open
+/// it from, which is a player owed something they cannot reach.
+fn place_gift_chest(world: &mut World, catalog: &Catalog, slots: &[(u16, u16)]) -> usize {
+    let chest_type = catalog
+        .type_of(GIFT_CHEST)
+        .or_else(|| catalog.type_of("Vault Chest"));
+
+    let Some(chest_type) = chest_type else {
+        tracing::warn!(chest = GIFT_CHEST, "the content has no gift chest");
+        return 0;
+    };
+
+    let mut places: Vec<(u32, u32)> = world
+        .terrain()
+        .map()
+        .regions()
+        .filter(|(_, _, region)| *region == hendra_content::Region::GiftingChest)
+        .map(|(x, y, _)| (x, y))
+        .collect();
+    places.sort();
+
+    if places.is_empty() {
+        return 0;
+    }
+
+    // Anything left from a previous visit goes first, so nothing survives that the store no longer
+    // says is there. Recognised by where it stands, since a container is a container.
+    let existing: Vec<Handle> = world
+        .iter()
+        .filter(|(_, entity)| {
+            entity.kind == hendra_sim::Kind::Container
+                && places
+                    .iter()
+                    .any(|(x, y)| entity.x == *x as f32 + 0.5 && entity.y == *y as f32 + 0.5)
+        })
+        .map(|(handle, _)| handle)
+        .collect();
+    for handle in existing {
+        world.despawn(handle);
+    }
+
+    let mut placed = 0;
+    for (x, y) in &places {
+        // Take-only, which is what the original's `OneWayContainer` is for: a gift is something the
+        // server put there, and a chest you could also put things into would be extra vault space
+        // nobody paid for.
+        let mut container = hendra_sim::Container::new(
+            hendra_sim::ContainerKind::Merchant,
+            hendra_store::GIFT_SLOTS.max(0) as usize,
+        );
+        for (slot, item) in slots {
+            container.set(*slot as usize, hendra_content::ObjectType(*item));
+        }
+
+        let mut chest =
+            hendra_sim::world::Entity::fixture(chest_type, *x as f32 + 0.5, *y as f32 + 0.5);
+        chest.kind = hendra_sim::Kind::Container;
+        chest.container = Some(Box::new(container));
+
+        if world.spawn(chest).is_some() {
+            placed += 1;
+        }
+    }
+
+    placed
+}
+
+/// What an administrator is doing to the world in front of them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Wielding {
+    /// Put an enemy of this name in front of them, this many times.
+    Spawn { name: String, count: usize },
+
+    /// Kill every enemy of this name here.
+    KillAll { name: String },
+
+    /// Draw them at this percentage of their natural size.
+    Size { percent: u16 },
+
+    /// Become invisible, or stop being.
+    Hide,
+
+    /// Close this realm now, wherever its clock had got to.
+    CloseRealm,
+}
+
+/// Carries out an administrator's tool, and says what happened.
+fn wield_in_world(world: &mut World, catalog: &Catalog, handle: Handle, what: Wielding) -> String {
+    match what {
+        Wielding::Spawn { name, count } => {
+            let Some(kind) = catalog.type_of(&name) else {
+                return format!("there is no {name}");
+            };
+            let Some((x, y)) = world.get(handle).map(|entity| (entity.x, entity.y)) else {
+                return "you are nowhere".to_string();
+            };
+
+            // Bounded, because a typo in a number should not be the last thing a world does.
+            let count = count.clamp(1, MOST_SPAWNED_AT_ONCE);
+            let made = world.spawn_at(catalog, kind, x, y, count);
+
+            format!("{made} {name}")
+        }
+
+        Wielding::KillAll { name } => {
+            let Some(kind) = catalog.type_of(&name) else {
+                return format!("there is no {name}");
+            };
+
+            let doomed: Vec<Handle> = world
+                .iter()
+                .filter(|(_, entity)| {
+                    entity.kind == hendra_sim::Kind::Enemy && entity.object_type == kind
+                })
+                .map(|(handle, _)| handle)
+                .collect();
+
+            let killed = doomed.len();
+            for handle in doomed {
+                if let Some(entity) = world.get_mut(handle) {
+                    // Removed rather than killed, so an administrator clearing a room does not hand
+                    // out the experience and the loot for it.
+                    entity.dead = true;
+                    entity.no_experience = true;
+                }
+            }
+
+            format!("{killed} killed")
+        }
+
+        Wielding::Size { percent } => {
+            if let Some(entity) = world.get_mut(handle) {
+                entity.size = percent.clamp(1, 1000);
+            }
+            format!("drawn at {percent}%")
+        }
+
+        Wielding::Hide => {
+            let hidden = world
+                .get(handle)
+                .is_some_and(|entity| entity.conditions.contains(HIDDEN));
+
+            if let Some(entity) = world.get_mut(handle) {
+                if hidden {
+                    entity.conditions.remove(HIDDEN);
+                } else {
+                    entity.conditions.insert(HIDDEN);
+                }
+            }
+
+            if hidden { "seen again" } else { "hidden" }.to_string()
+        }
+
+        Wielding::CloseRealm => {
+            if world.realm().phase() == hendra_sim::realm::Phase::Open {
+                world.realm_mut().close_now();
+                "closing".to_string()
+            } else {
+                "this realm is already closing".to_string()
+            }
+        }
+    }
+}
+
+/// What being hidden is, which is the same invisibility a cloak gives.
+const HIDDEN: hendra_content::ConditionEffect = hendra_content::ConditionEffect::Invisible;
+
+/// The most one `/spawn` may put down.
+///
+/// A typo in a number should not be the last thing a world does.
+const MOST_SPAWNED_AT_ONCE: usize = 100;
+
+/// What a guild-hall merchant standing in the world is selling.
+///
+/// Read from the object rather than told by the client, for the same reason a shop's stock is: a
+/// client that names the upgrade can name a cheaper one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HallUpgrade {
+    /// The level the hall becomes.
+    pub level: i16,
+    pub price: i32,
+}
+
+/// What the guild merchant a player is standing at is offering.
+fn hall_upgrade(
+    world: &World,
+    catalog: &Catalog,
+    handle: Handle,
+    merchant: hendra_net::EntityId,
+) -> Option<HallUpgrade> {
+    let stall = world.get(Handle(merchant.0))?;
+    let player = world.get(handle)?;
+
+    let (dx, dy) = (stall.x - player.x, stall.y - player.y);
+    if (dx * dx + dy * dy).sqrt() > MERCHANT_REACH {
+        return None;
+    }
+
+    let desc = catalog.object(stall.object_type)?;
+    if desc.guild_item.as_deref() != Some("GuildHallUpgrade") {
+        return None;
+    }
+
+    // The content names the hall it becomes rather than the number, so the number is read out of
+    // the name: "Guild Hall 2" is level one, since level zero is the hall a new guild starts with.
+    let level = desc
+        .guild_item_param
+        .as_deref()?
+        .rsplit(char::is_whitespace)
+        .next()?
+        .parse::<i16>()
+        .ok()?
+        - 1;
+
+    Some(HallUpgrade {
+        level,
+        price: desc.price.unwrap_or(0),
+    })
+}
+
+/// What the gift chest is called in the content.
+const GIFT_CHEST: &str = "Gift Chest";
 
 /// How many slots one vault chest holds.
 pub const CHEST_SLOTS: u16 = 8;

@@ -2547,6 +2547,36 @@ impl World {
         })
     }
 
+    /// Puts some number of one kind of thing down near a point.
+    ///
+    /// For an administrator's `/spawn`, which is the only caller: everything else that spawns comes
+    /// from a behaviour, a setpiece or a realm, and each of those decides its own placement.
+    pub fn spawn_at(
+        &mut self,
+        catalog: &Catalog,
+        kind: ObjectType,
+        x: f32,
+        y: f32,
+        count: usize,
+    ) -> usize {
+        let behaviours = std::mem::take(&mut self.behaviours);
+        let mut made = 0;
+
+        for index in 0..count {
+            // Fanned, so a group put down together does not sit in one square and read as one.
+            let spread = index as f32 * 0.35;
+            if self
+                .spawn_child(catalog, &behaviours, kind, x + spread, y, None, None)
+                .is_some()
+            {
+                made += 1;
+            }
+        }
+
+        self.behaviours = behaviours;
+        made
+    }
+
     /// Puts a merchant down with something to sell.
     pub fn open_stall(
         &mut self,
