@@ -567,7 +567,11 @@ public sealed partial class SlotView : Control
         int size = TagSize;
         float width = Style.Measure(tag, size);
 
-        this.DrawToken(new Vector2(Size.X - width - 3f, Size.Y - 4f), tag, size, Style.TierColour(tag));
+        // Clear of the bottom edge by about a third of its own height, as the reference sets it:
+        // a tag flush to the border reads as something that has slipped out of the slot.
+        this.DrawToken(
+            new Vector2(Size.X - width - 5f, Size.Y - Mathf.Round(size * 0.32f)),
+            tag, size, Style.TierColour(tag));
     }
 
     /// <summary>
