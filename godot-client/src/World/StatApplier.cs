@@ -93,6 +93,8 @@ public static class StatApplier
             case StatsType.Credits when player != null: player.Credits = stat.IntValue; break;
             case StatsType.CurrentFame when player != null: player.Fame = stat.IntValue; break;
             case StatsType.GuildName: entity.Guild = stat.StringValue; break;
+            case StatsType.NumStars: entity.Stars = stat.IntValue; break;
+            case StatsType.Admin: entity.Admin = stat.IntValue != 0; break;
             case StatsType.Exp when player != null: player.Experience = stat.IntValue; break;
 
             case StatsType.MaxHpBoost when player != null: player.Boosts[0] = stat.IntValue; break;

@@ -1106,7 +1106,9 @@ public partial class WorldController : Node
         _world.Zoom = Mathf.Clamp(Options?.CameraZoom ?? 1f, FurthestZoom, NearestZoom);
 
         if (_overlay != null)
-            _overlay.ConditionIconSize = Options is { SmallConditionIcons: true } ? 11f : 16f;
+            // In reference pixels, which is what the overlay draws in: the original's sixteen at
+            // the scale the reference screenshots are taken at, and the small setting in proportion.
+            _overlay.ConditionIconSize = Options is { SmallConditionIcons: true } ? 14f : 20f;
 
         using (Phases.Measure("particles"))
             _particles.Update(now, deltaMs);
@@ -1174,6 +1176,14 @@ public partial class WorldController : Node
         string shown = said.Length <= 64 ? said : said[..63] + "…";
 
         _bubbles[text.ObjectId] = (shown, _clock.FrameMs + text.BubbleTime * 1000);
+
+        // The Text packet is the only place this server puts a star rating, so the name plate
+        // learns what colour its star should be the first time its owner says anything.
+        if (text.NumStars >= 0 && _map.GetEntity(text.ObjectId) is { } speaker)
+        {
+            speaker.Stars = text.NumStars;
+            speaker.Admin = text.Admin > 0;
+        }
     }
 
     /// <summary>What this entity is saying right now, or null.</summary>
@@ -2607,6 +2617,33 @@ public partial class WorldController : Node
     /// <summary>The entity the server has named as the current objective, or zero for none.</summary>
     private int _questObjectId;
 
+    /// <summary>The colour a player's name is set in over the world, on the original's rules.</summary>
+    /// <remarks>
+    /// Gold for a player who has chosen a name, light green for one in our own guild, white for
+    /// everything else -- which covers both the unnamed guest and every named object in the world,
+    /// portals included. The gold is darker than the interface's, and measured off the reference
+    /// rather than borrowed from the HUD: a name over lit ground is not a name on a grey plate.
+    /// </remarks>
+    private Color NameColour(Entity entity, Resources.ObjectDesc desc)
+    {
+        if (!desc.IsPlayer)
+            return Colors.White;
+
+        var player = _map.Player;
+
+        if (player != null && !ReferenceEquals(entity, player) &&
+            !string.IsNullOrEmpty(entity.Guild) && entity.Guild == player.Guild)
+            return GuildNameColour;
+
+        return NamedPlayerColour;
+    }
+
+    /// <summary>The original's <c>NAME_CHOSEN_COLOR</c>, as the reference renders it.</summary>
+    private static readonly Color NamedPlayerColour = new("c9b200");
+
+    /// <summary>The original's <c>FELLOW_GUILD_COLOR</c>.</summary>
+    private static readonly Color GuildNameColour = new("a6ff5d");
+
     private void DrawOverlay(int now)
     {
         if (_overlay == null)
@@ -2625,7 +2662,12 @@ public partial class WorldController : Node
                 continue;
 
             bool combatant = desc.IsEnemy || desc.IsPlayer;
-            bool named = desc.ShowName && !string.IsNullOrEmpty(entity.Name);
+            // Every other player carries a name plate whether or not their definition asks for one
+            // -- this data set never marks the classes with ShowName and the original shows them
+            // regardless -- and our own character carries none, because the plate would sit on top
+            // of the health bar the camera is already centred on.
+            bool named = !string.IsNullOrEmpty(entity.Name)
+                         && (desc.ShowName || (desc.IsPlayer && !ReferenceEquals(entity, _map.Player)));
             string bubble = Options is { TextBubbles: false } ? null : BubbleFor(entity);
 
             // Nothing to say about a plain decoration.
@@ -2639,7 +2681,11 @@ public partial class WorldController : Node
                            && !entity.IsInvulnerable
                            && !desc.NoMiniMap
                            && entity.MaxHp > 0
-                           && WantsHealthBar(desc);
+                           && WantsHealthBar(desc)
+                           // Another player at full health carries their name plate instead: a
+                           // Nexus of two hundred untouched bars is a row of green dashes that
+                           // says nothing, and the plate is what the space is for.
+                           && (!desc.IsPlayer || ReferenceEquals(entity, _map.Player) || entity.Hp < entity.MaxHp);
 
             if (!showBar && !named && bubble == null)
                 continue;
@@ -2658,7 +2704,9 @@ public partial class WorldController : Node
                 SpriteHeight = Mathf.Abs(anchor.Y - top),
                 Bubble = bubble,
                 Name = named ? entity.Name : null,
-                NameColor = desc.IsPlayer ? new Color(0.99f, 0.87f, 0f) : Colors.White,
+                NameColor = NameColour(entity, desc),
+                Stars = desc.IsPlayer ? entity.Stars : -1,
+                Admin = entity.Admin,
                 Hp = entity.Hp,
                 MaxHp = entity.MaxHp,
                 ShowHealthBar = showBar,
