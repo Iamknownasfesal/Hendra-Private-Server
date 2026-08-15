@@ -195,16 +195,16 @@ public partial class TitleFooter : Control
     private void Line(string text, float baseline, int size) =>
         this.DrawText(
             new Vector2(Mathf.Round((Size.X - Style.Measure(text, size)) / 2f), Mathf.Round(baseline)),
-            text, size, Style.TextDim);
+            text, size, Style.Text);
 }
 
 /// <summary>
 /// The game's button plate, at the size the menus use it.
 /// </summary>
 /// <remarks>
-/// Three bands, which is what the references show: a lighter cap four pixels tall and inset five at
-/// each end, the flat face, and a darker cap of the same shape along the bottom. Held swaps the two
-/// caps and drops the label a pixel, so the plate visibly goes in.
+/// The frame the references show: light across the top and down both sides, dark along the bottom,
+/// all four corners left as background, and a hard shadow underneath. Held swaps light for dark and
+/// drops the label a pixel, so the plate visibly goes in. Figures come from <see cref="Style"/>.
 /// </remarks>
 public partial class TitlePlate : Button
 {
@@ -252,14 +252,24 @@ public partial class TitlePlate : Button
         var bottom = held ? _high : _low;
 
         float scale = Mathf.Max(1f, Size.Y / ReferenceHeight);
-        float cap = Mathf.Round(CapHeight * scale);
-        float inset = Mathf.Round(CapInset * scale);
+        float cap = Mathf.Round(Style.ButtonFrameTop * scale);
+        float side = Mathf.Round(Style.ButtonFrameSide * scale);
+        float inner = Size.X - side * 2f;
+        float tall = Size.Y - cap * 2f;
 
-        DrawRect(new Rect2(0f, cap, Size.X, Size.Y - cap * 2f), face);
-        DrawRect(new Rect2(inset, 0f, Size.X - inset * 2f, cap), top);
-        DrawRect(new Rect2(inset, Size.Y - cap, Size.X - inset * 2f, cap), bottom);
+        // The shadow the plate casts on the page, and then the frame: light across the top and
+        // down both sides, dark along the bottom, with the four corners left as background.
+        DrawRect(
+            new Rect2(side, Size.Y, inner, Mathf.Round(Style.ButtonShadowHeight * scale)),
+            Style.ButtonShadow);
 
-        int size = Mathf.Max(Style.SmallestReadable, Mathf.RoundToInt(Style.FontName * scale));
+        DrawRect(new Rect2(side, cap, inner, tall), face);
+        DrawRect(new Rect2(side, 0f, inner, cap), top);
+        DrawRect(new Rect2(0f, cap, side, tall), top);
+        DrawRect(new Rect2(Size.X - side, cap, side, tall), top);
+        DrawRect(new Rect2(side, Size.Y - cap, inner, cap), bottom);
+
+        int size = Mathf.Max(Style.SmallestReadable, Mathf.RoundToInt(Style.FontControl * scale));
         var at = new Vector2(
             Mathf.Round((Size.X - Style.Measure(_label, size)) / 2f),
             Style.BaselineIn(Size.Y, size)) + (held ? Vector2.One : Vector2.Zero);

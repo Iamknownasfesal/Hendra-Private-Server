@@ -9,7 +9,7 @@ namespace Hendra.UI;
 /// <remarks>
 /// <para>
 /// Measured off the options and character pages rather than invented. The wash runs from
-/// <c>#0f0f0f</c> at the top of the screen to <c>#2c2c2c</c> at the bottom; the shapes sit twelve
+/// <c>#111111</c> at the top of the screen to <c>#2b2b2b</c> at the bottom, both measured; the shapes sit twelve
 /// and twenty-six points above whatever the wash is under them, which is why they are drawn as an
 /// offset from the wash instead of as fixed colours — a fixed colour disappears at one end of the
 /// page and shouts at the other.
@@ -29,10 +29,10 @@ namespace Hendra.UI;
 public partial class MenuBackdrop : Control
 {
     /// <summary>The wash at the top of the screen.</summary>
-    private static readonly Color WashTop = new("0f0f0f");
+    private static readonly Color WashTop = new("111111");
 
     /// <summary>The wash at the bottom of it.</summary>
-    private static readonly Color WashBottom = new("2c2c2c");
+    private static readonly Color WashBottom = new("2b2b2b");
 
     /// <summary>How far above the wash the large diamonds sit.</summary>
     private const float DiamondLift = 12f / 255f;

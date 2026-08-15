@@ -123,7 +123,6 @@ public partial class GameLogo : Control
         if (w <= 1f)
             return;
 
-        DrawGlow(w);
         DrawBanner(w);
         DrawWord(w);
         DrawRule(w);
@@ -132,23 +131,11 @@ public partial class GameLogo : Control
         DrawWordmark(w);
     }
 
-    /// <summary>
-    /// The warm bloom behind the banner.
-    /// </summary>
-    /// <remarks>
-    /// A generated texture rather than a ring of polygons: the falloff has to be smooth across
-    /// several hundred pixels, and stacking translucent shapes to fake that leaves visible bands
-    /// exactly where the mark is brightest.
-    /// </remarks>
-    private void DrawGlow(float w)
-    {
-        float radius = w * 0.58f;
-        var centre = new Vector2(w * 0.5f, w * 0.240f);
-
-        DrawTextureRect(
-            Bloom, new Rect2(centre - Vector2.One * radius, Vector2.One * radius * 2f), false,
-            Glow with { A = 0.8f });
-    }
+    // There is no bloom behind the mark. An earlier pass put a wide radial one there, and a critic
+    // comparing this screen against three real ones picked it out at once: sample a horizontal line
+    // across any reference page and every x gives the same value, because the page's wash runs top
+    // to bottom and nothing else varies. A soft circular falloff is a primitive this interface uses
+    // nowhere, so the brightest thing on the screen was also the least native thing on it.
 
     /// <summary>
     /// The shield behind the word.
