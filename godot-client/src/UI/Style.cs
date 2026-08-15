@@ -116,13 +116,28 @@ public static class Style
     public static readonly Color ButtonFace = new("7a9595");
 
     public static readonly Color ButtonBevelHigh = new("98bfbf");
-    public static readonly Color ButtonBevelLow = new("4e6666");
+    public static readonly Color ButtonBevelLow = new("597676");
     public static readonly Color ButtonHover = new("8fabab");
+
+    /// <summary>
+    /// How a button plate is shaded, which is not a bevel.
+    /// </summary>
+    /// <remarks>
+    /// Measured off the Options plate in the reference, x 26..327 by y 497..548: the face runs
+    /// the full width of the plate, and the lighter and darker bands are four pixels tall and
+    /// inset five pixels from each end, so they stop short of the corners instead of turning
+    /// them. Every row within a band has the same extent, so it is a cap and not a radius. The
+    /// same figures hold on the red and olive plates.
+    /// </remarks>
+    public const int ButtonCapHeight = 4;
+
+    public const int ButtonCapInset = 5;
 
     /// <summary>The way out: Quit, and every panel's Close.</summary>
     public static readonly Color ButtonDanger = new("de2d41");
 
     public static readonly Color ButtonDangerHigh = new("ff4b67");
+    public static readonly Color ButtonDangerLow = new("a81326");
 
     /// <summary>The action a screen exists for: Continue, Play, Deposit All.</summary>
     public static readonly Color ButtonCommit = new("769300");
@@ -137,6 +152,25 @@ public static class Style
     public static readonly Color ToggleOn = new("5a8c25");
 
     public static readonly Color ToggleOnHigh = new("82bd47");
+
+    /// <summary>
+    /// One button plate: the face, and the two capping bands drawn over it.
+    /// </summary>
+    /// <remarks>
+    /// The three always travel together, so a caller picks a plate rather than three colours and
+    /// cannot pair a red face with a steel cap. Geometry is in <see cref="ButtonCapHeight"/> and
+    /// <see cref="ButtonCapInset"/> and is the same for all of them.
+    /// </remarks>
+    public readonly record struct ButtonPlate(Color Face, Color High, Color Low);
+
+    /// <summary>The ordinary way on.</summary>
+    public static ButtonPlate PlateSteel => new(ButtonFace, ButtonBevelHigh, ButtonBevelLow);
+
+    /// <summary>The action a screen exists for.</summary>
+    public static ButtonPlate PlateCommit => new(ButtonCommit, ButtonCommitHigh, ButtonCommitLow);
+
+    /// <summary>Closing and quitting.</summary>
+    public static ButtonPlate PlateDanger => new(ButtonDanger, ButtonDangerHigh, ButtonDangerLow);
 
     public static readonly Color TierNormal = new("ffffff");
 

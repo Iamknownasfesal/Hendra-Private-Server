@@ -8,10 +8,9 @@ namespace Hendra.UI;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The same plate the interface uses everywhere else — a flat face with a one-pixel two-tone bevel,
-/// light along the top and left, dark along the bottom and right, inverted while held, with the
-/// label shifting a pixel down and right so the plate visibly goes in. It is
-/// <see cref="HudMenuButton"/>'s drawing, at menu sizes.
+/// The same plate the interface uses everywhere else — a flat face capped by a lighter band along
+/// the top and a darker one along the bottom, inverted while held, with the label shifting a pixel
+/// down and right so the plate visibly goes in.
 /// </para>
 /// <para>
 /// It used to be a cut-cornered, gradient-filled, drop-shadowed plate that rose under the pointer.
@@ -22,8 +21,9 @@ namespace Hendra.UI;
 /// call site keeps its <c>Pressed</c> and its <c>Disabled</c> and nothing else had to change.
 /// </para>
 /// <para>
-/// One button per screen may be <paramref name="primary"/>, which takes the interface's single
-/// saturated accent. That is the one asking to be pressed; the rest are the ways out.
+/// The plate is the label. One button per screen may be <paramref name="primary"/> and takes the
+/// olive commit plate — the action the screen exists for; the rest take steel, and the one that
+/// quits or closes is given the red plate explicitly.
 /// </para>
 /// </remarks>
 public partial class GameButton : Button
@@ -31,6 +31,7 @@ public partial class GameButton : Button
     private readonly string _label;
     private readonly bool _primary;
     private readonly bool _compact;
+    private readonly Style.ButtonPlate _plate;
 
     /// <summary>Eased towards one while hovered, so the lift is a movement rather than a jump.</summary>
     private float _glow;
@@ -43,11 +44,18 @@ public partial class GameButton : Button
     /// For a button inside a panel rather than on a menu: no width of its own, and short enough to
     /// sit in a row of them.
     /// </param>
-    public GameButton(string text, bool primary = false, bool compact = false)
+    /// <param name="plate">
+    /// Which of the interface's plates to wear. Left unset, a primary button takes the commit
+    /// plate and everything else the steel one, which is what the reference does; pass
+    /// <see cref="Style.PlateDanger"/> for the button that quits or closes.
+    /// </param>
+    public GameButton(string text, bool primary = false, bool compact = false,
+        Style.ButtonPlate? plate = null)
     {
         _label = text;
         _primary = primary;
         _compact = compact;
+        _plate = plate ?? (primary ? Style.PlateCommit : Style.PlateSteel);
 
         // The plate and the text are drawn here, so the built-in ones are cleared rather than
         // fought with.
@@ -100,14 +108,14 @@ public partial class GameButton : Button
         bool held = ButtonPressed || IsPressed();
         var full = new Rect2(Vector2.Zero, Size);
 
-        var face = _primary ? Style.ButtonPromo : Style.ButtonFace;
+        var face = _plate.Face;
 
         if (Disabled)
             face = face.Darkened(0.45f);
         else if (held)
             face = face.Darkened(0.25f);
         else if (_glow > 0f)
-            face = face.Lerp(_primary ? face.Lightened(0.22f) : Style.ButtonHover, _glow);
+            face = face.Lerp(face.Lightened(0.18f), _glow);
 
         DrawRect(full, face);
         DrawBevel(full, inverted: held);
@@ -115,10 +123,9 @@ public partial class GameButton : Button
         // The label moves with the plate, so a held button reads as pressed rather than repainted.
         var shift = held ? Vector2.One : Vector2.Zero;
 
-        // Dark type on the accent: the amber is bright enough that white on it is the harder read.
-        var colour = Disabled ? Style.TextDim
-            : _primary ? Style.PanelEdge
-            : Style.Text;
+        // White on every plate. The reference sets Play and Continue in white on the olive just as
+        // it sets Options in white on the steel; only a disabled plate drops to the muted grey.
+        var colour = Disabled ? Style.TextDim : Style.Text;
 
         var at = new Vector2(
             Mathf.Round((Size.X - Style.Measure(_label, FontSize)) / 2f),
@@ -127,15 +134,28 @@ public partial class GameButton : Button
         this.DrawText(at, _label, FontSize, colour);
     }
 
-    /// <summary>The one-pixel two-tone edge that gives the plate its thickness.</summary>
+    /// <summary>
+    /// The two bands that give the plate its thickness.
+    /// </summary>
+    /// <remarks>
+    /// Not an edge around all four sides. In the reference the light band sits along the top and
+    /// the dark one along the bottom, both four pixels tall and inset five pixels from each end,
+    /// leaving the corners as bare face; the sides carry nothing at all. Holding the button
+    /// swaps the two, so the plate reads as pushed in rather than repainted.
+    /// </remarks>
     private void DrawBevel(in Rect2 full, bool inverted)
     {
-        var high = inverted ? Style.ButtonBevelLow : Style.ButtonBevelHigh;
-        var low = inverted ? Style.ButtonBevelHigh : Style.ButtonBevelLow;
+        var high = inverted ? _plate.Low : _plate.High;
+        var low = inverted ? _plate.High : _plate.Low;
 
-        DrawRect(new Rect2(full.Position, new Vector2(full.Size.X, 1f)), high);
-        DrawRect(new Rect2(full.Position, new Vector2(1f, full.Size.Y)), high);
-        DrawRect(new Rect2(full.Position.X, full.End.Y - 1f, full.Size.X, 1f), low);
-        DrawRect(new Rect2(full.End.X - 1f, full.Position.Y, 1f, full.Size.Y), low);
+        float inset = Style.ButtonCapInset;
+        float cap = Style.ButtonCapHeight;
+        float width = full.Size.X - inset * 2f;
+
+        if (width <= 0f)
+            return;
+
+        DrawRect(new Rect2(full.Position.X + inset, full.Position.Y, width, cap), high);
+        DrawRect(new Rect2(full.Position.X + inset, full.End.Y - cap, width, cap), low);
     }
 }
