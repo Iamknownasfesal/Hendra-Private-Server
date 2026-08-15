@@ -47,6 +47,12 @@ public sealed class TileColors
     /// The original keeps the same table -- <c>objectTypeColorDict_</c> -- and fills it from the
     /// object's own artwork the first time it sees one of that type. A wall is whatever colour its
     /// sprite mostly is, which is why a minimap of a dungeon reads as its floor plan.
+    ///
+    /// A wall answers with its <b>top</b> face rather than its side, which is what
+    /// <c>Wall.getColor</c> and <c>DoubleWall.getColor</c> override the base method to do. The two
+    /// differ for 138 of the 165 walls in this data, and the side is the wrong one: it is the face
+    /// seen from within the room, drawn dark and heavily outlined, while the top is the flat slab a
+    /// map is looking down on.
     /// </remarks>
     public Color Get(ObjectDesc desc)
     {
@@ -57,21 +63,29 @@ public sealed class TileColors
         if (_objects.TryGetValue(desc.Type, out var cached))
             return cached;
 
-        var spec = desc.Texture;
-        if (spec is { Kind: TextureKind.Random, Variants.Count: > 0 })
-            spec = spec.Variants[0];
-
-        var colour = spec?.File == null
-            ? Colors.Black
-            : Colour(_assets.GetSprite(spec.File, spec.Index));
-
+        // The side is the fallback, not a second opinion: a top face that names an animation or a
+        // sheet this build has no art for resolves to nothing, and black would be worse than the
+        // side's own colour.
+        var colour = Colour(desc.TopTexture) ?? Colour(desc.Texture) ?? Colors.Black;
         _objects[desc.Type] = colour;
         return colour;
     }
 
     private readonly Dictionary<ushort, Color> _objects = new();
 
-    private Color Colour(Sprite sprite) => sprite.IsValid ? MostCommonColour(sprite) : Colors.Black;
+    /// <summary>The colour of a texture, or null when it names no still sprite this build has.</summary>
+    private Color? Colour(TextureSpec spec)
+    {
+        // A random-variant sprite is representative enough in its first variant.
+        if (spec is { Kind: TextureKind.Random, Variants.Count: > 0 })
+            spec = spec.Variants[0];
+
+        if (spec?.File == null)
+            return null;
+
+        var sprite = _assets.GetSprite(spec.File, spec.Index);
+        return sprite.IsValid ? MostCommonColour(sprite) : null;
+    }
 
     private Color Derive(GroundDesc desc)
     {
@@ -83,17 +97,7 @@ public sealed class TileColors
                 (desc.Color & 0xFF) / 255f);
         }
 
-        var spec = desc.Texture;
-
-        // A random-variant tile is representative enough in its first variant.
-        if (spec is { Kind: TextureKind.Random, Variants.Count: > 0 })
-            spec = spec.Variants[0];
-
-        if (spec == null || spec.File == null)
-            return Colors.Black;
-
-        var sprite = _assets.GetSprite(spec.File, spec.Index);
-        return sprite.IsValid ? MostCommonColour(sprite) : Colors.Black;
+        return Colour(desc.Texture) ?? Colors.Black;
     }
 
     /// <summary>The most frequent fully-opaque colour in the sprite, or black if it has none.</summary>
