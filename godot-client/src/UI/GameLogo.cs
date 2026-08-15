@@ -176,7 +176,7 @@ public partial class GameLogo : Control
         };
 
         DrawColoredPolygon(outline, BannerFill);
-        DrawClosed(outline, Keyline with { A = 0.55f }, Mathf.Max(1f, w * 0.0035f));
+        DrawClosed(outline, Keyline with { A = 0.6f }, Mathf.Max(1f, w * 0.0045f));
     }
 
     /// <summary>The word itself: dark edge, graded fill, punched counters, keyline.</summary>
