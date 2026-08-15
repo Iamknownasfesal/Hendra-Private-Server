@@ -190,11 +190,42 @@ public partial class WorldOverlay : Control
     /// Numbers that rise off something and fade: damage dealt, damage taken, experience gained.
     /// </summary>
     /// <remarks>
-    /// Anchored to a place in the world rather than to a place on the screen, and re-projected each
-    /// frame, so a number stays over the thing it belongs to while the camera moves under it.
+    /// <para>
+    /// Tied to the object it is about rather than to the ground under it. The original's status
+    /// text reads the object's screen position every frame and ends the moment that object leaves
+    /// the map, so a number tracks a monster that is still walking and stops the instant it is
+    /// gone. Keeping a position taken at arrival instead leaves numbers hanging in mid-air over
+    /// wherever the thing used to be.
+    /// </para>
+    /// <para>
+    /// The world position is what a text with no object to belong to is drawn at, and what every
+    /// text falls back to before the world has handed over a way to find its object.
+    /// </para>
     /// </remarks>
-    public void AddFloatingText(float x, float y, float z, string text, Color colour)
+    /// <param name="anchorId">The object the text belongs to, or zero for a fixed place.</param>
+    public void AddFloatingText(int anchorId, float x, float y, float z, string text, Color colour)
     {
+        ulong start = Time.GetTicksMsec();
+
+        // Two numbers born on one object in the same breath sit exactly on top of each other and
+        // neither can be read. The original queues them and plays them one at a time; this holds
+        // each newcomer back far enough that the one before it has already climbed clear.
+        if (anchorId != 0)
+        {
+            ulong latest = start;
+
+            for (int i = 0; i < _texts.Count; i++)
+                if (_texts[i].AnchorId == anchorId && _texts[i].StartMs + StaggerMs > latest)
+                    latest = _texts[i].StartMs + StaggerMs;
+
+            // Past a whole lifetime of backlog the queue is no longer telling the player anything
+            // about now, so the newcomer is dropped rather than shown a second late.
+            if (latest > start + (ulong)TextLifeMs)
+                return;
+
+            start = latest;
+        }
+
         // A cap, because a boss taking a stream of hits can produce these faster than they expire
         // and the oldest are the least interesting.
         if (_texts.Count >= MostTexts)
@@ -202,35 +233,56 @@ public partial class WorldOverlay : Control
 
         _texts.Add(new FloatingText
         {
+            AnchorId = anchorId,
             X = x,
             Y = y,
             Z = z,
             Text = text,
             Colour = colour,
-            BornMs = Time.GetTicksMsec(),
+            StartMs = start,
         });
     }
 
     /// <summary>How the overlay turns a world position into a screen one. Set by the world.</summary>
     public System.Func<float, float, float, Vector2> Project { get; set; }
 
+    /// <summary>
+    /// Where the top of an object's artwork is on screen now, or null once it has left the map.
+    /// </summary>
+    /// <remarks>
+    /// Set by the world, which is the only thing that knows both the map and how tall a sprite
+    /// draws. Returning null is how a text learns its subject is gone.
+    /// </remarks>
+    public System.Func<int, Vector2?> HeadOf { get; set; }
+
     private const int MostTexts = 64;
 
-    /// <summary>How long a number lives, and how far it rises in that time.</summary>
-    private const float TextLifeMs = 900f;
+    /// <summary>How long a number lives, and how far it rises in that time. The original's numbers.</summary>
+    private const float TextLifeMs = 1000f;
 
-    private const float TextRisePixels = 34f;
+    private const float TextRisePixels = 40f;
+
+    /// <summary>The air between the top of a sprite and a number rising off it.</summary>
+    private const float TextClearance = 20f;
+
+    /// <summary>How far apart in time two numbers on one object are held. Enough to clear each other.</summary>
+    private const ulong StaggerMs = 350;
 
     private readonly List<FloatingText> _texts = new(MostTexts);
 
     private struct FloatingText
     {
+        /// <summary>The object this is about, or zero for a text pinned to a place in the world.</summary>
+        public int AnchorId;
+
         public float X;
         public float Y;
         public float Z;
         public string Text;
         public Color Colour;
-        public ulong BornMs;
+
+        /// <summary>When this begins to rise, which is later than its arrival when it was queued.</summary>
+        public ulong StartMs;
     }
 
     /// <summary>
@@ -238,8 +290,7 @@ public partial class WorldOverlay : Control
     /// </summary>
     /// <remarks>
     /// They are deliberately not in <see cref="_items"/>: that list is cleared and refilled every
-    /// frame from the entities in view, and a number has to outlive both the frame it was made in
-    /// and, often, the monster it was made over.
+    /// frame from the entities in view, and a number has to outlive the frame it was made in.
     /// </remarks>
     private void DrawFloatingTexts(float stretch)
     {
@@ -251,7 +302,12 @@ public partial class WorldOverlay : Control
         for (int i = _texts.Count - 1; i >= 0; i--)
         {
             var text = _texts[i];
-            float age = (now - text.BornMs) / TextLifeMs;
+
+            // Queued behind an earlier one on the same object: alive, but not yet begun.
+            if (now < text.StartMs)
+                continue;
+
+            float age = (now - text.StartMs) / TextLifeMs;
 
             if (age >= 1f)
             {
@@ -259,10 +315,20 @@ public partial class WorldOverlay : Control
                 continue;
             }
 
-            var at = Project(text.X, text.Y, text.Z) * stretch;
+            bool tracked = text.AnchorId != 0 && HeadOf != null;
+            var head = tracked ? HeadOf(text.AnchorId) : null;
 
-            // Quick at first and slowing, which reads as thrown off rather than floated up.
-            at.Y -= TextRisePixels * Mathf.Sqrt(age);
+            // The subject has left the map, so the text has nothing left to be about.
+            if (tracked && !head.HasValue)
+            {
+                _texts.RemoveAt(i);
+                continue;
+            }
+
+            var at = (head ?? Project(text.X, text.Y, text.Z)) * stretch;
+
+            // Over the artwork rather than across the feet, where the name plate already is.
+            at.Y -= TextClearance + TextRisePixels * age;
 
             // Held at full strength for the first half, so it is legible before it starts to go.
             float alpha = age < 0.5f ? 1f : 1f - (age - 0.5f) * 2f;
@@ -297,6 +363,124 @@ public partial class WorldOverlay : Control
 
     /// <summary>Reused across frames so a busy screen does not allocate one of these per frame.</summary>
     private readonly List<(float Distance, int Index)> _ranked = new(256);
+
+    /// <summary>The items carrying a name this frame, ordered nearest the camera first.</summary>
+    private readonly List<int> _names = new(256);
+
+    /// <summary>The rectangles the name plates claimed this frame occupy, nearest first.</summary>
+    private readonly List<Rect2> _plates = new(256);
+
+    /// <summary>The items those rectangles belong to, in the same order.</summary>
+    private readonly List<int> _drawn = new(256);
+
+    /// <summary>
+    /// Nearest the camera first: greater screen Y is further down the world and so in front.
+    /// </summary>
+    /// <remarks>
+    /// Held in a field rather than written at the call site, so sorting a busy frame does not
+    /// allocate a closure per frame. The tie-break on X keeps the order of two things on one row
+    /// the same from frame to frame, which is what stops a suppressed plate from flickering.
+    /// </remarks>
+    private readonly System.Comparison<int> _frontToBack;
+
+    public WorldOverlay() =>
+        _frontToBack = (a, b) =>
+        {
+            int byDepth = _items[b].Anchor.Y.CompareTo(_items[a].Anchor.Y);
+            return byDepth != 0 ? byDepth : _items[a].Anchor.X.CompareTo(_items[b].Anchor.X);
+        };
+
+    /// <summary>
+    /// The name plates, laid out nearest first and drawn back to front.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A pile of gravestones is a real thing a Nexus produces -- every death leaves one where the
+    /// player fell, named after them -- and a plate is several times wider than the tile it stands
+    /// on, so a row of graves puts a dozen names on one line. Drawn in whatever order the map
+    /// happens to hold them, they cross each other into a smear with no winner.
+    /// </para>
+    /// <para>
+    /// Depth decides it instead. Whichever name is nearest the camera claims its space first and is
+    /// drawn last, so it lands whole on top of the ones behind it -- which is what the reference
+    /// shows where a player stands on a portal and their name crosses the portal's.
+    /// </para>
+    /// </remarks>
+    private void DrawNames(float stretch)
+    {
+        _names.Clear();
+
+        foreach (var (_, index) in _ranked)
+        {
+            if (_names.Count >= MostNames)
+                break;
+
+            if (!string.IsNullOrEmpty(_items[index].Name))
+                _names.Add(index);
+        }
+
+        if (_names.Count > 1)
+            _names.Sort(_frontToBack);
+
+        _plates.Clear();
+        _drawn.Clear();
+
+        foreach (int index in _names)
+        {
+            var plate = NamePlate(InReferencePixels(_items[index], stretch));
+
+            if (Buried(plate))
+                continue;
+
+            _plates.Add(plate);
+            _drawn.Add(index);
+        }
+
+        // Back to front, so a name that is partly crossed is crossed by the one in front of it.
+        for (int i = _drawn.Count - 1; i >= 0; i--)
+            DrawName(InReferencePixels(_items[_drawn[i]], stretch), _plates[i]);
+    }
+
+    /// <summary>
+    /// Whether a plate is buried under the ones already claimed in front of it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Not "does it touch one". <c>Interact fs.png</c> has a player standing on a portal with their
+    /// name laid straight across the portal's -- sixty-five per cent of it covered, measured -- and
+    /// the game draws both. One name crossing one name is how the game looks and is allowed here.
+    /// </para>
+    /// <para>
+    /// Two bounds, and the reference sets both. A name may be crossed by one other and no more, and
+    /// no more than seven tenths of it may go under. Either is enough to keep the front name whole
+    /// and leave the one behind it recognisable; past them a plate is buried, adds nothing but the
+    /// smear, and stands down until it is clear.
+    /// </para>
+    /// </remarks>
+    private bool Buried(in Rect2 plate)
+    {
+        float covered = 0f;
+        int crossings = 0;
+
+        for (int i = 0; i < _plates.Count; i++)
+        {
+            var over = _plates[i].Intersection(plate);
+
+            if (over.Size.X <= 0f || over.Size.Y <= 0f)
+                continue;
+
+            covered += over.Size.X;
+            crossings++;
+        }
+
+        return crossings > MostCrossings || covered > plate.Size.X * MostCovered;
+    }
+
+    /// <summary>How many other names may lie across one. The reference shows one, never two.</summary>
+    private const int MostCrossings = 1;
+
+    /// <summary>How much of a name may go under before it stands down. Measured off the reference.</summary>
+    private const float MostCovered = 0.7f;
 
     /// <summary>
     /// How many screen pixels one canvas unit of this layer covers.
@@ -357,24 +541,11 @@ public partial class WorldOverlay : Control
         if (_ranked.Count > MostNames)
             _ranked.Sort(static (a, b) => a.Distance.CompareTo(b.Distance));
 
-        int names = 0;
-        int bubbles = 0;
-
-        foreach (var (_, index) in _ranked)
-        {
-            if (names >= MostNames && bubbles >= MostBubbles)
-                break;
-
-            var item = InReferencePixels(_items[index], stretch);
-
-            if (names < MostNames && !string.IsNullOrEmpty(item.Name))
-            {
-                DrawName(item);
-                names++;
-            }
-        }
+        DrawNames(stretch);
 
         // Balloons in a second pass, so one entity's name never lands on top of another's balloon.
+        int bubbles = 0;
+
         foreach (var (_, index) in _ranked)
         {
             if (bubbles >= MostBubbles)
@@ -441,8 +612,17 @@ public partial class WorldOverlay : Control
     /// <summary>The black ring every glyph drawn over open ground carries.</summary>
     private const int GlyphEdge = 2;
 
-    /// <summary>The size names, balloons and rising numbers are all set at over the world.</summary>
-    private const int WorldFontSize = 18;
+    /// <summary>
+    /// The size names, balloons and rising numbers are all set at over the world.
+    /// </summary>
+    /// <remarks>
+    /// Measured against the reference rather than taken from the original's own point size, because
+    /// the face is not the same one. A name in <c>Stats fs.png</c> is fourteen pixels of ink tall
+    /// and a line inside a balloon in the same shot is thirteen; this face at eighteen drew eleven,
+    /// and its glyphs came out fifteen per cent narrow for the same string. Twenty-one puts both
+    /// the height and the width of a line within a few per cent of the reference.
+    /// </remarks>
+    private const int WorldFontSize = 21;
 
     /// <summary>
     /// The status effects on an entity, in a row above it.
@@ -484,18 +664,19 @@ public partial class WorldOverlay : Control
         }
     }
 
-    // The speech balloon, measured off a 1920x1080 capture. Three pixels of border, the same three
-    // taken off each corner, ten of air either side of the line and eight above and below it, and a
-    // tail sixteen wide and eighteen deep hanging off the bottom edge. The tail is not symmetrical:
-    // its right edge drops straight down and its left edge runs back up at forty-five degrees, so
-    // the point of it is the bottom right corner rather than the middle.
+    // The speech balloon, measured off the balloon at (876,198)-(1012,237) in Stats fs.png. Three
+    // pixels of border, the same three taken off each corner, ten of air either side of the line
+    // and six above and below the line's own box, and a tail fifteen wide and fifteen deep off the
+    // bottom edge. The tail is not symmetrical: its right edge drops straight down and its left
+    // edge runs back up at forty-five degrees -- which is what the equal width and depth are for --
+    // so the point of it is the bottom right corner rather than the middle.
     private const float BubbleBorder = 3f;
 
     private const float BubbleCut = 3f;
     private const float BubblePadX = 10f;
-    private const float BubblePadY = 8f;
-    private const float TailWidth = 16f;
-    private const float TailHeight = 18f;
+    private const float BubblePadY = 6f;
+    private const float TailWidth = 15f;
+    private const float TailHeight = 15f;
 
     /// <summary>The balloon's dark maroon body.</summary>
     private static readonly Color BubbleFill = new("5b2626");
@@ -742,7 +923,7 @@ public partial class WorldOverlay : Control
     private const float StarSize = 11f;
 
     /// <summary>
-    /// The name under an entity, with its star if it is a player's.
+    /// The rectangle an entity's name plate covers, its star included.
     /// </summary>
     /// <remarks>
     /// Under the feet rather than over the head, which is where the original puts it and why a
@@ -750,22 +931,35 @@ public partial class WorldOverlay : Control
     /// feet that own it. The star and the name are centred together, so the name itself sits a
     /// little right of the entity -- that offset is in the reference too.
     /// </remarks>
-    private void DrawName(in OverlayItem item)
+    private Rect2 NamePlate(in OverlayItem item)
     {
         const int size = WorldFontSize;
 
         float width = Measure(item.Name, size);
-        bool starred = item.Stars >= 0;
-        float total = starred ? width + StarSize + StarGap : width;
-
-        float left = Mathf.Round(item.Anchor.X - total / 2f);
+        float total = item.Stars >= 0 ? width + StarSize + StarGap : width;
 
         // Below the bar when there is one, or the two land on top of each other.
         float top = item.ShowHealthBar && _healthBars && item.MaxHp > 0
             ? Mathf.Round(item.Anchor.Y + BarOffsetY + BarHeight + NameGap)
             : Mathf.Round(item.Anchor.Y + NameOffsetY);
 
-        if (starred)
+        // The star's row plus whatever hangs under the baseline: between them that is the ink. The
+        // font's own line box reaches well above the cap line, and measuring by that would have a
+        // name stand down for a neighbour it never touches.
+        float height = StarSize + UI.Style.Sans.GetDescent(size);
+
+        return new Rect2(Mathf.Round(item.Anchor.X - total / 2f), top, total, height);
+    }
+
+    /// <summary>The name itself, laid into the rectangle <see cref="NamePlate"/> measured for it.</summary>
+    private void DrawName(in OverlayItem item, in Rect2 plate)
+    {
+        const int size = WorldFontSize;
+
+        float left = plate.Position.X;
+        float top = plate.Position.Y;
+
+        if (item.Stars >= 0)
         {
             DrawStar(
                 new Vector2(left + StarSize / 2f, top + StarSize / 2f), StarSize / 2f,

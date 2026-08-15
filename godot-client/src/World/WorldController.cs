@@ -187,7 +187,10 @@ public partial class WorldController : Node
         // The overlay draws in screen space but the numbers belong to places in the world, so it is
         // given the projection rather than a snapshot of where things were when they were made.
         if (_overlay != null)
+        {
             _overlay.Project = (x, y, z) => _world.Unproject(_world.Projection.ToScene(x, y, z));
+            _overlay.HeadOf = HeadPosition;
+        }
         _hud = hud;
         _chat = chat;
 
@@ -381,7 +384,7 @@ public partial class WorldController : Node
 
         _shownDamageAt[target.ObjectId] = now;
 
-        _overlay.AddFloatingText(target.X, target.Y, target.Z,
+        _overlay.AddFloatingText(target.ObjectId, target.X, target.Y, target.Z,
             self ? $"-{amount}" : amount.ToString(System.Globalization.CultureInfo.InvariantCulture),
             self ? new Color("ff4040") : new Color("ffe9a8"));
     }
@@ -458,7 +461,8 @@ public partial class WorldController : Node
         _lastExperience = player.Experience;
 
         if (gained > 0 && gained < 1_000_000 && _lastExperience >= 0)
-            _overlay?.AddFloatingText(player.X, player.Y, player.Z, $"+{gained} XP", new Color("7fe07f"));
+            _overlay?.AddFloatingText(
+                player.ObjectId, player.X, player.Y, player.Z, $"+{gained} XP", new Color("7fe07f"));
     }
 
     private void OnEntered(CreateSuccessPacket packet)
@@ -1286,7 +1290,29 @@ public partial class WorldController : Node
         if (colour.R + colour.G + colour.B < 0.05f)
             colour = Colors.White;
 
-        _overlay?.AddFloatingText(entity.X, entity.Y, entity.Z, message, colour);
+        _overlay?.AddFloatingText(notification.ObjectId, entity.X, entity.Y, entity.Z, message, colour);
+    }
+
+    /// <summary>
+    /// Where the top of an object's artwork is on screen, or null once it has left the map.
+    /// </summary>
+    /// <remarks>
+    /// What the overlay hangs its rising text off. Answered per frame rather than captured when the
+    /// text arrived, so a number stays over a monster that is still walking -- and so the text ends
+    /// with the thing it is about, which is what the original does with its status text.
+    /// </remarks>
+    private Vector2? HeadPosition(int objectId)
+    {
+        var entity = _map.GetEntity(objectId);
+
+        if (entity?.Desc == null || _world == null)
+            return null;
+
+        var feet = _world.Unproject(_world.Projection.ToScene(entity.X, entity.Y, entity.Z));
+        var top = _world.Unproject(
+            _world.Projection.ToScene(entity.X, entity.Y, entity.Z + SpriteHeightTiles(entity)));
+
+        return new Vector2(feet.X, Mathf.Min(feet.Y, top.Y));
     }
 
     /// <summary>How often a damaging tile can hurt the same square's occupant.</summary>
