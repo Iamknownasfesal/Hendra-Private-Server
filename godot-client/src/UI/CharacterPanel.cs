@@ -45,6 +45,9 @@ public partial class CharacterPanel : Control
     private const float FameIcon = 30f;
     private const float FameIconTop = 15f;
 
+    /// <summary>The grid sits a pixel wider than the tabs and the list, as the reference does.</summary>
+    private const float CellMargin = 9f;
+
     private const float GridTop = 109f;
     private const float CellHeight = 54f;
     private const float CellPitch = 72f;
@@ -78,6 +81,9 @@ public partial class CharacterPanel : Control
     private const float GroupHeight = 46f;
     private const float GroupBaseline = 31f;
     private const float RowInset = 15f;
+
+    /// <summary>A figure stands further off its plate's right edge than a label does its left.</summary>
+    private const float ValueInset = 19f;
     private const float PlateInset = 9f;
     private const float ScrollWidth = 9f;
 
@@ -86,7 +92,7 @@ public partial class CharacterPanel : Control
 
     private const float FooterHeight = 61f;
     private const float FooterBaseline = 39f;
-    private const float FooterIcon = 36f;
+    private const float FooterIcon = 40f;
 
     // The type scale this panel is set in. The interface's shared scale tops out at 28, which is a
     // display size on a 300-wide cluster and a body size on a sheet this large: every size below
@@ -346,7 +352,7 @@ public partial class CharacterPanel : Control
             ? "Created on " + _createdAt.Value.ToLocalTime().ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)
             : string.Empty;
 
-        _sheet.Fame = player.Fame.ToString("N0", CultureInfo.InvariantCulture);
+        _sheet.Fame = player.Fame.ToString(CultureInfo.InvariantCulture);
 
         int[] values =
         {
@@ -484,12 +490,12 @@ public partial class CharacterPanel : Control
         {
             DrawIdentity();
 
-            float column = (Size.X - Margin * 2f - CellGap) / 2f;
+            float column = (Size.X - CellMargin * 2f - CellGap) / 2f;
 
             for (int i = 0; i < Cells.Length; i++)
             {
                 DrawCell(Cells[i], new Rect2(
-                    Margin + i % 2 * (column + CellGap),
+                    CellMargin + i % 2 * (column + CellGap),
                     GridTop + i / 2 * CellPitch,
                     column,
                     CellHeight));
@@ -679,8 +685,20 @@ public partial class CharacterPanel : Control
                 IsGroup = isGroup;
             }
 
-            public float Height => IsGroup ? GroupHeight : RowPitch;
         }
+
+        /// <summary>
+        /// How far the list advances past one row.
+        /// </summary>
+        /// <remarks>
+        /// A plate carries its gutter under it, except where a group heading follows: the heading
+        /// brings its own space above the words and two gutters there would push the whole list
+        /// down by one every time a group appeared.
+        /// </remarks>
+        private float Advance(int index) =>
+            _all[index].IsGroup ? GroupHeight
+            : index + 1 < _all.Count && _all[index + 1].IsGroup ? RowPlate
+            : RowPitch;
 
         public RowList()
         {
@@ -704,9 +722,15 @@ public partial class CharacterPanel : Control
 
         public void Group(string title) => _all.Add(new Row(title, null, true));
 
-        /// <summary>A tally. A null value is one the server does not publish.</summary>
+        /// <summary>
+        /// A tally. A null value is one the server does not publish.
+        /// </summary>
+        /// <remarks>
+        /// Written without a thousands separator, which is how the game writes every figure it
+        /// shows: three million shots is <c>3200101</c> on the reference's own sheet.
+        /// </remarks>
         public void Add(string label, int? value) => _all.Add(new Row(
-            label, value?.ToString("N0", CultureInfo.InvariantCulture) ?? "—", false));
+            label, value?.ToString(CultureInfo.InvariantCulture) ?? "—", false));
 
         public void End()
         {
@@ -729,8 +753,8 @@ public partial class CharacterPanel : Control
             get
             {
                 float total = ListPad;
-                foreach (var row in _all)
-                    total += row.Height;
+                for (int i = 0; i < _all.Count; i++)
+                    total += Advance(i);
 
                 return total;
             }
@@ -813,15 +837,16 @@ public partial class CharacterPanel : Control
             float plate = Size.X - PlateInset * 2f - ScrollWidth - PlateInset;
             float y = ListPad - _scroll;
 
-            foreach (var row in _all)
+            for (int i = 0; i < _all.Count; i++)
             {
                 if (y > Size.Y)
                     break;
 
-                if (y + row.Height >= 0f)
-                    DrawRow(row, y, plate);
+                float step = Advance(i);
+                if (y + step >= 0f)
+                    DrawRow(_all[i], y, plate);
 
-                y += row.Height;
+                y += step;
             }
 
             Fade();
@@ -844,7 +869,7 @@ public partial class CharacterPanel : Control
             this.DrawText(new Vector2(PlateInset + RowInset, baseline), row.Label, FontRowLabel, RowLabel);
 
             this.DrawText(
-                new Vector2(PlateInset + plate - RowInset - Style.Measure(row.Value, FontRowValue), baseline),
+                new Vector2(PlateInset + plate - ValueInset - Style.Measure(row.Value, FontRowValue), baseline),
                 row.Value, FontRowValue, row.Value == "—" ? Style.TextDim : Style.StatNumber);
         }
 
@@ -881,13 +906,13 @@ public partial class CharacterPanel : Control
             this.DrawText(new Vector2(Margin + 12f, FooterBaseline), "Fame on Death",
                 FontFooterLabel, Style.Text);
 
-            float iconLeft = Size.X - 8f - FooterIcon;
+            float iconLeft = Size.X - 6f - FooterIcon;
             HudIcons.Fame(this,
                 new Rect2(iconLeft, (Size.Y - FooterIcon) / 2f, FooterIcon, FooterIcon),
                 Style.FameFillHigh);
 
             this.DrawText(
-                new Vector2(iconLeft - 7f - Style.Measure(Value, FontFooterValue), FooterBaseline),
+                new Vector2(iconLeft - 4f - Style.Measure(Value, FontFooterValue), FooterBaseline),
                 Value, FontFooterValue, Style.FameFillHigh);
         }
     }

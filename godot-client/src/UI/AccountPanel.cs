@@ -215,8 +215,8 @@ public partial class AccountPanel : Control
             ? $"{account.Rank} stars · administrator"
             : $"{account.Rank} stars";
 
-        _rows[0].Set(account.Credits.ToString("N0", CultureInfo.InvariantCulture), Style.IconGold);
-        _rows[1].Set(account.Fame.ToString("N0", CultureInfo.InvariantCulture), Style.IconFame);
+        _rows[0].Set(account.Credits.ToString(CultureInfo.InvariantCulture), Style.IconGold);
+        _rows[1].Set(account.Fame.ToString(CultureInfo.InvariantCulture), Style.IconFame);
         _rows[2].Set(string.IsNullOrEmpty(account.GuildName) ? "—" : account.GuildName, Style.Text);
         _rows[3].Set(GuildRank(account), Style.Text);
         _rows[4].Set(list.Characters.Count.ToString(CultureInfo.InvariantCulture), Style.Text);

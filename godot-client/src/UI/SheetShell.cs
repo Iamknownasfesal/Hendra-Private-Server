@@ -63,8 +63,8 @@ public partial class SheetShell : ModalPanel
         DrawRect(insideTall, Style.ModalBand);
         DrawRect(insideWide, Style.ModalBand);
 
-        // The title band, which stops where the body begins.
-        float band = Edge + Header;
+        // The title band, which ends on the row the body's first begins under.
+        float band = Edge + Header + 1f;
 
         DrawRect(
             new Rect2(insideTall.Position, new Vector2(insideTall.Size.X, band - insideTall.Position.Y)),
