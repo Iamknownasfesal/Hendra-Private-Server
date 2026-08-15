@@ -30,6 +30,24 @@ Two things worth copying exactly:
 Entirely reworked by this project: capacity is an integer on the account, the eighty chests are gone,
 and one `VaultAccess` object opens a panel. Not a source for original mechanics.
 
+The shipped 2020 design differs in kind, not degree. Read it at
+`git show 94615c4:Server-Side/wServer/realm/worlds/logic/Vault.cs` and
+`…/realm/entities/vendors/ClosedVaultChest.cs`, not in the working tree. `Vault.cs` built **one
+8-slot `Container` entity per owned chest** (`:96-107`), each backed by a `DbVaultSingle` over redis
+field `vault.<i>` and placed on the `TileRegion.Vault` tiles nearest the spawn, sorted by distance;
+the map's supply of those tiles was the real capacity limit — **80** in the 2020 `Vault.jm` — every
+leftover tile got a `ClosedVaultChest` you bought by walking into (`:108-113`), and gifts were dealt
+eight at a time into `GiftChest` entities on `Gifting_Chest` tiles (`:115-136`). A move was an
+ordinary `InvSwap` between two entities within a tile of each other
+(`networking/handlers/InvSwapHandler.cs:36-137`). A new account owned **one** chest
+(`XmlDatas/data/init.xml:37`) and another cost 400 fame (`:7`, `ClosedVaultChest.cs:14-16`).
+
+**Our Rust implements the reworked design, not the 2020 one.** That is a choice this project made,
+not a fact recovered from the reference — the reworked `VaultState.cs` and the current `Vault.cs` are
+this project's own writing, so measuring against the binary built from them measures us. The
+quantities above are the part that *is* evidence, and `crates/server/src/vault.rs` now cites them at
+their pristine lines; the panel, its three packets and the version counter are flagged there as ours.
+
 Worth carrying regardless: access is refused unless the account owns the vault, and the whole vault
 is sent **on the first tick where the client reports `Ready`**, not in `EnterWorld` — the comment
 records that doing it in `EnterWorld` sent the snapshot before the client was listening and drew an

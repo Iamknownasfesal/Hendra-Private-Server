@@ -149,7 +149,9 @@ Neither should be ported.
 
 ## What this server does differently
 
-- We tick worlds in parallel and each world serially, which matches.
+- We tick worlds in parallel and each world serially, which matches the C# **as it stands now**. The
+  parallelism is this project's own change to it; the shipped 2020 server ticked worlds one after
+  another, as the section above records.
 - **The 200 ms slow tick that skips rather than queues** is worth having: it is the difference between
   a loaded server running slow and a loaded server falling permanently behind.
 - **Packet dispatch on its own thread with a captured client id** is the guard against a reused

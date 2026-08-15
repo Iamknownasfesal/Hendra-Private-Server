@@ -65,6 +65,13 @@ the world thought twenty times a second. **Fixed** — the same chunk rule now g
 comparison confirmed the original's: 500 enemies in a world with no player in it cost the C# server
 `enemies 0.1%` of its loop, and moving a player in took it to `96%`.
 
+The gating that measurement confirms *is* original — `Collision.cs` is untouched 2020 code. What was
+measured around it is not. The C# binary those figures come from carries this project's own changes:
+worlds ticked in parallel, the `TickPhases` instrumentation that prints the percentages, the
+`HENDRA_STRESS` spawn hook that places the 500 enemies, and a per-bullet sweep against players that
+the shipped server never ran at all. So read the numbers as a measurement of the current C#, not of
+the 2020 one — the workload is not the same workload.
+
 Two consequences, and the second is the one that matters:
 
 - **Cost.** A realm holds thousands of enemies and a handful of players. We run every one of them.

@@ -41,7 +41,10 @@ and are not ordered by anything: `USEITEM` is 1, `USEPORTAL` is 6, `HELLO` is 9,
 two share a value.
 
 The blocks added by later work are contiguous and at the top: 110-112 for the connection queue,
-151/152 for key info, 165-170 for this fork's UI actions, and **171-173 for the vault**.
+151/152 for key info, 165-170 for this fork's UI actions, and **171-173 for the vault**. The last
+three are this project's own, not the fork's: they address the vault by chest and slot because the
+chests stopped being entities in a world when they became rows in one panel, and `InvSwap` has
+nowhere to put a slot that belongs to nothing visible. See [page 14](14-world-subclasses.md).
 
 ## Notable wire shapes
 

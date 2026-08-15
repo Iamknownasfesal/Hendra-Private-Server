@@ -19,8 +19,10 @@ The content writes a stat bonus as a number:
 <Activate stat="20" amount="1">IncrementStat</Activate>
 ```
 
-That number is in **neither** of the numberings this server knows. The original translates it twice
-before it means anything.
+That number is in **neither** of the numberings this server knows. The C# translates it twice before
+it means anything — though only pass two is the shipped game's. Pass one is this project's own
+addition to `XmlDescriptors.cs`, wrapped around two reads that were raw in 2020, where `stat="26"`
+therefore reached `StatsType 26` and raised **Speed** rather than Vitality.
 
 **Pass one**, `XmlStat.ToStatsType` in `common/resources/XmlDescriptors.cs:316` — content number to
 `StatsType`, the wire numbering:

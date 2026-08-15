@@ -1,0 +1,16 @@
+# The image is built from the repository root, because the game content and the server live in
+# different top-level directories. Everything the build does not read is excluded here, or the
+# context sent to the daemon is the whole repository -- the Flash client, the original C# server,
+# the Redis binaries and every build directory, none of which the image contains.
+
+*
+
+!rust-server/Cargo.toml
+!rust-server/Cargo.lock
+!rust-server/crates
+!rust-server/content
+!godot-client/assets/xml
+
+# Build output under the paths above, which would otherwise be sent and then ignored.
+rust-server/target
+**/*.rs.bk

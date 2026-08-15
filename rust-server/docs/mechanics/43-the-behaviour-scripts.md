@@ -3,6 +3,13 @@
 The 61 files of `logic/db/` — 24,392 lines. This is the game's *content*, written in C# as a
 constructor-expression DSL, and it is what our converter consumes.
 
+**This corpus is imported fork content, not the shipped 2020 server's.** That tree has no
+`logic/db/` at all — no `BehaviorDb.*.cs` and no `.beh`. What *is* original is the behaviour
+**library** these scripts call: the 74 files of `logic/behaviors/` and the 19 of `logic/transitions/`
+that [page 01](01-behaviour-engine.md) and [page 02](02-behaviours.md) read. So a constructor's
+semantics are the original game's; which enemies exist, and what they are made to do with those
+constructors, is the fork's.
+
 **How this page was read.** **All 61 files were read line by line**, in two passes. The first pass
 covered 42 files:
 
@@ -170,8 +177,12 @@ Sor3Perc  9    Sor2Perc  7    StatPots  3    Sor5Perc  3
 Sor4Perc  3    SorRare   1    Sor1Perc  1    RaidTokens 1
 ```
 
-These are this fork's Sor-fragment economy, and they are the reason `LootTemplates` exists at all;
-the original inlined every drop.
+The Sor-fragment economy is the imported scripts'. `LootTemplates.cs` itself is **this repository's
+own C#**, written so those scripts resolve against this build's loot pipeline rather than the fork's,
+and two of the fork's ideas are approximated rather than faked: `StatPots()` stands in for the fork's
+`OnlyOne` — pick a single entry out of a bundle — by giving each of the six stat potions a sixth of
+the chance, which is the same expected count arrived at differently and occasionally drops two; and
+the bundles naming the fork's own currency are empty, because this build has no item for it.
 
 ## Patterns worth knowing before writing a converter
 

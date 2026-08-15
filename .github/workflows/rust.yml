@@ -49,6 +49,14 @@ jobs:
         with:
           workspaces: rust-server
 
+      # The game content is generated out of the ActionScript client rather than committed, so a
+      # clean checkout has none of it. Without this step every content test found an empty
+      # directory, skipped itself, and reported success while comparing nothing -- which is exactly
+      # the case they exist to catch. Standard library only, so there is nothing to install.
+      - name: Extract the game content
+        working-directory: .
+        run: python3 godot-client/tools/extract_assets.py
+
       - name: Formatting
         run: cargo fmt --all -- --check
 

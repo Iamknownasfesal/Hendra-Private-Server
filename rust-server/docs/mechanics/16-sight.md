@@ -8,7 +8,7 @@ a player is sent, so it is a mechanic and not a rendering detail.
 ```
 Radius        = 20 tiles
 RayStepSize   = 0.1
-AngleStepSize = 2.30 / Radius            // about 6.6 degrees, 54 rays
+AngleStepSize = 2.30 / Radius            // about 6.6 degrees, 55 rays
 MaxNumRegions = 2048
 ```
 

@@ -238,7 +238,10 @@ character and the bonused total for a dead one, which is why the First Born bar 
 [the fame page](32-fame-bonuses.md) is measured against bonused totals.
 
 `DbVaultSingle` **creates the chest if it does not exist**, writing eight `0xffff` in a fire-and-forget
-transaction from its constructor. So merely constructing one is a write.
+transaction from its constructor. So merely constructing one is a write. Its only caller is
+`VaultState.cs`, which is this project's own C#; the shipped 2020 server constructed one per
+container entity it placed on the vault floor. The on-disk shape above is unchanged by that —
+[page 14](14-world-subclasses.md) has the difference.
 
 `RInventory.Items` defaults to **24** slots and `DbVault`'s indexer defaults to **8** — the same
 underlying field read two different ways, which is the hangover the vault comments describe.

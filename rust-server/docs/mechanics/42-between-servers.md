@@ -68,6 +68,11 @@ nearly the same clock, rather than one running four times as often as the other.
 booting this server with 500 enemies and one player has it reporting 96% of wall time in the enemy
 phase at that rate.
 
+That measurement is of the C# as it stands, which is not the C# as shipped: the percentages come from
+this project's `TickPhases`, the 500 enemies from its `HENDRA_STRESS` hook, the worlds are ticked in
+parallel, and every enemy bullet is swept against players — none of which the 2020 server does. The
+`tps 6` above is the shipped value and is unaffected.
+
 `key` is the RC4 client key from [page 37](37-the-wire.md), and its default is in this file.
 
 Four server modes decide which worlds are created: `Single` (nexus hub plus a realm), `Nexus`,

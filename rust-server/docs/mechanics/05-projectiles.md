@@ -5,8 +5,9 @@ Read from `realm/entities/Projectile.cs`.
 **A caution before anything else.** This file is not purely the original. Large parts of it — the
 server-side sweep, the hit box constants, the deferred-hit accounting — were written by this project
 into the C# server, and their doc comments say so. When matching behaviour, the parts to treat as
-"the original" are the flight path, the hit box, `Blocked`, and `ForceHit`. The sweep is a design
-this project chose and can choose differently in Rust.
+"the original" are the hit box, `Blocked`, and `ForceHit` — and the flight path, with one exception
+noted under [Flight](#flight). The sweep is a design this project chose and can choose differently in
+Rust.
 
 ## The hit box is a square, and it is half a tile
 
@@ -45,6 +46,14 @@ players come from the client**, so any behaviour tuned against the original was 
 `GetPosition(elapsed)` — covered in [the behaviours page](02-behaviours.md) under curved shots. The
 distance travelled is `elapsed * Speed / 10000`, which is why the content's speed unit is tiles per
 ten seconds.
+
+**The wavy coefficient is the one part of the flight path that is this project's, not the shipped
+game's.** The 2020 source reads `Angle + (Math.PI * 64) * Math.Sin(...)` — about 201 radians of
+amplitude, some thirty full turns, which is not a wave at all. The C# here reads `Math.PI / 64`, a
+wobble of roughly ±3°, and that is what the AS3 client draws and therefore what a player actually
+dodges. Ours implements the divided form at `crates/sim/src/projectile.rs:213`, with a test at
+`:826` holding the shot under 4° off its line across its whole lifetime. A one-character difference,
+and it decides whether a bullet went through somebody.
 
 ## Blocked
 

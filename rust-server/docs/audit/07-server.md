@@ -8,6 +8,12 @@ Commands are complete: the census answers **95 of the 95 the original has**, acr
 aliases. The strike counter matches `Player.Verify` exactly — twelve strikes in a ten-second window
 before the connection is cut, and nothing durable happening to the account.
 
+`Player.Verify.cs` is this project's own C#, not the shipped game's: the 2020 tree has no counterpart
+to it, only a much smaller `Player.AntiCheat.cs`. So matching it is matching a specification this
+repository wrote — which is the right target, since the reference binary is built from the current
+source, but it is not evidence about the original game. The section below is unaffected either way:
+it argues from what our *client* can claim, and that argument holds whoever wrote the checks.
+
 ## Most of the verification surface is moot here, and that is worth saying
 
 [Page 26](../mechanics/26-verification.md) lists a dozen slack constants: `ShootOriginSlack 1.5`,

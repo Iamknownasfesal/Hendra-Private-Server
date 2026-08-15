@@ -43,6 +43,11 @@ argument census counts names.
 | [08-store.md](08-store.md) | `hendra-store` | persistence, the economy |
 | [09-app-auth-transport.md](09-app-auth-transport.md) | `app`, `auth`, `transport` | endpoints, the wire |
 | **[10-what-to-fix.md](10-what-to-fix.md)** | — | **the ordered refactor list** |
+| **[11-the-reference-itself.md](11-the-reference-itself.md)** | `Server-Side/` | **which of the reference is original, imported, or ours** |
+
+Page 11 is the one to read before citing any of the others. It classifies every file of
+`Server-Side/` that differs from the 2020 import, because 58 of them were changed by this project's
+own sessions — so a citation into one of those is a citation to us, not to the game.
 
 ## Findings, worst first
 

@@ -741,6 +741,7 @@ dependencies = [
  "hendra-characters",
  "hendra-content",
  "hendra-net",
+ "hendra-sim",
  "hendra-store",
  "http-body-util",
  "serde",
@@ -866,6 +867,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "hendra-content",
+ "hendra-net",
  "sha2",
  "sqlx",
  "thiserror",

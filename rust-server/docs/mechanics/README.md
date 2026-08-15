@@ -4,6 +4,28 @@ Written by reading `Server-Side/` file by file, so that the Rust server can be m
 exactly. Each page states what the C# does, with its real numbers, and then notes where this server
 currently differs.
 
+**What "the original" means on these pages.** `Server-Side/` is not one thing. Most of it is the
+2020 fork this repository imported, and the target to match is the reference binary
+`Server-Side/bin/wServer.exe`, which is built from the tree **as it stands** — so where this project
+has changed the C#, the changed behaviour is the correct one to match. Three sizeable pieces are not
+the shipped game's, and the pages that cover them say so: the behaviour scripts of `logic/db/` are
+content imported from a *different* fork ([page 43](43-the-behaviour-scripts.md)); the verification
+layer of `Player.Verify.cs` and `PositionTimeline.cs` is this project's own C#
+([page 26](26-verification.md)); and the vault is this project's redesign
+([page 14](14-world-subclasses.md)). Smaller ones are flagged in place — the projectile sweep and
+wavy coefficient ([page 05](05-projectiles.md)), the item stat remap ([page 08](08-stats.md)),
+parallel world ticking ([page 30](30-the-server-loop.md)). Treat an unqualified "the original" as
+the C# as it stands, and check before citing a page as evidence about the game as shipped.
+
+**Do not read "the tree as it stands" as making our own edits the specification.** That reading is
+circular, and it has already closed a full loop once: a builder added `<CreateTime>` to
+`server/XmlModels.cs`, it was compiled into the running `server.exe`, and a later brief handed it to
+the next builder as original behaviour to match. The complete file-by-file classification — which of
+`Server-Side/` is 2020 original, which is imported content, and which 58 files this project wrote —
+is [audit page 11](../audit/11-the-reference-itself.md). Check a citation against it before relying
+on it, and where the reference is our own code, say we are choosing the behaviour rather than that
+we are matching it.
+
 The goal is one-for-one behaviour. Optimisation is welcome anywhere it cannot be observed from
 inside the game: a different data structure, a different loop, a different order of work. A different
 *outcome* is not an optimisation.
@@ -69,15 +91,19 @@ inside the game: a different data structure, a different loop, a different order
 Page 25 lists exactly what was read. See "How much of this is actually read" below before trusting
 any of it.
 
-## The largest defect found
+## The largest defect found, and fixed
 
-**670 of the 758 item stat bonuses in the content are applied to the wrong stat or to no stat at
-all.** The content's `stat="N"` numbers are not `StatsType` values; the original translates them
-twice, and this server translates them not at all. 587 bonuses are silently discarded because the
-index falls outside an eight-element array; 83 more raise defence instead of magic.
+**670 of the 758 item stat bonuses in the content were applied to the wrong stat or to no stat at
+all.** The content's `stat="N"` numbers are not `StatsType` values; they need two translations, and
+this server did neither, so 587 bonuses fell outside an eight-element array and were discarded while
+83 more raised defence instead of magic — every ring of attack, every armour's defence bonus, every
+speed, vitality, wisdom and dexterity bonus in the game.
 
-Every ring of attack, every armour's defence bonus, every speed, vitality, wisdom and dexterity
-bonus in the game. See [the stats page](08-stats.md).
+**Fixed.** `Stat::from_content_number` composes both translations into one table and is the single
+door both the equipment and the activate path go through. Note that the C# side of this, the
+`XmlStat.ToStatsType` remap, is itself this project's own addition to `XmlDescriptors.cs` — the
+shipped 2020 server read the number raw and applied `stat="26"` as Speed rather than Vitality. See
+[the stats page](08-stats.md).
 
 ## How much of this is actually read
 

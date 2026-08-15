@@ -33,7 +33,9 @@ everything else passes through
 ```
 
 It is applied in exactly two places: `ActivateEffect.Stats` and `Item.StatsBoost`. Anywhere else that
-reads a `stat` attribute is unconverted.
+reads a `stat` attribute is unconverted. Both of those reads are original and were raw until this
+project wrapped them: `ToStatsType` is its own addition, and in the shipped 2020 server `stat="26"`
+went through as `StatsType 26`, which is Speed. See [page 08](08-stats.md).
 
 ## Defaults
 
