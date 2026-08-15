@@ -1950,12 +1950,14 @@ public partial class WorldController : Node
     }
 
     /// <summary>
-    /// Opens the rack in the room the vault is in, and closes it on the way out.
+    /// Opens the rack, and closes it once the player is away from the vault.
     /// </summary>
     /// <remarks>
-    /// It shows the same storage the vault panel does, so it belongs in the same place: standing on
-    /// the access object is what opens both, and there is no separate object on this server to
-    /// stand on. The launch flag is the other way in, for a screenshot nobody is driving.
+    /// The launch flag is the only thing that opens it at present. The original puts a rack object
+    /// in the vault room and standing on it is what opens the panel; this server's vault world
+    /// spawns one object, the vault access, and there is nothing to stand on. Add an object whose
+    /// class is a rack and this is the one place that has to learn about it -- the panel itself
+    /// asks nothing of the world.
     /// </remarks>
     private void UpdateRack()
     {
