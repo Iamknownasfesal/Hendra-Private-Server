@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using Godot;
 using Hendra.Assets;
 using Hendra.Resources;
@@ -30,51 +29,63 @@ namespace Hendra.UI;
 /// </remarks>
 public sealed partial class VaultView : ModalPanel
 {
-    /// <summary>Where the top edge sits, per the brief.</summary>
-    public const float TopEdge = 60f;
+    /// <summary>Where the top edge sits on a full-height screen.</summary>
+    public const float TopEdge = 68f;
 
-    private const float Padding = 16f;
-    private const float HeaderTall = 64f;
-    private const float SortBarHeight = 44f;
-    private const float RailButtonSize = 56f;
-    private const float RailGap = 6f;
+    /// <summary>How little is left under it. The panel runs nearly the whole height of the screen.</summary>
+    private const float BottomEdge = 8f;
 
     private const int Columns = 8;
-    private const float SlotSize = 96f;
-    private const float SlotGap = 4f;
+
+    /// <summary>A slot cell, border included. Eighty, which is what the reference measures.</summary>
+    private const float SlotSize = 80f;
+
+    /// <summary>The board showing between two cells.</summary>
+    private const float SlotGap = 5f;
+
     private const float RowPitch = SlotSize + SlotGap;
 
-    /// <summary>
-    /// The grid's width: eight slots and the seven hairlines between them, and nothing else.
-    /// </summary>
-    /// <remarks>
-    /// Seven hundred and ninety-six pixels, and the panel is built out to hold it rather than the
-    /// grid being stretched to fill a panel. Letting the cells take up the slack is what turned
-    /// squares into rectangles and four-pixel gutters into thirteen-pixel ones, and a grid that
-    /// reads as a block of plates with hairlines between them is most of what makes it read as an
-    /// inventory rather than as a settings screen.
-    /// </remarks>
     private const float GridWidth = Columns * SlotSize + (Columns - 1) * SlotGap;
 
-    /// <summary>The scrollbar and its gap, which sit beside the grid rather than inside it.</summary>
-    private const float GutterWidth = RailGap + HudScrollbar.Width;
+    /// <summary>Air between the grid and the plate it sits on: left and top, then right and bottom.</summary>
+    private const float GridPad = 15f;
 
-    public const float PanelWidth =
-        Padding + RailButtonSize + RailGap * 2f + GridWidth + GutterWidth + Padding;
+    private const float GridTopPad = 9f;
+    private const float GridEdgePad = 5f;
+
+    /// <summary>The scrollbar and the gap that separates it from the last column.</summary>
+    private const float GutterWidth = GridEdgePad + HudScrollbar.Width;
+
+    /// <summary>The plate the grid sits on, which is wider than the grid by its padding.</summary>
+    private const float GridBoxWidth = GridPad + GridWidth + GutterWidth + GridEdgePad;
+
+    /// <summary>The plate the category rail sits on, and where the buttons sit inside it.</summary>
+    private const float RailBoxWidth = 63f;
+
+    private const float RailButtonSize = 50f;
+
+    /// <summary>The one that filters nothing is a wide, short plate rather than a square.</summary>
+    private const float RailAllHeight = 36f;
+
+    private const float RailGap = 8f;
+    private const float RailPad = 11f;
+    private const float RailLeftPad = 9f;
+
+    public const float PanelWidth = BodyInset * 2f + RailBoxWidth + GridBoxWidth;
 
     /// <summary>What the panel falls back to before it knows how much screen it has.</summary>
-    public const float PanelHeight = 700f;
+    public const float PanelHeight = 900f;
 
-    /// <summary>
-    /// How far above the bottom of the screen the panel stops.
-    /// </summary>
-    /// <remarks>
-    /// Enough to clear the vitals. Four free chests made the panel tall enough to sit on top of
-    /// them, and a panel that hides how much health you have is worse than one that scrolls -- the
-    /// vault is somewhere you stand still in a world that does not stop.
-    /// </remarks>
-    private const float BottomMargin =
-        HudLayout.VitalsBottomMargin + HudLayout.VitalsHeight + 16f;
+    /// <summary>The sort bar, which sits on the shell above the two plates rather than on either.</summary>
+    private const float SortBarHeight = 50f;
+
+    private const float SortBarGap = 5f;
+
+    /// <summary>How far the active tab's pill is inset inside the trough.</summary>
+    private const float Pill = 4f;
+
+    /// <summary>Where the two plates start, measured down the body.</summary>
+    private const float PlatesTop = SortBarHeight + SortBarGap;
 
     /// <summary>Rows kept mounted beyond the visible ones, above and below.</summary>
     private const int Overscan = 2;
@@ -83,20 +94,33 @@ public sealed partial class VaultView : ModalPanel
     private const int LockedRows = 3;
 
     /// <summary>The full-width label that introduces a section. Gifts above, locked below.</summary>
-    private const float BandHeight = 32f;
+    private const float BandHeight = 29f;
 
     /// <summary>
     /// The gap between a band and the first row under it.
     /// </summary>
     /// <remarks>
     /// A band with rows tight against it reads as the top edge of the first row rather than as a
-    /// heading over all of them. This is the one gap in the grid that is not the four-pixel gutter,
+    /// heading over all of them. This is the one gap in the grid that is not the ordinary gutter,
     /// which is the point: it says the thing below is a different kind of row.
     /// </remarks>
     private const float BandGap = 10f;
 
     /// <summary>A band and the air under it, which is what a section costs before its first row.</summary>
     private const float BandBlock = BandHeight + BandGap;
+
+    /// <summary>
+    /// The three sizes this panel sets text at, measured off the reference.
+    /// </summary>
+    /// <remarks>
+    /// Larger than the type scale in <c>Style</c>, which is roughly two thirds of what the reference
+    /// actually uses at every step. Written here so the panel matches what it is measured against;
+    /// the scale itself is one change in one file and belongs to whoever owns it.
+    /// </remarks>
+    private const int TabSize = 28;
+
+    private const int BandSize = 22;
+    private const int RailSize = 30;
 
     /// <summary>How long the search waits after a keystroke before it filters.</summary>
     private const double SearchDebounceSeconds = 0.150;
@@ -147,16 +171,21 @@ public sealed partial class VaultView : ModalPanel
     /// <summary>Whether the search field has the keyboard, so gameplay keys must be held back.</summary>
     public bool IsTyping => _search is { Visible: true } && _search.HasFocus();
 
-    protected override float Header => HeaderTall;
-
-    /// <summary>No cross: Escape and walking away are the exits. See the brief's header note.</summary>
+    /// <summary>No cross: Escape and walking away are the exits.</summary>
     protected override bool ShowClose => false;
 
+    protected override bool ShowInfo => true;
+
     protected override bool ShowOrnaments => true;
+
+    /// <summary>The rail and the grid are two plates, not one, so the shell paints neither.</summary>
+    protected override bool FillBody => false;
 
     public override void _Ready()
     {
         base._Ready();
+
+        Body.Draw += DrawPlates;
 
         BuildSortBar();
         BuildRail();
@@ -203,14 +232,7 @@ public sealed partial class VaultView : ModalPanel
         Refresh();
     }
 
-    /// <summary>
-    /// Centres the panel on the screen.
-    /// </summary>
-    /// <remarks>
-    /// Both axes now. It used to hang from a fixed sixty pixels down, which was right when the
-    /// panel was a fixed nine hundred and sixty tall and wrong the moment it started sizing itself
-    /// to its contents -- a short vault sat high with a lake of screen under it.
-    /// </remarks>
+    /// <summary>Tells the panel how much screen it has, and lays it out in it.</summary>
     public void PlaceIn(Vector2 screen)
     {
         _screen = screen;
@@ -218,19 +240,22 @@ public sealed partial class VaultView : ModalPanel
     }
 
     /// <summary>
-    /// Puts the panel back in the middle, at whatever size it has just become.
+    /// Docks the panel against the right-hand column of the HUD.
     /// </summary>
     /// <remarks>
-    /// Called from the end of the layout rather than once when the panel opens. The height is a
-    /// function of the contents and the contents arrive from the server after the panel is on
-    /// screen, so a panel centred at the moment it opened is centred for the wrong height a frame
-    /// later -- which is how its bottom row ended up over the health bar.
+    /// Not centred. The reference hangs it from the top of the screen with its right edge against
+    /// the column that carries the minimap and the vault's own counter, which is what makes the two
+    /// read as one thing you are doing rather than as a panel that happens to be open. Centring it
+    /// put the grid over the middle of the world and the counter a third of a screen away from the
+    /// grid it counts.
     /// </remarks>
-    private void Recentre()
+    private void Reposition()
     {
+        float right = _screen.X - HudLayout.Margin * 2f - HudLayout.MinimapWidth;
+
         Position = new Vector2(
-            Mathf.Round((_screen.X - PanelWidth) / 2f),
-            Mathf.Max(TopEdge, Mathf.Round((_screen.Y - Size.Y) / 2f)));
+            Mathf.Round(Mathf.Max(0f, right - PanelWidth)),
+            Mathf.Round(Mathf.Min(TopEdge, Mathf.Max(0f, _screen.Y - Size.Y - BottomEdge))));
     }
 
     /// <summary>The space the panel has to fit in, so it can stop short of filling it.</summary>
@@ -249,12 +274,6 @@ public sealed partial class VaultView : ModalPanel
         Refresh();
     }
 
-    // The header carries the panel's name and nothing else. There was an "i" in the corner and a
-    // paragraph under it explaining what a row was and what a chest cost; a panel that has to
-    // explain itself in prose has not been designed yet, and both facts belong where they apply --
-    // one row of eight is self-evident once you see it, and the price belongs on the thing you
-    // click to pay it. See the locked band.
-
     // ─── the sort bar ─────────────────────────────────────────────────────────────────────────
 
     private static readonly (VaultSort Mode, string Label)[] Modes =
@@ -267,9 +286,9 @@ public sealed partial class VaultView : ModalPanel
 
     private void BuildSortBar()
     {
-        // Behind the four, so they read as one control with four settings.
+        // One dark trough behind the four, so they read as one control with four settings.
         _trough = new Control { MouseFilter = MouseFilterEnum.Ignore };
-        _trough.Draw += () => _trough.DrawStyleBox(Rounded(Style.ModalTrough), new Rect2(Vector2.Zero, _trough.Size));
+        _trough.Draw += DrawTrough;
         Body.AddChild(_trough);
 
         foreach (var (mode, label) in Modes)
@@ -281,7 +300,7 @@ public sealed partial class VaultView : ModalPanel
             _tabs.Add(tab);
         }
 
-        _magnifier = new HudIconButton(Magnifier, "Search", inset: 12f) { Tint = Style.Text };
+        _magnifier = new HudIconButton(Magnifier, "Search", inset: 14f) { Tint = Style.Text };
         _magnifier.Pressed += OpenSearch;
         Body.AddChild(_magnifier);
 
@@ -293,7 +312,31 @@ public sealed partial class VaultView : ModalPanel
         };
         _search.TextChanged += OnSearchTyped;
         Body.AddChild(_search);
+    }
 
+    /// <summary>
+    /// The trough and the plate the magnifier sits on, which are one bar with two tones.
+    /// </summary>
+    /// <remarks>
+    /// The search affordance is not in the trough with the sort modes: it is a different kind of
+    /// thing -- the modes are four alternatives and one of them is always on, while the search is a
+    /// control you reach for -- so it gets its own lighter square at the end of the bar.
+    /// </remarks>
+    private void DrawTrough()
+    {
+        var full = new Rect2(Vector2.Zero, _trough.Size);
+
+        var edge = new StyleBoxFlat { BgColor = Style.ModalFrameDark };
+        edge.SetCornerRadiusAll(6);
+        _trough.DrawStyleBox(edge, full);
+
+        float inset = 3f;
+        float plate = SortBarHeight;
+
+        var well = new StyleBoxFlat { BgColor = Style.ModalBody };
+        well.SetCornerRadiusAll(4);
+        _trough.DrawStyleBox(well, new Rect2(
+            inset, inset, Mathf.Max(0f, full.Size.X - plate - inset), full.Size.Y - inset * 2f));
     }
 
     private void Choose(VaultSort mode)
@@ -305,13 +348,13 @@ public sealed partial class VaultView : ModalPanel
 
     private static void Magnifier(CanvasItem into, Rect2 box, Color colour)
     {
-        float radius = Mathf.Min(box.Size.X, box.Size.Y) * 0.34f;
-        var centre = box.Position + box.Size / 2f - new Vector2(radius * 0.35f, radius * 0.35f);
+        float radius = Mathf.Min(box.Size.X, box.Size.Y) * 0.38f;
+        var centre = box.Position + box.Size / 2f - new Vector2(radius * 0.3f, radius * 0.3f);
 
-        into.DrawArc(centre, radius, 0f, Mathf.Tau, 20, colour, 2f);
+        into.DrawArc(centre, radius, 0f, Mathf.Tau, 24, colour, 3f);
         into.DrawLine(
-            centre + new Vector2(radius * 0.7f, radius * 0.7f),
-            centre + new Vector2(radius * 1.6f, radius * 1.6f), colour, 2f);
+            centre + new Vector2(radius * 0.72f, radius * 0.72f),
+            centre + new Vector2(radius * 1.7f, radius * 1.7f), colour, 3f);
     }
 
     private void OpenSearch()
@@ -438,6 +481,19 @@ public sealed partial class VaultView : ModalPanel
         }
     }
 
+    /// <summary>How tall the stack of rail buttons is, which is what its plate is sized to.</summary>
+    private float RailHeight
+    {
+        get
+        {
+            if (_rail.Count == 0)
+                return RailPad * 2f;
+
+            float stack = RailAllHeight + (_rail.Count - 1) * (RailButtonSize + RailGap);
+            return RailPad * 2f + stack;
+        }
+    }
+
     // ─── the grid ─────────────────────────────────────────────────────────────────────────────
 
     private void BuildGrid()
@@ -448,12 +504,12 @@ public sealed partial class VaultView : ModalPanel
         Body.AddChild(_grid);
     }
 
-    /// <summary>A filled box with soft corners, for the trough and the pill inside it.</summary>
-    private static StyleBoxFlat Rounded(Color fill, int radius = 4)
+    /// <summary>The two near-black plates the body is made of: the rail's, and the grid's.</summary>
+    private void DrawPlates()
     {
-        var box = new StyleBoxFlat { BgColor = fill };
-        box.SetCornerRadiusAll(radius);
-        return box;
+        DrawBodyPlate(new Rect2(0f, PlatesTop, RailBoxWidth, RailHeight));
+        DrawBodyPlate(new Rect2(
+            RailBoxWidth, PlatesTop, GridBoxWidth, Mathf.Max(0f, Body.Size.Y - PlatesTop)));
     }
 
     /// <summary>
@@ -469,11 +525,14 @@ public sealed partial class VaultView : ModalPanel
         if (top + BandHeight < 0f || top > _grid.Size.Y)
             return;
 
-        _grid.DrawRect(new Rect2(0f, top, GridWidth, BandHeight), Style.ModalBand);
+        var plate = new StyleBoxFlat { BgColor = Style.ModalFrameDark };
+        plate.SetCornerRadiusAll(3);
+        _grid.DrawStyleBox(plate, new Rect2(0f, top, GridWidth, BandHeight));
+
         _grid.DrawText(
-            new Vector2(Mathf.Round((GridWidth - Style.Measure(text, Style.FontSmall, bold: true)) / 2f),
-                top + Style.BaselineIn(BandHeight, Style.FontSmall)),
-            text, Style.FontSmall, Style.Text, bold: true);
+            new Vector2(Mathf.Round((GridWidth - Style.Measure(text, BandSize, bold: true)) / 2f),
+                top + Style.BaselineIn(BandHeight, BandSize)),
+            text, BandSize, Style.Text, bold: true);
     }
 
     /// <summary>How many rows the grid can show at once.</summary>
@@ -614,28 +673,24 @@ public sealed partial class VaultView : ModalPanel
 
         SizeToContent();
 
-        // The header's one control, inset from the frame by the brief's sixteen.
-        float inner = PanelWidth - (ModalPanel.FrameWidth + 1f) * 2f - Padding * 2f;
-        float y = Padding;
+        float inner = Body.Size.X;
 
-        // The sort bar. The four modes live inside one trough with the search affordance outside it,
-        // right-aligned: spread edge to edge they stopped reading as a set of alternatives and
-        // started reading as four unrelated controls.
-        float searchWidth = _search.Visible ? 220f : SortBarHeight;
-        float troughWidth = inner - searchWidth - RailGap * 2f;
+        // The sort bar runs the whole width of the body, on the shell above both plates.
+        float searchWidth = _search.Visible ? 260f : SortBarHeight;
 
-        _trough.Position = new Vector2(Padding, y);
-        _trough.Size = new Vector2(troughWidth, SortBarHeight);
+        _trough.Position = Vector2.Zero;
+        _trough.Size = new Vector2(inner, SortBarHeight);
 
-        float tabWidth = Mathf.Floor((troughWidth - Pill * 2f) / _tabs.Count);
+        float modes = inner - SortBarHeight;
+        float tabWidth = Mathf.Floor((modes - Pill * 2f) / _tabs.Count);
 
         for (int i = 0; i < _tabs.Count; i++)
         {
-            _tabs[i].Position = new Vector2(Padding + Pill + i * tabWidth, y + Pill);
+            _tabs[i].Position = new Vector2(Pill + i * tabWidth, Pill);
             _tabs[i].Size = new Vector2(tabWidth, SortBarHeight - Pill * 2f);
         }
 
-        var searchBox = new Rect2(Padding + inner - searchWidth, y, searchWidth, SortBarHeight);
+        var searchBox = new Rect2(inner - searchWidth, 0f, searchWidth, SortBarHeight);
 
         _magnifier.Position = searchBox.Position;
         _magnifier.Size = searchBox.Size;
@@ -643,26 +698,26 @@ public sealed partial class VaultView : ModalPanel
         _search.Position = searchBox.Position;
         _search.Size = searchBox.Size;
 
-        y += SortBarHeight + Padding;
-
         // The rail down the left, the grid beside it at exactly its own width.
+        float railTop = PlatesTop + RailPad;
+
         for (int i = 0; i < _rail.Count; i++)
         {
-            _rail[i].Position = new Vector2(Padding, y + i * (RailButtonSize + RailGap));
-            _rail[i].Size = new Vector2(RailButtonSize, RailButtonSize);
+            float height = i == 0 ? RailAllHeight : RailButtonSize;
+
+            _rail[i].Position = new Vector2(RailLeftPad, railTop);
+            _rail[i].Size = new Vector2(RailButtonSize, height);
+
+            railTop += height + RailGap;
         }
 
-        float gridLeft = Padding + RailButtonSize + RailGap * 2f;
-
-        _grid.Position = new Vector2(gridLeft, y);
+        _grid.Position = new Vector2(RailBoxWidth + GridPad, PlatesTop + GridTopPad);
         _grid.Size = new Vector2(GridWidth + GutterWidth, GridHeight);
 
-        Recentre();
+        Body.QueueRedraw();
+        Reposition();
         Reflow();
     }
-
-    /// <summary>How far the pill is inset inside its trough.</summary>
-    private const float Pill = 4f;
 
     /// <summary>
     /// How tall the grid is: what there is to show, within what there is room for.
@@ -679,11 +734,8 @@ public sealed partial class VaultView : ModalPanel
     {
         get
         {
-            float rail = _rail.Count * RailButtonSize + Mathf.Max(0, _rail.Count - 1) * RailGap;
-            // Twice the larger margin, because the panel is centred: measuring the room from the
-            // top edge and then centring what came out puts half the slack back under it, which is
-            // how the bottom row ended up over the health bar.
-            float room = _screen.Y - Mathf.Max(TopEdge, BottomMargin) * 2f - Chrome;
+            float rail = RailHeight - GridTopPad - GridEdgePad;
+            float room = _screen.Y - TopEdge - BottomEdge - Chrome;
 
             return Mathf.Max(Mathf.Min(ContentHeight, room), Mathf.Min(rail, room));
         }
@@ -691,8 +743,7 @@ public sealed partial class VaultView : ModalPanel
 
     /// <summary>Everything the panel spends on itself, above and below the grid.</summary>
     private float Chrome =>
-        (ModalPanel.FrameWidth + 1f) * 2f + HeaderTall + Padding + SortBarHeight + Padding + Padding
-;
+        FrameWidth + HeaderHeight + HeaderGap + PlatesTop + GridTopPad + GridEdgePad + BodyInset;
 
     /// <summary>Grows or shrinks the panel to hold what is in it, and no more.</summary>
     private void SizeToContent()
@@ -753,7 +804,7 @@ public sealed partial class VaultView : ModalPanel
             slot.Visible = true;
             slot.Size = new Vector2(SlotSize, SlotSize);
             slot.Position = new Vector2(
-                column * (SlotSize + SlotGap),
+                column * RowPitch,
                 (gift ? BandBlock + row * RowPitch : ChestTop + (row - gifts) * RowPitch) - _offset);
 
             // The address is the storage index, never the position on screen: a drag under a filter
@@ -820,14 +871,12 @@ public sealed partial class VaultView : ModalPanel
         float lockedTop = bandTop + BandBlock;
 
         if (LockedShown > 0 || _store.AtCapacity)
-            Band(bandTop, _store.AtCapacity ? "Maximum capacity"
-                : $"Locked  —  click a row to buy it for {_store.NextChestPrice} fame");
+            Band(bandTop, _store.AtCapacity ? "Maximum capacity" : "Locked");
 
         for (int row = 0; row < LockedShown; row++)
             for (int column = 0; column < Columns; column++)
             {
-                var box = new Rect2(
-                    column * (SlotSize + SlotGap), lockedTop + row * RowPitch, SlotSize, SlotSize);
+                var box = new Rect2(column * RowPitch, lockedTop + row * RowPitch, SlotSize, SlotSize);
 
                 if (box.End.Y < 0f || box.Position.Y > _grid.Size.Y)
                     continue;
@@ -858,9 +907,6 @@ public sealed partial class VaultView : ModalPanel
     /// empty vault is a state you fix by putting something in it, and a filter that matches nothing
     /// is a state you fix by changing the filter. A grid that just sits there blank leaves the
     /// player to work out which one they are looking at.
-    ///
-    /// This replaces the line that used to sit under the grid explaining that a sorted view cannot
-    /// be rearranged. That was a caption on a rule nobody had broken yet.
     /// </remarks>
     private string Nothing
     {
@@ -935,16 +981,21 @@ public sealed partial class VaultView : ModalPanel
 
             // A filled pill for the mode in use, which is the only mark the bar carries: the trough
             // behind all four is what says these are alternatives.
-            if (_active)
-                DrawStyleBox(Rounded(Style.ButtonFace, 3), full);
-            else if (_hover)
-                DrawStyleBox(Rounded(Style.ButtonFace.Darkened(0.45f), 3), full);
+            if (_active || _hover)
+            {
+                var pill = new StyleBoxFlat
+                {
+                    BgColor = _active ? Style.TabActive : Style.TabActive.Darkened(0.35f),
+                };
+                pill.SetCornerRadiusAll(4);
+                DrawStyleBox(pill, full);
+            }
 
-            float width = Style.Measure(_label, Style.FontBody, bold: _active);
-            float baseline = Style.BaselineIn(Size.Y, Style.FontBody);
+            float width = Style.Measure(_label, TabSize, bold: _active);
+            float baseline = Style.BaselineIn(Size.Y, TabSize);
 
             this.DrawText(
-                new Vector2(Mathf.Round((Size.X - width) / 2f), baseline), _label, Style.FontBody,
+                new Vector2(Mathf.Round((Size.X - width) / 2f), baseline), _label, TabSize,
                 _active ? Style.Text : Style.TextDim, bold: _active);
         }
     }
@@ -952,12 +1003,6 @@ public sealed partial class VaultView : ModalPanel
     /// <summary>One category down the left. Square, and labelled with as much as fits.</summary>
     private sealed partial class RailButton : Control
     {
-        /// <summary>The mark's colour at rest: light enough to clear the plate under it.</summary>
-        private static readonly Color RailMark = new("c8c8c8");
-
-        private static readonly Color RailActive = new("5a5a5a");
-        private static readonly Color RailHover = new("484848");
-
         private readonly string _label;
         private readonly Action<CanvasItem, Rect2, Color> _glyph;
         private bool _hover;
@@ -1003,19 +1048,22 @@ public sealed partial class VaultView : ModalPanel
         {
             var full = new Rect2(Vector2.Zero, Size);
 
-            // The plate lightens when the filter is on and the mark goes white with it. Revision
-            // four drew a dim grey mark on a dim grey plate, which at fifty-six pixels is a button
+            // The plate lightens when the filter is on and the mark goes white with it. An earlier
+            // revision drew a dim grey mark on a dim grey plate, which at fifty pixels is a button
             // you can see and a mark you cannot.
-            DrawRect(full, _active ? RailActive : _hover ? RailHover : Style.Slot);
-            DrawRect(full.Grow(-SlotView.Border / 2f), _active ? Style.SlotBorderHi : Style.SlotEmptyEdge,
-                filled: false, width: SlotView.Border);
+            var plate = new StyleBoxFlat
+            {
+                BgColor = _active ? Style.TabActive : _hover ? Style.TabActive.Darkened(0.3f) : Style.ModalTrough,
+            };
+            plate.SetCornerRadiusAll(4);
+            DrawStyleBox(plate, full);
 
-            var mark = _active ? Style.Text : RailMark;
+            var mark = _active ? Style.Text : Style.StatLabel;
 
             if (_glyph != null)
             {
                 // Square and centred, inset so the plate still reads as a button around it.
-                float side = Mathf.Round(Mathf.Min(Size.X, Size.Y) - 20f);
+                float side = Mathf.Round(Mathf.Min(Size.X, Size.Y) - 16f);
                 var box = new Rect2(
                     Mathf.Round((Size.X - side) / 2f), Mathf.Round((Size.Y - side) / 2f), side, side);
 
@@ -1026,11 +1074,11 @@ public sealed partial class VaultView : ModalPanel
             // No artwork: the all-items button. Three letters is what fits across this face.
             string text = _label.Length <= 3 ? _label : _label.Substring(0, 3).ToUpperInvariant();
 
-            float width = Style.Measure(text, Style.FontSmall, bold: true);
-            float baseline = Style.BaselineIn(Size.Y, Style.FontSmall);
+            float width = Style.Measure(text, RailSize, bold: true);
+            float baseline = Style.BaselineIn(Size.Y, RailSize);
 
             this.DrawText(
-                new Vector2(Mathf.Round((Size.X - width) / 2f), baseline), text, Style.FontSmall,
+                new Vector2(Mathf.Round((Size.X - width) / 2f), baseline), text, RailSize,
                 mark, bold: true);
         }
     }

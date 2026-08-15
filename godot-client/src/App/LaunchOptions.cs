@@ -87,6 +87,8 @@ public sealed class LaunchOptions
 
     /// <summary>Opens the create-a-character page, by the same two routes.</summary>
     public bool OpenNewCharacter { get; private set; }
+    /// <summary>Opens the potion rack once in the world, for unattended screenshots of it.</summary>
+    public bool OpenPotionRack { get; private set; }
 
     /// <summary>Opens the options page once in the world. Same purpose as the three above.</summary>
     public bool OpenOptions { get; private set; }
@@ -161,6 +163,7 @@ public sealed class LaunchOptions
                     break;
                 }
                 case "--new-character": options.OpenNewCharacter = true; break;
+                case "--rack": options.OpenPotionRack = true; break;
                 case "--menu": options.OpenMenu = true; break;
                 case "--options":
                 {

@@ -32,6 +32,7 @@ public partial class GameScene : Node
     private AccountPanel _account;
     private CharactersPanel _characters;
     private CreateCharacterScreen _createScreen;
+    private PotionRackView _rack;
     private SystemMenu _menu;
 
     /// <summary>The world's own furniture: health bars and markers, in the world's coordinates.</summary>
@@ -74,6 +75,9 @@ public partial class GameScene : Node
     /// access object, which an unattended run has no way to do.
     /// </remarks>
     public bool OpenVault { get; set; }
+
+    /// <summary>Holds the potion rack open, the same way and for the same reason.</summary>
+    public bool OpenPotionRack { get; set; }
 
     /// <summary>Opens the options page once in the world. Set from the command line.</summary>
     public bool OpenOptions { get; set; }
@@ -187,6 +191,14 @@ public partial class GameScene : Node
         _createScreen.PlayRequested += type => CreateCharacterRequested?.Invoke(type);
         _createScreen.Closed += () => _characters.Open();
         _hudLayer.AddChild(_createScreen);
+        // The rack reads the same storage the vault panel does and opens in the same room, so it is
+        // built here beside it and handed to whichever controller owns the world at the time. It
+        // hangs off the HUD rather than off the canvas, because the canvas stretches every child it
+        // owns to the whole screen and this one sizes itself to its contents.
+        _rack = new PotionRackView(ServiceLocator.Data, new Assets.TextureResolver(ServiceLocator.Assets));
+        _rack.Withdraw += address => _controller?.TakeFromVault(address);
+        _rack.DepositAll += () => _controller?.DepositPotions();
+        _hud.AddChild(_rack);
 
         // These three used to sit on a canvas of their own, one layer above the HUD. That put them
         // outside the only scaled canvas in the client, and Style.Sharpness -- which is global and
@@ -455,6 +467,7 @@ public partial class GameScene : Node
         _controller.StartingCameraAngle = StartingCameraAngle;
         _controller.CenterOnPlayer = ServiceLocator.Settings?.CenterOnPlayer ?? true;
         _controller.HoldVaultOpen = OpenVault;
+        _controller.UsePotionRack(_rack, OpenPotionRack);
 
         _controller.HudVisibilityChanged += hidden => ShowInterface(!hidden);
         _controller.WorldEntering += (name, difficulty) => _loading?.Show(name, difficulty);
@@ -642,6 +655,7 @@ public partial class GameScene : Node
         _controller.StartingCameraAngle = StartingCameraAngle;
         _controller.CenterOnPlayer = ServiceLocator.Settings?.CenterOnPlayer ?? true;
         _controller.HoldVaultOpen = OpenVault;
+        _controller.UsePotionRack(_rack, OpenPotionRack);
 
         _controller.HudVisibilityChanged += hidden => ShowInterface(!hidden);
         _controller.WorldEntering += (name, difficulty) => _loading?.Show(name, difficulty);
