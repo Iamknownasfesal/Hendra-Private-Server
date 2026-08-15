@@ -310,28 +310,51 @@ public static class Style
     public static readonly Color TextOutline = Colors.Black;
 
     /// <summary>The floor. Nothing in the interface renders below this, except a Tier 3 token.</summary>
-    public const int SmallestReadable = 16;
+    public const int SmallestReadable = 22;
 
     // ─── the type scale ───────────────────────────────────────────────────────────────────────
     //
-    // At 1080p, before the canvas scale. Revision two set this against a pixel face and it was
-    // small: twelve for body, ten for a tag, sixteen for a name. Revision six raises the floor to
-    // twelve and puts body at fourteen, which is most of what the "I cannot read it" complaint
-    // actually was -- the typeface was the second cause, not the first.
+    // At 1080p, before the canvas scale, and set from the reference rather than by eye. Every size
+    // below was chosen by measuring a cap height in an Exalt screenshot and then finding the
+    // nominal size that lands Jersey10's cap on it -- this face draws a cap at roughly half its
+    // nominal size, which is the whole reason the old numbers looked reasonable and rendered at
+    // half the reference.
+    //
+    // The measured caps, for anyone re-deriving these:
+    //   full-screen page title (Options)          44
+    //   page section heading (Cursor, Display)    25
+    //   panel title (Vault, Attributes)           22
+    //   row value, button label                   21-22
+    //   row label                                 20
+    //   name, bar label, bar value, stat value    16
+    //   list row label                            15
+    //   sub-line under a name                     12
+    //
+    // Four builders independently declared local constants in this range after measuring the same
+    // thing, which is what finally made it obvious the shared scale was wrong rather than the face.
+
+    /// <summary>A full-screen page's title. The largest thing in the interface.</summary>
+    public const int FontPage = 80;
+
+    /// <summary>A heading standing on a page between groups of rows.</summary>
+    public const int FontPageHeading = 46;
 
     /// <summary>A panel's own name, and the only place a display treatment is allowed.</summary>
-    public const int FontTitle = 28;
+    public const int FontTitle = 42;
+
+    /// <summary>A button's label, and the value in a settings row.</summary>
+    public const int FontControl = 40;
 
     /// <summary>A heading inside a panel, and a player's name over the world.</summary>
-    public const int FontName = 20;
+    public const int FontName = 30;
 
-    public const int FontHeader = 18;
+    public const int FontHeader = 36;
 
     /// <summary>Reading text: stat rows, item names, chat, everything with words in it.</summary>
-    public const int FontBody = 18;
+    public const int FontBody = 30;
 
     /// <summary>Secondary text, and the smallest size in the interface.</summary>
-    public const int FontSmall = 16;
+    public const int FontSmall = 22;
 
     /// <summary>
     /// Tier 3 tokens: tier tags, slot numbers, key hints.
@@ -342,10 +365,10 @@ public static class Style
     /// shape rather than read, so the rule that produced the floor does not apply to them. Anything
     /// with a word in it goes at <see cref="FontSmall"/> or above.
     /// </remarks>
-    public const int FontTag = 14;
+    public const int FontTag = 22;
 
     /// <summary>The number an empty slot carries in the middle of itself.</summary>
-    public const int FontEmptySlot = 28;
+    public const int FontEmptySlot = 44;
 
     /// <summary>Every cluster's margin from the edge of the viewport.</summary>
     public const int EdgeMargin = 20;

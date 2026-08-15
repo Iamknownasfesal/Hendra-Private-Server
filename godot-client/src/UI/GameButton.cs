@@ -70,7 +70,7 @@ public partial class GameButton : Button
     }
 
     /// <summary>The label's size, from the shared type scale rather than a per-button number.</summary>
-    private int FontSize => _compact ? Style.FontSmall : _primary ? Style.FontName : Style.FontBody;
+    private int FontSize => _compact ? Style.FontBody : Style.FontControl;
 
     /// <summary>
     /// Re-measures once the theme is available.
