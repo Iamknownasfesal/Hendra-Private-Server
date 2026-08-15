@@ -234,12 +234,20 @@ public static class Style
     /// out, and white for whatever the quest is pointing at. Read at a glance and never legended,
     /// which only works because it is the same code every player already knows from the original.
     /// There is no purple for a party: this server has no party system to colour.
+    ///
+    /// Sampled off the minimap in <c>Menu/Player UI.png</c> rather than chosen. Two of these were
+    /// far out: players were a soft amber where the reference has a flat yellow, and the way out
+    /// was a pale sky blue where the reference is pure <c>#0000ff</c> -- saturated to the corner
+    /// of the cube, which is what makes a four-pixel mark findable on a dark map.
     /// </remarks>
-    public static readonly Color BlipPlayer = new("ffc83d");
+    public static readonly Color BlipPlayer = new("c9b200");
 
-    public static readonly Color BlipGuild = new("5cd05c");
+    /// <summary>A player who has earned a star, which the reference brightens to full yellow.</summary>
+    public static readonly Color BlipPlayerStarred = new("ffff00");
+
+    public static readonly Color BlipGuild = new("3acb3a");
     public static readonly Color BlipEnemy = new("e02b2b");
-    public static readonly Color BlipPortal = new("5b9bd5");
+    public static readonly Color BlipPortal = new("0000ff");
     public static readonly Color BlipQuest = new("ff4d4d");
 
     /// <summary>Gods, told apart from the rank and file by a warmer red.</summary>
