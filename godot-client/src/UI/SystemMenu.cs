@@ -49,13 +49,46 @@ public partial class SystemMenu : Control
     private const float BottomMargin = 30f;
 
     /// <summary>
-    /// How much of the screen behind survives the wash.
+    /// How much of the world and the clusters over it survives the wash.
     /// </summary>
     /// <remarks>
     /// Measured rather than chosen: white interface text under the reference's wash reads 81, and
     /// its muted grey reads 57, which is the same factor twice.
     /// </remarks>
     private const float Survives = 0.318f;
+
+    /// <summary>
+    /// The colour the column behind the menu is flattened towards, and how far.
+    /// </summary>
+    /// <remarks>
+    /// The column is not washed, it is greyed: white in its icon row comes out at 57 and the plate
+    /// under those icons at 30, which no single multiplier produces — the two are 255 and 54
+    /// converging on one value. Solving the pair gives this grey at this strength, and it is what
+    /// makes a live interface read as an unavailable one rather than as a dark one.
+    /// </remarks>
+    private static readonly Color ColumnGrey = new("1a1a1a");
+
+    private const float ColumnGreyStrength = 0.866f;
+
+    /// <summary>
+    /// How far the grey reaches at the very top of the column.
+    /// </summary>
+    /// <remarks>
+    /// Less than the rest of it. The map's band comes out lighter at its head than at its foot in
+    /// the reference — 55 against 41 along the frame, which is one colour under two strengths — so
+    /// the map stays a map under the mark instead of going flat.
+    /// </remarks>
+    private const float ColumnGreyAtHead = 0.707f;
+
+    /// <summary>
+    /// How much of the column is left at the foot of the screen.
+    /// </summary>
+    /// <remarks>
+    /// The grey fades to black down the column, from nothing at the fame bar to this at the bottom
+    /// edge — which is what buries the worn slots, the inventory and the party list under the
+    /// button stack while leaving the bars above it legible.
+    /// </remarks>
+    private const float ColumnFade = 0.76f;
 
     /// <summary>The mark's width, as a fraction of the column's.</summary>
     private const float LogoShare = 0.825f;
@@ -148,15 +181,18 @@ public partial class SystemMenu : Control
         if (_logo == null || Size.X <= 0f || Size.Y <= 0f)
             return;
 
-        var column = new HudLayout(Size).Minimap;
+        var layout = new HudLayout(Size);
+        var column = layout.Column;
 
         float width = Mathf.Round(column.Size.X - ColumnInset * 2f);
         float left = Mathf.Round(column.Position.X + ColumnInset);
 
-        _logo.LogoWidth = Mathf.Round(column.Size.X * LogoShare);
+        // The mark stands in the map's band, which is the top of the column.
+        var band = layout.Minimap;
+        _logo.LogoWidth = Mathf.Round(band.Size.X * LogoShare);
         _logo.Position = new Vector2(
-            Mathf.Round(column.Position.X + (column.Size.X - _logo.Size.X) / 2f),
-            Mathf.Round(column.Position.Y + (column.Size.Y - _logo.Size.Y) / 2f));
+            Mathf.Round(band.Position.X + (band.Size.X - _logo.Size.X) / 2f),
+            Mathf.Round(band.Position.Y + (band.Size.Y - _logo.Size.Y) / 2f));
 
         _continue.Position = new Vector2(left, Mathf.Round(Size.Y - BottomMargin - PlateHeight));
         _continue.Size = new Vector2(width, PlateHeight);
@@ -179,9 +215,62 @@ public partial class SystemMenu : Control
         _footer.Size = new Vector2(column.Position.X, Size.Y);
     }
 
-    /// <summary>The wash, which is the only thing this node draws itself.</summary>
-    public override void _Draw() =>
-        DrawRect(new Rect2(Vector2.Zero, Size), new Color(0f, 0f, 0f, 1f - Survives));
+    /// <summary>
+    /// The two treatments the menu puts over what is already on the screen.
+    /// </summary>
+    /// <remarks>
+    /// The world and everything drawn over it go under a flat wash. The column gets its own,
+    /// because it is not being pushed into the background — it is the page the menu is printed on,
+    /// and the reference greys it and then fades it out towards the foot rather than dimming it
+    /// evenly. Both are painted before the children, which is what keeps the mark, the plates and
+    /// the build lines at full strength on top.
+    /// </remarks>
+    public override void _Draw()
+    {
+        if (Size.X <= 0f || Size.Y <= 0f)
+            return;
+
+        var layout = new HudLayout(Size);
+        var column = layout.Column;
+
+        DrawRect(
+            new Rect2(0f, 0f, column.Position.X, Size.Y),
+            new Color(0f, 0f, 0f, 1f - Survives));
+
+        var map = layout.Minimap;
+        Band(column.Position.X, column.End.X, map.Position.Y, map.End.Y,
+            ColumnGrey with { A = ColumnGreyAtHead }, ColumnGrey with { A = ColumnGreyStrength });
+
+        DrawRect(
+            new Rect2(column.Position.X, map.End.Y, column.Size.X, Size.Y - map.End.Y),
+            ColumnGrey with { A = ColumnGreyStrength });
+
+        float top = layout.FameBar.Position.Y;
+        if (Size.Y > top)
+            Band(column.Position.X, column.End.X, top, Size.Y,
+                new Color(0f, 0f, 0f, 0f), new Color(0f, 0f, 0f, ColumnFade));
+    }
+
+    /// <summary>
+    /// A rectangle whose colour runs from one value at its top edge to another at its bottom.
+    /// </summary>
+    /// <remarks>
+    /// A four-cornered polygon rather than a texture: Godot interpolates a colour per vertex across
+    /// the quad, which is a gradient with nothing to build, cache or resize.
+    /// </remarks>
+    private void Band(float left, float right, float top, float bottom, Color head, Color foot)
+    {
+        if (bottom <= top || right <= left)
+            return;
+
+        DrawPolygon(
+            new[]
+            {
+                new Vector2(left, top), new Vector2(right, top),
+                new Vector2(right, bottom), new Vector2(left, bottom),
+            },
+            new[] { head, head, foot, foot });
+    }
 
     public void Toggle()
     {
