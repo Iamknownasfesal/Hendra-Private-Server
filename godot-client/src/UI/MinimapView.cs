@@ -31,8 +31,26 @@ namespace Hendra.UI;
 /// </remarks>
 public partial class MinimapView : Control
 {
-    /// <summary>How many tiles fit across the map at each zoom step. Three, as the brief asks.</summary>
+    /// <summary>
+    /// How many tiles fit across the map at each zoom step.
+    /// </summary>
+    /// <remarks>
+    /// Measured off the reference: the block edges in the original's own map fall every 7.2 pixels
+    /// at its closest step and every 2 at its furthest, which across a 352-pixel face is 49 tiles
+    /// and 176. The ladder halves, so the three steps are 48, 96 and 192.
+    /// </remarks>
     private static readonly float[] ZoomLevels = { 48f, 96f, 192f };
+
+    /// <summary>
+    /// The step a player who has never touched the zoom is on: the closest one.
+    /// </summary>
+    /// <remarks>
+    /// The original starts at <c>zoomIndex = 0</c> and counts upwards as you zoom out, and the
+    /// reference confirms it from the other side -- its "+" button is drawn spent, which is the
+    /// state of a map that cannot come any closer. Starting a step out left the revealed ground a
+    /// small disc in the middle of a mostly black panel.
+    /// </remarks>
+    private const int DefaultZoom = 0;
 
     /// <summary>The most blips drawn in a frame, nearest first.</summary>
     private const int MostBlips = 64;
@@ -54,7 +72,7 @@ public partial class MinimapView : Control
     /// <summary>Whether a tile has been written since the last upload.</summary>
     private bool _dirty;
 
-    private int _level = 1;
+    private int _level = DefaultZoom;
 
     /// <summary>How many times the map has been sent to the GPU. Zero while nothing is revealed.</summary>
     public int TerrainUploads { get; private set; }
@@ -81,7 +99,8 @@ public partial class MinimapView : Control
         _zoomOut.Pressed += () => Zoom(-1);
         _panel.AddChild(_zoomOut);
 
-        _level = Mathf.Clamp(App.ServiceLocator.Settings?.MinimapZoom ?? 1, 0, ZoomLevels.Length - 1);
+        _level = Mathf.Clamp(
+            App.ServiceLocator.Settings?.MinimapZoom ?? DefaultZoom, 0, ZoomLevels.Length - 1);
         ShowSteps();
 
         Resized += Reflow;
@@ -373,14 +392,15 @@ public partial class MinimapView : Control
     }
 
     /// <summary>
-    /// Everything worth knowing the position of, as coloured squares.
+    /// Everything worth knowing the position of, as coloured diamonds, with the player's own hollow
+    /// one at the centre.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Colour carries the kind, and it is the game's own code rather than a new one: yellow for
-    /// other players, green for guildmates, purple for the party, red for anything hostile, blue
-    /// for a way out, and white for whatever the current quest is pointing at. Read at a glance and
-    /// never legended, which only works because it is the code every player already knows.
+    /// Shape says nothing and colour says everything, which is how the original reads: every mark
+    /// is the same diamond, and it is yellow for another player, green for a guildmate, red for
+    /// anything hostile and blue for a way out. Never legended, because it is the code every player
+    /// already knows.
     /// </para>
     /// <para>
     /// Capped, and sorted by distance before the cap, so a crowded realm draws the sixty nearest
@@ -436,33 +456,60 @@ public partial class MinimapView : Control
             if (!always)
                 drawn++;
 
-            var box = new Rect2(
-                Mathf.Round(at.X - side / 2f), Mathf.Round(at.Y - side / 2f), side, side);
+            at = new Vector2(Mathf.Round(at.X), Mathf.Round(at.Y));
 
-            var colour = ColourOf(blip.Kind);
-
-            switch (blip.Kind)
-            {
-                case BlipKind.Boss:
-                    HudIcons.Helmet(into, box, colour);
-                    break;
-
-                case BlipKind.Quest:
-                    HudIcons.Skull(into, box, colour);
-                    break;
-
-                default:
-                    // A dark surround, so a yellow mark still reads over a sunlit floor.
-                    into.DrawRect(box.Grow(1f), Style.PanelEdge);
-                    into.DrawRect(box, colour);
-                    break;
-            }
+            // A dark surround, so a yellow mark still reads over a sunlit floor, and so that two
+            // players standing on the same spot are still two marks rather than one blob.
+            into.DrawColoredPolygon(Diamond(at, side / 2f + 1f), Style.PanelEdge);
+            into.DrawColoredPolygon(Diamond(at, side / 2f), ColourOf(blip.Kind));
         }
 
-        // The player is always at the centre, which is the other half of not rotating the map.
-        var self = new Rect2(Mathf.Round(centre.X - 4f), Mathf.Round(centre.Y - 4f), 8f, 8f);
-        into.DrawRect(self.Grow(1f), Style.PanelEdge);
-        into.DrawRect(self, Style.Text);
+        DrawSelf(into, new Vector2(Mathf.Round(centre.X), Mathf.Round(centre.Y)));
+    }
+
+    /// <summary>The four corners of a diamond of the given half-width about a point.</summary>
+    /// <remarks>
+    /// The shape of every mark on the reference's map, at the size its kind is worth. A square of
+    /// the same area reads as a block of floor at these sizes; a diamond never does.
+    /// </remarks>
+    private static Vector2[] Diamond(Vector2 at, float radius) => new[]
+    {
+        new Vector2(at.X, at.Y - radius),
+        new Vector2(at.X + radius, at.Y),
+        new Vector2(at.X, at.Y + radius),
+        new Vector2(at.X - radius, at.Y),
+    };
+
+    /// <summary>
+    /// The player: a hollow white diamond at the centre of the map with an arrow above it.
+    /// </summary>
+    /// <remarks>
+    /// Measured off the reference, where the diamond is fourteen pixels across and thirteen tall
+    /// with a six-pixel hole, and the arrow is a notched head eleven tall standing two pixels clear
+    /// of it. Hollow is what separates the player from everyone else on a map where every other
+    /// mark is a filled diamond, and the arrow is what says which way the world is facing on a map
+    /// that does not itself turn.
+    /// </remarks>
+    private static void DrawSelf(CanvasItem into, Vector2 centre)
+    {
+        into.DrawPolyline(new[]
+        {
+            new Vector2(centre.X, centre.Y - 5.5f),
+            new Vector2(centre.X + 6f, centre.Y),
+            new Vector2(centre.X, centre.Y + 5.5f),
+            new Vector2(centre.X - 6f, centre.Y),
+            new Vector2(centre.X, centre.Y - 5.5f),
+        }, Style.Text, 2.5f);
+
+        into.DrawColoredPolygon(new[]
+        {
+            new Vector2(centre.X, centre.Y - 19f),
+            new Vector2(centre.X + 7f, centre.Y - 7.5f),
+            new Vector2(centre.X + 3.5f, centre.Y - 7.5f),
+            new Vector2(centre.X, centre.Y - 11f),
+            new Vector2(centre.X - 3.5f, centre.Y - 7.5f),
+            new Vector2(centre.X - 7f, centre.Y - 7.5f),
+        }, Style.Text);
     }
 
     /// <summary>
@@ -539,16 +586,21 @@ public partial class MinimapView : Control
     /// <summary>The object the quest arrow is pointing at, which gets its own mark. Zero for none.</summary>
     public int QuestTargetId { get; set; }
 
-    /// <summary>Six to twelve pixels, by how much it matters that you noticed it.</summary>
+    /// <summary>
+    /// Nine to thirteen pixels across, by how much it matters that you noticed it.
+    /// </summary>
+    /// <remarks>
+    /// The two the reference shows are a ten-pixel diamond for another player and an eleven-pixel
+    /// one for a portal; the rest sit either side of those.
+    /// </remarks>
     private static float SizeOf(BlipKind kind) => kind switch
     {
-        BlipKind.Boss => 12f,
-        BlipKind.Quest => 11f,
-        BlipKind.Portal => 10f,
-        BlipKind.God => 9f,
-        BlipKind.Enemy => 8f,
-        BlipKind.Guildmate => 8f,
-        _ => 6f,
+        BlipKind.Boss => 13f,
+        BlipKind.Quest => 12f,
+        BlipKind.Portal => 11f,
+        BlipKind.God => 11f,
+        BlipKind.Enemy => 9f,
+        _ => 10f,
     };
 
     private static Color ColourOf(BlipKind kind) => kind switch
