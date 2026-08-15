@@ -69,24 +69,23 @@ public partial class HudView : Control
     private TextureResolver _textures;
 
     // --- Clusters ------------------------------------------------------------------------------
-    private HudPanel _card;
-    private Portrait _avatar;
+    private Control _card;
+    private CardPortrait _avatar;
     private Label _name;
     private Label _rating;
     private HudGlyph _ratingStar;
     private Control _guildRow;
-    private Control _guildDot;
+    private HudGlyph _guildDot;
     private Label _guild;
-    private Control _cardIcons;
+    private ClockLine _clock;
+    private XpBar _xpBar;
 
     private HudIconButton _news;
 
-    private QuickTray _quickTray;
-    private SeasonPass _seasonPass;
     private CurrencyRow _currency;
     private Control _party;
     private Label _worldLabel;
-    private QuestMarker _quest;
+    private QuestTracker _quest;
 
     private ColumnPlate _column;
     private Control _iconRow;
@@ -180,7 +179,6 @@ public partial class HudView : Control
         BuildColumn();
 
         BuildPlayerCard();
-        BuildQuickTray();
         BuildCurrency();
         BuildIconRow();
         BuildVitals();
@@ -223,23 +221,8 @@ public partial class HudView : Control
         Place(_card, layout.PlayerCard);
         LayoutCard(layout.PlayerCard.Size);
 
-        // The tray and the pass hang off the bottom of the card and collapse when empty, so neither
-        // reserves space it is not using.
-        float under = layout.PlayerCard.End.Y + 10f;
-
-        if (_quickTray != null)
-        {
-            _quickTray.Position = new Vector2(layout.PlayerCard.Position.X, under);
-            _quickTray.Size = new Vector2(HudLayout.CardWidth, QuickTray.Height);
-            under += _quickTray.Visible ? QuickTray.Height + 10f : 0f;
-        }
-
-        if (_seasonPass != null)
-        {
-            _seasonPass.Position = new Vector2(layout.PlayerCard.Position.X, under);
-            _seasonPass.Size = new Vector2(HudLayout.CardWidth, _seasonPass.Size.Y);
-        }
-
+        Place(_clock, layout.Clock);
+        Place(_xpBar, layout.XpBar);
         Place(_currency, layout.Currency);
         Place(_quest, layout.Quest);
 
@@ -387,162 +370,110 @@ public partial class HudView : Control
     }
 
     // ---------------------------------------------------------------------------------------------
-    // 2.1 Player card
+    // The top-left corner: who you are, the clock, and what you are working on
     // ---------------------------------------------------------------------------------------------
 
     /// <summary>
-    /// Top left: who you are, and the buttons that open the panels about you.
+    /// Top left: who you are.
     /// </summary>
     /// <remarks>
-    /// The corner furthest from the action, because it is the part you read between fights rather
-    /// than during one.
+    /// Flush into the corner and almost entirely unbacked -- outlined text straight onto the world,
+    /// with one translucent plate under the portrait. The plate the card used to be, and the row of
+    /// buttons on it, are both gone: the buttons moved to the column's icon row, where the
+    /// reference keeps them, and a plate around four lines of outlined text is a box drawn around
+    /// nothing.
     /// </remarks>
     private void BuildPlayerCard()
     {
-        _card = new HudPanel(Style.Panel);
+        _card = new Control { MouseFilter = MouseFilterEnum.Ignore };
         AddChild(_card);
 
-        _avatar = new Portrait();
+        _avatar = new CardPortrait();
         _card.AddChild(_avatar);
 
         _name = new Label { ClipText = true, TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis }
-            .Typeset(Style.FontName, Style.Text);
+            .TypesetOverWorld(NameSize, Style.Text);
         _card.AddChild(_name);
 
         _rating = new Label { HorizontalAlignment = HorizontalAlignment.Right }
-            .Typeset(Style.FontBody, Style.Text);
+            .TypesetOverWorld(RatingSize, Style.Text);
         _card.AddChild(_rating);
 
-        // The colour is the rating, not decoration: it climbs the original's ladder from a pale
-        // blue at nothing through blue, red and orange to gold, so a star that has just appeared
-        // does not look like one that took a thousand fame to earn.
-        _ratingStar = new HudGlyph(HudIcons.Star, Fame.Colour(0, 1));
+        // The star beside the rating is the reference's own blue, not a colour that climbs with the
+        // number: the number already says how many, and a star that changes hue as well says it
+        // twice in a way that has to be learnt first.
+        _ratingStar = new HudGlyph(HudIcons.Star, CardInk.RatingStar);
         _card.AddChild(_ratingStar);
 
-        // Hidden until the player turns out to have a guild, so a guildless character never sees
-        // the card flash a row taller on the first frame.
+        // Hidden until the player turns out to have a guild, so a guildless character never sees a
+        // shield with nothing beside it.
         _guildRow = new Control { MouseFilter = MouseFilterEnum.Ignore, Visible = false };
         _card.AddChild(_guildRow);
 
-        _guildDot = new HudGlyph(HudIcons.Dot, Style.Guild);
+        _guildDot = new HudGlyph(HudIcons.Shield, CardInk.Guild);
         _guildRow.AddChild(_guildDot);
 
-        _guild = new Label().Typeset(Style.FontSmall, Style.Guild);
+        _guild = new Label().TypesetOverWorld(GuildSize, CardInk.Guild);
         _guildRow.AddChild(_guild);
 
-        _cardIcons = new Control { MouseFilter = MouseFilterEnum.Ignore };
-        _card.AddChild(_cardIcons);
+        _clock = new ClockLine();
+        AddChild(_clock);
 
-        // The row is the whole of the card's navigation now. Pets went with the system that never
-        // existed here, and the button stack under the card went with it -- Shop and News are
-        // places to visit, which is what an icon is for, and a plate the width of the card was
-        // shouting at a player who has already read it once.
-        _cardIcons.AddChild(CardIcon(HudIcons.Bust, "Account", () => AccountPressed?.Invoke()));
-        _cardIcons.AddChild(CardIcon(HudIcons.BarChart, "Stats", () => StatsPressed?.Invoke()));
-        _cardIcons.AddChild(CardIcon(HudIcons.Shop, "Shop", () => ShopPressed?.Invoke()));
-
-        _news = CardIcon(HudIcons.News, "News", () => NewsPressed?.Invoke());
-        _cardIcons.AddChild(_news);
-
-        _cardIcons.AddChild(CardIcon(HudIcons.Gear, "Settings", () => OptionsPressed?.Invoke()));
+        _xpBar = new XpBar();
+        AddChild(_xpBar);
     }
 
-    private static HudIconButton CardIcon(
-        Action<CanvasItem, Rect2, Color> icon, string tooltip, Action pressed)
-    {
-        var button = new HudIconButton(icon, tooltip, inset: 4f);
-        button.Pressed += pressed;
-        return button;
-    }
+    /// <summary>The player's own name, which is the largest string outside the column.</summary>
+    private const int NameSize = 34;
+
+    private const int RatingSize = 28;
+    private const int GuildSize = 28;
 
     /// <summary>
-    /// Places the card's contents: a portrait, two lines beside it, and the icon row under both.
+    /// Places the portrait, the two lines beside it and the rating against the far edge.
     /// </summary>
     /// <remarks>
-    /// The guild line is hidden for a player without one and leaves no gap, because it sits in the
-    /// column beside the portrait rather than in a row of its own -- the card is as tall as the
-    /// portrait either way.
+    /// The guild line is hidden for a player without one and leaves no gap: it sits under the name
+    /// in the column beside the portrait, and the corner is as tall as the portrait either way.
     /// </remarks>
     private void LayoutCard(Vector2 size)
     {
-        const float Pad = 8f;
-
-        _avatar.Position = new Vector2(Pad, 5f);
+        _avatar.Position = new Vector2(HudLayout.AvatarLeft, HudLayout.AvatarTop);
         _avatar.Size = new Vector2(HudLayout.AvatarSize, HudLayout.AvatarSize);
 
-        float textLeft = Pad + HudLayout.AvatarSize + 10f;
+        const float textLeft = HudLayout.CardTextLeft;
 
-        // The rating and its star are right-aligned against the panel's inner edge, and the name
-        // truncates rather than running under them.
-        var star = new Rect2(size.X - Pad - 16f, 6f, 16f, 16f);
+        // The rating and its star are right-aligned against the far edge of the corner, and the
+        // name truncates rather than running under them.
+        var star = new Rect2(size.X - 12f - 30f, 22f, 30f, 30f);
         _ratingStar.Position = star.Position;
         _ratingStar.Size = star.Size;
 
-        _rating.Position = new Vector2(textLeft, 5f);
-        _rating.Size = new Vector2(star.Position.X - 6f - textLeft, 18f);
+        _rating.Position = new Vector2(star.Position.X - 90f, 20f);
+        _rating.Size = new Vector2(84f, 34f);
 
-        _name.Position = new Vector2(textLeft, 3f);
-        _name.Size = new Vector2(180f, 22f);
+        _name.Position = new Vector2(textLeft, 6f);
+        _name.Size = new Vector2(_rating.Position.X - 10f - textLeft, 36f);
 
-        _guildRow.Position = new Vector2(textLeft + 2f, 30f);
-        _guildRow.Size = new Vector2(size.X - textLeft - Pad, 16f);
-        _guildDot.Position = new Vector2(0f, 4f);
-        _guildDot.Size = new Vector2(8f, 8f);
-        _guild.Position = new Vector2(12f, 0f);
-        _guild.Size = new Vector2(_guildRow.Size.X - 12f, 16f);
-
-        // The icons sit on the bottom edge either way, which keeps the card's own padding even
-        // whichever of the two heights it is.
-        _cardIcons.Position = new Vector2(0f, size.Y - 32f);
-        _cardIcons.Size = new Vector2(size.X, 28f);
-
-        // Three together on the left; settings pushed to the far right, as the reference has it.
-        float[] x = { 10f, 52f, 94f, 136f, size.X - Pad - 28f };
-        for (int i = 0; i < _cardIcons.GetChildCount() && i < x.Length; i++)
-        {
-            var button = _cardIcons.GetChild<Control>(i);
-            button.Position = new Vector2(x[i], 0f);
-            button.Size = new Vector2(28f, 28f);
-        }
+        _guildRow.Position = new Vector2(textLeft, 42f);
+        _guildRow.Size = new Vector2(size.X - textLeft, 32f);
+        _guildDot.Position = new Vector2(4f, 3f);
+        _guildDot.Size = new Vector2(24f, 26f);
+        _guild.Position = new Vector2(34f, 0f);
+        _guild.Size = new Vector2(_guildRow.Size.X - 34f, 32f);
     }
-
-    /// <summary>Shows or hides the unread mark on the news icon.</summary>
-    public void SetUnreadNews(bool unread) => _news.Badge = unread ? 1 : 0;
 
     /// <summary>
-    /// The row of quick actions under the card, and the seasonal pass under that.
+    /// Shows or hides the unread mark on the news icon.
     /// </summary>
     /// <remarks>
-    /// Both are built and both are empty: nothing in this fork's protocol carries event entries,
-    /// gifts or a pass, so each stays collapsed until something feeds it. That is the specified
-    /// behaviour for an empty tray anyway -- it collapses rather than reserving space -- and it
-    /// means the day the server does send one, there is somewhere for it to go.
+    /// The icon is on the column now. Kept as a method because the world controller calls it and
+    /// the mark is still worth carrying.
     /// </remarks>
-    private void BuildQuickTray()
+    public void SetUnreadNews(bool unread)
     {
-        _quickTray = new QuickTray();
-        _quickTray.Activated += id => QuickActionPressed?.Invoke(id);
-        AddChild(_quickTray);
-
-        _seasonPass = new SeasonPass();
-        AddChild(_seasonPass);
-    }
-
-    /// <summary>Raised with the id of whichever quick action was pressed.</summary>
-    public event Action<string> QuickActionPressed;
-
-    /// <summary>Replaces the quick actions. An empty list collapses the row.</summary>
-    public void ShowQuickActions(IReadOnlyList<QuickAction> actions)
-    {
-        _quickTray.Set(actions);
-        Reflow();
-    }
-
-    /// <summary>Shows or hides the seasonal pass. A null title hides it.</summary>
-    public void ShowSeasonPass(string title, string countdown, int tier, float progress, string body)
-    {
-        _seasonPass.Set(title, countdown, tier, progress, body);
-        Reflow();
+        if (_news != null)
+            _news.Badge = unread ? 1 : 0;
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -679,10 +610,13 @@ public partial class HudView : Control
         _iconRow = new Control { MouseFilter = MouseFilterEnum.Ignore };
         AddChild(_iconRow);
 
-        _iconRow.AddChild(ColumnIcon(HudIcons.BarChart, "Character [Tab]", () => StatsPressed?.Invoke()));
-        _iconRow.AddChild(ColumnIcon(HudIcons.Cat, "Pets", null));
+        _iconRow.AddChild(ColumnIcon(HudIcons.BarChart, "Character", () => StatsPressed?.Invoke()));
+        _iconRow.AddChild(ColumnIcon(HudIcons.Cat, "Account", () => AccountPressed?.Invoke()));
         _iconRow.AddChild(ColumnIcon(HudIcons.Alignment, "Alignment", null));
-        _iconRow.AddChild(ColumnIcon(HudIcons.Flag, "Quests", () => NewsPressed?.Invoke()));
+
+        _news = ColumnIcon(HudIcons.Flag, "News", () => NewsPressed?.Invoke());
+        _iconRow.AddChild(_news);
+
         _iconRow.AddChild(ColumnIcon(HudIcons.Sword, "Party", null));
         _iconRow.AddChild(ColumnIcon(HudIcons.Gear, "Options", () => OptionsPressed?.Invoke()));
     }
@@ -716,7 +650,7 @@ public partial class HudView : Control
         _party = new Control { MouseFilter = MouseFilterEnum.Ignore };
         AddChild(_party);
 
-        _quest = new QuestMarker();
+        _quest = new QuestTracker();
         AddChild(_quest);
 
         // Two columns, filled left to right and collapsing upward: an empty row draws nothing
@@ -757,78 +691,22 @@ public partial class HudView : Control
     }
 
     /// <summary>
-    /// Shows what the realm has asked for, or hides the marker when there is nothing.
-    /// </summary>
-    /// <param name="isNew">Whether it has only just been given, which is worth noticing.</param>
-    public void ShowQuest(string name, ushort objectType, bool isNew) =>
-        _quest?.Set(name, name == null ? default : ClassPortrait(objectType), isNew);
-
-    /// <summary>
-    /// The current quest: a portrait, a name, and a mark while it is new.
+    /// Names what the realm has asked for, over the objective panel.
     /// </summary>
     /// <remarks>
-    /// The original puts the same thing on the arrow at the edge of the screen as a tooltip, which
-    /// means it is only readable when the target is off screen and the pointer is on it. Here it is
-    /// in the column with the map and the party, where the other things you check between fights
-    /// are.
+    /// The heading tier of the tracker: the longer-running thing you are inside, which for this
+    /// server is whatever the realm is currently pointing at. The panel under it carries the
+    /// objective with a bar on it; see <see cref="RefreshQuest"/>.
     /// </remarks>
-    private sealed partial class QuestMarker : Control
+    public void ShowQuest(string name, ushort objectType, bool isNew)
     {
-        private const float PortraitSize = 32f;
-
-        private readonly Portrait _portrait;
-        private readonly Label _label;
-        private readonly Label _heading;
-
-        private bool _isNew;
-
-        public QuestMarker()
-        {
-            MouseFilter = MouseFilterEnum.Ignore;
-            Visible = false;
-
-            _portrait = new Portrait
-            {
-                Position = new Vector2(0f, 6f),
-                Size = new Vector2(PortraitSize, PortraitSize),
-            };
-            AddChild(_portrait);
-
-            _heading = new Label { Text = "QUEST", Position = new Vector2(PortraitSize + 8f, 2f) }
-                .Typeset(Style.FontSmall, Style.StatLabel);
-            _heading.Size = new Vector2(200f, 14f);
-            AddChild(_heading);
-
-            _label = new Label
-            {
-                ClipText = true,
-                TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
-                Position = new Vector2(PortraitSize + 8f, 16f),
-                Size = new Vector2(200f, 20f),
-            }.Typeset(Style.FontBody, Style.Text);
-            AddChild(_label);
-        }
-
-        public void Set(string name, Assets.Sprite portrait, bool isNew)
-        {
-            Visible = !string.IsNullOrEmpty(name);
-            if (!Visible)
-                return;
-
-            if (_label.Text != name)
-                _label.Text = name;
-
-            // The frame carries the state: amber while the quest is new, then the ordinary border.
-            _portrait.Set(portrait, isNew ? Style.FameFill : Style.SlotBorder);
-
-            if (_isNew == isNew)
-                return;
-
-            _isNew = isNew;
-            _heading.AddThemeColorOverride("font_color", isNew ? Style.FameFill : Style.StatLabel);
-            QueueRedraw();
-        }
+        _questName = name ?? string.Empty;
+        _questIsNew = isNew;
     }
+
+    private string _questName = string.Empty;
+
+    private bool _questIsNew;
 
     /// <summary>Lists the nearby players. Writes into the existing rows rather than rebuilding them.</summary>
     public void ShowParty(IReadOnlyList<PartyMember> members)
@@ -1230,19 +1108,50 @@ public partial class HudView : Control
         if (guild && _guild.Text != player.Guild)
             _guild.Text = player.Guild;
 
-        // The rating is the character's own stars, on the original's fame thresholds, and its
-        // colour is the rung of the ladder it is on.
+        // The rating is the character's own stars, on the original's fame thresholds.
         int stars = Fame.Stars(player.Fame);
         string rating = stars.ToString(CultureInfo.InvariantCulture);
 
         if (_rating.Text != rating)
-        {
             _rating.Text = rating;
-            _ratingStar.Tint = Fame.Colour(stars, 1);
-        }
 
         _currency.Set(player.Fame, player.Credits);
-        _avatar.Set(ClassPortrait(player.ObjectType), Style.SlotBorder);
+        _avatar.Set(ClassPortrait(player.ObjectType));
+
+        _clock.Set(player.Level);
+        _xpBar.Set(player.Level >= 0 && player.Level < MaxLevel && player.NextLevelExperience > 0
+            ? player.Experience / (float)player.NextLevelExperience
+            : 1f);
+
+        RefreshQuest(player);
+    }
+
+    /// <summary>
+    /// The objective tracker: what the realm is pointing at, and the class quest under it.
+    /// </summary>
+    /// <remarks>
+    /// Two tiers because the reference has two, and both are things this server actually sends.
+    /// The heading is the realm's current target; the panel is the class quest, which is the one
+    /// long-running objective a character has -- fame towards the next star, with the star count
+    /// in the tally box at the end of the bar.
+    /// </remarks>
+    private void RefreshQuest(LocalPlayer player)
+    {
+        int stars = Fame.Stars(player.Fame);
+        int goal = Fame.NextThreshold(player.Fame);
+
+        string progress = goal > 0
+            ? $"{player.Fame}/{goal}"
+            : player.Fame.ToString(CultureInfo.InvariantCulture);
+
+        _quest.Set(
+            _questName,
+            _questIsNew ? "NEW" : string.Empty,
+            "Class Quest",
+            goal > 0 ? $"{goal - player.Fame} to go" : "complete",
+            progress,
+            goal > 0 ? player.Fame / (float)goal : 1f,
+            stars.ToString(CultureInfo.InvariantCulture));
     }
 
     /// <summary>

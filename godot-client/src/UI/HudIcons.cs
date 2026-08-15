@@ -584,6 +584,14 @@ public static class HudIcons
         into.DrawColoredPolygon(Map(box, 0.06f, 0.72f, 0.20f, 0.58f, 0.32f, 0.70f, 0.18f, 0.84f), colour);
     }
 
+    /// <summary>A guild, as the shield the reference puts before its name.</summary>
+    public static void Shield(CanvasItem into, Rect2 box, Color colour)
+    {
+        into.DrawColoredPolygon(
+            Map(box, 0.50f, 0.04f, 0.92f, 0.20f, 0.88f, 0.62f, 0.50f, 0.96f, 0.12f, 0.62f, 0.08f, 0.20f),
+            colour);
+    }
+
     /// <summary>The vault: a strongbox with a band and a lock across it.</summary>
     public static void Vault(CanvasItem into, Rect2 box, Color colour)
     {

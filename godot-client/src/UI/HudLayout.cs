@@ -177,11 +177,26 @@ public readonly struct HudLayout
     public const int PartyRows = 4;
 
     // --- Player card ---------------------------------------------------------------------------
-    public const float CardWidth = 300f;
 
-    public const float CardHeight = 88f;
+    /// <summary>
+    /// The identity block in the top-left corner: portrait, name, guild and rating.
+    /// </summary>
+    /// <remarks>
+    /// Flush to both edges rather than inset by a margin. There is no plate under it in the
+    /// reference -- only the portrait carries one -- so a margin would be a gap around nothing.
+    /// </remarks>
+    public const float CardWidth = 420f;
 
-    public const float AvatarSize = 48f;
+    public const float CardHeight = 80f;
+
+    /// <summary>The portrait's plate, which is the only opaque thing in the corner.</summary>
+    public const float AvatarSize = 72f;
+
+    public const float AvatarLeft = 7f;
+    public const float AvatarTop = 7f;
+
+    /// <summary>Where the name and the guild start, clear of the portrait.</summary>
+    public const float CardTextLeft = 87f;
 
     // --- Chat ----------------------------------------------------------------------------------
     public const float ChatWidth = 530f;
@@ -352,7 +367,13 @@ public readonly struct HudLayout
         Mathf.Clamp(Mathf.FloorToInt((_size.Y - PartyTop) / PartyRowHeight), 0, PartyRows);
 
     /// <summary>Top left: who you are.</summary>
-    public Rect2 PlayerCard => new(Margin, Margin, CardWidth, CardHeight);
+    public Rect2 PlayerCard => new(0f, 0f, CardWidth, CardHeight);
+
+    /// <summary>Under it: the time, and how far through the level the character is.</summary>
+    public Rect2 Clock => new(13f, 84f, 300f, 36f);
+
+    /// <summary>A rule across the corner, under the clock.</summary>
+    public Rect2 XpBar => new(60f, 140f, 353f, 4f);
 
     /// <summary>
     /// Left of the column, along the top: gems and coins.
@@ -363,8 +384,8 @@ public readonly struct HudLayout
     /// </remarks>
     public Rect2 Currency => new(ColumnLeft - 14f - 300f, 22f, 300f, 30f);
 
-    /// <summary>Under the card: what the realm wants killed next.</summary>
-    public Rect2 Quest => new(Margin, PlayerCard.End.Y + 58f, 390f, 92f);
+    /// <summary>Under the experience bar: the heading and the objective panel under it.</summary>
+    public Rect2 Quest => new(16f, 164f, 396f, 103f);
 
     /// <summary>Bottom left: the log.</summary>
     public Rect2 Chat => new(
@@ -410,7 +431,9 @@ public readonly struct HudLayout
     /// </remarks>
     public IEnumerable<(string Name, Rect2 Rect, bool Interactive)> Clusters()
     {
-        yield return ("player-card", PlayerCard, true);
+        // The corner is outlined text over the world with one plate under the portrait, and none
+        // of it is a button any more -- the panels it used to open are on the column's icon row.
+        yield return ("player-card", PlayerCard, false);
         yield return ("quest", Quest, false);
         yield return ("currency", Currency, false);
         yield return ("column", Column, true);
