@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using Godot;
 
@@ -335,7 +336,133 @@ public sealed partial class PotionCell : Control
     }
 
     /// <summary>How many are held, which is the largest number in the column after the bars.</summary>
-    private const int CountSize = 28;
+    private const int CountSize = 36;
+}
+
+/// <summary>
+/// The bottom of the column while the player is standing on something they can enter.
+/// </summary>
+/// <remarks>
+/// It takes the space the world's name and the player list occupy rather than opening somewhere
+/// else on the screen, which is what the reference does: the thing under your feet and the list of
+/// who else is in the room are never both worth reading at the same moment. The name of the place
+/// is centred over a steel plate, with whatever is left on the clock under it.
+/// </remarks>
+public sealed partial class InteractBlock : Control
+{
+    private const int TitleSize = 36;
+    private const int CountdownSize = 28;
+
+    /// <summary>How far down the block the first line of the name sits.</summary>
+    private const float TitleTop = 34f;
+
+    private const float LineHeight = 40f;
+
+    private readonly HudMenuButton _button;
+    private readonly List<string> _lines = new();
+
+    private string _title = string.Empty;
+    private string _countdown = string.Empty;
+
+    public InteractBlock()
+    {
+        MouseFilter = MouseFilterEnum.Ignore;
+        Visible = false;
+
+        _button = new HudMenuButton("Enter");
+        _button.Pressed += () => Pressed?.Invoke();
+        AddChild(_button);
+    }
+
+    public event Action Pressed;
+
+    /// <summary>Where the plate goes, in this block's own coordinates.</summary>
+    public Rect2 ButtonRect
+    {
+        set
+        {
+            _button.Position = value.Position;
+            _button.Size = value.Size;
+        }
+    }
+
+    /// <summary>Sets the place's name and the verb on the plate. An empty name hides the block.</summary>
+    public void Set(string title, string verb, string countdown)
+    {
+        Visible = !string.IsNullOrEmpty(title);
+
+        if (_title == title && _countdown == countdown)
+            return;
+
+        _title = title ?? string.Empty;
+        _countdown = countdown ?? string.Empty;
+        _button.Label = verb;
+
+        Wrap();
+        QueueRedraw();
+    }
+
+    /// <summary>
+    /// Breaks the name over as many lines as it needs.
+    /// </summary>
+    /// <remarks>
+    /// The reference wraps rather than shrinking or trimming -- "Daily Quest Room" is two lines in
+    /// its own crop -- because the name is what tells you which of two portals you are standing on
+    /// and half of it is worse than a second line.
+    /// </remarks>
+    private void Wrap()
+    {
+        _lines.Clear();
+
+        float room = Size.X - 40f;
+        string line = string.Empty;
+
+        foreach (string word in _title.Split(' '))
+        {
+            string candidate = line.Length == 0 ? word : line + " " + word;
+
+            if (line.Length > 0 && Style.Measure(candidate, TitleSize) > room)
+            {
+                _lines.Add(line);
+                line = word;
+                continue;
+            }
+
+            line = candidate;
+        }
+
+        if (line.Length > 0)
+            _lines.Add(line);
+    }
+
+    public override void _Notification(int what)
+    {
+        base._Notification(what);
+
+        if (what == NotificationResized)
+            Wrap();
+    }
+
+    public override void _Draw()
+    {
+        for (int i = 0; i < _lines.Count; i++)
+        {
+            string line = _lines[i];
+
+            this.DrawOverWorld(
+                new Vector2(Mathf.Round((Size.X - Style.Measure(line, TitleSize)) / 2f),
+                    TitleTop + i * LineHeight),
+                line, TitleSize, Style.Text);
+        }
+
+        if (_countdown.Length == 0)
+            return;
+
+        this.DrawOverWorld(
+            new Vector2(Mathf.Round((Size.X - Style.Measure(_countdown, CountdownSize)) / 2f),
+                _button.Position.Y + _button.Size.Y + 28f),
+            _countdown, CountdownSize, CardInk.Countdown);
+    }
 }
 
 /// <summary>
@@ -415,5 +542,5 @@ public sealed partial class PartyRow : Control
     }
 
     /// <summary>A name in the list, set at the same size as the bars' own labels.</summary>
-    private const int NameSize = 24;
+    private const int NameSize = 28;
 }

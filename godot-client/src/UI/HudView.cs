@@ -106,7 +106,7 @@ public partial class HudView : Control
 
 
 
-    private Label _prompt;
+    private InteractBlock _prompt;
 
     // --- Events --------------------------------------------------------------------------------
 
@@ -234,8 +234,11 @@ public partial class HudView : Control
 
         if (_prompt != null)
         {
-            _prompt.Position = new Vector2(layout.ColumnLeft / 2f - 220f, layout.Size.Y - 150f);
-            _prompt.Size = new Vector2(440f, 24f);
+            var block = layout.Interact;
+            Place(_prompt, block);
+
+            var plate = layout.InteractButton;
+            _prompt.ButtonRect = new Rect2(plate.Position - block.Position, plate.Size);
         }
     }
 
@@ -666,7 +669,7 @@ public partial class HudView : Control
     }
 
     /// <summary>The world's name, which is the quietest heading in the column.</summary>
-    private const int WorldNameSize = 26;
+    private const int WorldNameSize = 30;
 
     /// <summary>
     /// Says which world this is and how full it is.
@@ -862,7 +865,7 @@ public partial class HudView : Control
     }
 
     /// <summary>The figure an empty carried slot carries, which is half the height of the cell.</summary>
-    private const int EmptySlotNumberSize = 40;
+    private const int EmptySlotNumberSize = 56;
 
     private ColumnTab NewTab(Action<CanvasItem, Rect2, Color> icon, string tooltip, int page)
     {
@@ -1051,13 +1054,11 @@ public partial class HudView : Control
 
     private void BuildPrompt()
     {
-        // Over the world rather than in a panel, because it refers to something in front of the
-        // player rather than to their own state.
-        _prompt = new Label
-        {
-            HorizontalAlignment = HorizontalAlignment.Center,
-            Visible = false,
-        }.Typeset(Style.FontBody, Style.Text);
+        // At the foot of the column rather than over the world: it names a place you can go, which
+        // is the same kind of thing as the name of the place you are already in, and the reference
+        // puts the two in the same rectangle.
+        _prompt = new InteractBlock();
+        _prompt.Pressed += PressInteract;
 
         AddChild(_prompt);
     }
@@ -1311,12 +1312,72 @@ public partial class HudView : Control
         if (_prompt == null)
             return;
 
-        bool show = !string.IsNullOrEmpty(label);
-        if (_prompt.Visible != show)
-            _prompt.Visible = show;
+        var (verb, name) = Split(label);
+        _prompt.Set(name, verb, string.Empty);
 
-        if (show)
-            _prompt.Text = $"[{InteractKey()}] {label}";
+        // The world's name and the list of who is in it live in the same rectangle, so they stand
+        // aside while there is something under the player's feet.
+        bool free = !_prompt.Visible;
+        if (_worldLabel != null && _worldLabel.Visible != free)
+        {
+            _worldLabel.Visible = free;
+            _party.Visible = free;
+        }
+    }
+
+    /// <summary>
+    /// Splits an interaction's label into the verb the plate carries and the name over it.
+    /// </summary>
+    /// <remarks>
+    /// The tracker writes one sentence -- "Enter Nexus Portal" -- because that is what a one-line
+    /// prompt needed. The block wants the two halves apart, and the verbs are a closed set, so they
+    /// are matched rather than the first word being taken on faith.
+    /// </remarks>
+    private static (string Verb, string Name) Split(string label)
+    {
+        if (string.IsNullOrEmpty(label))
+            return (string.Empty, string.Empty);
+
+        foreach (var (prefix, verb) in Verbs)
+        {
+            if (label.StartsWith(prefix, StringComparison.Ordinal))
+                return (verb, label[prefix.Length..]);
+        }
+
+        return ("Use", label);
+    }
+
+    private static readonly (string Prefix, string Verb)[] Verbs =
+    {
+        ("Enter ", "Enter"),
+        ("Open ", "Open"),
+        ("Buy from ", "Buy"),
+    };
+
+    /// <summary>
+    /// Fires the interact action, as though its key had been pressed.
+    /// </summary>
+    /// <remarks>
+    /// The plate does not know what interacting means and should not: the world already listens for
+    /// one action, and pressing the plate is the same gesture as pressing the key bound to it. The
+    /// release comes a frame later, because an action pressed and released inside one frame is
+    /// never seen as just-pressed by anything reading it.
+    /// </remarks>
+    private void PressInteract()
+    {
+        Input.ActionPress("interact");
+        _releaseInteractIn = 2;
+    }
+
+    private int _releaseInteractIn;
+
+    public override void _Process(double delta)
+    {
+        if (_releaseInteractIn <= 0)
+            return;
+
+        if (--_releaseInteractIn == 0)
+            Input.ActionRelease("interact");
     }
 
     /// <summary>Shows a container's contents, or hides the panel when given null.</summary>

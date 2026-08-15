@@ -482,14 +482,15 @@ public sealed partial class SlotView : Control
 
         if (_sprite.IsValid)
         {
-            float tag = Style.Measure(Hotkey, Style.FontTag);
+            int caption = TagSize;
+            float tag = Style.Measure(Hotkey, caption);
             this.DrawToken(
-                new Vector2(Size.X - tag - 4f, Style.FontTag + 4f), Hotkey, Style.FontTag, Style.TextDim);
+                new Vector2(Size.X - tag - 4f, caption + 2f), Hotkey, caption, Style.TextDim);
             return;
         }
 
         // The scale's own figure, unless the slot is too short to hold it.
-        int size = Mathf.Min(EmptyNumberSize, (int)(Size.Y * 0.62f));
+        int size = Mathf.Min(EmptyNumberSize, (int)(Size.Y * 0.78f));
         float width = Style.Measure(Hotkey, size);
         float baseline = Style.BaselineIn(Size.Y, size);
 
@@ -563,9 +564,20 @@ public sealed partial class SlotView : Control
         if (tag == null || !_sprite.IsValid)
             return;
 
-        float width = Style.Measure(tag, Style.FontTag);
+        int size = TagSize;
+        float width = Style.Measure(tag, size);
 
-        this.DrawToken(
-            new Vector2(Size.X - width - 3f, Size.Y - 4f), tag, Style.FontTag, Style.TierColour(tag));
+        this.DrawToken(new Vector2(Size.X - width - 3f, Size.Y - 4f), tag, size, Style.TierColour(tag));
     }
+
+    /// <summary>
+    /// How big a slot's corner captions are set, which follows the slot.
+    /// </summary>
+    /// <remarks>
+    /// The same view draws a 26-pixel trade offer and a 79-pixel carried square, and one figure
+    /// cannot serve both: at the trade size a 28-pixel tag is the whole slot, and at the carried
+    /// size a 14-pixel one is a smudge. A third of the slot's height is what the reference draws --
+    /// its <c>ST</c> stands seventeen pixels in a seventy-five-pixel cell.
+    /// </remarks>
+    private int TagSize => Mathf.Clamp(Mathf.RoundToInt(Size.Y * 0.36f), Style.FontTag, 30);
 }

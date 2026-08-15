@@ -363,11 +363,16 @@ public sealed partial class QuestTracker : Control
             }
         }
 
-        // On the fill and dark, because the fill is nearly white. This is the one string in the
-        // interface that is not written in a light colour.
-        this.DrawText(
-            new Vector2(bar.Position.X + 8f, bar.Position.Y + Style.BaselineIn(bar.Size.Y, BarTextSize)),
-            _progress, BarTextSize, Style.PanelEdge);
+        // Dark while the fill is under it, light once the bar has emptied out from behind it. The
+        // reference only ever shows the first case because its objectives start part-done, and a
+        // near-black figure on a near-black trough is invisible exactly when the bar says least.
+        var at = new Vector2(
+            bar.Position.X + 8f, bar.Position.Y + Style.BaselineIn(bar.Size.Y, BarTextSize));
+
+        if (width >= 8f + Style.Measure(_progress, BarTextSize))
+            this.DrawText(at, _progress, BarTextSize, Style.PanelEdge);
+        else
+            this.DrawOverWorld(at, _progress, BarTextSize, Style.TextDim);
 
         var box = new Rect2(bar.End.X + 4f, row.Position.Y, Tally, row.Size.Y);
         DrawRect(box, CardInk.Badge);

@@ -199,10 +199,12 @@ public readonly struct HudLayout
     public const float CardTextLeft = 87f;
 
     // --- Chat ----------------------------------------------------------------------------------
-    public const float ChatWidth = 530f;
+    public const float ChatWidth = 640f;
 
-    public const float ChatHeight = 195f;
-    public const float ChatBottomMargin = 22f;
+    public const float ChatHeight = 240f;
+
+    /// <summary>The folded row sits on the screen's bottom edge, not on a margin off it.</summary>
+    public const float ChatBottomMargin = 6f;
 
     // --- Kept for the panels that measure against the old bottom-centre cluster ----------------
 
@@ -389,15 +391,15 @@ public readonly struct HudLayout
 
     /// <summary>Bottom left: the log.</summary>
     public Rect2 Chat => new(
-        Margin, _size.Y - ChatBottomMargin - ChatHeight, ChatWidth, ChatHeight);
+        0f, _size.Y - ChatBottomMargin - ChatHeight, ChatWidth, ChatHeight);
 
     // --- Secondary interface -----------------------------------------------------------------
 
     /// <summary>The character panel and every panel that follows it.</summary>
-    public const float ModalWidth = 428f;
+    public const float ModalWidth = 432f;
 
     /// <summary>The gap between the panel and the column beside it.</summary>
-    public const float ModalGutter = 12f;
+    public const float ModalGutter = 10f;
 
     /// <summary>
     /// The shortest the panel is allowed to be. Under this its list scrolls rather than shrinking
@@ -417,9 +419,22 @@ public readonly struct HudLayout
     /// </remarks>
     public Rect2 Modal => new(
         ColumnLeft - ModalGutter - ModalWidth,
-        0f,
+        4f,
         ModalWidth,
-        Mathf.Max(ModalMinHeight, _size.Y));
+        Mathf.Max(ModalMinHeight, _size.Y - 8f));
+
+    /// <summary>
+    /// The bottom of the column, when the player is standing on something they can enter.
+    /// </summary>
+    /// <remarks>
+    /// It takes the space the world's name and the player list occupy, rather than opening
+    /// somewhere else: what is under your feet is more urgent than who else is in the room, and
+    /// the two never need reading at the same moment.
+    /// </remarks>
+    public Rect2 Interact => InColumn(0f, WorldNameTop, ColumnWidth, Mathf.Max(0f, _size.Y - WorldNameTop));
+
+    /// <summary>The steel plate in that block, which is where the reference puts it exactly.</summary>
+    public Rect2 InteractButton => InColumn(27f, 996f, 306f, 53f);
 
     /// <summary>
     /// Every cluster, named, and whether it takes the pointer.

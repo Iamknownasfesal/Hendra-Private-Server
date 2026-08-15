@@ -88,7 +88,18 @@ public partial class HudBar : Control
     private float _shown;
     private float _chip;
 
-    public HudBar(Color fill, Color high, int fontSize = 24)
+    /// <summary>
+    /// What a bar's label and value are set at.
+    /// </summary>
+    /// <remarks>
+    /// Thirty, which is the size at which this face's capitals stand sixteen pixels tall -- the
+    /// height the reference's own do. It is the largest type in the interface and deliberately so:
+    /// these three strings are the ones that have to be readable without looking away from what is
+    /// hitting you.
+    /// </remarks>
+    public const int BarFontSize = 30;
+
+    public HudBar(Color fill, Color high, int fontSize = BarFontSize)
     {
         _fill = fill;
         _high = high;
@@ -328,7 +339,7 @@ public partial class HudIconButton : Control
 /// </remarks>
 public partial class HudMenuButton : Control
 {
-    private readonly string _label;
+    private string _label;
 
     private bool _hovered;
     private bool _held;
@@ -344,6 +355,20 @@ public partial class HudMenuButton : Control
 
     public event Action Pressed;
 
+    /// <summary>What the plate says. Settable, because the interact plate changes verb.</summary>
+    public string Label
+    {
+        get => _label;
+        set
+        {
+            if (_label == value)
+                return;
+
+            _label = value ?? string.Empty;
+            QueueRedraw();
+        }
+    }
+
     /// <summary>
     /// The face colour, for the one button that carries the accent.
     /// </summary>
@@ -351,7 +376,14 @@ public partial class HudMenuButton : Control
     /// Special Offer, and nothing else. One saturated thing in the corner is a thing being pointed
     /// at; three are a decorated corner.
     /// </remarks>
-    public Color Face { get; set; } = Style.ButtonFace;
+    public Color Face
+    {
+        get => Plate.Face;
+        set => Plate = Plate with { Face = value };
+    }
+
+    /// <summary>The whole plate -- face, light frame and dark foot -- picked as one thing.</summary>
+    public Style.ButtonPlate Plate { get; set; } = Style.PlateSteel;
 
     /// <summary>
     /// Whether the button is refusing presses.
@@ -417,10 +449,22 @@ public partial class HudMenuButton : Control
         var full = new Rect2(Vector2.Zero, Size);
 
         var face = _disabled ? Face.Darkened(0.45f)
-            : _hovered && !_held ? Face.Lerp(Style.ButtonHover, 0.6f)
+            : _held ? Face.Darkened(0.25f)
+            : _hovered ? Face.Lightened(0.18f)
             : Face;
 
-        DrawRect(full, face);
+        // The plate sits on whatever is behind it rather than floating over it, so a hard shadow
+        // goes down first, inset to the same width the frame's bands run at.
+        DrawRect(
+            new Rect2(full.Position.X + Style.ButtonFrameSide, full.End.Y,
+                full.Size.X - Style.ButtonFrameSide * 2f, Style.ButtonShadowHeight),
+            Style.ButtonShadow);
+
+        DrawRect(
+            new Rect2(full.Position.X + Style.ButtonFrameSide, full.Position.Y + Style.ButtonFrameTop,
+                full.Size.X - Style.ButtonFrameSide * 2f, full.Size.Y - Style.ButtonFrameTop * 2f),
+            face);
+
         DrawBevel(full, inverted: _held);
 
         // The label shifts with the plate, so a held button reads as pressed rather than as
@@ -440,16 +484,32 @@ public partial class HudMenuButton : Control
         DrawRect(new Rect2(Size.X - 8f, 4f, 4f, 4f), Style.HpFill);
     }
 
-    /// <summary>The one-pixel two-tone edge that gives the plate its thickness.</summary>
+    /// <summary>
+    /// The frame that gives the plate its thickness: light along the top and both sides, dark
+    /// along the bottom, with all four corners notched out.
+    /// </summary>
+    /// <remarks>
+    /// The same shape <see cref="GameButton"/> draws, off the same measured figures, so the escape
+    /// menu's plates and the ones over the world are one button rather than two that resemble each
+    /// other. Holding swaps light for dark, which is what makes the plate read as pushed in.
+    /// </remarks>
     private void DrawBevel(in Rect2 full, bool inverted)
     {
-        var high = inverted ? Style.ButtonBevelLow : Style.ButtonBevelHigh;
-        var low = inverted ? Style.ButtonBevelHigh : Style.ButtonBevelLow;
+        var high = inverted ? Plate.Low : Plate.High;
+        var low = inverted ? Plate.High : Plate.Low;
 
-        DrawRect(new Rect2(full.Position, new Vector2(full.Size.X, 1f)), high);
-        DrawRect(new Rect2(full.Position, new Vector2(1f, full.Size.Y)), high);
-        DrawRect(new Rect2(full.Position.X, full.End.Y - 1f, full.Size.X, 1f), low);
-        DrawRect(new Rect2(full.End.X - 1f, full.Position.Y, 1f, full.Size.Y), low);
+        float side = Style.ButtonFrameSide;
+        float cap = Style.ButtonFrameTop;
+        float inner = full.Size.X - side * 2f;
+        float tall = full.Size.Y - cap * 2f;
+
+        if (inner <= 0f || tall <= 0f)
+            return;
+
+        DrawRect(new Rect2(full.Position.X + side, full.Position.Y, inner, cap), high);
+        DrawRect(new Rect2(full.Position.X, full.Position.Y + cap, side, tall), high);
+        DrawRect(new Rect2(full.End.X - side, full.Position.Y + cap, side, tall), high);
+        DrawRect(new Rect2(full.Position.X + side, full.End.Y - cap, inner, cap), low);
     }
 }
 
