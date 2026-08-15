@@ -117,7 +117,18 @@ public partial class GameButton : Button
         else if (_glow > 0f)
             face = face.Lerp(face.Lightened(0.18f), _glow);
 
-        DrawRect(full, face);
+        // The plate sits on the page rather than floating over it, so the shadow goes down first
+        // and the corners it would show through are left unpainted.
+        DrawRect(
+            new Rect2(full.Position.X + Style.ButtonFrameSide, full.End.Y,
+                full.Size.X - Style.ButtonFrameSide * 2f, Style.ButtonShadowHeight),
+            Style.ButtonShadow);
+
+        DrawRect(
+            new Rect2(full.Position.X + Style.ButtonFrameSide, full.Position.Y + Style.ButtonFrameTop,
+                full.Size.X - Style.ButtonFrameSide * 2f, full.Size.Y - Style.ButtonFrameTop * 2f),
+            face);
+
         DrawBevel(full, inverted: held);
 
         // The label moves with the plate, so a held button reads as pressed rather than repainted.
@@ -135,27 +146,31 @@ public partial class GameButton : Button
     }
 
     /// <summary>
-    /// The two bands that give the plate its thickness.
+    /// The frame that gives the plate its thickness: light along the top and both sides, dark
+    /// along the bottom, with all four corners notched out.
     /// </summary>
     /// <remarks>
-    /// Not an edge around all four sides. In the reference the light band sits along the top and
-    /// the dark one along the bottom, both four pixels tall and inset five pixels from each end,
-    /// leaving the corners as bare face; the sides carry nothing at all. Holding the button
-    /// swaps the two, so the plate reads as pushed in rather than repainted.
+    /// Holding the button swaps light for dark, so the plate reads as pushed in rather than
+    /// repainted. Figures come from <see cref="Style.ButtonFrameTop"/> and
+    /// <see cref="Style.ButtonFrameSide"/>, which were measured off the reference.
     /// </remarks>
     private void DrawBevel(in Rect2 full, bool inverted)
     {
         var high = inverted ? _plate.Low : _plate.High;
         var low = inverted ? _plate.High : _plate.Low;
 
-        float inset = Style.ButtonCapInset;
-        float cap = Style.ButtonCapHeight;
-        float width = full.Size.X - inset * 2f;
+        float side = Style.ButtonFrameSide;
+        float cap = Style.ButtonFrameTop;
+        float inner = full.Size.X - side * 2f;
+        float tall = full.Size.Y - cap * 2f;
 
-        if (width <= 0f)
+        if (inner <= 0f || tall <= 0f)
             return;
 
-        DrawRect(new Rect2(full.Position.X + inset, full.Position.Y, width, cap), high);
-        DrawRect(new Rect2(full.Position.X + inset, full.End.Y - cap, width, cap), low);
+        // The corners stay background, so the horizontal bands stop where the vertical ones start.
+        DrawRect(new Rect2(full.Position.X + side, full.Position.Y, inner, cap), high);
+        DrawRect(new Rect2(full.Position.X, full.Position.Y + cap, side, tall), high);
+        DrawRect(new Rect2(full.End.X - side, full.Position.Y + cap, side, tall), high);
+        DrawRect(new Rect2(full.Position.X + side, full.End.Y - cap, inner, cap), low);
     }
 }

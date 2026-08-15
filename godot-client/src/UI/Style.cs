@@ -120,18 +120,30 @@ public static class Style
     public static readonly Color ButtonHover = new("8fabab");
 
     /// <summary>
-    /// How a button plate is shaded, which is not a bevel.
+    /// The frame around a button plate: four pixels top and bottom, five down each side.
     /// </summary>
     /// <remarks>
-    /// Measured off the Options plate in the reference, x 26..327 by y 497..548: the face runs
-    /// the full width of the plate, and the lighter and darker bands are four pixels tall and
-    /// inset five pixels from each end, so they stop short of the corners instead of turning
-    /// them. Every row within a band has the same extent, so it is a cap and not a radius. The
-    /// same figures hold on the red and olive plates.
+    /// Measured off the Options plate in <c>Menu/Esc menu.png</c>, x 26..327 by y 497..548.
+    /// Reading only the horizontal runs is what makes this look like a pair of caps, and it is
+    /// not: scanning a column at x=28 shows the light colour running the plate's whole height,
+    /// so the sides are banded too. Three sides take the light colour and the bottom takes the
+    /// dark one, and all four corners are notched out to the background — the same cut-corner
+    /// habit the panels have. The same figures hold on the red and olive plates.
     /// </remarks>
-    public const int ButtonCapHeight = 4;
+    public const int ButtonFrameTop = 4;
 
-    public const int ButtonCapInset = 5;
+    public const int ButtonFrameSide = 5;
+
+    /// <summary>
+    /// The hard shadow a plate casts, five rows of it, with no blur.
+    /// </summary>
+    /// <remarks>
+    /// Measured under the Play plate in <c>Menu/New character UI.png</c>. Without it the plates
+    /// float on the page instead of sitting on it.
+    /// </remarks>
+    public static readonly Color ButtonShadow = new("1b1b1b");
+
+    public const int ButtonShadowHeight = 5;
 
     /// <summary>The way out: Quit, and every panel's Close.</summary>
     public static readonly Color ButtonDanger = new("de2d41");
