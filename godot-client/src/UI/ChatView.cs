@@ -47,8 +47,21 @@ public partial class ChatView : Control
     private HudPanel _panel;
     private ChatLog _log;
     private LineEdit _input;
-    private HudIconButton _bubble;
+    private ChatChip _bubble;
+    private ChatChip _friends;
     private Label _hint;
+
+    /// <summary>The second chip's plate, which is the one colour in the corner that is not steel.</summary>
+    private static readonly Style.ButtonPlate LavenderPlate =
+        new(new Color("b7a5c9"), new Color("e6cdff"), new Color("655f6b"));
+
+    /// <summary>How big a chip is, and how far apart the pair sit.</summary>
+    private const float ChipSize = 35f;
+
+    private const float ChipPitch = 41f;
+
+    /// <summary>Where the pair start, which is also where the folded row starts.</summary>
+    private const float ChipLeft = 9f;
 
     private double _quietFor;
     private bool _collapsed;
@@ -70,22 +83,29 @@ public partial class ChatView : Control
         _log = new ChatLog();
         _panel.AddChild(_log);
 
-        _bubble = new HudIconButton(HudIcons.SpeechBubble, "Say something [Enter]", inset: 3f);
-        _bubble.Tint = Style.TextDim;
-        _bubble.Pressed += () => BeginTyping();
+        // Two chips beside the hint, as the reference has them. Each opens the input already
+        // carrying a prefix, which is the only thing they could usefully be: the log is one place
+        // and the two marks over it are the two things you say that are not said to the room.
+        _bubble = new ChatChip(HudIcons.Bust, Style.PlateSteel, "Whisper someone");
+        _bubble.Pressed += () => BeginTyping("/tell ");
         _panel.AddChild(_bubble);
+
+        _friends = new ChatChip(HudIcons.Heart, LavenderPlate, "Say something to your guild");
+        _friends.Pressed += () => BeginTyping("/g ");
+        _panel.AddChild(_friends);
 
         _input = new LineEdit { Visible = false, PlaceholderText = "Say something" };
         _input.TextSubmitted += OnSubmitted;
         _panel.AddChild(_input);
 
-        // What the folded panel says. Bracketed, like every other key hint in the interface.
+        // What the folded row says. Bracketed, like every other key hint in the interface, and
+        // outlined because there is nothing behind it but the world.
         _hint = new Label
         {
-            Text = $"[{ChatKey()}] to chat",
+            Text = $"[{ChatKey()}] To Chat",
             VerticalAlignment = VerticalAlignment.Center,
             Visible = false,
-        }.Typeset(Style.FontBody, Style.TextDim);
+        }.TypesetOverWorld(HintSize, Style.TextDim);
         _panel.AddChild(_hint);
 
         _panel.MouseEntered += () => _quietFor = 0.0;
@@ -110,43 +130,122 @@ public partial class ChatView : Control
         Apply();
     }
 
-    /// <summary>Lays the panel out for whichever of its two states it is in.</summary>
+    /// <summary>What the hint is set at, which is a step up from the log's own text.</summary>
+    private const int HintSize = 32;
+
+    /// <summary>
+    /// Lays the corner out for whichever of its two states it is in.
+    /// </summary>
+    /// <remarks>
+    /// There is no plate in either state. The reference writes the log straight onto the world with
+    /// an outline under every line and puts nothing behind the folded row but its two chips, and a
+    /// panel here is both the largest opaque thing on the screen and the corner the player walks
+    /// into. Everything below is therefore a position, never a background.
+    /// </remarks>
     private void Apply()
     {
-        // Folded, the panel keeps its left and bottom edges and loses its height, so it grows out
+        // Folded, the corner keeps its left and bottom edges and loses its height, so it grows out
         // of the corner it lives in rather than appearing somewhere new.
         float height = _collapsed ? CollapsedHeight : _open.Size.Y;
-        float width = _collapsed ? 200f : _open.Size.X;
+        float width = _collapsed ? 320f : _open.Size.X;
 
         _panel.Position = new Vector2(_open.Position.X, _open.End.Y - height);
         _panel.Size = new Vector2(width, height);
-
-        // Open, the panel is the biggest opaque thing on the screen and it sits over the corner the
-        // player walks into. Letting a little of the world through it is the difference between a
-        // log and a wall.
-        _panel.Background = _collapsed ? Style.Panel : Style.Panel with { A = 0.78f };
+        _panel.Background = Colors.Transparent;
+        _panel.Edged = false;
 
         _log.Visible = !_collapsed;
         _input.Visible = _input.Visible && !_collapsed;
         _hint.Visible = _collapsed;
 
+        float chipTop = Mathf.Round(height - InputRow + (InputRow - ChipSize) / 2f);
+        PlaceChips(chipTop);
+
         if (_collapsed)
         {
-            _bubble.Position = new Vector2(Pad, Mathf.Round((height - 20f) / 2f));
-            _bubble.Size = new Vector2(20f, 20f);
-            _hint.Position = new Vector2(Pad + 26f, 0f);
-            _hint.Size = new Vector2(width - Pad - 30f, height);
+            _hint.Position = new Vector2(ChipLeft + ChipPitch * 2f + 8f, height - InputRow);
+            _hint.Size = new Vector2(width - ChipLeft - ChipPitch * 2f - 8f, InputRow);
             return;
         }
 
-        _log.Position = new Vector2(Pad, 6f);
-        _log.Size = new Vector2(_open.Size.X - Pad * 2f, _open.Size.Y - 6f - InputRow);
+        _log.Position = new Vector2(ChipLeft, 6f);
+        _log.Size = new Vector2(_open.Size.X - ChipLeft, _open.Size.Y - 6f - InputRow);
 
-        _bubble.Position = new Vector2(Pad, _open.Size.Y - InputRow + 2f);
-        _bubble.Size = new Vector2(26f, 26f);
+        _input.Position = new Vector2(ChipLeft + ChipPitch * 2f + 8f, _open.Size.Y - InputRow);
+        _input.Size = new Vector2(_open.Size.X - ChipLeft - ChipPitch * 2f - 8f, 30f);
+    }
 
-        _input.Position = new Vector2(Pad + 32f, _open.Size.Y - InputRow);
-        _input.Size = new Vector2(_open.Size.X - Pad * 2f - 32f, 28f);
+    private void PlaceChips(float top)
+    {
+        _bubble.Position = new Vector2(ChipLeft, top);
+        _bubble.Size = new Vector2(ChipSize, ChipSize);
+
+        _friends.Position = new Vector2(ChipLeft + ChipPitch, top);
+        _friends.Size = new Vector2(ChipSize, ChipSize);
+    }
+
+    /// <summary>
+    /// One of the two small plates beside the hint.
+    /// </summary>
+    /// <remarks>
+    /// The same frame every button in the game wears -- light on three sides, dark along the foot,
+    /// corners notched, a hard shadow under it -- at the size the reference draws these two.
+    /// </remarks>
+    private sealed partial class ChatChip : Control
+    {
+        private readonly Action<CanvasItem, Rect2, Color> _icon;
+        private readonly Style.ButtonPlate _plate;
+
+        private bool _hovered;
+
+        public ChatChip(Action<CanvasItem, Rect2, Color> icon, Style.ButtonPlate plate, string tooltip)
+        {
+            _icon = icon;
+            _plate = plate;
+            TooltipText = tooltip;
+            MouseFilter = MouseFilterEnum.Stop;
+            FocusMode = FocusModeEnum.None;
+        }
+
+        public event Action Pressed;
+
+        public override void _Ready()
+        {
+            MouseEntered += () => { _hovered = true; QueueRedraw(); };
+            MouseExited += () => { _hovered = false; QueueRedraw(); };
+        }
+
+        public override void _GuiInput(InputEvent @event)
+        {
+            if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
+            {
+                Pressed?.Invoke();
+                AcceptEvent();
+            }
+        }
+
+        public override void _Draw()
+        {
+            var full = new Rect2(Vector2.Zero, Size);
+            float side = Style.ButtonFrameSide;
+            float cap = Style.ButtonFrameTop;
+
+            DrawRect(
+                new Rect2(full.Position.X + side, full.End.Y - cap, full.Size.X - side * 2f,
+                    Style.ButtonShadowHeight),
+                Style.ButtonShadow);
+
+            DrawRect(
+                new Rect2(side, cap, full.Size.X - side * 2f, full.Size.Y - cap * 2f),
+                _hovered ? _plate.Face.Lightened(0.18f) : _plate.Face);
+
+            DrawRect(new Rect2(side, 0f, full.Size.X - side * 2f, cap), _plate.High);
+            DrawRect(new Rect2(0f, cap, side, full.Size.Y - cap * 2f), _plate.High);
+            DrawRect(new Rect2(full.Size.X - side, cap, side, full.Size.Y - cap * 2f), _plate.High);
+            DrawRect(new Rect2(side, full.Size.Y - cap, full.Size.X - side * 2f, cap), _plate.Low);
+
+            _icon(this, full.Grow(-9f), Style.Text);
+        }
     }
 
     /// <summary>
@@ -661,11 +760,31 @@ public partial class ChatView : Control
             Text(new Vector2(row.X, baseline), row.Text, line.BodyColour);
         }
 
+        /// <summary>
+        /// One run of a line, outlined.
+        /// </summary>
+        /// <remarks>
+        /// Outlined because the log has no plate under it any more: in the reference the messages
+        /// are written straight onto the world, and a black edge is the only thing holding a white
+        /// sentence off a sunlit floor.
+        /// </remarks>
         private void Text(Vector2 at, string text, Color colour) =>
-            this.DrawText(at, text, FontSize, colour);
+            this.DrawOverWorld(at, text, FontSize, colour);
 
-        private void DrawScrollbar() =>
+        /// <summary>
+        /// The scrollbar, drawn only when there is more log than room for it.
+        /// </summary>
+        /// <remarks>
+        /// The log has no plate behind it any more, and a track running the height of the corner
+        /// with nothing to scroll is a grey bar standing in the middle of the world.
+        /// </remarks>
+        private void DrawScrollbar()
+        {
+            if (Content <= Size.Y)
+                return;
+
             HudScrollbar.Draw(this, Size, Offset, Content, _draggingThumb);
+        }
 
         /// <summary>
         /// The mark that says the log has moved on without you.

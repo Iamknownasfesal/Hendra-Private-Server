@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Godot;
 using Hendra.Render;
@@ -38,14 +39,11 @@ public partial class MinimapView : Control
 
     private readonly List<(float Distance, float X, float Y, BlipKind Kind)> _blips = new(96);
 
-    private HudPanel _panel;
+    private MapFrame _panel;
     private Terrain _terrain;
     private Blips _canvas;
-    private HudIconButton _zoomIn;
-    private HudIconButton _zoomOut;
-
-    /// <summary>The side of a zoom button, in reference pixels.</summary>
-    private const float ZoomButton = 18f;
+    private ZoomButton _zoomIn;
+    private ZoomButton _zoomOut;
 
     private GameMap _map;
     private TileColors _colours;
@@ -65,7 +63,7 @@ public partial class MinimapView : Control
     {
         MouseFilter = MouseFilterEnum.Ignore;
 
-        _panel = new HudPanel(Style.PanelSolid);
+        _panel = new MapFrame();
         AddChild(_panel);
 
         _terrain = new Terrain(this);
@@ -75,15 +73,16 @@ public partial class MinimapView : Control
         _panel.AddChild(_canvas);
 
         // The keys are still there, but a control nobody can see is a control nobody uses.
-        _zoomIn = new HudIconButton(HudIcons.Plus, "Zoom in [=]", inset: 5f);
+        _zoomIn = new ZoomButton(HudIcons.Plus, "Zoom in [=]");
         _zoomIn.Pressed += () => Zoom(1);
         _panel.AddChild(_zoomIn);
 
-        _zoomOut = new HudIconButton(HudIcons.Minus, "Zoom out [-]", inset: 5f);
+        _zoomOut = new ZoomButton(HudIcons.Minus, "Zoom out [-]");
         _zoomOut.Pressed += () => Zoom(-1);
         _panel.AddChild(_zoomOut);
 
         _level = Mathf.Clamp(App.ServiceLocator.Settings?.MinimapZoom ?? 1, 0, ZoomLevels.Length - 1);
+        ShowSteps();
 
         Resized += Reflow;
         if (GetParent() is HudLayer layer)
@@ -105,20 +104,37 @@ public partial class MinimapView : Control
         _panel.Position = rect.Position;
         _panel.Size = rect.Size;
 
+        // The painted floor sits inside the frame; the frame is drawn by the panel around it.
+        var face = layout.MinimapFace;
         foreach (var child in new Control[] { _terrain, _canvas })
         {
-            child.Position = Vector2.Zero;
-            child.Size = rect.Size;
+            child.Position = face.Position - rect.Position;
+            child.Size = face.Size;
         }
 
-        // Stacked in the bottom-right corner, out of the way of the player's own mark in the middle.
+        // Stacked against the map's right edge at the top, where the reference has them: the
+        // player's own mark is in the middle of the map and the bottom corner is where a dungeon's
+        // entrance usually ends up.
         if (_zoomIn == null)
             return;
 
-        _zoomIn.Size = new Vector2(ZoomButton, ZoomButton);
-        _zoomOut.Size = new Vector2(ZoomButton, ZoomButton);
-        _zoomIn.Position = new Vector2(rect.Size.X - ZoomButton - 4f, rect.Size.Y - ZoomButton * 2f - 7f);
-        _zoomOut.Position = new Vector2(rect.Size.X - ZoomButton - 4f, rect.Size.Y - ZoomButton - 4f);
+        var side = new Vector2(HudLayout.ZoomButtonWidth, HudLayout.ZoomButtonHeight);
+        float left = rect.Size.X - HudLayout.MinimapFrame - 5f - side.X;
+
+        _zoomIn.Size = side;
+        _zoomOut.Size = side;
+        _zoomIn.Position = new Vector2(left, 7f);
+        _zoomOut.Position = new Vector2(left, 7f + side.Y + 6f);
+    }
+
+    /// <summary>Greys whichever button has no step left in it, as the reference shows them.</summary>
+    private void ShowSteps()
+    {
+        if (_zoomIn == null)
+            return;
+
+        _zoomIn.Spent = _level <= 0;
+        _zoomOut.Spent = _level >= ZoomLevels.Length - 1;
     }
 
     public void Configure(GameMap map, TileColors colours)
@@ -177,6 +193,7 @@ public partial class MinimapView : Control
             return;
 
         _level = level;
+        ShowSteps();
 
         var settings = App.ServiceLocator.Settings;
         if (settings != null)
@@ -217,6 +234,87 @@ public partial class MinimapView : Control
         _texture.Update(_image);
         _dirty = false;
         TerrainUploads++;
+    }
+
+    /// <summary>
+    /// The map's plate: black under the floor, with a light frame around all four sides.
+    /// </summary>
+    /// <remarks>
+    /// The frame's bottom edge is also the rule between the map and the icon row under it -- there
+    /// is one line there in the reference, not two touching ones, which is why the row below draws
+    /// no top edge of its own.
+    /// </remarks>
+    private sealed partial class MapFrame : Control
+    {
+        public MapFrame()
+        {
+            // The map is the one part of the column that answers a click with something other than
+            // the world, so it takes the pointer.
+            MouseFilter = MouseFilterEnum.Stop;
+        }
+
+        public override void _Draw()
+        {
+            var full = new Rect2(Vector2.Zero, Size);
+
+            DrawRect(full, ColumnInk.Frame);
+            DrawRect(full.Grow(-HudLayout.MinimapFrame), Style.PanelSolid);
+        }
+    }
+
+    /// <summary>
+    /// One of the two zoom steps, stacked against the map's right edge.
+    /// </summary>
+    /// <remarks>
+    /// Two states and no hover plate: a step that can still be taken is a light plate with a white
+    /// mark, and one that has run out is a dark plate with a grey mark. The reference draws them
+    /// exactly this way, and it means the pair say which end of the range you are at without the
+    /// pointer having to be anywhere near them.
+    /// </remarks>
+    private sealed partial class ZoomButton : Control
+    {
+        private readonly Action<CanvasItem, Rect2, Color> _icon;
+
+        private bool _spent;
+
+        public ZoomButton(Action<CanvasItem, Rect2, Color> icon, string tooltip)
+        {
+            _icon = icon;
+            TooltipText = tooltip;
+            MouseFilter = MouseFilterEnum.Stop;
+            FocusMode = FocusModeEnum.None;
+        }
+
+        public event Action Pressed;
+
+        /// <summary>Whether there is no step left in this direction.</summary>
+        public bool Spent
+        {
+            get => _spent;
+            set { _spent = value; QueueRedraw(); }
+        }
+
+        public override void _GuiInput(InputEvent @event)
+        {
+            if (@event is not InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
+                return;
+
+            AcceptEvent();
+
+            if (!_spent)
+                Pressed?.Invoke();
+        }
+
+        public override void _Draw()
+        {
+            DrawRect(new Rect2(Vector2.Zero, Size),
+                _spent ? ColumnInk.ButtonPlateSpent : ColumnInk.ButtonPlate);
+
+            // The mark is about half the plate, which is what stops a plus reading as a window
+            // divided into four.
+            var box = new Rect2(Vector2.Zero, Size).Grow(-Mathf.Round(Size.X * 0.26f));
+            _icon(this, box, _spent ? ColumnInk.ButtonPlate : Style.Text);
+        }
     }
 
     /// <summary>The painted floor, under the marks.</summary>
