@@ -30,6 +30,8 @@ public partial class GameScene : Node
     private GuildView _guild;
     private CharacterPanel _character;
     private AccountPanel _account;
+    private CharactersPanel _characters;
+    private CreateCharacterScreen _createScreen;
     private SystemMenu _menu;
 
     /// <summary>The world's own furniture: health bars and markers, in the world's coordinates.</summary>
@@ -75,6 +77,21 @@ public partial class GameScene : Node
 
     /// <summary>Opens the options page once in the world. Set from the command line.</summary>
     public bool OpenOptions { get; set; }
+
+    /// <summary>Opens the characters panel once in the world. Set from the command line.</summary>
+    public bool OpenCharacters { get; set; }
+
+    /// <summary>Which of its tabs to open on, or null for the first. Set from the command line.</summary>
+    public string CharactersTab { get; set; }
+
+    /// <summary>Opens the create-a-character page once in the world. Set from the command line.</summary>
+    public bool OpenNewCharacter { get; set; }
+
+    /// <summary>Raised when the player picks another of their characters to play.</summary>
+    public event Action<int> PlayCharacterRequested;
+
+    /// <summary>Raised when the player rolls a new character from the create page.</summary>
+    public event Action<ushort> CreateCharacterRequested;
 
     /// <summary>Which options tab to open on, or null for the first. Set from the command line.</summary>
     public string OptionsTab { get; set; }
@@ -151,6 +168,26 @@ public partial class GameScene : Node
         _account = new AccountPanel();
         _hudLayer.AddChild(_account);
 
+        // The characters panel docks under the player card, which is where the original puts it,
+        // and the create page covers the whole interface when it opens. Both are on the HUD's
+        // canvas so they are laid out in the same reference pixels the rest of the interface is.
+        _characters = new CharactersPanel
+        {
+            Dock = new Vector2(4f, HudLayout.Margin + HudLayout.CardHeight),
+        };
+
+        _characters.PlayRequested += id => PlayCharacterRequested?.Invoke(id);
+        _characters.NewCharacterRequested += ShowCreatePage;
+        _characters.BuySlotRequested += BuyCharacterSlot;
+        _characters.DeleteRequested += DeleteCharacter;
+        _characters.Loaded += roster => _createScreen?.Show(roster);
+        _hudLayer.AddChild(_characters);
+
+        _createScreen = new CreateCharacterScreen();
+        _createScreen.PlayRequested += type => CreateCharacterRequested?.Invoke(type);
+        _createScreen.Closed += () => _characters.Open();
+        _hudLayer.AddChild(_createScreen);
+
         // These three used to sit on a canvas of their own, one layer above the HUD. That put them
         // outside the only scaled canvas in the client, and Style.Sharpness -- which is global and
         // set from the HUD's scale -- then had them rasterising their text at the HUD's factor and
@@ -207,11 +244,71 @@ public partial class GameScene : Node
     }
 
     /// <summary>Opens each panel from its own button, for as long as this scene exists.</summary>
+    /// <remarks>
+    /// The card's figure opens the characters panel. That is what the original's does — the account
+    /// sheet this port grew is reached from the command line rather than from a button the original
+    /// spends on something else.
+    /// </remarks>
     private void WireCardButtons()
     {
         _hud.StatsPressed += ShowCharacter;
-        _hud.AccountPressed += ShowAccount;
+        _hud.AccountPressed += ShowCharacters;
         _hud.OptionsPressed += () => _options.Toggle();
+    }
+
+    /// <summary>The characters panel takes the same corner as the sheets, so it closes them.</summary>
+    private void ShowCharacters()
+    {
+        _character.Close();
+        _account.Close();
+        _characters.Toggle();
+    }
+
+    private void ShowCreatePage()
+    {
+        _characters.Close();
+        _createScreen.Show(_characters.Roster);
+        _createScreen.Open();
+    }
+
+    /// <summary>Scraps a character, then asks the panel for a fresh list.</summary>
+    private async void DeleteCharacter(int characterId)
+    {
+        try
+        {
+            using var client = new AppEngineClient($"http://{_host}:8888");
+            await client.PostAsync("/char/delete", new System.Collections.Generic.Dictionary<string, string>
+            {
+                ["guid"] = _guid,
+                ["password"] = _password,
+                ["charId"] = characterId.ToString(),
+            });
+        }
+        catch (Exception ex)
+        {
+            GD.PushWarning($"[characters] the character was not deleted: {ex.Message}");
+        }
+
+        _characters.Refresh();
+    }
+
+    private async void BuyCharacterSlot()
+    {
+        try
+        {
+            using var client = new AppEngineClient($"http://{_host}:8888");
+            await client.PostAsync("/account/purchaseCharSlot", new System.Collections.Generic.Dictionary<string, string>
+            {
+                ["guid"] = _guid,
+                ["password"] = _password,
+            });
+        }
+        catch (Exception ex)
+        {
+            GD.PushWarning($"[characters] the slot was not bought: {ex.Message}");
+        }
+
+        _characters.Refresh();
     }
 
     /// <summary>The two share a slot on the screen, so opening one closes the other.</summary>
@@ -371,6 +468,15 @@ public partial class GameScene : Node
             if (OpenAccountPanel && !_account.IsOpen)
                 _account.Toggle();
 
+            if (OpenCharacters && !_characters.IsOpen)
+            {
+                _characters.ShowTab(CharactersTab);
+                _characters.Open();
+            }
+
+            if (OpenNewCharacter && !_createScreen.IsOpen)
+                ShowCreatePage();
+
             if (OpenOptions && !_options.IsOpen)
             {
                 _options.ShowTab(OptionsTab);
@@ -401,6 +507,8 @@ public partial class GameScene : Node
         _controller.CharacterToggled += ShowCharacter;
 
         _account.Connect($"http://{_host}:8888", _guid, _password);
+        _characters.Connect($"http://{_host}:8888", _guid, _password);
+        _characters.CurrentCharacterId = _characterId;
         _character.Connect($"http://{_host}:8888", _guid, _password, _characterId);
 
         // The character sheet is deliberately absent from this list. It opens beside the world
@@ -547,6 +655,15 @@ public partial class GameScene : Node
             if (OpenAccountPanel && !_account.IsOpen)
                 _account.Toggle();
 
+            if (OpenCharacters && !_characters.IsOpen)
+            {
+                _characters.ShowTab(CharactersTab);
+                _characters.Open();
+            }
+
+            if (OpenNewCharacter && !_createScreen.IsOpen)
+                ShowCreatePage();
+
             if (OpenOptions && !_options.IsOpen)
             {
                 _options.ShowTab(OptionsTab);
@@ -577,6 +694,8 @@ public partial class GameScene : Node
         _controller.CharacterToggled += ShowCharacter;
 
         _account.Connect($"http://{_host}:8888", _guid, _password);
+        _characters.Connect($"http://{_host}:8888", _guid, _password);
+        _characters.CurrentCharacterId = _characterId;
         _character.Connect($"http://{_host}:8888", _guid, _password, _characterId);
 
         // The character sheet is deliberately absent from this list. It opens beside the world

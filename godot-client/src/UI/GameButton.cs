@@ -8,10 +8,9 @@ namespace Hendra.UI;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The same plate the interface uses everywhere else — a flat face with a one-pixel two-tone bevel,
-/// light along the top and left, dark along the bottom and right, inverted while held, with the
-/// label shifting a pixel down and right so the plate visibly goes in. It is
-/// <see cref="HudMenuButton"/>'s drawing, at menu sizes.
+/// The same plate the interface uses everywhere else — a flat face capped by a lighter band along
+/// the top and a darker one along the bottom, inverted while held, with the label shifting a pixel
+/// down and right so the plate visibly goes in.
 /// </para>
 /// <para>
 /// It used to be a cut-cornered, gradient-filled, drop-shadowed plate that rose under the pointer.
@@ -22,8 +21,9 @@ namespace Hendra.UI;
 /// call site keeps its <c>Pressed</c> and its <c>Disabled</c> and nothing else had to change.
 /// </para>
 /// <para>
-/// One button per screen may be <paramref name="primary"/>, which takes the interface's single
-/// saturated accent. That is the one asking to be pressed; the rest are the ways out.
+/// The plate is the label. One button per screen may be <paramref name="primary"/> and takes the
+/// olive commit plate — the action the screen exists for; the rest take steel, and the one that
+/// quits or closes is given the red plate explicitly.
 /// </para>
 /// </remarks>
 public partial class GameButton : Button
@@ -31,6 +31,7 @@ public partial class GameButton : Button
     private readonly string _label;
     private readonly bool _primary;
     private readonly bool _compact;
+    private readonly Style.ButtonPlate _plate;
 
     /// <summary>Eased towards one while hovered, so the lift is a movement rather than a jump.</summary>
     private float _glow;
@@ -43,11 +44,18 @@ public partial class GameButton : Button
     /// For a button inside a panel rather than on a menu: no width of its own, and short enough to
     /// sit in a row of them.
     /// </param>
-    public GameButton(string text, bool primary = false, bool compact = false)
+    /// <param name="plate">
+    /// Which of the interface's plates to wear. Left unset, a primary button takes the commit
+    /// plate and everything else the steel one, which is what the reference does; pass
+    /// <see cref="Style.PlateDanger"/> for the button that quits or closes.
+    /// </param>
+    public GameButton(string text, bool primary = false, bool compact = false,
+        Style.ButtonPlate? plate = null)
     {
         _label = text;
         _primary = primary;
         _compact = compact;
+        _plate = plate ?? (primary ? Style.PlateCommit : Style.PlateSteel);
 
         // The plate and the text are drawn here, so the built-in ones are cleared rather than
         // fought with.
@@ -100,25 +108,35 @@ public partial class GameButton : Button
         bool held = ButtonPressed || IsPressed();
         var full = new Rect2(Vector2.Zero, Size);
 
-        var face = _primary ? Style.ButtonPromo : Style.ButtonFace;
+        var face = _plate.Face;
 
         if (Disabled)
             face = face.Darkened(0.45f);
         else if (held)
             face = face.Darkened(0.25f);
         else if (_glow > 0f)
-            face = face.Lerp(_primary ? face.Lightened(0.22f) : Style.ButtonHover, _glow);
+            face = face.Lerp(face.Lightened(0.18f), _glow);
 
-        DrawRect(full, face);
+        // The plate sits on the page rather than floating over it, so the shadow goes down first
+        // and the corners it would show through are left unpainted.
+        DrawRect(
+            new Rect2(full.Position.X + Style.ButtonFrameSide, full.End.Y,
+                full.Size.X - Style.ButtonFrameSide * 2f, Style.ButtonShadowHeight),
+            Style.ButtonShadow);
+
+        DrawRect(
+            new Rect2(full.Position.X + Style.ButtonFrameSide, full.Position.Y + Style.ButtonFrameTop,
+                full.Size.X - Style.ButtonFrameSide * 2f, full.Size.Y - Style.ButtonFrameTop * 2f),
+            face);
+
         DrawBevel(full, inverted: held);
 
         // The label moves with the plate, so a held button reads as pressed rather than repainted.
         var shift = held ? Vector2.One : Vector2.Zero;
 
-        // Dark type on the accent: the amber is bright enough that white on it is the harder read.
-        var colour = Disabled ? Style.TextDim
-            : _primary ? Style.PanelEdge
-            : Style.Text;
+        // White on every plate. The reference sets Play and Continue in white on the olive just as
+        // it sets Options in white on the steel; only a disabled plate drops to the muted grey.
+        var colour = Disabled ? Style.TextDim : Style.Text;
 
         var at = new Vector2(
             Mathf.Round((Size.X - Style.Measure(_label, FontSize)) / 2f),
@@ -127,15 +145,32 @@ public partial class GameButton : Button
         this.DrawText(at, _label, FontSize, colour);
     }
 
-    /// <summary>The one-pixel two-tone edge that gives the plate its thickness.</summary>
+    /// <summary>
+    /// The frame that gives the plate its thickness: light along the top and both sides, dark
+    /// along the bottom, with all four corners notched out.
+    /// </summary>
+    /// <remarks>
+    /// Holding the button swaps light for dark, so the plate reads as pushed in rather than
+    /// repainted. Figures come from <see cref="Style.ButtonFrameTop"/> and
+    /// <see cref="Style.ButtonFrameSide"/>, which were measured off the reference.
+    /// </remarks>
     private void DrawBevel(in Rect2 full, bool inverted)
     {
-        var high = inverted ? Style.ButtonBevelLow : Style.ButtonBevelHigh;
-        var low = inverted ? Style.ButtonBevelHigh : Style.ButtonBevelLow;
+        var high = inverted ? _plate.Low : _plate.High;
+        var low = inverted ? _plate.High : _plate.Low;
 
-        DrawRect(new Rect2(full.Position, new Vector2(full.Size.X, 1f)), high);
-        DrawRect(new Rect2(full.Position, new Vector2(1f, full.Size.Y)), high);
-        DrawRect(new Rect2(full.Position.X, full.End.Y - 1f, full.Size.X, 1f), low);
-        DrawRect(new Rect2(full.End.X - 1f, full.Position.Y, 1f, full.Size.Y), low);
+        float side = Style.ButtonFrameSide;
+        float cap = Style.ButtonFrameTop;
+        float inner = full.Size.X - side * 2f;
+        float tall = full.Size.Y - cap * 2f;
+
+        if (inner <= 0f || tall <= 0f)
+            return;
+
+        // The corners stay background, so the horizontal bands stop where the vertical ones start.
+        DrawRect(new Rect2(full.Position.X + side, full.Position.Y, inner, cap), high);
+        DrawRect(new Rect2(full.Position.X, full.Position.Y + cap, side, tall), high);
+        DrawRect(new Rect2(full.End.X - side, full.Position.Y + cap, side, tall), high);
+        DrawRect(new Rect2(full.Position.X + side, full.End.Y - cap, inner, cap), low);
     }
 }

@@ -92,6 +92,16 @@ public partial class Boot : Control
                      $"as {_options.Guid} character {_options.CharacterId}");
             StartGame(_options.ToServer(), _options.Guid, _options.Password ?? string.Empty, _options.CharacterId);
         }
+        else if ((_options.OpenCharacters || _options.OpenNewCharacter) && !string.IsNullOrEmpty(_options.Guid))
+        {
+            // The character screens without a world behind them, which is where they are reached
+            // from before signing in. The sign-in is skipped rather than typed.
+            GD.Print($"[boot] opening the character screens as {_options.Guid}");
+            ShowLogin();
+            _login.OpenCreatePage = _options.OpenNewCharacter;
+            _login.CharactersTab = _options.CharactersTab;
+            _login.PrefillForTesting(_options.Guid, _options.Password ?? string.Empty);
+        }
         else
         {
             ShowTitle();
@@ -126,6 +136,29 @@ public partial class Boot : Control
         _deathLayer = null;
         _death = null;
         _game = null;
+    }
+
+    /// <summary>
+    /// Leaves the world for another character on the same account.
+    /// </summary>
+    /// <remarks>
+    /// The characters panel is open over a running session when this is asked for, so the session
+    /// has to come down before the next one can go up — the server drops both halves of a double
+    /// login. Everything the new session needs is what the old one connected with.
+    /// </remarks>
+    private void SwitchCharacter(ServerInfo server, string guid, string password, int characterId)
+    {
+        CloseScreens();
+        StartGame(server, guid, password, characterId);
+    }
+
+    /// <summary>The same, for a character that does not exist yet.</summary>
+    private void RollCharacter(ServerInfo server, string guid, string password, ushort classType)
+    {
+        CloseScreens();
+
+        // The server allocates the id; the one sent with the request is only a hint.
+        CreateCharacter(server, guid, password, 0, classType);
     }
 
     private void ShowLogin()
@@ -168,9 +201,14 @@ public partial class Boot : Control
         // waiting on a download before showing the world would be a poor trade.
         _ = Assets.RemoteTextures.LoadAsync(_appServerUrl, ServiceLocator.Assets, ServiceLocator.Data);
 
-        _game = new GameScene { Autofire = _options?.Autofire ?? false, AutoAbility = _options?.AutoAbility ?? false, AutoWalk = _options?.AutoWalk ?? false, OpenCharacterPanel = _options?.OpenCharacterPanel ?? false, OpenAccountPanel = _options?.OpenAccountPanel ?? false, OpenVault = _options?.OpenVault ?? false, OpenOptions = _options?.OpenOptions ?? false, OptionsTab = _options?.OptionsTab, OpenMenu = _options?.OpenMenu ?? false,
+        _game = new GameScene { Autofire = _options?.Autofire ?? false, AutoAbility = _options?.AutoAbility ?? false, AutoWalk = _options?.AutoWalk ?? false, OpenCharacterPanel = _options?.OpenCharacterPanel ?? false, OpenAccountPanel = _options?.OpenAccountPanel ?? false, OpenVault = _options?.OpenVault ?? false, OpenOptions = _options?.OpenOptions ?? false, OptionsTab = _options?.OptionsTab, OpenMenu = _options?.OpenMenu ?? false, OpenCharacters = _options?.OpenCharacters ?? false, CharactersTab = _options?.CharactersTab, OpenNewCharacter = _options?.OpenNewCharacter ?? false,
             StartingCameraAngle = _options?.CameraAngleDegrees * Mathf.Pi / 180f, ScriptedLines = new System.Collections.Generic.Queue<string>(_options?.Say ?? new System.Collections.Generic.List<string>()) };
         _game.Ended += OnSessionEnded;
+
+        // The characters panel opens over the world, so switching character and rolling a new one
+        // both start here rather than back on the sign-in page.
+        _game.PlayCharacterRequested += id => SwitchCharacter(server, guid, password, id);
+        _game.CreateCharacterRequested += type => RollCharacter(server, guid, password, type);
         _game.Died += OnCharacterDied;
 
         // AddChild runs the scene's _Ready synchronously, so the world exists by the time this
@@ -203,9 +241,14 @@ public partial class Boot : Control
         // waiting on a download before showing the world would be a poor trade.
         _ = Assets.RemoteTextures.LoadAsync(_appServerUrl, ServiceLocator.Assets, ServiceLocator.Data);
 
-        _game = new GameScene { Autofire = _options?.Autofire ?? false, AutoAbility = _options?.AutoAbility ?? false, AutoWalk = _options?.AutoWalk ?? false, OpenCharacterPanel = _options?.OpenCharacterPanel ?? false, OpenAccountPanel = _options?.OpenAccountPanel ?? false, OpenVault = _options?.OpenVault ?? false, OpenOptions = _options?.OpenOptions ?? false, OptionsTab = _options?.OptionsTab, OpenMenu = _options?.OpenMenu ?? false,
+        _game = new GameScene { Autofire = _options?.Autofire ?? false, AutoAbility = _options?.AutoAbility ?? false, AutoWalk = _options?.AutoWalk ?? false, OpenCharacterPanel = _options?.OpenCharacterPanel ?? false, OpenAccountPanel = _options?.OpenAccountPanel ?? false, OpenVault = _options?.OpenVault ?? false, OpenOptions = _options?.OpenOptions ?? false, OptionsTab = _options?.OptionsTab, OpenMenu = _options?.OpenMenu ?? false, OpenCharacters = _options?.OpenCharacters ?? false, CharactersTab = _options?.CharactersTab, OpenNewCharacter = _options?.OpenNewCharacter ?? false,
             StartingCameraAngle = _options?.CameraAngleDegrees * Mathf.Pi / 180f, ScriptedLines = new System.Collections.Generic.Queue<string>(_options?.Say ?? new System.Collections.Generic.List<string>()) };
         _game.Ended += OnSessionEnded;
+
+        // The characters panel opens over the world, so switching character and rolling a new one
+        // both start here rather than back on the sign-in page.
+        _game.PlayCharacterRequested += id => SwitchCharacter(server, guid, password, id);
+        _game.CreateCharacterRequested += type => RollCharacter(server, guid, password, type);
         _game.Died += OnCharacterDied;
         AddChild(_game);
 

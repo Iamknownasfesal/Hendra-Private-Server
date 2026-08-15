@@ -55,13 +55,13 @@ public static class KeyBindings
     public static readonly Binding[] All =
     {
         new(Movement, "move_up", "Move Up"),
-        new(Movement, "move_left", "Move Left"),
         new(Movement, "move_down", "Move Down"),
+        new(Movement, "move_left", "Move Left"),
         new(Movement, "move_right", "Move Right"),
         new(Movement, "rotate_left", "Rotate Left"),
         new(Movement, "rotate_right", "Rotate Right"),
         new(Movement, "toggle_centering", "Toggle Centering of Player"),
-        new(Movement, "reset_camera", "Reset to Default Camera Angle"),
+        new(Movement, "reset_camera", "Reset To Default Camera Angle"),
 
         new(General, "autofire", "Autofire Toggle"),
         new(General, "shoot", "Attack"),

@@ -10,7 +10,7 @@ using Hendra.World;
 namespace Hendra.UI;
 
 /// <summary>
-/// The character sheet: attributes, tallies and dungeon counts, docked to the right of the world.
+/// The character sheet: attributes, tallies and dungeon counts, docked beside the world.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -21,49 +21,138 @@ namespace Hendra.UI;
 /// panel opens and left alone until it is opened again.
 /// </para>
 /// <para>
-/// The rows are built once and mutated afterwards. A statistics list rebuilt on every refresh would
-/// allocate a few hundred nodes a second and lose the scroll position twice a second with it.
+/// Everything below the shell is drawn rather than built out of nodes. The sheet is a fixed
+/// arrangement of a dozen strings and six plates; as controls that is fifty nodes to lay out twice
+/// a second, and every one of them a place the arithmetic could disagree with the reference.
 /// </para>
 /// </remarks>
 public partial class CharacterPanel : Control
 {
-    private const float Inset = 12f;
-    private const float IdentityHeight = 96f;
-    private const float PortraitSize = 64f;
-    private const float AttributeRowHeight = 48f;
-    private const float SectionHeight = 28f;
-    private const float RowHeight = 26f;
-    private const float FooterHeight = 40f;
+    // Metrics, in the body's own pixels, measured off references/Menu/Stats UI.png against its
+    // position in references/Fullscreen/Stats fs.png. Vertical measurements are absolute because
+    // the sheet above the list is a fixed block; horizontal ones are derived from the body's width
+    // so the panel keeps its proportions whatever rectangle the layout hands it.
 
-    /// <summary>The right-hand column every value is right-aligned into.</summary>
-    private const float ValueColumn = 120f;
+    private const float Margin = 10f;
+
+    private const float PortraitLeft = 14f;
+    private const float PortraitTop = 7f;
+    private const float PortraitSize = 86f;
+    private const float TextLeft = 111f;
+    private const float NameBaseline = 36f;
+    private const float ClassBaseline = 65f;
+    private const float CreatedBaseline = 84f;
+    private const float FameIcon = 30f;
+    private const float FameIconTop = 15f;
+
+    /// <summary>The grid sits a pixel wider than the tabs and the list, as the reference does.</summary>
+    private const float CellMargin = 9f;
+
+    private const float GridTop = 109f;
+    private const float CellHeight = 54f;
+    private const float CellPitch = 72f;
+    private const float CellGap = 9f;
+    private const float CellEdge = 4f;
+
+    /// <summary>How far the cell's edges stop short of its corners, which is what rounds them.</summary>
+    private const float CellCorner = 5f;
+
+    private const float TabsTop = 331f;
+    private const float TabHeight = 47f;
+
+    /// <summary>The darkened step under a tab, where the list's shadow falls across it.</summary>
+    private const float TabFoot = 11f;
+
+    private const float TabGap = 4f;
+    private const float TabEdge = 5f;
+    private const float TabBaseline = 31f;
+
+    private const float ListTop = TabsTop + TabHeight + TabFoot;
+
+    /// <summary>The gap between the top of the list and its first plate.</summary>
+    private const float ListPad = 9f;
+
+    private const float RowPlate = 36f;
+
+    /// <summary>Plate plus gutter. Fractional because the reference's rows alternate 41 and 42.</summary>
+    private const float RowPitch = 41.5f;
+
+    private const float RowBaseline = 23f;
+    private const float GroupHeight = 46f;
+    private const float GroupBaseline = 31f;
+    private const float RowInset = 15f;
+
+    /// <summary>A figure stands further off its plate's right edge than a label does its left.</summary>
+    private const float ValueInset = 19f;
+    private const float PlateInset = 9f;
+    private const float ScrollWidth = 9f;
+
+    /// <summary>How far the last rows fade out before the footer band, as the reference does.</summary>
+    private const float ListFade = 28f;
+
+    private const float FooterHeight = 61f;
+    private const float FooterBaseline = 39f;
+    private const float FooterIcon = 40f;
+
+    // The type scale this panel is set in. The interface's shared scale tops out at 28, which is a
+    // display size on a 300-wide cluster and a body size on a sheet this large: every size below
+    // is Jersey 10 at whatever matches the cap height the reference sets that line in.
+    private const int FontSheetName = 32;
+    private const int FontSheetClass = 26;
+    private const int FontSheetCreated = 20;
+    private const int FontSheetFame = 26;
+    private const int FontCellLabel = 22;
+    private const int FontCellValue = 30;
+    private const int FontTabLabel = 26;
+    private const int FontRowLabel = 26;
+    private const int FontRowValue = 30;
+    private const int FontGroup = 32;
+    private const int FontFooterLabel = 28;
+    private const int FontFooterValue = 36;
+
+    // Colours the shared palette has no name for yet. Every one is a measurement off the reference
+    // rather than a choice; see the report that came with this panel for the tokens it wants.
+
+    /// <summary>The plate the class portrait sits on.</summary>
+    private static readonly Color PortraitPlate = new("474747");
+
+    /// <summary>A character's own name, which is duller than the gold on an attribute.</summary>
+    private static readonly Color NameGold = new("c9b200");
+
+    /// <summary>A statistic's label: not quite white, so the green beside it reads as the answer.</summary>
+    private static readonly Color RowLabel = new("e8e8e8");
+
+    private static readonly Color TabActiveEdge = new("696969");
+    private static readonly Color TabIdleFill = new("373737");
+    private static readonly Color TabIdleEdge = new("444444");
+    private static readonly Color TabIdleText = new("7b7c7d");
+    private static readonly Color TabActiveFoot = new("3e3e3e");
+    private static readonly Color TabActiveFootEdge = new("201f1f");
+    private static readonly Color TabIdleFoot = new("2e2e2e");
+    private static readonly Color TabIdleFootEdge = new("343434");
+    private static readonly Color ScrollThumb = new("666666");
 
     /// <summary>Twice a second, which is as often as any of these numbers is worth reading.</summary>
     private const double RefreshSeconds = 0.5;
 
-    private readonly List<AttributeCell> _attributes = new();
-
-    private ModalPanel _shell;
-    private Portrait _portrait;
-    private Label _name;
-    private Label _classLine;
-    private Label _created;
-    private Label _fame;
-    private Control _grid;
+    private SheetShell _shell;
+    private Sheet _sheet;
+    private TabStrip _tabs;
     private RowList _rows;
-    private Label _footerValue;
+    private Footer _footer;
 
     private GameData _data;
     private TextureResolver _textures;
     private AppEngineClient _accounts;
     private string _guid;
     private string _password;
-    private int _characterId;
+    private int _characterId = -1;
 
     private CharacterStats _stats;
     private DateTime? _createdAt;
     private double _sinceRefresh;
     private bool _fetching;
+    private int _tab;
 
     /// <summary>Whether the panel is open, so the caller can keep its own button in step.</summary>
     public bool IsOpen => _shell is { Visible: true };
@@ -77,33 +166,53 @@ public partial class CharacterPanel : Control
         _textures = new TextureResolver(assets);
     }
 
-    /// <summary>Points the panel at the app server, which is the only source of the tallies.</summary>
+    /// <summary>
+    /// Points the panel at the app server, which is the only source of the tallies.
+    /// </summary>
+    /// <remarks>
+    /// Every reconnection comes back through here -- a portal, the nexus button, a world change --
+    /// and almost always with the character that is already on show. Throwing the tallies away on
+    /// each of those emptied the list and dropped the creation date the moment the player took a
+    /// portal, and nothing asked for them again. Only a different character is a different sheet.
+    /// </remarks>
     public void Connect(string appServerUrl, string guid, string password, int characterId)
     {
         _accounts = new AppEngineClient(appServerUrl);
         _guid = guid;
         _password = password;
-        _characterId = characterId;
 
-        // A different character has different everything, including where its list was scrolled.
-        _stats = null;
-        _createdAt = null;
-        _rows?.Reset();
+        if (characterId != _characterId)
+        {
+            _characterId = characterId;
+            _stats = null;
+            _createdAt = null;
+            _rows?.Reset();
+        }
+
+        if (IsOpen)
+            Fetch();
     }
 
     public override void _Ready()
     {
         MouseFilter = MouseFilterEnum.Ignore;
 
-        _shell = new ModalPanel("Attributes");
+        _shell = new SheetShell("Attributes");
         _shell.Closed += () => Closed?.Invoke();
         AddChild(_shell);
 
-        BuildIdentity();
-        BuildGrid();
-        BuildTabs();
-        BuildRows();
-        BuildFooter();
+        _sheet = new Sheet();
+        _shell.Body.AddChild(_sheet);
+
+        _tabs = new TabStrip(Pages);
+        _tabs.Selected += Show;
+        _shell.Body.AddChild(_tabs);
+
+        _rows = new RowList();
+        _shell.Body.AddChild(_rows);
+
+        _footer = new Footer();
+        _shell.Body.AddChild(_footer);
 
         Resized += Reflow;
         if (GetParent() is HudLayer layer)
@@ -112,110 +221,14 @@ public partial class CharacterPanel : Control
         Reflow();
     }
 
-    private void BuildIdentity()
-    {
-        _portrait = new Portrait();
-        _shell.Body.AddChild(_portrait);
-
-        _name = new Label
-        {
-            ClipText = true,
-            TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
-        }.Typeset(Style.FontName, Style.Text);
-        _shell.Body.AddChild(_name);
-
-        _classLine = new Label
-        {
-            ClipText = true,
-            TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
-        }.Typeset(Style.FontSmall, Style.TextDim);
-        _shell.Body.AddChild(_classLine);
-
-        _created = new Label().Typeset(Style.FontTag, Style.TextDim);
-        _shell.Body.AddChild(_created);
-
-        _fame = new Label { HorizontalAlignment = HorizontalAlignment.Right }.Typeset(Style.FontName, Style.Text);
-        _shell.Body.AddChild(_fame);
-
-        _fameIcon = new HudGlyph(HudIcons.Fame, Style.IconFame);
-        _shell.Body.AddChild(_fameIcon);
-    }
-
-    private HudGlyph _fameIcon;
-
-    private void BuildGrid()
-    {
-        _grid = new Control { MouseFilter = MouseFilterEnum.Ignore };
-        _shell.Body.AddChild(_grid);
-    }
-
-    private void BuildTabs()
-    {
-        // No tabs. There were two pages and the second listed a dungeon completion count per
-        // dungeon, which is a table nobody opened this panel to read -- the panel is for the
-        // attributes at the top of it, and the tallies below are what you glance at afterwards.
-    }
-
-    private void BuildRows()
-    {
-        _rows = new RowList();
-        _shell.Body.AddChild(_rows);
-    }
-
-    private void BuildFooter()
-    {
-        _band = new FooterBand();
-        _shell.Body.AddChild(_band);
-
-        _footerLabel = new Label
-        {
-            Text = "Fame on Death",
-            VerticalAlignment = VerticalAlignment.Center,
-        }.Typeset(Style.FontSmall, Style.Text);
-        _shell.Body.AddChild(_footerLabel);
-
-        _footerValue = new Label
-        {
-            HorizontalAlignment = HorizontalAlignment.Right,
-            VerticalAlignment = VerticalAlignment.Center,
-        }.Typeset(Style.FontSmall, Style.StatValueMax);
-        _shell.Body.AddChild(_footerValue);
-
-        _footerIcon = new HudGlyph(HudIcons.Fame, Style.StatValueMax);
-        _shell.Body.AddChild(_footerIcon);
-    }
-
-    private Label _footerLabel;
-    private HudGlyph _footerIcon;
-    private FooterBand _band;
+    private static readonly string[] Pages = { "Stats", "Dungeons" };
 
     /// <summary>
-    /// The rule and band behind the pinned footer.
+    /// Places the panel and the four blocks in it.
     /// </summary>
     /// <remarks>
-    /// A child of the shell rather than something the panel drew on its own canvas. Drawn outside
-    /// it, it stayed on screen after the panel closed -- nothing was queueing the panel a redraw
-    /// when its shell was hidden, so the last band it painted sat over the world until something
-    /// else happened to invalidate it.
-    /// </remarks>
-    private sealed partial class FooterBand : Control
-    {
-        public FooterBand() => MouseFilter = MouseFilterEnum.Ignore;
-
-        public override void _Draw()
-        {
-            DrawRect(new Rect2(0f, 0f, Size.X, 1f), Style.ModalFrameDark);
-            DrawRect(new Rect2(0f, 1f, Size.X, Size.Y - 1f), Style.ModalBand);
-        }
-    }
-
-    /// <summary>
-    /// Places the panel and everything in it.
-    /// </summary>
-    /// <remarks>
-    /// The attribute grid's column width is derived from the panel's interior rather than written
-    /// down: the brief's 228 plus a 12 gutter plus 12 insets comes to 492 in a 480-wide panel, and
-    /// the interior is what the cells actually have to fit inside.
+    /// The rectangle comes from <see cref="HudLayout.Modal"/> rather than from anything written
+    /// down here, so that moving the panel is one edit in the layout and none in the panel.
     /// </remarks>
     private void Reflow()
     {
@@ -233,66 +246,20 @@ public partial class CharacterPanel : Control
         var body = _shell.Body;
         float width = body.Size.X;
 
-        _portrait.Position = new Vector2(Inset, Inset);
-        _portrait.Size = new Vector2(PortraitSize, PortraitSize);
+        _sheet.Position = Vector2.Zero;
+        _sheet.Size = new Vector2(width, TabsTop);
 
-        float textLeft = Inset + PortraitSize + Inset;
-        float fameWidth = 130f;
-
-        _name.Position = new Vector2(textLeft, 14f);
-        _name.Size = new Vector2(width - textLeft - fameWidth - Inset, 22f);
-
-        _classLine.Position = new Vector2(textLeft, 40f);
-        _classLine.Size = new Vector2(width - textLeft - fameWidth - Inset, 18f);
-
-        _created.Position = new Vector2(textLeft, 60f);
-        _created.Size = new Vector2(width - textLeft - fameWidth - Inset, 16f);
-
-        _fameIcon.Position = new Vector2(width - Inset - 18f, IdentityHeight / 2f - 9f);
-        _fameIcon.Size = new Vector2(18f, 18f);
-        _fame.Position = new Vector2(width - Inset - fameWidth, IdentityHeight / 2f - 12f);
-        _fame.Size = new Vector2(fameWidth - 24f, 24f);
-
-        _grid.Position = new Vector2(0f, IdentityHeight);
-        _grid.Size = new Vector2(width, GridHeight());
-        LayoutGrid();
-
-        float rowsTop = _grid.Position.Y + _grid.Size.Y;
-        float rowsHeight = Mathf.Max(0f, body.Size.Y - rowsTop - FooterHeight);
-
-        _rows.Position = new Vector2(0f, rowsTop);
-        _rows.Size = new Vector2(width, rowsHeight);
+        _tabs.Position = new Vector2(Margin, TabsTop);
+        _tabs.Size = new Vector2(width - Margin * 2f, TabHeight + TabFoot);
 
         float footerTop = body.Size.Y - FooterHeight;
 
-        _band.Position = new Vector2(0f, footerTop);
-        _band.Size = new Vector2(width, FooterHeight);
+        _rows.Position = new Vector2(Margin, ListTop);
+        _rows.Size = new Vector2(
+            Mathf.Max(0f, width - Margin * 2f - 1f), Mathf.Max(0f, footerTop - ListTop));
 
-        _footerLabel.Position = new Vector2(Inset, footerTop);
-        _footerLabel.Size = new Vector2(width / 2f, FooterHeight);
-
-        _footerIcon.Position = new Vector2(width - Inset - 16f, footerTop + FooterHeight / 2f - 8f);
-        _footerIcon.Size = new Vector2(16f, 16f);
-        _footerValue.Position = new Vector2(width - Inset - ValueColumn - 20f, footerTop);
-        _footerValue.Size = new Vector2(ValueColumn, FooterHeight);
-
-    }
-
-    /// <summary>Two cells to a row, however many attributes there turn out to be.</summary>
-    private float GridHeight() =>
-        Mathf.Ceil(Mathf.Max(_attributes.Count, 1) / 2f) * AttributeRowHeight + Inset;
-
-    private void LayoutGrid()
-    {
-        float column = (_grid.Size.X - Inset * 2f - Inset) / 2f;
-
-        for (int i = 0; i < _attributes.Count; i++)
-        {
-            _attributes[i].Position = new Vector2(
-                Inset + i % 2 * (column + Inset), i / 2 * AttributeRowHeight);
-
-            _attributes[i].Size = new Vector2(column, AttributeRowHeight);
-        }
+        _footer.Position = new Vector2(0f, footerTop);
+        _footer.Size = new Vector2(width, FooterHeight);
     }
 
     /// <summary>Closes the sheet, for whoever needs the slot it is in.</summary>
@@ -340,7 +307,6 @@ public partial class CharacterPanel : Control
 
                 _stats = character.Stats;
                 _createdAt = character.CreatedAt;
-                FillRows();
                 break;
             }
         }
@@ -352,6 +318,7 @@ public partial class CharacterPanel : Control
         finally
         {
             _fetching = false;
+            Show(_tab);
         }
     }
 
@@ -366,72 +333,34 @@ public partial class CharacterPanel : Control
             return;
 
         _sinceRefresh = 0.0;
-        RefreshIdentity(player);
-        RefreshAttributes(player);
+        RefreshSheet(player);
     }
 
-    private void RefreshIdentity(LocalPlayer player)
+    private void RefreshSheet(LocalPlayer player)
     {
         var desc = _data?.GetObject(player.ObjectType);
+        var maxima = desc?.StatMaxima;
 
-        _portrait.Set(ClassPortrait(player.ObjectType), Style.SlotBorder);
-        Write(_name, string.IsNullOrEmpty(player.Name) ? "—" : player.Name);
+        _sheet.Portrait = ClassPortrait(player.ObjectType);
+        _sheet.Name = string.IsNullOrEmpty(player.Name) ? "—" : player.Name;
+        _sheet.ClassLine = $"Level {player.Level}, {desc?.DisplayId ?? desc?.Id ?? "Adventurer"}";
 
-        string className = desc?.DisplayId ?? desc?.Id ?? "Adventurer";
-        Write(_classLine, $"Level {player.Level}, {className}");
+        // One fixed pattern rather than the machine's long date, which puts the weekday in and the
+        // month wherever the locale keeps it. A server that sends no timestamp leaves the line out
+        // rather than showing a guess.
+        _sheet.Created = _createdAt.HasValue
+            ? "Created on " + _createdAt.Value.ToLocalTime().ToString("MMMM d, yyyy", CultureInfo.InvariantCulture)
+            : string.Empty;
 
-        // Formatted in whatever the machine's locale is, from a round-trip timestamp. A server that
-        // does not send one leaves the line out rather than showing a guess.
-        Write(_created, _createdAt.HasValue
-            ? $"Created on {_createdAt.Value.ToLocalTime():D}"
-            : string.Empty);
+        _sheet.Fame = player.Fame.ToString(CultureInfo.InvariantCulture);
 
-        Write(_fame, player.Fame.ToString("N0", CultureInfo.InvariantCulture));
-
-        // Fame on death is what is banked plus whatever the bonuses come to, and the bonuses are
-        // computed server-side at the moment of death -- /char/fame refuses a living character. So
-        // this is the floor, and it is labelled as the total the character currently carries.
-        Write(_footerValue, player.Fame.ToString("N0", CultureInfo.InvariantCulture));
-    }
-
-    private static void Write(Label label, string text)
-    {
-        if (label.Text != text)
-            label.Text = text;
-    }
-
-    /// <summary>
-    /// The six attributes, or however many the class turns out to have.
-    /// </summary>
-    /// <remarks>
-    /// Built from the array the first time and mutated after. The cells are what carry the rule
-    /// that matters here: gold once the unboosted value has reached the class ceiling, and no
-    /// parenthetical at all when equipment is adding nothing.
-    /// </remarks>
-    private void RefreshAttributes(LocalPlayer player)
-    {
-        var maxima = _data?.GetObject(player.ObjectType)?.StatMaxima;
-
-        int[] values = { player.Attack, player.Defense, player.Speed, player.Dexterity, player.Vitality, player.Wisdom };
-
-        if (_attributes.Count != values.Length)
+        int[] values =
         {
-            foreach (var cell in _attributes)
-                cell.QueueFree();
+            player.Attack, player.Defense, player.Speed,
+            player.Dexterity, player.Vitality, player.Wisdom,
+        };
 
-            _attributes.Clear();
-
-            for (int i = 0; i < values.Length; i++)
-            {
-                var cell = new AttributeCell(Keys[i]);
-                _grid.AddChild(cell);
-                _attributes.Add(cell);
-            }
-
-            Reflow();
-        }
-
-        for (int i = 0; i < _attributes.Count; i++)
+        for (int i = 0; i < Keys.Length; i++)
         {
             // The boosts and maxima are indexed with MaxHP and MaxMP first, so they run two ahead
             // of the six shown here.
@@ -439,70 +368,30 @@ public partial class CharacterPanel : Control
             int bonus = player.Boosts[at];
             int max = maxima != null && at < maxima.Length ? maxima[at] : 0;
 
-            _attributes[i].Set(values[i], bonus, max);
+            _sheet.Cells[i] = new Sheet.Cell
+            {
+                Key = Keys[i],
+                Value = values[i].ToString(CultureInfo.InvariantCulture),
+
+                // Nothing at all at zero. "(+0)" is noise in six cells at once.
+                Bonus = bonus == 0 ? null : bonus > 0 ? $"(+{bonus})" : $"(−{-bonus})",
+
+                // The one colour change the grid draws: an attribute equipment has carried past
+                // what the class can reach on its own. An unknown ceiling is never marked, because
+                // a guess here would be a lie in the one place the grid exists to be read.
+                Above = max > 0 && values[i] > max,
+            };
         }
+
+        // Fame on death is what is banked plus whatever the bonuses come to, and the bonuses are
+        // computed server-side at the moment of death -- /char/fame refuses a living character. So
+        // this is the floor, and it is the fame the character currently carries.
+        _footer.Value = _sheet.Fame;
+        _footer.QueueRedraw();
+        _sheet.QueueRedraw();
     }
 
     private static readonly string[] Keys = { "ATT", "DEF", "SPD", "DEX", "VIT", "WIS" };
-
-    /// <summary>One attribute: its name, its value, and what equipment is adding to it.</summary>
-    private sealed partial class AttributeCell : Control
-    {
-        private readonly Label _label;
-        private readonly Label _value;
-        private readonly Label _bonus;
-
-        public AttributeCell(string key)
-        {
-            MouseFilter = MouseFilterEnum.Ignore;
-
-            _label = new Label { Text = key, Position = new Vector2(0f, 2f), Size = new Vector2(120f, 14f) }
-                .Typeset(Style.FontTag, Style.StatLabel);
-            AddChild(_label);
-
-            _value = new Label { Position = new Vector2(0f, 18f), Size = new Vector2(80f, 26f) }
-                .Typeset(Style.FontTitle, Style.StatValue);
-            AddChild(_value);
-
-            _bonus = new Label { VerticalAlignment = VerticalAlignment.Bottom }
-                .Typeset(Style.FontSmall, Style.StatBonus);
-            AddChild(_bonus);
-        }
-
-        /// <param name="value">The total, which already includes the bonus.</param>
-        /// <param name="bonus">How much of the total comes from equipment.</param>
-        /// <param name="maximum">The class ceiling, or zero if this build does not know one.</param>
-        public void Set(int value, int bonus, int maximum)
-        {
-            string text = value.ToString(CultureInfo.InvariantCulture);
-            if (_value.Text != text)
-            {
-                _value.Text = text;
-
-                float width = Style.Measure(text, Style.FontTitle) + 6f;
-                _bonus.Position = new Vector2(width, 22f);
-                _bonus.Size = new Vector2(Mathf.Max(0f, Size.X - width), 20f);
-            }
-
-            // Against the ceiling it is the unboosted part that counts: equipment does not stop a
-            // potion working, so a stat that only reaches its maximum while a ring is on has not
-            // been maxed. An unknown ceiling is never gold -- a guess here would be a lie in the
-            // one colour the panel exists to show.
-            bool maxed = maximum > 0 && value - bonus >= maximum;
-            _value.AddThemeColorOverride("font_color", maxed ? Style.StatValueMax : Style.StatValue);
-
-            // Nothing at all at zero. "(+0)" is noise in six cells at once.
-            string suffix = bonus == 0 ? string.Empty
-                : bonus > 0 ? $"(+{bonus})"
-                : $"(−{-bonus})";
-
-            if (_bonus.Text == suffix)
-                return;
-
-            _bonus.Text = suffix;
-            _bonus.AddThemeColorOverride("font_color", bonus < 0 ? Style.StatPenalty : Style.StatBonus);
-        }
-    }
 
     private Assets.Sprite ClassPortrait(ushort objectType)
     {
@@ -515,36 +404,260 @@ public partial class CharacterPanel : Control
     }
 
     /// <summary>
-    /// Fills the list for whichever tab is showing.
+    /// Fills the list for one of the two pages.
     /// </summary>
     /// <remarks>
-    /// Both tabs are the same row component over the same blob: the server numbers the dungeon
-    /// tallies in two contiguous runs inside the statistics, which is what lets one fetch answer
-    /// both. Rows come out in the order the server wrote them and are never listed here.
+    /// Both pages come out of one blob: the server writes the dungeon tallies in two contiguous
+    /// runs inside the statistics, which is what lets a single fetch answer both.
     /// </remarks>
-    private void FillRows()
+    private void Show(int tab)
     {
+        _tab = tab;
+        _tabs.Current = tab;
+
         if (_rows == null)
             return;
 
-        _rows.Begin(0);
+        _rows.Begin(tab);
 
         if (_stats == null)
+        {
+            _rows.Empty = "Statistics are not available for this character.";
+            _rows.End();
             return;
+        }
 
-        foreach (var entry in _stats.Statistics)
-            _rows.Add(CharacterStats.Label(entry.Id), entry.Value, dim: false, group: null);
+        _rows.Empty = null;
+
+        if (tab == 0)
+        {
+            // The reference carries a Power Level above the group heading. This server publishes no
+            // such figure -- it is not in FameStats and not in the character list -- so the row
+            // keeps its place and says so rather than showing a number nothing computed.
+            _rows.Add("Power Level", null);
+            _rows.Group("Statistics");
+
+            foreach (int id in Statistics)
+                _rows.Add(CharacterStats.Label(id), _stats.Value(id));
+
+            _rows.End();
+            return;
+        }
+
+        _rows.Group("Dungeons");
+
+        foreach (int id in CharacterStats.DungeonsByName)
+            _rows.Add(CharacterStats.Label(id), _stats.Value(id));
 
         _rows.End();
     }
 
     /// <summary>
-    /// The scrolling list of rows, drawn rather than built out of nodes.
+    /// The statistics, in the order the reference lists them.
     /// </summary>
     /// <remarks>
-    /// Two hundred rows of two labels each would be four hundred nodes to lay out and free every
-    /// time a tab is switched. Drawing them costs one pass over the visible dozen and lets the
-    /// group headers stick to the top of the list while the rows run under them.
+    /// Not the order the server writes them in: the reference puts party level-ups between the
+    /// assists and the god kills, which is where a player looks for them. Every id here is a field
+    /// the server actually sends; nothing in the reference's list is faked to fill a gap.
+    /// </remarks>
+    private static readonly int[] Statistics = { 0, 1, 2, 3, 4, 5, 6, 7, 19, 8, 10, 9, 11, 12, 20 };
+
+    /// <summary>The identity block and the attribute grid, which are one drawn block.</summary>
+    private sealed partial class Sheet : Control
+    {
+        /// <summary>One attribute: its caption, its number, and what equipment is adding.</summary>
+        public struct Cell
+        {
+            public string Key;
+            public string Value;
+            public string Bonus;
+
+            /// <summary>Whether the total stands above what the class can reach unaided.</summary>
+            public bool Above;
+        }
+
+        public readonly Cell[] Cells = new Cell[6];
+
+        public Assets.Sprite Portrait;
+        public string Name = "—";
+        public string ClassLine = string.Empty;
+        public string Created = string.Empty;
+        public string Fame = "0";
+
+        public Sheet() => MouseFilter = MouseFilterEnum.Ignore;
+
+        public override void _Draw()
+        {
+            DrawIdentity();
+
+            float column = (Size.X - CellMargin * 2f - CellGap) / 2f;
+
+            for (int i = 0; i < Cells.Length; i++)
+            {
+                DrawCell(Cells[i], new Rect2(
+                    CellMargin + i % 2 * (column + CellGap),
+                    GridTop + i / 2 * CellPitch,
+                    column,
+                    CellHeight));
+            }
+        }
+
+        private void DrawIdentity()
+        {
+            var plate = new Rect2(PortraitLeft, PortraitTop, PortraitSize, PortraitSize);
+            DrawRect(plate, PortraitPlate);
+            this.DrawSprite(Portrait, plate.Grow(-7f));
+
+            this.DrawText(new Vector2(TextLeft, NameBaseline), Name, FontSheetName, NameGold);
+            this.DrawText(new Vector2(TextLeft, ClassBaseline), ClassLine, FontSheetClass, Style.TextDim);
+            this.DrawText(new Vector2(TextLeft, CreatedBaseline), Created, FontSheetCreated, Style.TextDim);
+
+            float iconLeft = Size.X - 6f - FameIcon;
+            HudIcons.Fame(this, new Rect2(iconLeft, FameIconTop, FameIcon, FameIcon), Style.FameFillHigh);
+
+            this.DrawText(
+                new Vector2(iconLeft - 7f - Style.Measure(Fame, FontSheetFame), NameBaseline),
+                Fame, FontSheetFame, Style.FameFillHigh);
+        }
+
+        /// <summary>
+        /// One cell: a plate outlined rather than filled, with its caption sitting in the outline.
+        /// </summary>
+        /// <remarks>
+        /// The reference breaks the top edge for the caption instead of putting it above the plate,
+        /// and stops every edge short of the corners, which is what makes a hard-edged rectangle
+        /// read as a rounded one without a single curve being drawn.
+        /// </remarks>
+        private void DrawCell(in Cell cell, in Rect2 box)
+        {
+            if (string.IsNullOrEmpty(cell.Value))
+                return;
+
+            var edge = Style.StatCellEdge;
+
+            DrawRect(new Rect2(box.Position.X, box.Position.Y + CellCorner,
+                CellEdge, box.Size.Y - CellCorner * 2f), edge);
+
+            DrawRect(new Rect2(box.End.X - CellEdge, box.Position.Y + CellCorner,
+                CellEdge, box.Size.Y - CellCorner * 2f), edge);
+
+            DrawRect(new Rect2(box.Position.X + CellCorner, box.End.Y - CellEdge,
+                box.Size.X - CellCorner * 2f, CellEdge), edge);
+
+            float gap = box.Size.X * 0.54f;
+            float arm = (box.Size.X - CellCorner * 2f - gap) / 2f;
+
+            DrawRect(new Rect2(box.Position.X + CellCorner, box.Position.Y, arm, CellEdge), edge);
+            DrawRect(new Rect2(box.End.X - CellCorner - arm, box.Position.Y, arm, CellEdge), edge);
+
+            float middle = box.Position.X + box.Size.X / 2f;
+
+            this.DrawText(
+                new Vector2(middle - Style.Measure(cell.Key, FontCellLabel) / 2f, box.Position.Y + 8f),
+                cell.Key, FontCellLabel, Style.StatLabel);
+
+            float value = Style.Measure(cell.Value, FontCellValue);
+            float bonus = cell.Bonus == null ? 0f : Style.Measure(" " + cell.Bonus, FontCellValue);
+            float at = middle - (value + bonus) / 2f;
+            float baseline = box.Position.Y + 37f;
+
+            this.DrawText(new Vector2(at, baseline), cell.Value, FontCellValue, Style.StatValue);
+
+            if (cell.Bonus == null)
+                return;
+
+            this.DrawText(new Vector2(at + value, baseline), " " + cell.Bonus, FontCellValue,
+                cell.Above ? Style.StatValueMax : Style.StatValue);
+        }
+    }
+
+    /// <summary>The two pages, as the plates that choose between them.</summary>
+    private sealed partial class TabStrip : Control
+    {
+        private readonly string[] _titles;
+
+        private int _current;
+
+        public TabStrip(string[] titles)
+        {
+            _titles = titles;
+            MouseFilter = MouseFilterEnum.Stop;
+            FocusMode = FocusModeEnum.None;
+        }
+
+        public event Action<int> Selected;
+
+        public int Current
+        {
+            get => _current;
+            set
+            {
+                if (_current == value)
+                    return;
+
+                _current = value;
+                QueueRedraw();
+            }
+        }
+
+        public override void _GuiInput(InputEvent @event)
+        {
+            if (@event is not InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } click)
+                return;
+
+            for (int i = 0; i < _titles.Length; i++)
+            {
+                if (!Tab(i).HasPoint(click.Position))
+                    continue;
+
+                AcceptEvent();
+                if (i != _current)
+                    Selected?.Invoke(i);
+
+                return;
+            }
+        }
+
+        private Rect2 Tab(int index)
+        {
+            float width = (Size.X - TabGap * (_titles.Length - 1)) / _titles.Length;
+            return new Rect2(index * (width + TabGap), 0f, width, Size.Y);
+        }
+
+        public override void _Draw()
+        {
+            for (int i = 0; i < _titles.Length; i++)
+            {
+                var box = Tab(i);
+                bool on = i == _current;
+
+                var body = new Rect2(box.Position, new Vector2(box.Size.X, TabHeight));
+                var foot = new Rect2(box.Position.X, TabHeight, box.Size.X, TabFoot);
+
+                DrawRect(body, on ? TabActiveEdge : TabIdleEdge);
+                DrawRect(new Rect2(body.Position.X + TabEdge, body.Position.Y + TabEdge,
+                    body.Size.X - TabEdge * 2f, body.Size.Y - TabEdge), on ? Style.TabActive : TabIdleFill);
+
+                DrawRect(foot, on ? TabActiveFootEdge : TabIdleFootEdge);
+                DrawRect(new Rect2(foot.Position.X + TabEdge, foot.Position.Y,
+                    foot.Size.X - TabEdge * 2f, foot.Size.Y), on ? TabActiveFoot : TabIdleFoot);
+
+                this.DrawText(
+                    new Vector2(
+                        box.Position.X + box.Size.X / 2f - Style.Measure(_titles[i], FontTabLabel) / 2f,
+                        TabBaseline),
+                    _titles[i], FontTabLabel, on ? Style.TabActiveText : TabIdleText);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The scrolling list of tallies, drawn rather than built out of nodes.
+    /// </summary>
+    /// <remarks>
+    /// Thirty rows of two labels each would be sixty nodes to lay out and free every time a page is
+    /// switched. Drawing them costs one pass over the visible dozen and lets the last rows fade
+    /// into the footer band the way the reference does.
     /// </remarks>
     private sealed partial class RowList : Control
     {
@@ -556,21 +669,36 @@ public partial class CharacterPanel : Control
         private bool _dragging;
         private float _grabbedAt;
 
+        /// <summary>What to say instead of rows, when there is nothing to say.</summary>
+        public string Empty;
+
         private readonly struct Row
         {
             public readonly string Label;
             public readonly string Value;
-            public readonly bool Dim;
             public readonly bool IsGroup;
 
-            public Row(string label, string value, bool dim, bool isGroup)
+            public Row(string label, string value, bool isGroup)
             {
                 Label = label;
                 Value = value;
-                Dim = dim;
                 IsGroup = isGroup;
             }
+
         }
+
+        /// <summary>
+        /// How far the list advances past one row.
+        /// </summary>
+        /// <remarks>
+        /// A plate carries its gutter under it, except where a group heading follows: the heading
+        /// brings its own space above the words and two gutters there would push the whole list
+        /// down by one every time a group appeared.
+        /// </remarks>
+        private float Advance(int index) =>
+            _all[index].IsGroup ? GroupHeight
+            : index + 1 < _all.Count && _all[index + 1].IsGroup ? RowPlate
+            : RowPitch;
 
         public RowList()
         {
@@ -579,7 +707,7 @@ public partial class CharacterPanel : Control
             ClipContents = true;
         }
 
-        /// <summary>Starts filling for a tab, remembering where the last one was scrolled to.</summary>
+        /// <summary>Starts filling for a page, remembering where the last one was scrolled to.</summary>
         public void Begin(int tab)
         {
             if (tab != _tab)
@@ -592,18 +720,25 @@ public partial class CharacterPanel : Control
             _all.Clear();
         }
 
-        public void Group(string title) => _all.Add(new Row(title, null, false, true));
+        public void Group(string title) => _all.Add(new Row(title, null, true));
 
-        public void Add(string label, int value, bool dim, string group) =>
-            _all.Add(new Row(label, value.ToString("N0", CultureInfo.InvariantCulture), dim, false));
+        /// <summary>
+        /// A tally. A null value is one the server does not publish.
+        /// </summary>
+        /// <remarks>
+        /// Written without a thousands separator, which is how the game writes every figure it
+        /// shows: three million shots is <c>3200101</c> on the reference's own sheet.
+        /// </remarks>
+        public void Add(string label, int? value) => _all.Add(new Row(
+            label, value?.ToString(CultureInfo.InvariantCulture) ?? "—", false));
 
         public void End()
         {
-            _scroll = Mathf.Clamp(_scroll, 0f, HudScrollbar.MaxOffset(Size, Content));
+            _scroll = Mathf.Clamp(_scroll, 0f, MaxOffset);
             QueueRedraw();
         }
 
-        /// <summary>Forgets everything, including where each tab was. Used on a character change.</summary>
+        /// <summary>Forgets everything, including where each page was. Used on a character change.</summary>
         public void Reset()
         {
             _all.Clear();
@@ -613,7 +748,34 @@ public partial class CharacterPanel : Control
             QueueRedraw();
         }
 
-        private float Content => _all.Count * RowHeight;
+        private float Content
+        {
+            get
+            {
+                float total = ListPad;
+                for (int i = 0; i < _all.Count; i++)
+                    total += Advance(i);
+
+                return total;
+            }
+        }
+
+        private float MaxOffset => Mathf.Max(0f, Content - Size.Y);
+
+        private Rect2 Thumb
+        {
+            get
+            {
+                float track = Size.Y;
+                float height = Mathf.Max(24f, track * Size.Y / Mathf.Max(Content, Size.Y));
+                float travel = track - height;
+                float fraction = MaxOffset <= 0f ? 0f : Mathf.Clamp(_scroll / MaxOffset, 0f, 1f);
+
+                return new Rect2(
+                    Size.X - ScrollWidth - PlateInset, Mathf.Round(travel * fraction),
+                    ScrollWidth, Mathf.Round(height));
+            }
+        }
 
         public override void _GuiInput(InputEvent @event)
         {
@@ -623,138 +785,135 @@ public partial class CharacterPanel : Control
                     Scroll(-3f);
                     return;
 
+                case InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: true } down:
+                    if (Thumb.HasPoint(down.Position))
+                    {
+                        _dragging = true;
+                        _grabbedAt = down.Position.Y - Thumb.Position.Y;
+                    }
+
+                    AcceptEvent();
+                    return;
+
                 case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelDown }:
                     Scroll(3f);
                     return;
 
-                case InputEventMouseButton { ButtonIndex: MouseButton.Left } button:
-                    OnClick(button);
-                    AcceptEvent();
+                case InputEventMouseButton { ButtonIndex: MouseButton.Left }:
+                    _dragging = false;
                     return;
 
                 case InputEventMouseMotion motion when _dragging:
-                    _scroll = HudScrollbar.OffsetForThumbTop(Size, Content, motion.Position.Y - _grabbedAt);
+                    float travel = Size.Y - Thumb.Size.Y;
+                    _scroll = travel <= 0f
+                        ? 0f
+                        : Mathf.Clamp((motion.Position.Y - _grabbedAt) / travel, 0f, 1f) * MaxOffset;
+
                     QueueRedraw();
                     AcceptEvent();
                     return;
             }
         }
 
-        private void OnClick(InputEventMouseButton button)
-        {
-            if (!button.Pressed)
-            {
-                _dragging = false;
-                return;
-            }
-
-            switch (HudScrollbar.Test(Size, _scroll, Content, button.Position))
-            {
-                case HudScrollbar.Part.Up:
-                    Scroll(-1f);
-                    return;
-
-                case HudScrollbar.Part.Down:
-                    Scroll(1f);
-                    return;
-
-                case HudScrollbar.Part.Thumb:
-                    _dragging = true;
-                    _grabbedAt = button.Position.Y - HudScrollbar.Thumb(Size, _scroll, Content).Position.Y;
-                    return;
-
-                case HudScrollbar.Part.TrackAbove:
-                    Scroll(-5f);
-                    return;
-
-                case HudScrollbar.Part.TrackBelow:
-                    Scroll(5f);
-                    return;
-            }
-        }
-
         private void Scroll(float rows)
         {
-            _scroll = Mathf.Clamp(_scroll + rows * RowHeight, 0f, HudScrollbar.MaxOffset(Size, Content));
+            _scroll = Mathf.Clamp(_scroll + rows * RowPitch, 0f, MaxOffset);
             QueueRedraw();
         }
 
         public override void _Draw()
         {
-            float width = Size.X - HudScrollbar.Width - 2f;
-            int first = Mathf.Max(0, (int)(_scroll / RowHeight));
+            DrawRect(new Rect2(Vector2.Zero, Size), Style.ModalBody);
 
-            string sticky = null;
-            for (int i = 0; i <= first && i < _all.Count; i++)
+            if (Empty != null)
             {
-                if (_all[i].IsGroup)
-                    sticky = _all[i].Label;
-            }
+                this.DrawText(
+                    new Vector2(Size.X / 2f - Style.Measure(Empty, FontRowLabel) / 2f, ListPad + 40f),
+                    Empty, FontRowLabel, Style.TextDim);
 
-            for (int i = first; i < _all.Count; i++)
-            {
-                float y = i * RowHeight - _scroll;
-                if (y > Size.Y)
-                    break;
-
-                DrawRow(_all[i], y, width, i);
-            }
-
-            // The group a scrolled-past header belongs to, pinned at the top so a count is never
-            // read under the wrong tier.
-            if (sticky != null && first < _all.Count && !_all[first].IsGroup)
-                DrawGroup(sticky, 0f, width);
-
-            HudScrollbar.Draw(this, Size, _scroll, Content, _dragging);
-        }
-
-        private void DrawRow(in Row row, float y, float width, int index)
-        {
-            if (row.IsGroup)
-            {
-                DrawGroup(row.Label, y, width);
                 return;
             }
 
-            if (index % 2 == 1)
-                DrawRect(new Rect2(0f, y, width, RowHeight), Style.ModalStripe);
+            float plate = Size.X - PlateInset * 2f - ScrollWidth - PlateInset;
+            float y = ListPad - _scroll;
 
-            float baseline = Mathf.Round(y + (RowHeight + Style.Sans.GetAscent(Style.FontSmall) - Style.Sans.GetDescent(Style.FontSmall)) / 2f);
-
-            // A fixed column for the value and an ellipsis on the label: a seven-digit number must
-            // never be pushed off the row by a long name.
-            float labelWidth = width - Inset * 2f - ValueColumn;
-            this.DrawText(new Vector2(Inset, baseline), Truncate(row.Label, labelWidth), Style.FontSmall,
-                row.Dim ? Style.TextDim : Style.Text);
-
-            this.DrawText(
-                new Vector2(width - Inset - Style.Measure(row.Value, Style.FontSmall), baseline), row.Value, Style.FontSmall,
-                row.Dim ? Style.TextDim : Style.StatNumber);
-        }
-
-        private void DrawGroup(string title, float y, float width)
-        {
-            DrawRect(new Rect2(0f, y, width, SectionHeight), Style.ModalHeader);
-            DrawRect(new Rect2(0f, y + SectionHeight - 1f, width, 1f), Style.ModalFrameDark);
-
-            float baseline = Mathf.Round(y + (SectionHeight + Style.Sans.GetAscent(Style.FontHeader) - Style.Sans.GetDescent(Style.FontHeader)) / 2f);
-            this.DrawText(new Vector2(Inset, baseline), title, Style.FontHeader, Style.TextDim);
-        }
-
-        /// <summary>Cuts a label to fit its column, with an ellipsis. Never wraps.</summary>
-        private static string Truncate(string text, float width)
-        {
-            if (Style.Measure(text, Style.FontSmall) <= width)
-                return text;
-
-            for (int length = text.Length - 1; length > 1; length--)
+            for (int i = 0; i < _all.Count; i++)
             {
-                string cut = text[..length] + "…";
-                if (Style.Measure(cut, Style.FontSmall) <= width)
-                    return cut;
+                if (y > Size.Y)
+                    break;
+
+                float step = Advance(i);
+                if (y + step >= 0f)
+                    DrawRow(_all[i], y, plate);
+
+                y += step;
             }
 
-            return "…";
+            Fade();
+            DrawThumb();
+        }
+
+        private void DrawRow(in Row row, float y, float plate)
+        {
+            if (row.IsGroup)
+            {
+                this.DrawText(new Vector2(PlateInset + 4f, y + GroupBaseline), row.Label,
+                    FontGroup, Style.Text);
+
+                return;
+            }
+
+            DrawRect(new Rect2(PlateInset, y, plate, RowPlate), Style.ModalTrough);
+
+            float baseline = y + RowBaseline;
+            this.DrawText(new Vector2(PlateInset + RowInset, baseline), row.Label, FontRowLabel, RowLabel);
+
+            this.DrawText(
+                new Vector2(PlateInset + plate - ValueInset - Style.Measure(row.Value, FontRowValue), baseline),
+                row.Value, FontRowValue, row.Value == "—" ? Style.TextDim : Style.StatNumber);
+        }
+
+        /// <summary>The last rows dissolving into the footer, which is how the reference ends.</summary>
+        private void Fade()
+        {
+            for (float i = 0f; i < ListFade; i++)
+            {
+                DrawRect(new Rect2(0f, Size.Y - ListFade + i, Size.X, 1f),
+                    Style.ModalBody with { A = i / ListFade });
+            }
+        }
+
+        private void DrawThumb()
+        {
+            if (MaxOffset <= 0f)
+                return;
+
+            DrawRect(Thumb, ScrollThumb);
+        }
+    }
+
+    /// <summary>The band pinned to the bottom: what this character is worth if it dies now.</summary>
+    private sealed partial class Footer : Control
+    {
+        public string Value = "0";
+
+        public Footer() => MouseFilter = MouseFilterEnum.Ignore;
+
+        public override void _Draw()
+        {
+            DrawRect(new Rect2(Vector2.Zero, Size), Style.ModalBand);
+
+            this.DrawText(new Vector2(Margin + 12f, FooterBaseline), "Fame on Death",
+                FontFooterLabel, Style.Text);
+
+            float iconLeft = Size.X - 6f - FooterIcon;
+            HudIcons.Fame(this,
+                new Rect2(iconLeft, (Size.Y - FooterIcon) / 2f, FooterIcon, FooterIcon),
+                Style.FameFillHigh);
+
+            this.DrawText(
+                new Vector2(iconLeft - 4f - Style.Measure(Value, FontFooterValue), FooterBaseline),
+                Value, FontFooterValue, Style.FameFillHigh);
         }
     }
 }
