@@ -1,0 +1,6 @@
+# The Godot mono editor distribution. Large, platform-specific, and downloaded rather than authored.
+godot-mono/
+
+# Scratch space for material consulted while working: decompiled clients, packet captures,
+# other servers' sources. Kept out of the repository because none of it is ours to redistribute.
+references/
