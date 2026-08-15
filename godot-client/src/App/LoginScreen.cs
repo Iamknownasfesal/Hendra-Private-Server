@@ -47,27 +47,17 @@ public partial class LoginScreen : Control
         // centred child lands in the corner with it.
         UI.ScreenFit.FillScreen(this);
 
-        // The title art again, filling the window and dimmed, so signing in and picking a
-        // character read as the same place as the title rather than as a form on flat black.
-        var art = new TextureRect
-        {
-            // The manifest's key. See TitleScreen: "TitleScreen" matches nothing and returns null,
-            // which is why this screen has been a form on flat black rather than on the artwork.
-            Texture = ServiceLocator.Assets?.GetImage("OriginalTitleScreen"),
-            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-            StretchMode = TextureRect.StretchModeEnum.KeepAspectCovered,
-            MouseFilter = MouseFilterEnum.Ignore,
-        };
-        art.SetAnchorsPreset(LayoutPreset.FullRect);
-        AddChild(art);
+        // The same page the title screen and the menus are drawn on, so signing in reads as the
+        // same place as the title rather than as a form on flat black.
+        //
+        // This used to paint the shipped "OriginalTitleScreen" image, which is another game's
+        // title art and carries its name in letters a foot high. With the title screen now
+        // showing our own mark, the two screens were naming two different games one keypress
+        // apart.
+        var backdrop = new UI.MenuBackdrop { MouseFilter = MouseFilterEnum.Ignore };
+        backdrop.SetAnchorsPreset(LayoutPreset.FullRect);
+        AddChild(backdrop);
 
-        var wash = new ColorRect { Color = new Color(0.03f, 0.03f, 0.05f, 0.72f) };
-        wash.SetAnchorsPreset(LayoutPreset.FullRect);
-        wash.MouseFilter = MouseFilterEnum.Ignore;
-        AddChild(wash);
-
-        // The same sky as the title screen, so moving between them does not change worlds.
-        AddChild(new UI.Starfield());
         AddChild(new UI.Vignette(0.16f));
 
         var centre = new CenterContainer();
