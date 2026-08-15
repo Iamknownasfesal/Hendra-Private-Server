@@ -265,9 +265,18 @@ public sealed class Inventory
         source.Equipment[from.Index] = NoItem;
     }
 
-    /// <summary>Which item each stack takes, by name, so no type number is written down twice.</summary>
+    /// <summary>
+    /// Which item a stack takes.
+    /// </summary>
+    /// <remarks>
+    /// One object type per stack, for the character's whole life: the server builds each stack
+    /// around a single item and its counter accepts nothing else, so a Greater Health Potion is
+    /// refused by the health stack however plainly it heals. <see cref="Potions"/> holds the pair.
+    /// </remarks>
     public int PotionType(bool health) =>
-        _data?.GetObject(health ? "Health Potion" : "Magic Potion") is { } desc ? desc.Type : NoItem;
+        Potions.StackItem(_data, health ? PotionFamily.Health : PotionFamily.Magic) is { } desc
+            ? desc.Type
+            : NoItem;
 
     private Entity OwnerOf(SlotAddress address) =>
         address.Owner == SlotOwner.Player ? _map.Player : OpenContainer;

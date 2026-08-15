@@ -152,11 +152,21 @@ public readonly struct HudLayout
 
     public const float HotbarHeight = HotbarRows * HotbarSlotHeight + (HotbarRows - 1) * SlotGap;
 
-    /// <summary>The three stacked potions, along the bottom of the page.</summary>
+    /// <summary>The stacked potions, along the bottom of the page.</summary>
     public const float PotionTop = 850f;
 
     public const float PotionHeight = 41f;
-    public const int PotionSlots = 3;
+
+    /// <summary>
+    /// How many cells the rack is divided into, which is not how many a character has.
+    /// </summary>
+    /// <remarks>
+    /// The rack spans the four carried slots and is cut into three, so a cell is 107 wide with the
+    /// usual four-pixel gutter -- measured off the reference, whose player had unlocked the third.
+    /// A fresh character has two, and they sit in the first two of these three positions rather
+    /// than sharing the width out between them, so unlocking one moves nothing.
+    /// </remarks>
+    public const int PotionRackColumns = 3;
 
     // --- The world and the players in it -------------------------------------------------------
 
@@ -332,15 +342,15 @@ public readonly struct HudLayout
         HotbarSlotWidth,
         HotbarSlotHeight);
 
-    /// <summary>The three stacked potions, which are addressed by slot id rather than by index.</summary>
+    /// <summary>The stacked potions, which are addressed by slot id rather than by index.</summary>
     public Rect2 PotionRow => InColumn(HotbarLeft, PotionTop, HotbarWidth, PotionHeight);
 
     /// <summary>
-    /// One potion cell. Three across the same span the four carried slots use.
+    /// One potion cell. The rack is cut into three across the span the four carried slots use.
     /// </summary>
     public Rect2 PotionSlot(int index)
     {
-        float pitch = (HotbarWidth + SlotGap) / PotionSlots;
+        float pitch = (HotbarWidth + SlotGap) / PotionRackColumns;
         float left = Mathf.Round(HotbarLeft + index * pitch);
         float right = Mathf.Round(HotbarLeft + (index + 1) * pitch) - SlotGap;
 

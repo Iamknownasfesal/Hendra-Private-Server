@@ -58,6 +58,19 @@ public partial class HudView : Control
     /// <summary>How many of each potion the server lets a character stack. Its own init.xml value.</summary>
     private const int PotionStackMax = 6;
 
+    /// <summary>
+    /// The potion slots a character has, left to right.
+    /// </summary>
+    /// <remarks>
+    /// Two, not three. The reference shows three because that player had consumed the item that
+    /// unlocks the third, the way a backpack unlocks the second row of the inventory; a fresh
+    /// character has health on the left and magic on the right and an empty third of the rack.
+    /// </remarks>
+    private static readonly PotionFamily[] PotionFamilies =
+    {
+        PotionFamily.Health, PotionFamily.Magic,
+    };
+
     /// <summary>Below this share of health the heart pulses.</summary>
     private const float LowHealth = 0.25f;
 
@@ -102,7 +115,9 @@ public partial class HudView : Control
     private readonly ColumnTab[] _tabs = new ColumnTab[2];
     private EquipmentStrip _equipmentPanel;
     private Control _potionRow;
-    private readonly PotionCell[] _potions = new PotionCell[HudLayout.PotionSlots];
+
+    /// <summary>One cell per family the character has unlocked, indexed by <see cref="PotionFamily"/>.</summary>
+    private readonly PotionCell[] _potions = new PotionCell[PotionFamilies.Length];
 
 
 
@@ -131,18 +146,18 @@ public partial class HudView : Control
     /// <summary>Raised when the buy button is pressed at a vendor.</summary>
     public event Action BuyPressed;
 
-    /// <summary>Raised by a potion counter, with true for health.</summary>
-    public event Action<bool> PotionRequested;
+    /// <summary>Raised by a potion counter, with the vital it refills.</summary>
+    public event Action<PotionFamily> PotionRequested;
 
     /// <summary>Asked whether a dragged slot may be dropped on a potion counter.</summary>
     /// <remarks>
     /// A question rather than an event because the answer is needed while the drag is still in the
     /// air -- Godot refuses the drop itself if this is false, so the wrong potion never lands.
     /// </remarks>
-    public event Func<SlotAddress, bool, bool> PotionAccepted;
+    public event Func<SlotAddress, PotionFamily, bool> PotionAccepted;
 
-    /// <summary>Raised when a potion is dropped onto a counter, with true for health.</summary>
-    public event Action<SlotAddress, bool> PotionStacked;
+    /// <summary>Raised when a potion is dropped onto a counter, with the counter's vital.</summary>
+    public event Action<SlotAddress, PotionFamily> PotionStacked;
 
     public event Action OptionsPressed;
 
@@ -164,8 +179,7 @@ public partial class HudView : Control
         _textures = new TextureResolver(assets);
 
         // The potion row may already be built, depending on which happens first.
-        _potions[0]?.UseSprite(SpriteOf("Health Potion"));
-        _potions[1]?.UseSprite(SpriteOf("Magic Potion"));
+        RefreshPotionItems();
     }
 
     public override void _Ready()
@@ -780,11 +794,10 @@ public partial class HudView : Control
     }
 
     /// <summary>An item's still, by the name the data files give it, or nothing if it has none.</summary>
-    private Assets.Sprite SpriteOf(string id)
-    {
-        var desc = _data?.GetObject(id ?? string.Empty);
-        return desc == null ? default : (_textures?.Resolve(desc.Texture) ?? default).Still;
-    }
+    private Assets.Sprite SpriteOf(string id) => SpriteOf(_data?.GetObject(id ?? string.Empty));
+
+    private Assets.Sprite SpriteOf(ObjectDesc desc) =>
+        desc == null ? default : (_textures?.Resolve(desc.Texture) ?? default).Still;
 
     private HudBar Bar(Color fill, Color high, Color value)
     {
@@ -795,37 +808,66 @@ public partial class HudView : Control
     }
 
     /// <summary>
-    /// The three potion cells along the bottom of the inventory.
+    /// The potion cells along the bottom of the inventory, one per family the character has.
     /// </summary>
-    /// <remarks>
-    /// Three because the reference has three, and the third is drawn as an empty cell: this
-    /// server's protocol carries a health stack and a magic stack and nothing else, and a cell
-    /// showing a permanent nought out of nought would be a lie where an empty plate is only a slot
-    /// with nothing in it.
-    /// </remarks>
     private void BuildPotions()
     {
         _potionRow = new Control { MouseFilter = MouseFilterEnum.Ignore };
         AddChild(_potionRow);
 
-        _potions[0] = Potions(true);
-        _potions[1] = Potions(false);
+        for (int i = 0; i < PotionFamilies.Length; i++)
+            _potions[i] = PotionSlot(PotionFamilies[i]);
 
-        _potions[2] = new PotionCell(false, 0);
-        _potionRow.AddChild(_potions[2]);
+        // The data may already be here, depending on which of this and Configure happens first.
+        RefreshPotionItems();
     }
 
-    private PotionCell Potions(bool health)
+    private PotionCell PotionSlot(PotionFamily family)
     {
-        var cell = new PotionCell(health, PotionStackMax);
+        var cell = new PotionCell(PotionStackMax);
 
-        cell.Pressed += () => PotionRequested?.Invoke(health);
-        cell.Accepts = from => PotionAccepted?.Invoke(from, health) ?? false;
-        cell.Filled += from => PotionStacked?.Invoke(from, health);
-        cell.UseSprite(SpriteOf(health ? "Health Potion" : "Magic Potion"));
+        cell.Pressed += () => PotionRequested?.Invoke(family);
+        cell.Accepts = from => PotionAccepted?.Invoke(from, family) ?? false;
+        cell.Filled += from => PotionStacked?.Invoke(from, family);
 
         _potionRow.AddChild(cell);
         return cell;
+    }
+
+    /// <summary>
+    /// Gives each cell the artwork and the caption of the item it holds.
+    /// </summary>
+    /// <remarks>
+    /// Read off the item rather than drawn from a fixed pair of sprites, so a cell holding Fire
+    /// Water shows Fire Water and says it restores two hundred and thirty. The amount is the one
+    /// written on the item's own <c>Heal</c> or <c>Magic</c> activation, which is the same number
+    /// the server applies when the potion is drunk.
+    /// </remarks>
+    private void RefreshPotionItems()
+    {
+        for (int i = 0; i < _potions.Length; i++)
+        {
+            if (_potions[i] == null)
+                continue;
+
+            var family = PotionFamilies[i];
+            var item = Potions.StackItem(_data, family);
+
+            _potions[i].Hold(SpriteOf(item), PotionCaption(item, family));
+        }
+    }
+
+    /// <summary>What the tooltip says about drinking what is in a cell.</summary>
+    private static string PotionCaption(ObjectDesc item, PotionFamily family)
+    {
+        string vital = family == PotionFamily.Health ? "HP" : "MP";
+        if (item == null)
+            return $"No {vital} potion";
+
+        int amount = Potions.Amount(item, family);
+        return amount > 0
+            ? $"Drink {item.Id} — restores {amount} {vital}"
+            : $"Drink {item.Id}";
     }
 
     private void BuildHotbar()
@@ -1182,8 +1224,8 @@ public partial class HudView : Control
             ? Vital(player.Mp, player.MaxMp, ManaRegen(player), player.Boosts[1])
             : string.Empty);
 
-        _potions[0].Set(player.HealthPotions, PotionStackMax);
-        _potions[1].Set(player.MagicPotions, PotionStackMax);
+        _potions[(int)PotionFamily.Health].Set(player.HealthPotions, PotionStackMax);
+        _potions[(int)PotionFamily.Magic].Set(player.MagicPotions, PotionStackMax);
     }
 
     /// <summary>

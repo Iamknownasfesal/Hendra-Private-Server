@@ -233,13 +233,21 @@ public partial class WorldController : Node
             _hud.VaultPurchaseRequested += Alive(() => _vault.Buy());
             _hud.SlotDropped += Alive<SlotAddress, SlotAddress>(OnSlotDropped);
             _hud.SlotDroppedOutside += Alive<SlotAddress>(OnSlotDroppedOutside);
-            _hud.PotionRequested += Alive<bool>(health => _inventory.UsePotion(health));
+            _hud.PotionRequested += Alive<PotionFamily>(
+                family => _inventory.UsePotion(family == PotionFamily.Health));
 
             // Dropping a potion on its counter stacks it. The question and the answer are separate
             // because the first is asked while the drag is still in the air.
-            _hud.PotionAccepted += (from, health) => IsInsideTree() && CanStack(from, health);
-            _hud.PotionStacked += Alive<SlotAddress, bool>((from, health) =>
+            // Validity before the tree: the HUD outlives a world, so a drag still in the air when
+            // the controller goes away asks a disposed object whether it is in the tree, and that
+            // throws rather than answering false.
+            _hud.PotionAccepted += (from, family) =>
+                GodotObject.IsInstanceValid(this) && IsInsideTree() &&
+                CanStack(from, family == PotionFamily.Health);
+            _hud.PotionStacked += Alive<SlotAddress, PotionFamily>((from, family) =>
             {
+                bool health = family == PotionFamily.Health;
+
                 // The vault speaks its own protocol for the same reason it always has: an InvSwap
                 // names its slots by the object that owns them, and a vault chest is not an object.
                 if (from.Owner == SlotOwner.Vault)
@@ -1521,9 +1529,19 @@ public partial class WorldController : Node
     /// Whether the item being dragged is the potion that counter counts.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// One item, not the family: the stack the counter draws is a single-item counter on the
+    /// server, built around one object type when the character enters the world, and its own put
+    /// refuses anything else. A Greater Health Potion heals and is still not what the health stack
+    /// counts, so it is refused here rather than on the wire -- a refused stack move comes back as
+    /// a forced update of a slot that was never in range, which is worse than a cursor that will
+    /// not drop.
+    /// </para>
+    /// <para>
     /// The vault is excluded, and not because of the item: an InvSwap names its slots by the object
     /// that owns them and the vault's slots belong to no object, so there is no way to write the
     /// move down. Taking it out to the bag first is one extra drag and the only one there is.
+    /// </para>
     /// </remarks>
     private bool CanStack(SlotAddress from, bool health)
     {
