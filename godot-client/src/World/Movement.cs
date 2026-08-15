@@ -69,6 +69,16 @@ public static class Movement
     /// <summary>The largest distance resolved in one collision step.</summary>
     public const float MoveThreshold = 0.4f;
 
+    /// <summary>Stops the client testing the ground at all, so it reports whatever it is asked to.</summary>
+    /// <remarks>
+    /// A debug switch, set by <c>--noclip</c>, and the whole of what a wall-hacked client is: the
+    /// collision below is the only thing keeping this client on its side of a wall, and any copy of
+    /// it with these lines removed walks through everything. It exists so the server's own refusal
+    /// can be watched happening rather than argued about — a client with this on is exactly the
+    /// traffic the server has to be able to refuse on its own.
+    /// </remarks>
+    public static bool NoClip;
+
     /// <summary>
     /// Keeps a position snapped to a tile boundary just inside the tile it came from, rather than
     /// exactly on the line where rounding could put it in the next one.
@@ -88,6 +98,9 @@ public static class Movement
     /// </remarks>
     public static MoveResult Resolve(ITileQuery map, float fromX, float fromY, float targetX, float targetY)
     {
+        if (NoClip)
+            return new MoveResult(targetX, targetY);
+
         float dx = targetX - fromX;
         float dy = targetY - fromY;
 

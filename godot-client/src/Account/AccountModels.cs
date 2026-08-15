@@ -20,10 +20,20 @@ public sealed class ServerInfo
     public bool AdminOnly;
 
     /// <summary>
-    /// The world server port. Fixed rather than carried in the XML — the original never read one
-    /// from the server list either.
+    /// The world server port, as the server list gives it.
     /// </summary>
-    public int Port = 2050;
+    /// <remarks>
+    /// The list has always carried one — `ServerItem.ToXml` writes `&lt;Port&gt;`
+    /// (`server/XmlModels.cs:24-32`) — and the original's client threw it away, calling
+    /// `setPort(Parameters.PORT)` with a number compiled into the build
+    /// (`ParseServerDataCommand.as:29`). That works only while every world server in the world is
+    /// on the same port. Read here, falling back to that same constant when the element is missing,
+    /// so a server list may say where its servers actually are.
+    /// </remarks>
+    public int Port = DefaultPort;
+
+    /// <summary>The port the original compiles in, used when the list does not say.</summary>
+    public const int DefaultPort = 2050;
 
     public bool IsFull => Usage >= 1.0;
     public bool IsCrowded => Usage >= 0.66;
@@ -63,9 +73,12 @@ public sealed class CharacterInfo
     /// When the character was rolled, or null on a server that does not say.
     /// </summary>
     /// <remarks>
-    /// The field has always been in the server's database and its character model; it was simply
-    /// never written into the list's XML. Null here means an older server, and the panel leaves the
-    /// line out rather than inventing a date.
+    /// Normally null, and that is the expected case rather than a degraded one: the original server
+    /// stores the field but its <c>Character.ToXml</c> ends at <c>HasBackpack</c> and never writes
+    /// it, so <c>&lt;CreateTime&gt;</c> is absent from every <c>/char/list</c> the game has ever
+    /// served. The AS3 client guards the same way, with <c>hasOwnProperty</c> in
+    /// <c>SavedCharacter.bornOn()</c>. Read it as optional and leave the line out when it is
+    /// missing; never make a screen depend on it arriving.
     /// </remarks>
     public DateTime? CreatedAt;
 
@@ -80,7 +93,37 @@ public sealed class AccountInfo
     public string Name = string.Empty;
     public int Credits;
     public int Fame;
+
+    /// <summary>
+    /// How far the account is trusted, which is a staff ladder and not a rating.
+    /// </summary>
+    /// <remarks>
+    /// <c>&lt;Rank&gt;</c> is <c>DbAccount.Rank</c>, the higher of the account's staff rank and its
+    /// Discord rank. It is what decides which commands are allowed, not how much has been played;
+    /// the rating on the card is <see cref="Stars"/>.
+    /// </remarks>
     public int Rank;
+
+    /// <summary>
+    /// The account's star rating: the sum, over every class it has played, of the stars that
+    /// class's best fame is worth.
+    /// </summary>
+    /// <remarks>
+    /// Counted here rather than sent, because the server does not send it. The original client does
+    /// the same arithmetic over the same elements in <c>SavedCharactersList.parseCharacterStatsData</c>.
+    /// </remarks>
+    public int Stars;
+
+    /// <summary>
+    /// The best level the account has reached in each class, by object type.
+    /// </summary>
+    /// <remarks>
+    /// <c>SavedCharactersList.charStats_</c>, read off the <c>&lt;ClassStats&gt;</c> the account
+    /// carries. A class with no entry has never been played and counts as zero. This is what
+    /// decides which classes are locked, and so whether a level-up has just unlocked one.
+    /// </remarks>
+    public readonly Dictionary<int, int> BestLevels = new();
+
     public bool NameChosen;
     public bool Admin;
     public bool VerifiedEmail;
@@ -214,13 +257,33 @@ public sealed class CharListResult
         return parsed.Year < 2000 ? null : parsed;
     }
 
-    private static AccountInfo ParseAccount(XElement e) => new()
+    private static AccountInfo ParseAccount(XElement e)
+    {
+        var account = ParseAccountFields(e);
+
+        // One entry per class the account may play, each carrying how far it has been taken.
+        foreach (var entry in e.Element("Stats")?.Elements("ClassStats") ?? Enumerable.Empty<XElement>())
+        {
+            string type = entry.Attribute("objectType")?.Value;
+            if (Resources.GameData.TryParseInt(type, out int objectType))
+                account.BestLevels[objectType] = Int(Text(entry, "BestLevel"));
+        }
+
+        return account;
+    }
+
+    private static AccountInfo ParseAccountFields(XElement e) => new()
     {
         AccountId = Text(e, "AccountId") ?? string.Empty,
         Name = Text(e, "Name") ?? string.Empty,
         Credits = Int(Text(e, "Credits")),
-        Fame = Int(Text(e, "Fame")),
+
+        // Fame lives inside <Stats>, where `Stats.ToXml` puts it. The direct child is the older
+        // shape this client was first written against, kept as a fallback so a server that still
+        // writes it is still read.
+        Fame = Int(Text(e.Element("Stats"), "Fame") ?? Text(e, "Fame")),
         Rank = Int(Text(e, "Rank")),
+        Stars = CountStars(e.Element("Stats")),
 
         // Presence flags. The server writes `NameChosen ? new XElement("NameChosen", "") : null`,
         // so the element is absent when false and *empty* when true -- reading its content would
@@ -233,10 +296,34 @@ public sealed class CharListResult
         GuildRank = Int(Text(e.Element("Guild"), "Rank")),
     };
 
+    /// <summary>
+    /// Adds up the stars every class on the account is worth, out of its <c>&lt;ClassStats&gt;</c>.
+    /// </summary>
+    /// <remarks>
+    /// One entry per class the account has unlocked, each carrying that class's best fame; a class
+    /// with no entry has never been played and is worth nothing. The thresholds are
+    /// <see cref="UI.Fame.Stars"/>, so the count on the card and the stars drawn beside a character
+    /// are read off the same ladder.
+    /// </remarks>
+    private static int CountStars(XElement stats)
+    {
+        if (stats == null)
+            return 0;
+
+        int total = 0;
+        foreach (var entry in stats.Elements("ClassStats"))
+            total += UI.Fame.Stars(Int(Text(entry, "BestFame")));
+
+        return total;
+    }
+
     private static ServerInfo ParseServer(XElement e) => new()
     {
         Name = Text(e, "Name") ?? string.Empty,
         Address = Text(e, "DNS") ?? string.Empty,
+        Port = Text(e, "Port") is string port && int.TryParse(port, out int parsed) && parsed > 0
+            ? parsed
+            : ServerInfo.DefaultPort,
         Latitude = Double(Text(e, "Lat")),
         Longitude = Double(Text(e, "Long")),
         Usage = Double(Text(e, "Usage")),

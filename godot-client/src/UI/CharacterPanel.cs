@@ -380,8 +380,9 @@ public partial class CharacterPanel : Control
         string className = desc?.DisplayId ?? desc?.Id ?? "Adventurer";
         Write(_classLine, $"Level {player.Level}, {className}");
 
-        // Formatted in whatever the machine's locale is, from a round-trip timestamp. A server that
-        // does not send one leaves the line out rather than showing a guess.
+        // Formatted in whatever the machine's locale is, from a round-trip timestamp. No server
+        // sends one -- the original's `Character.ToXml` never wrote `<CreateTime>` -- so the empty
+        // line is the normal case, and this reads as "leave it out" rather than "show a guess".
         Write(_created, _createdAt.HasValue
             ? $"Created on {_createdAt.Value.ToLocalTime():D}"
             : string.Empty);

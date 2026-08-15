@@ -165,16 +165,20 @@ public sealed class ChooseNamePacket : ClientPacket
 }
 
 /// <summary>Which of the two per-account player lists an edit applies to.</summary>
+/// <remarks>
+/// The numbers are the server's: <c>ConnectManager</c> sends list 0 as the lock list and list 1 as
+/// the ignore list, in that order, immediately after MapInfo.
+/// </remarks>
 public enum AccountListId
 {
-    /// <summary>Starred players, shown pinned in the party panel.</summary>
-    Starred = 0,
+    /// <summary>Players who may not teleport to us.</summary>
+    LockedOut = 0,
 
     /// <summary>Ignored players, whose chat is suppressed.</summary>
     Ignored = 1,
 }
 
-/// <summary>Adds or removes a player from the starred or ignored list.</summary>
+/// <summary>Adds or removes a player from the lock or ignore list.</summary>
 public sealed class EditAccountListPacket : ClientPacket
 {
     public override PacketId Id => PacketId.EditAccountList;

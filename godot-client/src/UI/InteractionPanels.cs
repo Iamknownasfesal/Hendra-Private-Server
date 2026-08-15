@@ -252,7 +252,7 @@ public partial class MerchantPanel : HudSection
 
         // Currency zero is gold; anything else is fame on this server build.
         bool fame = merchant.MerchandiseCurrency != 0;
-        int purse = player == null ? 0 : fame ? player.Fame : player.Credits;
+        int purse = player == null ? 0 : fame ? player.CurrentFame : player.Credits;
         bool afford = purse >= merchant.MerchandisePrice;
 
         _currency.Tint = fame ? Style.IconFame : Style.IconGold;

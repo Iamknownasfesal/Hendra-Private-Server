@@ -24,6 +24,7 @@ public sealed class GameData
     private readonly Dictionary<string, ObjectDesc> _objectsById = new(StringComparer.Ordinal);
     private readonly Dictionary<ushort, GroundDesc> _groundByType = new();
     private readonly Dictionary<string, GroundDesc> _groundById = new(StringComparer.Ordinal);
+    private readonly Dictionary<int, SkinSetDesc> _skinSets = new();
 
     public IReadOnlyDictionary<ushort, ObjectDesc> Objects => _objectsByType;
     public IReadOnlyDictionary<ushort, GroundDesc> Ground => _groundByType;
@@ -42,6 +43,109 @@ public sealed class GameData
 
     public GroundDesc GetGround(string id) =>
         id != null && _groundById.TryGetValue(id, out var desc) ? desc : null;
+
+    /// <summary>
+    /// Which classes a level in one class has just unlocked.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>SavedCharactersList.newUnlocks</c>. A class counts as newly unlocked when it is still
+    /// locked, and every requirement of its that is not yet met is <em>exactly</em> the one this
+    /// level satisfies — so reaching level 5 on a Wizard unlocks nothing if the class also wants a
+    /// level 5 Priest that the account has never rolled.
+    /// </para>
+    /// <para>
+    /// <paramref name="bestLevel"/> is the account's best level in a class, which the original
+    /// reads out of the character list fetched at sign-in and never refreshes in play. Keeping that
+    /// stale reading is what makes the test work at all: the class just levelled is compared
+    /// against where it stood when the session began, not against itself.
+    /// </para>
+    /// </remarks>
+    public List<ObjectDesc> NewUnlocks(int classType, int level, Func<int, int> bestLevel)
+    {
+        var unlocked = new List<ObjectDesc>();
+
+        foreach (var candidate in PlayerClasses)
+        {
+            if (LevelRequirementsMet(candidate, bestLevel))
+                continue;
+
+            bool onlyThisOne = true;
+            bool wantedThisOne = false;
+
+            foreach (var requirement in candidate.UnlockLevels)
+            {
+                int required = RequiredClass(requirement);
+                if (bestLevel(required) >= requirement.Level)
+                    continue;
+
+                if (required != classType || requirement.Level != level)
+                {
+                    onlyThisOne = false;
+                    break;
+                }
+
+                wantedThisOne = true;
+            }
+
+            if (onlyThisOne && wantedThisOne)
+                unlocked.Add(candidate);
+        }
+
+        return unlocked;
+    }
+
+    /// <summary>
+    /// Whether the account has levelled everything this class asks for.
+    /// </summary>
+    /// <remarks><c>SavedCharactersList.levelRequirementsMet</c>.</remarks>
+    public bool LevelRequirementsMet(ObjectDesc desc, Func<int, int> bestLevel)
+    {
+        foreach (var requirement in desc.UnlockLevels)
+        {
+            if (bestLevel(RequiredClass(requirement)) < requirement.Level)
+                return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>The object type a requirement names, by id where the client knows it.</summary>
+    private int RequiredClass((string Id, int Type, int Level) requirement) =>
+        GetObject(requirement.Id)?.Type ?? (ushort)requirement.Type;
+
+    /// <summary>The set that dresses a wearer in this skin, or null if no set does.</summary>
+    public SkinSetDesc GetSkinSet(int skinType) =>
+        _skinSets.TryGetValue(skinType, out var desc) ? desc : null;
+
+    /// <summary>
+    /// Merges the equipment set document.
+    /// </summary>
+    /// <remarks>
+    /// Indexed by skin rather than by set, because the skin is all the client ever has to go on:
+    /// the server never says "a set completed", it just writes a new skin stat. The original builds
+    /// the same index — every child node of every set that carries a <c>skinType</c>, filed under
+    /// that skin (<c>ParseSkinsXmlCommand.as:16-31</c>) — and the pieces themselves are ignored
+    /// here for the same reason they are there: matching them is the server's job.
+    /// </remarks>
+    public void AddEquipmentSets(string xml)
+    {
+        foreach (var set in Root(xml).Elements("EquipmentSet"))
+        {
+            foreach (var node in set.Elements())
+            {
+                if (!TryParseInt(node.Attribute("skinType")?.Value, out int skinType))
+                    continue;
+
+                _skinSets[skinType] = new SkinSetDesc
+                {
+                    SkinType = skinType,
+                    Color = TryParseInt(node.Attribute("color")?.Value, out int color) ? color : -1,
+                    BulletType = node.Attribute("bulletType")?.Value,
+                };
+            }
+        }
+    }
 
     /// <summary>
     /// Merges one object XML document. Later documents override earlier ones for the same type,
@@ -110,6 +214,7 @@ public sealed class GameData
 
             IsPlayer = Has(e, "Player"),
             StatMaxima = Has(e, "Player") ? ParseStatMaxima(e) : null,
+            UnlockLevels = ParseUnlockLevels(e),
             IsEnemy = Has(e, "Enemy"),
             IsHero = Has(e, "Hero"),
             IsEncounter = Has(e, "Encounter"),
@@ -471,6 +576,30 @@ public sealed class GameData
         }
 
         return maxima;
+    }
+
+    /// <summary>
+    /// The classes that must be levelled before this one can be rolled.
+    /// </summary>
+    /// <remarks>
+    /// <c>&lt;UnlockLevel level="5" type="0x0307"&gt;Archer&lt;/UnlockLevel&gt;</c>. Both the id in
+    /// the text and the type attribute are kept: the original resolves the id, and the attribute is
+    /// there to fall back on when a document names a class this client has no definition for.
+    /// </remarks>
+    private static List<(string Id, int Type, int Level)> ParseUnlockLevels(XElement e)
+    {
+        var requirements = new List<(string, int, int)>();
+
+        foreach (var element in e.Elements("UnlockLevel"))
+        {
+            if (!TryParseInt(element.Attribute("level")?.Value, out int level))
+                continue;
+
+            TryParseInt(element.Attribute("type")?.Value, out int type);
+            requirements.Add((element.Value?.Trim(), type, level));
+        }
+
+        return requirements;
     }
 
     /// <summary>

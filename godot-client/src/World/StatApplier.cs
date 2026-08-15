@@ -57,9 +57,22 @@ public static class StatApplier
             case StatsType.Level: entity.Level = stat.IntValue; break;
             case StatsType.Defense: entity.Defense = stat.IntValue; break;
             case StatsType.Name: entity.Name = stat.StringValue; break;
+            // The two dye layers. Which one a dye paints is the content's to say -- the clothing
+            // dye and the accessory dye of one colour carry the same number and differ only in
+            // which element declared it (`Player.UseItem.cs:583-589`), so the two arrive apart and
+            // are never worked out from the value.
             case StatsType.Tex1: entity.Texture1 = stat.IntValue; break;
             case StatsType.Tex2: entity.Texture2 = stat.IntValue; break;
+
+            // Which neighbours a wall or a fence joins onto, which picks its connector shape
+            // (`ConnectedObject.as:98`).
+            case StatsType.ObjectConnection: entity.ConnectType = stat.IntValue; break;
+
+            // Whether a portal will let anybody through. `PortalPanel` hides its Enter button
+            // while this is off (`PortalPanel.as:92-97`).
+            case StatsType.PortalActive: entity.PortalActive = stat.IntValue != 0; break;
             case StatsType.AltTextureIndex: entity.AltTextureIndex = stat.IntValue; break;
+            case StatsType.Skin: entity.Skin = stat.IntValue; break;
 
             case StatsType.Condition:
                 entity.Conditions = ConditionEffectsCodec.WithEffects(entity.Conditions, stat.IntValue);
@@ -90,9 +103,32 @@ public static class StatApplier
             case StatsType.Vitality when player != null: player.Vitality = stat.IntValue; break;
             case StatsType.Wisdom when player != null: player.Wisdom = stat.IntValue; break;
             case StatsType.Dexterity when player != null: player.Dexterity = stat.IntValue; break;
+
+            // The equipped weapon's damage bounds and the private-drop bonus: the three stats the
+            // eight-stat character sheet has no row for, sent because a client cannot work the
+            // first two out from an item tooltip once a bonus has moved them.
+            case StatsType.DamageMin when player != null: player.DamageMin = stat.IntValue; break;
+            case StatsType.DamageMax when player != null: player.DamageMax = stat.IntValue; break;
+            case StatsType.Luck when player != null: player.Luck = stat.IntValue; break;
             case StatsType.Credits when player != null: player.Credits = stat.IntValue; break;
-            case StatsType.CurrentFame when player != null: player.Fame = stat.IntValue; break;
+            // Two different things, and the original sends both: CurrentFame is the account's
+            // money and Fame is what this character has earned (Player.cs:291-292). One field for
+            // both would leave every vendor charging against a purse nothing is ever spent from.
+            case StatsType.CurrentFame when player != null: player.CurrentFame = stat.IntValue; break;
+            case StatsType.Prestige when player != null: player.Prestige = stat.IntValue; break;
+            case StatsType.Fame when player != null: player.Fame = stat.IntValue; break;
             case StatsType.GuildName: entity.Guild = stat.StringValue; break;
+            case StatsType.GuildRank: entity.GuildRank = stat.IntValue; break;
+
+            // The rating beside a name and the mark that recolours it. Both belong to the account
+            // rather than to the body, and both are drawn into the name plate rather than written
+            // out (`FameUtil.numStarsToIcon(numStars_, admin_)`, `Player.as:750-756`).
+            case StatsType.NumStars: entity.Stars = stat.IntValue; break;
+            case StatsType.Admin: entity.Admin = stat.IntValue != 0; break;
+
+            // The halo `/glow` sets, which the original paints around the whole sprite
+            // (`GameObject.setGlow`, `GlowRedrawer.as:19-46`). Zero puts it out.
+            case StatsType.GlowColor: entity.GlowColor = stat.IntValue; break;
             case StatsType.Exp when player != null: player.Experience = stat.IntValue; break;
 
             case StatsType.MaxHpBoost when player != null: player.Boosts[0] = stat.IntValue; break;
@@ -103,8 +139,26 @@ public static class StatApplier
             case StatsType.DexterityBoost when player != null: player.Boosts[5] = stat.IntValue; break;
             case StatsType.VitalityBoost when player != null: player.Boosts[6] = stat.IntValue; break;
             case StatsType.WisdomBoost when player != null: player.Boosts[7] = stat.IntValue; break;
+
+            // The last three of the eleven, which the eight-row sheet has no line for: what is worn
+            // moves the weapon's own damage bounds and the private-drop bonus too
+            // (`Player.cs:350-352`).
+            case StatsType.DamageMinBonus when player != null: player.Boosts[8] = stat.IntValue; break;
+            case StatsType.DamageMaxBonus when player != null: player.Boosts[9] = stat.IntValue; break;
+            case StatsType.LuckBonus when player != null: player.Boosts[10] = stat.IntValue; break;
             case StatsType.NextLevelExp when player != null: player.NextLevelExperience = stat.IntValue; break;
             case StatsType.NextClassQuestFame when player != null: player.NextClassQuestFame = stat.IntValue; break;
+
+            // Whether this account picked its own name, which colours it over the head
+            // (`Player.getNameColor`, `Player.as:757-764`).
+            case StatsType.NameChosen: entity.NameChosen = stat.IntValue != 0; break;
+
+            // What is left of the three timed boosts, in whole seconds. The flag beside the first
+            // is derived from its own clock in the original (`Player.cs:355`), so only the clocks
+            // are kept and the flag is asked of them.
+            case StatsType.XpTimer when player != null: player.ExperienceBoostSeconds = stat.IntValue; break;
+            case StatsType.LdTimer when player != null: player.LootDropBoostSeconds = stat.IntValue; break;
+            case StatsType.LtTimer when player != null: player.LootTierBoostSeconds = stat.IntValue; break;
 
             // Sent as a number rather than a flag, and it is what makes the last eight inventory
             // slots real -- the server refuses a swap into them for a character without one.

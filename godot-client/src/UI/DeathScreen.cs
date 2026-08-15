@@ -121,6 +121,11 @@ public partial class DeathScreen : Control
         string killer = string.IsNullOrEmpty(death.KilledBy) ? "something" : death.KilledBy;
         _subheading.Text = $"Killed by {killer} at level {level}.";
 
+        // What the death was worth, from the death itself. Shown before the tally is asked for and
+        // left standing if the ask fails: the number is decided by the server that ended the
+        // character and is the one thing about a death nobody wants to be told they cannot see.
+        _total.Text = $"{death.FinalFame} Fame";
+
         _ = LoadFameAsync(death, appServerUrl);
     }
 
@@ -174,8 +179,22 @@ public partial class DeathScreen : Control
 
         string killer = string.IsNullOrEmpty(fame.KilledBy) ? "something" : fame.KilledBy;
         _subheading.Text = $"Killed by {killer} at level {fame.Level}, with {Number(fame.Experience)} experience.";
-        _total.Text = $"{Number(fame.TotalFame)} fame  ({Number(fame.BaseFame)} earned, " +
-                      $"{Number(fame.TotalFame - fame.BaseFame)} in bonuses)";
+        // A total is a base with each bonus added onto it (TotalFame.as:16-30), which is how the
+        // original's box reads too: "Base Fame Earned" above the bonuses and "Total Fame Earned"
+        // below them (ScoringBox.as:55-62, FameView.as:152-157). The base is the fame the character
+        // banked by living, which the server keeps apart from what the death came to.
+        //
+        // With nothing listed there is no split to show, so the line says only the total: a
+        // character that earned all of its fame and one that was awarded all of it are the same
+        // number until the bonuses say otherwise.
+        int awarded = 0;
+        foreach (var bonus in fame.Bonuses)
+            awarded += bonus.Fame;
+
+        _total.Text = awarded > 0
+            ? $"{Number(fame.TotalFame)} fame  ({Number(Mathf.Max(0, fame.BaseFame))} earned, " +
+              $"{Number(awarded)} in bonuses)"
+            : $"{Number(fame.TotalFame)} fame";
 
         foreach (var bonus in fame.Bonuses)
         {

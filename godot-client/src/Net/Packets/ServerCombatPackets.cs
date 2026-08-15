@@ -112,6 +112,17 @@ public sealed class AoePacket : ServerPacket
     /// <summary>Type of the entity that produced the blast, for the damage attribution text.</summary>
     public ushort OrigType;
 
+    /// <summary>
+    /// Whether the server has already taken the health, making this a telegraph rather than an
+    /// instruction.
+    /// </summary>
+    /// <remarks>
+    /// Never set by the wire read below, which is the original's format: that protocol leaves the
+    /// hit to the client. Set by the bridge for a server that decides its own blasts and reports
+    /// them as ordinary damage.
+    /// </remarks>
+    public bool ServerApplied;
+
     public override void Read(ref NetReader r)
     {
         Position = WorldPos.Read(ref r);

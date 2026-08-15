@@ -70,6 +70,37 @@ public sealed class GameDataTests : IDisposable
         Assert.True(_data.Ground.Count > 300, $"Only parsed {_data.Ground.Count} ground types.");
     }
 
+    /// <summary>
+    /// The one object in the vault is what opens the panel, not a container.
+    /// </summary>
+    /// <remarks>
+    /// The chests stopped being eight-slot objects standing in a room and became rows in a panel,
+    /// and the object left behind carries the type number they had. Its class is the whole of what
+    /// tells the client which of the two to open: as a Container it puts an eight-slot grid on
+    /// screen showing the first eight things the account owns, which is a vault that lies about how
+    /// much is in it.
+    /// </remarks>
+    [Fact]
+    public void TheVaultObjectOpensTheVaultRatherThanAGrid()
+    {
+        RequireAssets();
+
+        var vault = _data.GetObject(0x0504);
+        Assert.NotNull(vault);
+
+        // What Interaction.KindOf switches on to decide which panel a key opens.
+        Assert.Equal("VaultAccess", vault.Class);
+
+        // Not a container: it holds nothing, and a container with no contents draws as empty.
+        Assert.Null(vault.SlotTypes);
+
+        // The game's own event chest, thrown open with gold spilling out of it. How large it is
+        // drawn comes from the server, which stands it at twice size.
+        Assert.NotNull(vault.Texture);
+        Assert.Equal("lofiObj3", vault.Texture.File);
+        Assert.Equal(0x466, vault.Texture.Index);
+    }
+
     [Fact]
     public void KnownObjectsResolveWithTheExpectedFields()
     {

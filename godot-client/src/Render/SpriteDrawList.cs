@@ -63,6 +63,21 @@ public struct SpriteDraw
     public bool Outlined;
 
     /// <summary>
+    /// The recolour mask for this sprite, or an invalid sprite when it has none.
+    /// </summary>
+    /// <remarks>
+    /// Sheets ship a mask beside the artwork whose red channel marks the cloth and whose green
+    /// marks the accessory, which is exactly what <see cref="DyeOne"/> and <see cref="DyeTwo"/>
+    /// paint. The original baked a new bitmap per dye through a Pixel Bender shader
+    /// (<c>TextureRedrawer.retextureNoSizeChange</c>); this hands the same two inputs to the GPU.
+    /// </remarks>
+    public Sprite Mask;
+
+    /// <summary>The cloth dye, and the accessory dye. Transparent means leave that layer alone.</summary>
+    public Color DyeOne;
+    public Color DyeTwo;
+
+    /// <summary>
     /// Spins the quad on screen, clockwise, in radians. Zero leaves it upright.
     /// </summary>
     /// <remarks>
@@ -116,7 +131,13 @@ public sealed class SpriteDrawList
     /// separate when they genuinely cannot share a draw: a different sheet, a different tint, or an
     /// outline.
     /// </remarks>
-    private readonly record struct SurfaceKey(Texture2D Texture, SpriteTint Tint, bool Outlined);
+    private readonly record struct SurfaceKey(
+        Texture2D Texture,
+        SpriteTint Tint,
+        bool Outlined,
+        Texture2D Mask,
+        Color DyeOne,
+        Color DyeTwo);
 
     private readonly Dictionary<SurfaceKey, List<SpriteDraw>> _bySurface = new();
     private readonly List<SurfaceKey> _order = new();
@@ -138,7 +159,18 @@ public sealed class SpriteDrawList
         if (!draw.Sprite.IsValid)
             return;
 
-        var key = new SurfaceKey(draw.Sprite.Sheet, draw.Tint, draw.Outlined);
+        // The dye pair joins the key rather than riding per instance: the four instance floats are
+        // already the sprite's rectangle, and a dye moves about once in a session. Nearly everybody
+        // wears none, so nearly everybody still shares one surface, and a dyed player costs one
+        // small batch of their own.
+        bool dyed = draw.Mask.IsValid && (draw.DyeOne.A > 0f || draw.DyeTwo.A > 0f);
+        var key = new SurfaceKey(
+            draw.Sprite.Sheet,
+            draw.Tint,
+            draw.Outlined,
+            dyed ? draw.Mask.Sheet : null,
+            dyed ? draw.DyeOne : default,
+            dyed ? draw.DyeTwo : default);
         if (!_bySurface.TryGetValue(key, out var list))
         {
             list = new List<SpriteDraw>(256);
@@ -301,6 +333,16 @@ public sealed class SpriteDrawList
         // a sheet share one surface regardless of how big it is.
         material.SetShaderParameter("tint_mode", (int)key.Tint);
         material.SetShaderParameter("outline_pixels", key.Outlined ? 2.0f : 0f);
+
+        // The mask is sampled at the sprite's own UV, so it has to be the mask sheet laid out like
+        // the artwork sheet -- which is how the assets ship it, cell for cell.
+        material.SetShaderParameter("use_dye_mask", key.Mask != null);
+        if (key.Mask != null)
+        {
+            material.SetShaderParameter("dye_mask", key.Mask);
+            material.SetShaderParameter("dye_one", key.DyeOne);
+            material.SetShaderParameter("dye_two", key.DyeTwo);
+        }
 
         _materials[key] = material;
         return material;

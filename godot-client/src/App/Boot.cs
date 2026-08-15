@@ -55,6 +55,17 @@ public partial class Boot : Control
 
         _options = LaunchOptions.Parse();
 
+        // Set before the world exists, since collision is asked for on the first frame of play.
+        Hendra.World.Movement.NoClip = _options.NoClip;
+        Hendra.World.LocalPlayer.Lurch = _options.Lurch;
+        if (_options.NoClip)
+            GD.Print("[boot] collision off: this client will report positions the ground refuses");
+
+        // Set before anything asks for an app server URL, since the login screen builds one from
+        // this the moment it appears.
+        ServerConfig.AppPort = _options.AppPort;
+        GD.Print($"[boot] app server port {ServerConfig.AppPort}");
+
         try
         {
             ServiceLocator.LoadContent();
@@ -68,7 +79,12 @@ public partial class Boot : Control
 
         _status.Visible = false;
 
-        if (_options.CanAutoCreate)
+        if (_options.SignInThroughInterface)
+        {
+            GD.Print("[boot] signing in through the login screen");
+            SignInThroughInterface();
+        }
+        else if (_options.CanAutoCreate)
         {
             GD.Print($"[boot] auto-creating a character of class {_options.CreateClassType}");
             CreateCharacter(_options.ToServer(), _options.Guid, _options.Password ?? string.Empty,
@@ -115,6 +131,31 @@ public partial class Boot : Control
         _game = null;
     }
 
+    /// <summary>
+    /// Opens the login screen and works it, for a run with nobody at the keyboard.
+    /// </summary>
+    /// <remarks>
+    /// Every step goes through the screen's own handlers, so what this proves is what a player
+    /// would get: registering, signing in, claiming a name and creating a character all take the
+    /// path the buttons take. The alternative — building a session from the command line — never
+    /// touches the account server and so cannot show that getting in works at all.
+    /// </remarks>
+    private void SignInThroughInterface()
+    {
+        ShowLogin();
+
+        _login.ClaimName = _options.ClaimName;
+        _login.PickClassType = _options.PickClassType;
+
+        string guid = _options.Guid ?? string.Empty;
+        string password = _options.Password ?? string.Empty;
+
+        if (_options.RegisterFirst)
+            _login.RegisterForTesting(guid, password);
+        else
+            _login.PrefillForTesting(guid, password);
+    }
+
     private void ShowLogin()
     {
         CloseScreens();
@@ -147,16 +188,21 @@ public partial class Boot : Control
 
         // Fired and forgotten: the session does not wait on it, and keys render as themselves
         // until it lands.
-        _appServerUrl = $"http://{server.Address}:8888";
+        _appServerUrl = $"http://{server.Address}:{ServerConfig.AppPort}";
         _ = ServiceLocator.LoadLanguageAsync(_appServerUrl);
         ServiceLocator.Audio?.Configure(_appServerUrl);
+
+        // The account, for the ways into a world that skipped the sign-in page and so never
+        // fetched it: a level-up reads it to know whether it has just unlocked a class.
+        if (ServiceLocator.Account == null)
+            _ = ServiceLocator.LoadAccountAsync(_appServerUrl, guid, password);
 
         // Fired and forgotten, like the language table: the objects that use these are rare, and
         // waiting on a download before showing the world would be a poor trade.
         _ = Assets.RemoteTextures.LoadAsync(_appServerUrl, ServiceLocator.Assets, ServiceLocator.Data);
 
-        _game = new GameScene { Autofire = _options?.Autofire ?? false, AutoAbility = _options?.AutoAbility ?? false, AutoWalk = _options?.AutoWalk ?? false, OpenCharacterPanel = _options?.OpenCharacterPanel ?? false, OpenAccountPanel = _options?.OpenAccountPanel ?? false, OpenVault = _options?.OpenVault ?? false, OpenOptions = _options?.OpenOptions ?? false, OptionsTab = _options?.OptionsTab,
-            StartingCameraAngle = _options?.CameraAngleDegrees * Mathf.Pi / 180f, ScriptedLines = new System.Collections.Generic.Queue<string>(_options?.Say ?? new System.Collections.Generic.List<string>()) };
+        _game = new GameScene { Autofire = _options?.Autofire ?? false, AutoAbility = _options?.AutoAbility ?? false, AutoWalk = _options?.AutoWalk ?? false, OpenCharacterPanel = _options?.OpenCharacterPanel ?? false, OpenAccountPanel = _options?.OpenAccountPanel ?? false, OpenVault = _options?.OpenVault ?? false, ClaimGifts = _options?.ClaimGifts ?? 0, BuyVaultChest = _options?.BuyVaultChest ?? false, BuyFromMerchant = _options?.BuyFromMerchant ?? 0, TakeFromVault = _options?.TakeFromVault, Drags = _options?.Drags, Activations = _options?.Activations, Discards = _options?.Discards, TakeFromBag = _options?.TakeFromBag, Interactions = _options?.Interactions, OpenOptions = _options?.OpenOptions ?? false, OptionsTab = _options?.OptionsTab,
+            StartingCameraAngle = _options?.CameraAngleDegrees * Mathf.Pi / 180f, ScriptedLines = new System.Collections.Generic.Queue<string>(_options?.Say ?? new System.Collections.Generic.List<string>()), LaterLines = new System.Collections.Generic.Queue<string>(_options?.Afterwards ?? new System.Collections.Generic.List<string>()) };
         _game.Ended += OnSessionEnded;
         _game.Died += OnCharacterDied;
 
@@ -182,16 +228,21 @@ public partial class Boot : Control
             _login = null;
         }
 
-        _appServerUrl = $"http://{server.Address}:8888";
+        _appServerUrl = $"http://{server.Address}:{ServerConfig.AppPort}";
         _ = ServiceLocator.LoadLanguageAsync(_appServerUrl);
         ServiceLocator.Audio?.Configure(_appServerUrl);
+
+        // The account, for the ways into a world that skipped the sign-in page and so never
+        // fetched it: a level-up reads it to know whether it has just unlocked a class.
+        if (ServiceLocator.Account == null)
+            _ = ServiceLocator.LoadAccountAsync(_appServerUrl, guid, password);
 
         // Fired and forgotten, like the language table: the objects that use these are rare, and
         // waiting on a download before showing the world would be a poor trade.
         _ = Assets.RemoteTextures.LoadAsync(_appServerUrl, ServiceLocator.Assets, ServiceLocator.Data);
 
-        _game = new GameScene { Autofire = _options?.Autofire ?? false, AutoAbility = _options?.AutoAbility ?? false, AutoWalk = _options?.AutoWalk ?? false, OpenCharacterPanel = _options?.OpenCharacterPanel ?? false, OpenAccountPanel = _options?.OpenAccountPanel ?? false, OpenVault = _options?.OpenVault ?? false, OpenOptions = _options?.OpenOptions ?? false, OptionsTab = _options?.OptionsTab,
-            StartingCameraAngle = _options?.CameraAngleDegrees * Mathf.Pi / 180f, ScriptedLines = new System.Collections.Generic.Queue<string>(_options?.Say ?? new System.Collections.Generic.List<string>()) };
+        _game = new GameScene { Autofire = _options?.Autofire ?? false, AutoAbility = _options?.AutoAbility ?? false, AutoWalk = _options?.AutoWalk ?? false, OpenCharacterPanel = _options?.OpenCharacterPanel ?? false, OpenAccountPanel = _options?.OpenAccountPanel ?? false, OpenVault = _options?.OpenVault ?? false, ClaimGifts = _options?.ClaimGifts ?? 0, BuyVaultChest = _options?.BuyVaultChest ?? false, BuyFromMerchant = _options?.BuyFromMerchant ?? 0, TakeFromVault = _options?.TakeFromVault, Drags = _options?.Drags, Activations = _options?.Activations, Discards = _options?.Discards, TakeFromBag = _options?.TakeFromBag, Interactions = _options?.Interactions, OpenOptions = _options?.OpenOptions ?? false, OptionsTab = _options?.OptionsTab,
+            StartingCameraAngle = _options?.CameraAngleDegrees * Mathf.Pi / 180f, ScriptedLines = new System.Collections.Generic.Queue<string>(_options?.Say ?? new System.Collections.Generic.List<string>()), LaterLines = new System.Collections.Generic.Queue<string>(_options?.Afterwards ?? new System.Collections.Generic.List<string>()) };
         _game.Ended += OnSessionEnded;
         _game.Died += OnCharacterDied;
         AddChild(_game);

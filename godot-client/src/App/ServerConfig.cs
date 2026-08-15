@@ -20,8 +20,21 @@ public static class ServerConfig
     /// <summary>The host the app server runs on.</summary>
     public const string Host = "127.0.0.1";
 
-    /// <summary>The app server's port. Fixed in this fork; the world server is always 2050.</summary>
-    public const int AppPort = 8888;
+    /// <summary>
+    /// The app server's port.
+    /// </summary>
+    /// <remarks>
+    /// The original hard-codes this. It is settable here so a development run can be pointed at one
+    /// app server while another keeps answering on the usual port, which is the only way to tell
+    /// which of two servers actually answered a request. <c>--app-port</c> sets it at boot.
+    /// </remarks>
+    /// <remarks>
+    /// 8080 is where <c>hendra-app</c> listens. The original C# app server answers on 8888, and
+    /// pointing here at 8888 sends the character list, the language strings, the interface audio and
+    /// the death screen to that server instead — which reads as a client that cannot find its own
+    /// characters, because the two servers keep separate accounts.
+    /// </remarks>
+    public static int AppPort { get; set; } = 8080;
 
     /// <summary>The app server's base URL.</summary>
     public static string AppServer => $"http://{Host}:{AppPort}";

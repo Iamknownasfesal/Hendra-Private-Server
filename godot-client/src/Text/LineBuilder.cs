@@ -35,6 +35,12 @@ public sealed class StringMap
     /// </summary>
     public void LoadFrom(string json)
     {
+        // The shipped table begins with a byte order mark, and the app server serves the file
+        // verbatim so that a deployment can drop the original's own copy in unchanged. A mark left
+        // in front of the opening bracket is not valid JSON, and rejecting the whole table over it
+        // leaves every line in the game rendering as the raw key it was looked up by.
+        json = json.TrimStart('﻿');
+
         using var document = JsonDocument.Parse(json);
         if (document.RootElement.ValueKind != JsonValueKind.Array)
             return;

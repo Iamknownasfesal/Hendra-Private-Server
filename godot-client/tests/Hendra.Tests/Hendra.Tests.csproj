@@ -38,6 +38,7 @@
     <Compile Include="../../src/Render/WorldProjection.cs" />
     <Compile Include="../../src/Render/ModelLibrary.cs" />
     <Compile Include="../../src/Assets/AssetManifest.cs" />
+    <Compile Include="../../src/App/ServerConfig.cs" />
     <Compile Include="../../src/Account/FameResult.cs" />
     <Compile Include="../../src/Account/GuildResult.cs" />
     <Compile Include="../../src/Account/AccountModels.cs" />

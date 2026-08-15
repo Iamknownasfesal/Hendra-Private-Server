@@ -95,6 +95,10 @@ public sealed class AssetManifest
 
         [JsonPropertyName("regions")] public List<string> Regions { get; set; } = new();
         [JsonPropertyName("spawnRegions")] public List<string> SpawnRegions { get; set; } = new();
+
+        /// <summary>The equipment set document, which is its own constant in EmbeddedData.</summary>
+        [JsonPropertyName("equipmentSets")] public string EquipmentSets { get; set; }
+
         [JsonPropertyName("baseObjectCount")] public int BaseObjectCount { get; set; }
     }
 

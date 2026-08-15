@@ -201,11 +201,13 @@ public partial class AccountPanel : Control
         _name.Text = string.IsNullOrEmpty(account.Name) ? _guid : account.Name;
 
         // The rating on the card is this: the account's stars across every class it has played, and
-        // the colour band they fall in.
-        _star.Tint = Fame.Colour(account.Rank, Classes, account.Admin);
+        // the colour band they fall in. Counted from the class stats the list carries, because
+        // <Rank> is the staff ladder rather than a rating and reading it here put an
+        // administrator's permission level on the card as a star count.
+        _star.Tint = Fame.Colour(account.Stars, Classes, account.Admin);
         _rank.Text = account.Admin
-            ? $"{account.Rank} stars · administrator"
-            : $"{account.Rank} stars";
+            ? $"{account.Stars} stars · administrator"
+            : $"{account.Stars} stars";
 
         _rows[0].Set(account.Credits.ToString("N0", CultureInfo.InvariantCulture), Style.IconGold);
         _rows[1].Set(account.Fame.ToString("N0", CultureInfo.InvariantCulture), Style.IconFame);

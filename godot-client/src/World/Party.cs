@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using System.Linq;
 
+using Hendra.Net.Packets;
+
 namespace Hendra.World;
 
 /// <summary>One nearby player, as the party list shows them.</summary>
@@ -10,18 +12,26 @@ public readonly struct PartyMember
     public readonly int Hp;
     public readonly int MaxHp;
     public readonly float Distance;
-    public readonly bool Starred;
+
+    /// <summary>Whether we have locked them out, so they cannot teleport to us.</summary>
+    public readonly bool LockedOut;
+
+    /// <summary>Whether we are ignoring them, so nothing they say is shown.</summary>
+    public readonly bool Ignored;
 
     /// <summary>Their class, which is what the list draws a portrait of.</summary>
     public readonly ushort ObjectType;
 
-    public PartyMember(string name, int hp, int maxHp, float distance, bool starred, ushort objectType)
+    public PartyMember(
+        string name, int hp, int maxHp, float distance,
+        bool lockedOut, bool ignored, ushort objectType)
     {
         Name = name;
         Hp = hp;
         MaxHp = maxHp;
         Distance = distance;
-        Starred = starred;
+        LockedOut = lockedOut;
+        Ignored = ignored;
         ObjectType = objectType;
     }
 }
@@ -36,8 +46,10 @@ public readonly struct PartyMember
 /// makes two players at similar range swap places continuously.
 /// </para>
 /// <para>
-/// Starred players sort first regardless of distance. The starred set arrives in AccountList and is
-/// keyed by account id, which is why the ids are worth carrying even though nothing else uses them.
+/// Both of the account's lists arrive in AccountList — one for the players who may not teleport to
+/// us and one for the players we are ignoring — and each member carries whether they are on either.
+/// The server enforces both regardless; carrying them here is what puts the marker beside the name,
+/// which is the only way to see who has already been dealt with.
 /// </para>
 /// </remarks>
 public sealed class Party
@@ -52,7 +64,8 @@ public sealed class Party
 
     private readonly GameMap _map;
     private readonly List<PartyMember> _members = new(MaxMembers);
-    private readonly HashSet<string> _starred = new();
+    private readonly HashSet<string> _lockedOut = new(System.StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _ignored = new(System.StringComparer.OrdinalIgnoreCase);
 
     private int _nextRebuildMs;
 
@@ -63,13 +76,17 @@ public sealed class Party
 
     public IReadOnlyList<PartyMember> Members => _members;
 
-    /// <summary>Replaces the starred set, which arrives whole in an AccountList.</summary>
-    public void SetStarred(IEnumerable<string> accountIds)
+    /// <summary>Replaces one of the two lists, each of which arrives whole in an AccountList.</summary>
+    public void SetList(AccountListId which, IEnumerable<string> names)
     {
-        _starred.Clear();
-        foreach (string id in accountIds)
-            _starred.Add(id);
+        var set = which == AccountListId.Ignored ? _ignored : _lockedOut;
+        set.Clear();
+        foreach (string name in names)
+            set.Add(name);
     }
+
+    /// <summary>Whether this player is one we are ignoring, for anything that filters what is said.</summary>
+    public bool IsIgnored(string name) => !string.IsNullOrEmpty(name) && _ignored.Contains(name);
 
     public void Update(int nowMs)
     {
@@ -106,12 +123,12 @@ public sealed class Party
 
             nearby.Add(new PartyMember(
                 entity.Name, entity.Hp, entity.MaxHp, distance,
-                _starred.Contains(entity.Name), entity.ObjectType));
+                _lockedOut.Contains(entity.Name), _ignored.Contains(entity.Name),
+                entity.ObjectType));
         }
 
         _members.AddRange(nearby
-            .OrderByDescending(member => member.Starred)
-            .ThenBy(member => member.Distance)
+            .OrderBy(member => member.Distance)
             .Take(MaxMembers));
     }
 }

@@ -89,6 +89,17 @@ public sealed class Settings
 
     public bool AllyDamageText { get; set; } = true;
 
+    /// <summary>
+    /// Whether experience is still announced at level 20, where it buys nothing.
+    /// </summary>
+    /// <remarks>
+    /// The original's <c>forceEXP</c> (<c>Options.as:450</c>, defaulted to 0 at
+    /// <c>Parameters.as:238</c>): 0 off, 1 for everyone, 2 for yourself only. Off, a level-20
+    /// character says nothing about the experience it keeps earning — <c>Player.handleExpUp</c>
+    /// returns before drawing a thing.
+    /// </remarks>
+    public int AlwaysShowExp { get; set; }
+
     /// <summary>The switch that turns off every particle at once.</summary>
     public bool Particles { get; set; } = true;
 
@@ -277,6 +288,7 @@ public sealed class Settings
         settings.TextBubbles = (bool)file.GetValue(Section, "text_bubbles", settings.TextBubbles);
         settings.EnemyDamageText = (bool)file.GetValue(Section, "enemy_damage_text", settings.EnemyDamageText);
         settings.AllyDamageText = (bool)file.GetValue(Section, "ally_damage_text", settings.AllyDamageText);
+        settings.AlwaysShowExp = (int)file.GetValue(Section, "always_show_exp", settings.AlwaysShowExp);
         settings.Particles = (bool)file.GetValue(Section, "particles", settings.Particles);
         settings.EnemyParticles = (bool)file.GetValue(Section, "enemy_particles", settings.EnemyParticles);
         settings.PlayerHitParticles = (bool)file.GetValue(Section, "player_hit_particles", settings.PlayerHitParticles);
@@ -347,6 +359,7 @@ public sealed class Settings
         file.SetValue(Section, "text_bubbles", TextBubbles);
         file.SetValue(Section, "enemy_damage_text", EnemyDamageText);
         file.SetValue(Section, "ally_damage_text", AllyDamageText);
+        file.SetValue(Section, "always_show_exp", AlwaysShowExp);
         file.SetValue(Section, "particles", Particles);
         file.SetValue(Section, "enemy_particles", EnemyParticles);
         file.SetValue(Section, "player_hit_particles", PlayerHitParticles);

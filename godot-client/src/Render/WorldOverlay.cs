@@ -19,6 +19,29 @@ public interface IConditionSheet
     Godot.Rect2? Region(int index);
 }
 
+/// <summary>
+/// Where a body is this frame, for the text hanging over it.
+/// </summary>
+/// <remarks>
+/// The three things <c>CharacterStatusText.draw</c> asks its <c>go_</c> for every frame: whether it
+/// is still in the world, whether it is being drawn, and where it is. Answered by the world rather
+/// than remembered by the overlay, which is what makes the text follow a body that moves.
+/// </remarks>
+public struct FloatingAnchor
+{
+    /// <summary>The body has left the world. Its texts go with it.</summary>
+    public bool Gone;
+
+    /// <summary>Whether the body is on screen. A hidden body's texts wait rather than die.</summary>
+    public bool Drawn;
+
+    /// <summary>Where its feet land on screen, in pixels.</summary>
+    public Vector2 Screen;
+
+    /// <summary>How tall its artwork draws above that, in pixels.</summary>
+    public float SpriteHeight;
+}
+
 public struct OverlayItem
 {
     /// <summary>Where the entity's feet land on screen, in pixels.</summary>
@@ -39,6 +62,24 @@ public struct OverlayItem
 
     public string Name;
     public Color NameColor;
+
+    /// <summary>The guild written under the name, or null for a player in none.</summary>
+    public string Guild;
+
+    /// <summary>Their rank in it, which is what the line is coloured by.</summary>
+    public int GuildRank;
+
+    /// <summary>Whether a star belongs beside this name. Players only.</summary>
+    public bool ShowStar;
+
+    /// <summary>The account's star rating, which the star is coloured by.</summary>
+    public int Stars;
+
+    /// <summary>Whether the account is an administrator, which is a colour of its own.</summary>
+    public bool Admin;
+
+    /// <summary>The halo colour, as a packed <c>0xRRGGBB</c>. Zero for no halo.</summary>
+    public int Glow;
 
     public int Hp;
     public int MaxHp;
@@ -71,22 +112,33 @@ public struct OverlayItem
 /// </remarks>
 public partial class WorldOverlay : Control
 {
-    /// <summary>The bar under a sprite: forty-four by six, as the brief measures it.</summary>
-    private const float BarHalfWidth = 22f;
+    /// <summary>
+    /// The bar under a sprite: forty wide by six high, four below the feet.
+    /// </summary>
+    /// <remarks>
+    /// <c>GameObject.as:1047-1049</c>, whose <c>20 / 4 / 6</c> are in a space scaled fifty to the
+    /// tile (<c>Camera.as:57</c>) -- the same fifty this port projects at, so they carry over as
+    /// pixels unchanged.
+    /// </remarks>
+    private const float BarHalfWidth = 20f;
 
     private const float BarHeight = 6f;
     private const float BarOffsetY = 4f;
     private const float NameOffsetY = -6f;
 
+    /// <summary>How far under the name the guild sits, in pixels.</summary>
+    private const float GuildOffsetY = 11f;
+
     /// <summary>The gap between the top of a sprite and the row of status icons over it.</summary>
     private const float ConditionGap = 6f;
 
-    private static readonly Color BarBackground = new(0.33f, 0.33f, 0.33f);
+    /// <summary>The empty part of a bar, and the red it is pulsed towards. <c>GameObject.as:1042</c>.</summary>
+    private static readonly Color BarBackground = new("545454");
 
-    /// <summary>The brief's entity-health green, and the red it turns as the bar empties.</summary>
-    private static readonly Color BarFill = new("4cd137");
+    private static readonly Color BarEmptyWarning = new("ff0000");
 
-    private static readonly Color BarLowFill = new("d02020");
+    /// <summary>The one colour a bar's fill is ever drawn in. <c>GameObject.as:1031</c>.</summary>
+    private static readonly Color BarFill = new("10ff00");
 
     /// <summary>The marker pointing at whatever is worth walking towards, off the edge of the view.</summary>
     private static readonly Color MarkerColour = new("d02020");
@@ -112,8 +164,19 @@ public partial class WorldOverlay : Control
         _font = ThemeDB.FallbackFont;
     }
 
-    /// <summary>Whether health bars are drawn. The original let players turn them off; so does this.</summary>
-    private bool _healthBars = true;
+    /// <summary>
+    /// Whether health bars are drawn at all.
+    /// </summary>
+    /// <remarks>
+    /// Off until asked for, which is the original's default -- <c>setDefault("HPBar", false)</c> at
+    /// <c>Parameters.as:239</c>, turned on with H (<c>Parameters.as:164</c>,
+    /// <c>MapUserInput.as:379-381</c>). It matters more than a default usually does because the
+    /// original draws a bar for every enemy and player in sight whether hurt or not
+    /// (<c>GameObject.as:1162-1174</c> has no <c>hp &lt; maxHp</c> test), so on a tile carrying a
+    /// dozen bodies the bars stack into a wall that hides the bodies they belong to. Leaving the
+    /// switch where the original leaves it is what keeps that wall a thing the player asked for.
+    /// </remarks>
+    private bool _healthBars;
 
     public void ToggleHealthBars() => _healthBars = !_healthBars;
 
@@ -154,63 +217,205 @@ public partial class WorldOverlay : Control
     public void Add(in OverlayItem item) => _items.Add(item);
 
     /// <summary>
-    /// Numbers that rise off something and fade: damage dealt, damage taken, experience gained.
+    /// Text thrown off a body: damage dealt, damage taken, experience gained, what the server has
+    /// to say about somebody.
     /// </summary>
     /// <remarks>
-    /// Anchored to a place in the world rather than to a place on the screen, and re-projected each
-    /// frame, so a number stays over the thing it belongs to while the camera moves under it.
+    /// <para>
+    /// Held by object id rather than by position, because the original re-reads <c>go_.posS_</c>
+    /// on every frame it draws (<c>CharacterStatusText.draw</c>, <c>:56-58</c>) and so its text
+    /// tracks the body as it runs. A position taken once at arrival leaves the text standing where
+    /// the body was, which over a fleeing monster is a number pointing at empty floor.
+    /// </para>
+    /// <para>
+    /// Nothing caps how many of these there can be, as nothing caps the original: they are display
+    /// objects on the overlay until their lifetime runs out. A boss under fire from a full party
+    /// makes a wall of numbers, and that wall is the game.
+    /// </para>
     /// </remarks>
-    public void AddFloatingText(float x, float y, float z, string text, Color colour)
+    /// <param name="objectId">The body it hangs over, and follows.</param>
+    /// <param name="lifetimeMs">
+    /// How long the text lives, and so how long it takes to rise. Zero takes the thousand
+    /// milliseconds every <c>makeNotification</c>, damage number and experience number uses; the
+    /// three seconds of a condition effect and the two of a level are passed in.
+    /// </param>
+    /// <param name="delayMs">
+    /// How long the text waits before it appears, which is the original's <c>offsetTime_</c>: a hit
+    /// that lands several conditions at once staggers their names half a second apart rather than
+    /// stacking them on one another.
+    /// </param>
+    public void AddFloatingText(int objectId, string text, Color colour, float lifetimeMs = 0f,
+        float delayMs = 0f)
     {
-        // A cap, because a boss taking a stream of hits can produce these faster than they expire
-        // and the oldest are the least interesting.
-        if (_texts.Count >= MostTexts)
-            _texts.RemoveAt(0);
-
         _texts.Add(new FloatingText
         {
-            X = x,
-            Y = y,
-            Z = z,
+            ObjectId = objectId,
             Text = text,
             Colour = colour,
             BornMs = Time.GetTicksMsec(),
+            LifeMs = lifetimeMs > 0f ? lifetimeMs : TextLifeMs,
+            DelayMs = delayMs,
         });
     }
 
-    /// <summary>How the overlay turns a world position into a screen one. Set by the world.</summary>
-    public System.Func<float, float, float, Vector2> Project { get; set; }
-
-    private const int MostTexts = 64;
-
-    /// <summary>How long a number lives, and how far it rises in that time.</summary>
-    private const float TextLifeMs = 900f;
-
-    private const float TextRisePixels = 34f;
-
-    private readonly List<FloatingText> _texts = new(MostTexts);
-
-    private struct FloatingText
+    /// <summary>
+    /// Text that waits its turn: one line at a time over a body, in the order they were asked for.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>QueuedStatusTextList</c>. The original keeps one list per object id and adds only its
+    /// <em>head</em> to the overlay (<c>append</c> calls <c>addChild</c> only when the list was
+    /// empty), so only the head is drawn and only the head is ticked. Its clock starts on the first
+    /// frame it is drawn — <c>CharacterStatusText.draw</c> sets <c>startTime_</c> then — which is
+    /// why a text that spends a second waiting still gets its full life once it reaches the front.
+    /// </para>
+    /// <para>
+    /// That is the whole reason <c>handleLevelUp(true)</c> is readable: it asks for "New Class
+    /// Unlocked!" and "Level Up!" in the same frame, and they are shown in sequence rather than
+    /// stacked on one another. A third arriving while two are queued simply goes on the end and
+    /// waits for both.
+    /// </para>
+    /// </remarks>
+    public void AddQueuedText(int objectId, string text, Color colour, float lifetimeMs = 0f,
+        float delayMs = 0f)
     {
-        public float X;
-        public float Y;
-        public float Z;
-        public string Text;
-        public Color Colour;
-        public ulong BornMs;
+        var queued = new FloatingText
+        {
+            ObjectId = objectId,
+            Text = text,
+            Colour = colour,
+            BornMs = Time.GetTicksMsec(),
+            LifeMs = lifetimeMs > 0f ? lifetimeMs : TextLifeMs,
+            DelayMs = delayMs,
+            Queued = true,
+        };
+
+        // A list with a head already showing takes the new line on the tail; an empty one shows it.
+        if (_waiting.TryGetValue(objectId, out var line) && line.Count > 0)
+        {
+            line.Add(queued);
+            return;
+        }
+
+        if (_texts.Exists(shown => shown.Queued && shown.ObjectId == objectId))
+        {
+            if (line == null)
+                _waiting[objectId] = line = new List<FloatingText>(2);
+
+            line.Add(queued);
+            return;
+        }
+
+        _texts.Add(queued);
     }
 
     /// <summary>
-    /// Draws the rising numbers and drops the ones that have finished.
+    /// The queued texts that are not at the front, keyed by the body they hang over.
     /// </summary>
     /// <remarks>
-    /// They are deliberately not in <see cref="_items"/>: that list is cleared and refilled every
-    /// frame from the entities in view, and a number has to outlive both the frame it was made in
-    /// and, often, the monster it was made over.
+    /// The head of each list lives in <see cref="_texts"/>, which is what makes it the one that is
+    /// drawn and aged; these are the ones the original leaves out of the display list entirely.
+    /// </remarks>
+    private readonly Dictionary<int, List<FloatingText>> _waiting = new();
+
+    /// <summary>
+    /// Moves a body's next queued line to the front, its clock starting now.
+    /// </summary>
+    /// <remarks>
+    /// <c>QueuedStatusTextList.shift</c>, called from the head's own <c>dispose</c> — so a queue
+    /// advances both when its head's life runs out and when the body it hangs over leaves the
+    /// world, the two ways <c>draw</c> returns false.
+    /// </remarks>
+    private void PromoteNext(int objectId)
+    {
+        if (!_waiting.TryGetValue(objectId, out var line) || line.Count == 0)
+        {
+            _waiting.Remove(objectId);
+            return;
+        }
+
+        var next = line[0];
+        line.RemoveAt(0);
+
+        if (line.Count == 0)
+            _waiting.Remove(objectId);
+
+        next.BornMs = Time.GetTicksMsec();
+        _texts.Add(next);
+    }
+
+    /// <summary>Where a body is right now. Set by the world; asked again every frame.</summary>
+    public System.Func<int, FloatingAnchor> AnchorOf { get; set; }
+
+    /// <summary>
+    /// How long a text lives, and how far it rises in that time.
+    /// </summary>
+    /// <remarks>
+    /// A thousand milliseconds and forty pixels, from <c>makeNotification(...,1000)</c> and
+    /// <c>CharacterStatusText.MAX_DRIFT</c>. The rise is linear in age -- <c>(age / lifetime) *
+    /// MAX_DRIFT</c> -- and there is no fade at all: the original's text is at full strength for
+    /// its whole life and then gone.
+    /// </remarks>
+    private const float TextLifeMs = 1000f;
+
+    private const float MaxDrift = 40f;
+
+    /// <summary>
+    /// The gap between the top of a body's artwork and its text.
+    /// </summary>
+    /// <remarks>
+    /// The constant term of the original's offset, <c>-(texture.height * size/100) * 5 - 20</c>:
+    /// the first term is the drawn height of the sprite, which the anchor supplies, and this is the
+    /// twenty pixels of air above it.
+    /// </remarks>
+    private const float TextGap = 20f;
+
+    /// <summary>
+    /// How large the text is drawn.
+    /// </summary>
+    /// <remarks>
+    /// The original sets 24 against a name plate's 16 (<c>CharacterStatusText:33</c>,
+    /// <c>GameObject.makeNameBitmapData</c>), so this is that same half-again over the name size
+    /// used here.
+    /// </remarks>
+    private const int FloatingTextSize = 20;
+
+    private readonly List<FloatingText> _texts = new(64);
+
+    private struct FloatingText
+    {
+        /// <summary>The body this hangs over. Its position is read afresh every frame.</summary>
+        public int ObjectId;
+
+        public string Text;
+        public Color Colour;
+        public ulong BornMs;
+
+        /// <summary>How long this one lives, in milliseconds.</summary>
+        public float LifeMs;
+
+        /// <summary>How long it waits before appearing, in milliseconds.</summary>
+        public float DelayMs;
+
+        /// <summary>
+        /// Whether this line is the head of a queue, and so lets the next one through when it goes.
+        /// </summary>
+        public bool Queued;
+    }
+
+    /// <summary>
+    /// Draws the rising text and drops what has finished.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not in <see cref="_items"/>: that list is cleared and refilled every frame from
+    /// the entities in view, and a text has to outlive the frame it was made in. It does not
+    /// outlive its body -- a text whose body has left the world dies with it, as the original's
+    /// <c>go_.map_ == null</c> test kills it -- and a body that is not being drawn hides its text
+    /// without stopping its clock.
     /// </remarks>
     private void DrawFloatingTexts()
     {
-        if (_texts.Count == 0 || Project == null)
+        if (_texts.Count == 0 || AnchorOf == null)
             return;
 
         ulong now = Time.GetTicksMsec();
@@ -218,30 +423,56 @@ public partial class WorldOverlay : Control
         for (int i = _texts.Count - 1; i >= 0; i--)
         {
             var text = _texts[i];
-            float age = (now - text.BornMs) / TextLifeMs;
+            float age = (now - text.BornMs) - text.DelayMs;
 
-            if (age >= 1f)
+            if (age > text.LifeMs)
             {
                 _texts.RemoveAt(i);
+
+                if (text.Queued)
+                    PromoteNext(text.ObjectId);
+
                 continue;
             }
 
-            var at = Project(text.X, text.Y, text.Z);
+            var anchor = AnchorOf(text.ObjectId);
 
-            // Quick at first and slowing, which reads as thrown off rather than floated up.
-            at.Y -= TextRisePixels * Mathf.Sqrt(age);
+            if (anchor.Gone)
+            {
+                _texts.RemoveAt(i);
 
-            // Held at full strength for the first half, so it is legible before it starts to go.
-            float alpha = age < 0.5f ? 1f : 1f - (age - 0.5f) * 2f;
+                if (text.Queued)
+                    PromoteNext(text.ObjectId);
 
-            var size = _font.GetStringSize(text.Text, HorizontalAlignment.Left, -1, _fontSize);
-            var origin = new Vector2(at.X - size.X / 2f, at.Y);
+                continue;
+            }
 
-            DrawString(_font, origin + new Vector2(1f, 1f), text.Text, HorizontalAlignment.Left, -1,
-                _fontSize, new Color(0f, 0f, 0f, 0.75f * alpha));
+            // Still waiting its turn, or over something that is not on screen: it ages either way.
+            if (age < 0f || !anchor.Drawn)
+                continue;
 
-            DrawString(_font, origin, text.Text, HorizontalAlignment.Left, -1, _fontSize,
-                text.Colour with { A = alpha });
+            float rise = age / text.LifeMs * MaxDrift;
+            var at = new Vector2(
+                anchor.Screen.X,
+                anchor.Screen.Y - anchor.SpriteHeight - TextGap - rise);
+
+            var size = _font.GetStringSize(text.Text, HorizontalAlignment.Left, -1, FloatingTextSize);
+
+            // Centred on the point in both directions, as the original centres the rasterised line
+            // on its sprite's origin (`CharacterStatusText.onTextChanged`).
+            var origin = new Vector2(
+                at.X - size.X / 2f,
+                at.Y - size.Y / 2f + _font.GetAscent(FloatingTextSize));
+
+            // The black outline stands in for the original's GlowFilter, which is what keeps a red
+            // number legible over a dark floor.
+            var outline = new Color(0f, 0f, 0f, 0.85f);
+            DrawString(_font, origin + new Vector2(1f, 0f), text.Text, HorizontalAlignment.Left, -1, FloatingTextSize, outline);
+            DrawString(_font, origin + new Vector2(-1f, 0f), text.Text, HorizontalAlignment.Left, -1, FloatingTextSize, outline);
+            DrawString(_font, origin + new Vector2(0f, 1f), text.Text, HorizontalAlignment.Left, -1, FloatingTextSize, outline);
+            DrawString(_font, origin + new Vector2(0f, -1f), text.Text, HorizontalAlignment.Left, -1, FloatingTextSize, outline);
+
+            DrawString(_font, origin, text.Text, HorizontalAlignment.Left, -1, FloatingTextSize, text.Colour);
         }
     }
 
@@ -283,6 +514,9 @@ public partial class WorldOverlay : Control
             if (item.Anchor.X < -200f || item.Anchor.X > bounds.X + 200f ||
                 item.Anchor.Y < -100f || item.Anchor.Y > bounds.Y + 100f)
                 continue;
+
+            if (item.Glow != 0)
+                DrawGlow(item);
 
             if (_healthBars && item.ShowHealthBar && item.MaxHp > 0)
                 DrawHealthBar(item);
@@ -475,41 +709,133 @@ public partial class WorldOverlay : Control
             colour);
     }
 
+    /// <summary>
+    /// The bar under one entity.
+    /// </summary>
+    /// <remarks>
+    /// Two flat quads and no outline, as <c>GameObject.drawHpBar</c> draws them
+    /// (<c>GameObject.as:1025-1065</c>). The fill never changes colour; what reports danger is the
+    /// empty part, which is pulsed from grey towards red by the fraction of health missing, so a
+    /// bar that is nearly gone throbs and a full one sits still.
+    /// </remarks>
     private void DrawHealthBar(in OverlayItem item)
     {
         float top = item.Anchor.Y + BarOffsetY;
         var background = new Rect2(item.Anchor.X - BarHalfWidth, top, BarHalfWidth * 2f, BarHeight);
-        DrawRect(background, BarBackground);
 
         float fraction = Mathf.Clamp(item.Hp / (float)item.MaxHp, 0f, 1f);
 
+        // `lerpColor(0x545454, 0xFF0000, abs(sin(time / 300)) * missing)` -- GameObject.as:1041-1042.
+        float missing = 1f - fraction;
+        float pulse = Mathf.Abs(Mathf.Sin(Time.GetTicksMsec() / 300f)) * missing;
+        DrawRect(background, BarBackground.Lerp(BarEmptyWarning, pulse));
+
         if (fraction > 0f)
-        {
-            var fill = new Rect2(background.Position, new Vector2(background.Size.X * fraction, BarHeight));
-
-            // Turning red as it empties makes a dangerous health level readable at a glance,
-            // without having to read the number.
-            DrawRect(fill, fraction < 0.25f ? BarLowFill : BarFill);
-        }
-
-        // A hairline of black around the whole thing, which is what keeps a green bar legible over
-        // grass and a grey one legible over stone.
-        DrawRect(background, Colors.Black, filled: false, width: 1f);
+            DrawRect(new Rect2(background.Position, background.Size.X * fraction, BarHeight), BarFill);
     }
+
+    /// <summary>
+    /// The halo <c>/glow</c> puts on somebody.
+    /// </summary>
+    /// <remarks>
+    /// The original applies a <c>GlowFilter</c> of the colour to the sprite's own bitmap
+    /// (<c>GlowRedrawer.as:19-46</c>), which needs the artwork. Drawn here as a soft ring around
+    /// where the artwork stands, which reads as the same thing over a crowd and costs one circle.
+    /// </remarks>
+    private void DrawGlow(in OverlayItem item)
+    {
+        float height = Mathf.Max(item.SpriteHeight, 16f);
+        var centre = new Vector2(item.Anchor.X, item.Anchor.Y - height / 2f);
+
+        // Packed 0xRRGGBB, as the stat carries it.
+        var colour = new Color(
+            ((item.Glow >> 16) & 0xff) / 255f,
+            ((item.Glow >> 8) & 0xff) / 255f,
+            (item.Glow & 0xff) / 255f);
+
+        // Two rings rather than one: the filter the original applies falls off, and a single flat
+        // disc over the sprite would hide it instead of surrounding it.
+        float radius = Mathf.Max(height, 20f) * 0.62f;
+        DrawCircle(centre, radius * 1.18f, colour with { A = 0.16f });
+        DrawArc(centre, radius, 0f, Mathf.Tau, 24, colour with { A = 0.75f }, 2f);
+    }
+
+    /// <summary>
+    /// The star beside a player's name.
+    /// </summary>
+    /// <remarks>
+    /// <c>Player.makeNameBitmapData</c> composites <c>FameUtil.numStarsToIcon(numStars_, admin_)</c>
+    /// into the name plate for every player (<c>Player.as:750-756</c>). The rating is an account's
+    /// total across its classes, and the colour is what says it at a glance -- with one colour of
+    /// its own for an administrator, ahead of every rating.
+    /// </remarks>
+    private void DrawStar(in OverlayItem item, in Vector2 namePosition)
+    {
+        const float Size = 11f;
+
+        var box = new Rect2(
+            namePosition.X - Size - 2f,
+            namePosition.Y + (_font.GetHeight(_fontSize) - Size) / 2f,
+            Size,
+            Size);
+
+        UI.HudIcons.Star(this, box, UI.Fame.Colour(item.Stars, Classes, item.Admin));
+    }
+
+    /// <summary>How many classes the game has, which is the width of each star colour band.</summary>
+    private const int Classes = 14;
 
     private void DrawName(in OverlayItem item)
     {
-        var size = _font.GetStringSize(item.Name, HorizontalAlignment.Left, -1, _fontSize);
-        var position = new Vector2(item.Anchor.X - size.X / 2f, item.Anchor.Y + NameOffsetY);
+        var position = Outlined(item.Name, item.Anchor.Y + NameOffsetY, item.Anchor.X, item.NameColor);
 
-        // A cheap outline: the same text offset in four directions. Names sit over arbitrary
-        // terrain, and without it a light name on light ground is unreadable.
-        var outline = new Color(0f, 0f, 0f, 0.85f);
-        DrawString(_font, position + new Vector2(1, 0), item.Name, HorizontalAlignment.Left, -1, _fontSize, outline);
-        DrawString(_font, position + new Vector2(-1, 0), item.Name, HorizontalAlignment.Left, -1, _fontSize, outline);
-        DrawString(_font, position + new Vector2(0, 1), item.Name, HorizontalAlignment.Left, -1, _fontSize, outline);
-        DrawString(_font, position + new Vector2(0, -1), item.Name, HorizontalAlignment.Left, -1, _fontSize, outline);
+        if (item.ShowStar)
+            DrawStar(item, position);
 
-        DrawString(_font, position, item.Name, HorizontalAlignment.Left, -1, _fontSize, item.NameColor);
+        // The guild under the name, in the colour its rank earns. The original draws the same two
+        // lines together (`GuildText.as:19-48`), and matching a guild against one's own is how a
+        // player tells at a glance who is standing with them.
+        if (!string.IsNullOrEmpty(item.Guild))
+            Outlined(item.Guild, position.Y + GuildOffsetY, item.Anchor.X, GuildColour(item.GuildRank));
     }
+
+    /// <summary>
+    /// Draws one line centred over an anchor, with the cheap four-way outline, and says where it
+    /// went.
+    /// </summary>
+    /// <remarks>
+    /// Names sit over arbitrary terrain, and without the outline a light name on light ground is
+    /// unreadable.
+    /// </remarks>
+    private Vector2 Outlined(string text, float top, float centreX, Color colour)
+    {
+        var size = _font.GetStringSize(text, HorizontalAlignment.Left, -1, _fontSize);
+        var position = new Vector2(centreX - size.X / 2f, top);
+
+        var outline = new Color(0f, 0f, 0f, 0.85f);
+        DrawString(_font, position + new Vector2(1, 0), text, HorizontalAlignment.Left, -1, _fontSize, outline);
+        DrawString(_font, position + new Vector2(-1, 0), text, HorizontalAlignment.Left, -1, _fontSize, outline);
+        DrawString(_font, position + new Vector2(0, 1), text, HorizontalAlignment.Left, -1, _fontSize, outline);
+        DrawString(_font, position + new Vector2(0, -1), text, HorizontalAlignment.Left, -1, _fontSize, outline);
+
+        DrawString(_font, position, text, HorizontalAlignment.Left, -1, _fontSize, colour);
+        return position;
+    }
+
+    /// <summary>
+    /// What colour a guild name is drawn in, by the rank of whoever is wearing it.
+    /// </summary>
+    /// <remarks>
+    /// The ranks the original numbers: 0 initiate, 10 member, 20 officer, 30 leader, 40 founder.
+    /// The client colours the line by rank rather than writing the rank out, which is what keeps a
+    /// second line over a head to one word.
+    /// </remarks>
+    private static Color GuildColour(int rank) => rank switch
+    {
+        >= 40 => new Color("ffdf00"),
+        >= 30 => new Color("ff9c00"),
+        >= 20 => new Color("9ce5ff"),
+        >= 10 => new Color("d0d0d0"),
+        _ => new Color("9b9898"),
+    };
 }

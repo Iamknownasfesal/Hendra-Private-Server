@@ -234,9 +234,17 @@ public sealed class Inventory
     /// Puts a potion into one of the two stacks beside the bars.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The same InvSwap a move uses, aimed at a slot that is not a slot. The wrong potion is
     /// refused here rather than on the wire: the server answers a refusal by force-updating the
     /// source slot, which arrives as the item flickering out and back with no reason given.
+    /// </para>
+    /// <para>
+    /// The slot the potion came from is left as it is rather than emptied on the spot, as an
+    /// ordinary move's is. The stacks are not slots and this server has no message that names one
+    /// from out in the world — the vault panel's own move is the only route into a stack — so the
+    /// potion is still where it was, and drawing it as gone is drawing an item that has not moved.
+    /// </para>
     /// </remarks>
     public void Stack(SlotAddress from, bool health)
     {
@@ -259,10 +267,6 @@ public sealed class Inventory
             Slot1 = new SlotObject(source.ObjectId, (byte)from.Index, moved),
             Slot2 = new SlotObject(player.ObjectId, health ? HealthStackSlot : MagicStackSlot, moved),
         });
-
-        // The potion is consumed by the stack rather than swapped for what was there, so the slot
-        // it came from empties. The count itself arrives as a stat and is not guessed at here.
-        source.Equipment[from.Index] = NoItem;
     }
 
     /// <summary>Which item each stack takes, by name, so no type number is written down twice.</summary>

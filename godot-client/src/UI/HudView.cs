@@ -291,13 +291,20 @@ public partial class HudView : Control
         float right = layout.Hotbar.End.X;
         float bottom = layout.HotbarTabs.Position.Y - 12f;
 
+        // The right-hand column above -- map, world name, party, quest -- is not stacked into and
+        // not covered. The original gives the interact panel a fixed slot in the bottom-right
+        // corner well clear of the map (HUDView.as:35, INTERACT_PANEL_POSITION at local 0,500
+        // against the minimap at 105,105), so the two can never meet however short the screen is.
+        float ceiling = layout.Quest.End.Y + 12f;
+
         foreach (Control panel in new Control[] { _merchantPanel, _containerPanel })
         {
             if (!panel.Visible)
                 continue;
 
-            panel.Position = new Vector2(right - panel.Size.X, bottom - panel.Size.Y);
-            bottom -= panel.Size.Y + 8f;
+            float top = Mathf.Max(ceiling, bottom - panel.Size.Y);
+            panel.Position = new Vector2(right - panel.Size.X, top);
+            bottom = top - 8f;
         }
     }
 
@@ -667,7 +674,8 @@ public partial class HudView : Control
 
         public event Action<string> Activated;
 
-        public void Set(string name, int hp, int maxHp, bool starred, Assets.Sprite portrait)
+        public void Set(
+            string name, int hp, int maxHp, bool lockedOut, bool ignored, Assets.Sprite portrait)
         {
             float fraction = maxHp > 0 ? hp / (float)maxHp : 0f;
 
@@ -677,11 +685,21 @@ public partial class HudView : Control
 
             _member = name;
 
-            string text = starred ? $"* {name}" : name;
+            // A mark each for the two lists, before the name: a bar for somebody who may not
+            // teleport to us and a cross for somebody we are not listening to. Both are enforced on
+            // the server whatever the client draws, so this is the only way to tell at a glance who
+            // has already been dealt with.
+            string marks = (lockedOut ? "|" : string.Empty) + (ignored ? "x" : string.Empty);
+            string text = marks.Length > 0 ? $"{marks} {name}" : name;
             if (_name.Text != text)
                 _name.Text = text;
 
-            TooltipText = maxHp > 0 ? $"{name}\n{hp} / {maxHp} HP" : name;
+            string why = lockedOut && ignored ? "\nLocked out and ignored"
+                : lockedOut ? "\nLocked out"
+                : ignored ? "\nIgnored"
+                : string.Empty;
+
+            TooltipText = (maxHp > 0 ? $"{name}\n{hp} / {maxHp} HP" : name) + why;
             Visible = true;
         }
 
@@ -785,7 +803,8 @@ public partial class HudView : Control
 
             var member = members[i];
             _partyEntries[i].Set(
-                member.Name, member.Hp, member.MaxHp, member.Starred, ClassPortrait(member.ObjectType));
+                member.Name, member.Hp, member.MaxHp, member.LockedOut, member.Ignored,
+                ClassPortrait(member.ObjectType));
         }
     }
 
@@ -1290,9 +1309,32 @@ public partial class HudView : Control
         _vaultView.Dropped += (from, to) => SlotDropped?.Invoke(from, to);
         _vaultView.Activated += address => VaultSlotActivated?.Invoke(address);
         _vaultView.PurchaseRequested += () => VaultPurchaseRequested?.Invoke();
-        AddChild(_vaultView);
+        Mount(_vaultView);
 
         _vaultView.SetSlotTypes(_slotTypes);
+    }
+
+    /// <summary>
+    /// Puts a panel where it will be drawn over the rest of the interface.
+    /// </summary>
+    /// <remarks>
+    /// Draw order within a canvas is tree order, and this view is the first thing on the HUD's, so
+    /// anything parented here is painted under every cluster that comes after it -- which is how
+    /// the vault's top-right corner ended up beneath the minimap. It goes at the end of the canvas
+    /// instead, in a host of its own because the canvas resizes its direct children to the whole
+    /// space and a panel that sizes itself to its contents would be stretched flat by that.
+    /// </remarks>
+    private void Mount(Control panel)
+    {
+        if (GetParent() is not HudLayer canvas)
+        {
+            AddChild(panel);
+            return;
+        }
+
+        var host = new Control { MouseFilter = MouseFilterEnum.Ignore };
+        host.AddChild(panel);
+        canvas.AddChild(host);
     }
 
     /// <summary>Whether the vault panel is on screen.</summary>
@@ -1389,7 +1431,9 @@ public partial class HudView : Control
             _ratingStar.Tint = Fame.Colour(stars, 1);
         }
 
-        _currency.Set(player.Fame, player.Credits);
+        // The account's purse rather than the character's earnings: what the top of the screen
+        // shows is what a vendor will take.
+        _currency.Set(player.CurrentFame, player.Credits);
         _avatar.Set(ClassPortrait(player.ObjectType), Style.SlotBorder);
     }
 

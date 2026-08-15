@@ -40,20 +40,26 @@ public partial class ChatView : Control
 
     private const float ScrollbarWidth = 14f;
 
-    /// <summary>How long the log sits quiet before it folds itself away.</summary>
-    private const double IdleSeconds = 8.0;
+    /// <summary>
+    /// The names the original reserves for messages it speaks in its own voice.
+    /// </summary>
+    /// <remarks>
+    /// From <c>Parameters.as:24-28</c>. The server picks one of these as the Text packet's name and
+    /// the client reads the message's kind back off it: there is no separate field saying whether a
+    /// line is an error, a hint or somebody talking.
+    /// </remarks>
+    private const string ServerName = "";
 
-    /// <summary>The height of the folded pill.</summary>
-    private const float CollapsedHeight = 30f;
+    private const string ClientName = "*Client*";
+    private const string ErrorName = "*Error*";
+    private const string HelpName = "*Help*";
+    private const string GuildName = "*Guild*";
 
     private HudPanel _panel;
     private ChatLog _log;
     private LineEdit _input;
     private HudIconButton _bubble;
-    private Label _hint;
 
-    private double _quietFor;
-    private bool _collapsed;
     private Rect2 _open;
 
     /// <summary>Raised when the player submits a line. Empty lines never reach here.</summary>
@@ -77,20 +83,9 @@ public partial class ChatView : Control
         _bubble.Pressed += () => BeginTyping();
         _panel.AddChild(_bubble);
 
-        _input = new LineEdit { Visible = false, PlaceholderText = "Say something" };
+        _input = new LineEdit { Visible = false, PlaceholderText = $"[{ChatKey()}] to chat" };
         _input.TextSubmitted += OnSubmitted;
         _panel.AddChild(_input);
-
-        // What the folded panel says. Bracketed, like every other key hint in the interface.
-        _hint = new Label
-        {
-            Text = $"[{ChatKey()}] to chat",
-            VerticalAlignment = VerticalAlignment.Center,
-            Visible = false,
-        }.Typeset(Style.FontBody, Style.TextDim);
-        _panel.AddChild(_hint);
-
-        _panel.MouseEntered += () => _quietFor = 0.0;
 
         Resized += Reflow;
         if (GetParent() is HudLayer layer)
@@ -112,34 +107,30 @@ public partial class ChatView : Control
         Apply();
     }
 
-    /// <summary>Lays the panel out for whichever of its two states it is in.</summary>
+    /// <summary>
+    /// Whether the log is worth a background: it has something in it, or it is being written to.
+    /// </summary>
+    private bool ShowsPlate => _log.LineCount > 0 || IsTyping;
+
+    /// <summary>What <see cref="ShowsPlate"/> last answered, so the plate is only re-applied on a change.</summary>
+    private bool _plated;
+
+    /// <summary>Lays the panel out.</summary>
     private void Apply()
     {
-        // Folded, the panel keeps its left and bottom edges and loses its height, so it grows out
-        // of the corner it lives in rather than appearing somewhere new.
-        float height = _collapsed ? CollapsedHeight : _open.Size.Y;
-        float width = _collapsed ? 200f : _open.Size.X;
+        _plated = ShowsPlate;
 
-        _panel.Position = new Vector2(_open.Position.X, _open.End.Y - height);
-        _panel.Size = new Vector2(width, height);
+        _panel.Position = _open.Position;
+        _panel.Size = _open.Size;
 
-        // Open, the panel is the biggest opaque thing on the screen and it sits over the corner the
+        // The panel is the biggest opaque thing on the screen and it sits over the corner the
         // player walks into. Letting a little of the world through it is the difference between a
-        // log and a wall.
-        _panel.Background = _collapsed ? Style.Panel : Style.Panel with { A = 0.78f };
-
-        _log.Visible = !_collapsed;
-        _input.Visible = _input.Visible && !_collapsed;
-        _hint.Visible = _collapsed;
-
-        if (_collapsed)
-        {
-            _bubble.Position = new Vector2(Pad, Mathf.Round((height - 20f) / 2f));
-            _bubble.Size = new Vector2(20f, 20f);
-            _hint.Position = new Vector2(Pad + 26f, 0f);
-            _hint.Size = new Vector2(width - Pad - 30f, height);
-            return;
-        }
+        // log and a wall -- and with nothing to say it shows no plate at all, which is what the
+        // original does: its chat is bare glyph bitmaps with a black glow baked in
+        // (ChatListItemFactory.as:305-312) over no background whatsoever, so an empty log is an
+        // empty corner rather than a grey slab.
+        _panel.Background = ShowsPlate ? Style.Panel with { A = 0.78f } : Colors.Transparent;
+        _panel.Edged = ShowsPlate;
 
         _log.Position = new Vector2(Pad, 6f);
         _log.Size = new Vector2(_open.Size.X - Pad * 2f, _open.Size.Y - 6f - InputRow);
@@ -152,38 +143,31 @@ public partial class ChatView : Control
     }
 
     /// <summary>
-    /// Folds the panel away after a spell of quiet, and unfolds it the moment anything happens.
+    /// Retires lines that have been on screen their allotted time.
     /// </summary>
     /// <remarks>
-    /// Expanding never takes the keyboard. A message arriving or the pointer passing over is not a
-    /// request to type, and a panel that grabbed focus on either would swallow the movement keys of
-    /// whoever happened to walk past it.
+    /// The original sweeps the log on a one-second timer and drops whatever has been up for twenty
+    /// seconds (<c>ChatList.as:9,34-56</c> against <c>ChatListItem.as:15,69-70</c>). It is the only
+    /// thing that ever takes a line off the screen: the panel itself stays where it is, saying
+    /// nothing, rather than folding away and taking the unread lines with it.
     /// </remarks>
     public override void _Process(double delta)
     {
-        bool held = IsTyping || _panel.GetGlobalRect().HasPoint(GetGlobalMousePosition());
+        // The plate follows the log's contents, so it appears with the first line and goes again
+        // when the last one is retired.
+        if (_plated != ShowsPlate)
+            Apply();
 
-        _quietFor = held ? 0.0 : _quietFor + delta;
-
-        bool collapsed = _quietFor >= IdleSeconds;
-        if (collapsed == _collapsed)
+        _sinceSweep += delta;
+        if (_sinceSweep < 1.0)
             return;
 
-        _collapsed = collapsed;
-        Apply();
+        _sinceSweep = 0.0;
+        _log.Retire(IsTyping);
     }
 
-    /// <summary>Unfolds the panel, without taking the keyboard.</summary>
-    private void Expand()
-    {
-        _quietFor = 0.0;
-
-        if (!_collapsed)
-            return;
-
-        _collapsed = false;
-        Apply();
-    }
+    /// <summary>How long since the log was last swept, so it is swept on the original's cadence.</summary>
+    private double _sinceSweep;
 
     /// <summary>
     /// Shows the input and takes the keyboard.
@@ -194,8 +178,6 @@ public partial class ChatView : Control
     /// </param>
     public void BeginTyping(string prefix = null)
     {
-        Expand();
-
         _input.Visible = true;
         _input.Text = prefix ?? string.Empty;
         _input.GrabFocus();
@@ -242,33 +224,110 @@ public partial class ChatView : Control
     /// <summary>Appends a line from the server.</summary>
     public void Add(TextPacket text, string displayText)
     {
-        Expand();
+        string name = text.Name ?? string.Empty;
+        string recipient = text.Recipient ?? string.Empty;
 
         var rank = Fame.Colour(text.NumStars, 14, text.Admin > 0);
 
         _log.Add(
-            string.IsNullOrEmpty(text.Name) ? null : text.Name,
+            IsSpokenByTheServer(name) ? null : Displayed(name),
             displayText,
-            ColourOf(text.NameColor, Style.ChatName),
-            ColourOf(text.TextColor, Style.Text),
+            ColourOf(text.NameColor, NameColour(name, recipient)),
+            ColourOf(text.TextColor, BodyColour(name, recipient)),
             rank);
     }
 
-    /// <summary>Appends a line from the client itself.</summary>
-    public void AddSystem(string message)
+    /// <summary>
+    /// A name as it is written at the head of a line.
+    /// </summary>
+    /// <remarks>
+    /// The marker that chose the colour is not part of the name and is dropped before it is shown,
+    /// as <c>processName()</c> drops it (<c>ChatListItemFactory.as:170-176</c>): a spawn announced
+    /// by the server arrives as <c>#Adventurer</c> and belongs on screen as <c>&lt;Adventurer&gt;</c>
+    /// in the orange that the hash asked for.
+    /// </remarks>
+    private static string Displayed(string name) =>
+        name.StartsWith('#') || name.StartsWith('@') ? name[1..] : name;
+
+    /// <summary>
+    /// Appends a line the client wrote itself.
+    /// </summary>
+    /// <param name="error">
+    /// Whether this is a refusal rather than a notice, which the original sends under a different
+    /// name and therefore shows in a different colour (<c>Player.Chat.cs:110</c> against <c>:132</c>).
+    /// </param>
+    public void AddSystem(string message, bool error = false) =>
+        _log.Add(null, message, Style.ChatName,
+            BodyColour(error ? ErrorName : ServerName, string.Empty), Style.TextDim);
+
+    /// <summary>
+    /// Whether the name is one the server speaks under rather than a player's, in which case no
+    /// <c>&lt;name&gt;</c> is drawn at the head of the line.
+    /// </summary>
+    /// <remarks><c>ChatListItemFactory.as:159-162</c>.</remarks>
+    private static bool IsSpokenByTheServer(string name) =>
+        name is ServerName or ClientName or HelpName or ErrorName or GuildName;
+
+    /// <summary>
+    /// What colour the message body is, from who sent it and to whom.
+    /// </summary>
+    /// <remarks>
+    /// <c>ChatListItemFactory.as:277-304</c>, in the same order: the kinds the server speaks under
+    /// win over the kinds a recipient implies, so a guild announcement is an announcement rather
+    /// than guild chat.
+    /// </remarks>
+    private static Color BodyColour(string name, string recipient) => name switch
     {
-        Expand();
-        _log.Add(null, message, Style.ChatName, new Color("8899aa"), Style.TextDim);
-    }
+        ServerName => Yellow,
+        ClientName => Blue,
+        HelpName => Orange,
+        ErrorName => Red,
+        _ when name.StartsWith('@') => Yellow,
+        _ when recipient == GuildName => GuildGreen,
+        _ when recipient.Length > 0 => Cyan,
+        _ => Colors.White,
+    };
+
+    /// <summary>
+    /// What colour the <c>&lt;name&gt;</c> at the head of the line is.
+    /// </summary>
+    /// <remarks>
+    /// <c>ChatListItemFactory.as:258-275</c>. Chosen separately from the body, so the usual line of
+    /// public chat is a green name in front of white words.
+    /// </remarks>
+    private static Color NameColour(string name, string recipient) => name switch
+    {
+        _ when name.StartsWith('#') => NpcOrange,
+        _ when name.StartsWith('@') => Yellow,
+        _ when recipient == GuildName => GuildGreen,
+        _ when recipient.Length > 0 => Cyan,
+        _ => PlayerGreen,
+    };
+
+    // The original's chat palette, as literals rather than as anything derived: these are the
+    // numbers in ChatListItemFactory and they are not related to the rest of this interface's.
+    private static readonly Color Yellow = new("ffff00");
+    private static readonly Color Blue = new("0000ff");
+    private static readonly Color Orange = new("ff5b05");
+    private static readonly Color Red = new("ff0000");
+    private static readonly Color GuildGreen = new("a6ff5d");
+    private static readonly Color Cyan = new("00f0ff");
+    private static readonly Color NpcOrange = new("ffa800");
+    private static readonly Color PlayerGreen = new("00ff00");
 
     /// <summary>
     /// Unpacks a 24-bit colour, honouring the sentinel the server uses for "not specified" -- a
     /// value no one would pick deliberately, which is presumably why it was chosen.
     /// </summary>
+    /// <remarks>
+    /// Zero counts as unspecified too, which the original does not do. This fork's wire format
+    /// carries no colours at all, so every line arrives with both fields at their default and a
+    /// literal reading of the sentinel paints the whole log black on a black panel.
+    /// </remarks>
     private static Color ColourOf(int packed, Color fallback)
     {
         const int Unset = 0x123456;
-        if (packed == Unset)
+        if (packed == Unset || packed == 0)
             return fallback;
 
         return new Color(
@@ -321,6 +380,9 @@ public partial class ChatView : Control
             public Color NameColour;
             public Color BodyColour;
             public Color RankColour;
+
+            /// <summary>When this line arrived, in milliseconds, so it can be retired on time.</summary>
+            public ulong Born;
 
             /// <summary>How many rows this line wrapped to, so trimming knows what to remove.</summary>
             public int Rows;
@@ -383,6 +445,7 @@ public partial class ChatView : Control
                 NameColour = name,
                 BodyColour = text,
                 RankColour = rank,
+                Born = Time.GetTicksMsec(),
             };
 
             _lines.Add(line);
@@ -390,18 +453,7 @@ public partial class ChatView : Control
 
             // The buffer, and the rows the dropped line owned with it.
             while (_lines.Count > MaxLines)
-            {
-                int rows = _lines[0].Rows;
-                _lines.RemoveAt(0);
-                _rows.RemoveRange(0, rows);
-
-                for (int i = 0; i < _rows.Count; i++)
-                    _rows[i] = new Row(_rows[i].Line - 1, _rows[i].Text, _rows[i].X, _rows[i].First);
-
-                // Held position is held against the text, not against the top of the buffer: the
-                // rows that just aged out were above what is being read.
-                _scroll = Mathf.Max(0f, _scroll - rows * RowHeight);
-            }
+                DropOldest();
 
             // Someone who has scrolled back to read something is reading it. Following
             // unconditionally is what pulls them off it the moment anyone speaks, and in a busy
@@ -410,6 +462,53 @@ public partial class ChatView : Control
                 _unread = true;
 
             QueueRedraw();
+        }
+
+        /// <summary>How long a line stays on screen. <c>ChatListItem.as:15</c>.</summary>
+        private const ulong LineLifetimeMs = 20000;
+
+        /// <summary>
+        /// Drops the lines that have been up their allotted time.
+        /// </summary>
+        /// <param name="held">
+        /// Whether the log is being read, in which case nothing is dropped. The original suspends
+        /// the same sweep whenever the player has scrolled back (<c>ChatList.as:101</c>) and
+        /// resumes it when they return to the foot of the log (<c>ChatList.as:120-121</c>).
+        /// </param>
+        /// <summary>How many lines are on screen. Zero means the log is drawing nothing.</summary>
+        public int LineCount => _lines.Count;
+
+        public void Retire(bool held)
+        {
+            if (held || !_atBottom)
+                return;
+
+            ulong now = Time.GetTicksMsec();
+            bool dropped = false;
+
+            while (_lines.Count > 0 && now - _lines[0].Born >= LineLifetimeMs)
+            {
+                DropOldest();
+                dropped = true;
+            }
+
+            if (dropped)
+                QueueRedraw();
+        }
+
+        /// <summary>Removes the line at the head of the buffer and the rows it owned.</summary>
+        private void DropOldest()
+        {
+            int rows = _lines[0].Rows;
+            _lines.RemoveAt(0);
+            _rows.RemoveRange(0, rows);
+
+            for (int i = 0; i < _rows.Count; i++)
+                _rows[i] = new Row(_rows[i].Line - 1, _rows[i].Text, _rows[i].X, _rows[i].First);
+
+            // Held position is held against the text, not against the top of the buffer: the rows
+            // that just aged out were above what is being read.
+            _scroll = Mathf.Max(0f, _scroll - rows * RowHeight);
         }
 
         public void Scroll(int rows)
@@ -617,7 +716,11 @@ public partial class ChatView : Control
                 DrawRow(_rows[i], y + ascent);
             }
 
-            DrawScrollbar();
+            // Nothing to scroll through means nothing to scroll with. Without this the track and its
+            // arrows are the only thing left standing in the corner once the last line is retired
+            // and the plate behind them has gone.
+            if (_rows.Count > 0)
+                DrawScrollbar();
 
             if (_unread)
                 DrawUnread();
@@ -639,8 +742,18 @@ public partial class ChatView : Control
             Text(new Vector2(row.X, baseline), row.Text, line.BodyColour);
         }
 
+        /// <summary>
+        /// One run of text, outlined.
+        /// </summary>
+        /// <remarks>
+        /// The panel lets the world through, so chat is read against whatever the player is
+        /// standing on. The original bakes a black glow into every chat glyph for exactly that
+        /// reason -- <c>BitmapTextFactory.as:15,42</c>, switched on for chat at
+        /// <c>ChatListItemFactory.as:310</c> -- and without it the darker colours in its palette are
+        /// unreadable over a dark floor.
+        /// </remarks>
         private void Text(Vector2 at, string text, Color colour) =>
-            this.DrawText(at, text, FontSize, colour);
+            this.DrawOverWorld(at, text, FontSize, colour);
 
         private void DrawScrollbar()
         {

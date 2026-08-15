@@ -130,7 +130,12 @@ public sealed class Combat
 
         _nextAttackAllowedMs = nowMs + (int)player.GetAttackPeriodMs(weapon.RateOfFire);
 
-        FireVolley(weapon, projectileDesc, angle, nowMs, player.GetAttackMultiplier());
+        // The set's bullet substitution belongs to the weapon shot only. An ability's shot goes out
+        // as itself even while a set is worn, which is the original's split between
+        // doShoot(..., true) from shoot() and doShoot(..., false) from useWithTarget
+        // (Player.as:1071, 1080, 1122, 1141).
+        FireVolley(weapon, projectileDesc, angle, nowMs, player.GetAttackMultiplier(),
+            weaponShot: true, player.ProjectileOverrideNew, player.ProjectileOverrideOld);
         return true;
     }
 
@@ -158,14 +163,26 @@ public sealed class Combat
 
         // No attack multiplier: the server passes isAbility to its damage roll, which makes the
         // multiplier exactly one however strong the character is.
-        FireVolley(ability, desc, angle, nowMs, multiplier: 1f);
+        FireVolley(ability, desc, angle, nowMs, multiplier: 1f, weaponShot: false);
     }
 
     /// <summary>
     /// Spawns a volley, predicts its damage and tells the server about it.
     /// </summary>
     /// <param name="multiplier">Applied to each roll. One for abilities, the attack stat otherwise.</param>
-    private void FireVolley(ObjectDesc item, ProjectileDesc projectileDesc, float angle, int nowMs, float multiplier)
+    /// <param name="weaponShot">
+    /// Whether this is the weapon firing rather than an ability. It decides how long the attack
+    /// pose runs for, and it is the flag the original carries through <c>doShoot</c>.
+    /// </param>
+    private void FireVolley(
+        ObjectDesc item,
+        ProjectileDesc projectileDesc,
+        float angle,
+        int nowMs,
+        float multiplier,
+        bool weaponShot,
+        string overrideNew = null,
+        string overrideOld = null)
     {
         var player = _map.Player;
 
@@ -200,7 +217,9 @@ public sealed class Combat
                 player.Y + MathF.Sin(shotAngle) * MuzzleOffset,
                 nowMs,
                 damage,
-                damagesEnemies: true);
+                damagesEnemies: true,
+                overrideNew: overrideNew,
+                overrideOld: overrideOld);
 
             _session.Send(new PlayerShootPacket
             {
@@ -214,9 +233,16 @@ public sealed class Combat
             shotAngle += item.ArcGap;
         }
 
-        player.SetAttack(angle, nowMs);
-        Fired?.Invoke(projectileDesc, player.X + MathF.Cos(angle) * MuzzleOffset,
-            player.Y + MathF.Sin(angle) * MuzzleOffset, angle);
+        // The pose runs for exactly one gap between shots, so the second of its two frames -- the
+        // one with the weapon extended -- comes round once per shot however fast the weapon is.
+        // An ability has no rate of fire, so it falls back to the period everything else uses.
+        player.SetAttack(angle, nowMs, weaponShot
+            ? (int)player.GetAttackPeriodMs(item.RateOfFire)
+            : Entity.DefaultAttackPeriodMs);
+
+        // Set by the weapon and cleared by an ability, which is what the original's doShoot does
+        // with the flag its two callers pass it.
+        player.IsShooting = weaponShot;
     }
 
     /// <summary>
@@ -234,10 +260,13 @@ public sealed class Combat
         float angle,
         float startX,
         float startY,
-        int nowMs)
+        int nowMs,
+        string overrideNew = null,
+        string overrideOld = null)
     {
         Spawn(desc, containerType, ownerId, bulletId, angle, startX, startY, nowMs,
-            damage: 0, damagesEnemies: false, cosmetic: true);
+            damage: 0, damagesEnemies: false, cosmetic: true,
+            overrideNew: overrideNew, overrideOld: overrideOld);
     }
 
     /// <summary>Spawns a projectile the server told us about, from an enemy or another player.</summary>
@@ -251,10 +280,12 @@ public sealed class Combat
         float startY,
         int nowMs,
         int damage,
-        bool damagesPlayers)
+        bool damagesPlayers,
+        string overrideNew = null,
+        string overrideOld = null)
     {
         Spawn(desc, containerType, ownerId, bulletId, angle, startX, startY, nowMs, damage,
-            damagesEnemies: !damagesPlayers);
+            damagesEnemies: !damagesPlayers, overrideNew: overrideNew, overrideOld: overrideOld);
     }
 
     private void Spawn(
@@ -268,7 +299,9 @@ public sealed class Combat
         int nowMs,
         int damage,
         bool damagesEnemies,
-        bool cosmetic = false)
+        bool cosmetic = false,
+        string overrideNew = null,
+        string overrideOld = null)
     {
         var projectile = new Projectile
         {
@@ -288,8 +321,14 @@ public sealed class Combat
             Z = 0.5f,
         };
 
-        // Artwork comes from whichever object the projectile names, not from the shooter.
-        projectile.Desc = _data.GetObject(desc.ObjectId);
+        // Artwork comes from whichever object the projectile names, not from the shooter -- unless
+        // an equipment set is standing in for exactly that bullet, which swaps the artwork and
+        // nothing else: the flight and the damage still come from desc (Projectile.as:96-97).
+        string artwork = !string.IsNullOrEmpty(overrideNew) && desc.ObjectId == overrideOld
+            ? overrideNew
+            : desc.ObjectId;
+
+        projectile.Desc = _data.GetObject(artwork);
 
         projectile.Place(startX, startY);
         _projectiles.Add(projectile);
@@ -325,15 +364,6 @@ public sealed class Combat
     /// does not raise it.
     /// </remarks>
     public event System.Action<Projectile, ProjectileEnding> Struck;
-
-    /// <summary>
-    /// Raised when the player fires, with the shot and where it left from.
-    /// </summary>
-    /// <remarks>
-    /// Once per volley rather than once per projectile: a multishot weapon fires five bullets from
-    /// one trigger pull, and five flashes on top of each other is a blob.
-    /// </remarks>
-    public event System.Action<ProjectileDesc, float, float, float> Fired;
 
     /// <summary>
     /// Raised when a shot of ours lands, with what it hit and for how much.
@@ -434,9 +464,12 @@ public sealed class Combat
                 ObjectId = projectile.OwnerId,
             });
 
-            target.Hp -= damage;
+            // Announced before the health is taken, because the number the original writes carries
+            // the health as it stood before the hit.
             Damaged?.Invoke(new DamageDealt(target, damage, self: true,
-                killed: target.Hp <= 0, projectile));
+                killed: target.Hp - damage <= 0, projectile));
+
+            target.Hp -= damage;
 
             // The player's own voice. Each class names its own pair in the data --
             // player/archer_hit and player/archer_death -- and this is the only path that reaches
@@ -462,10 +495,13 @@ public sealed class Combat
                 Killed = killed,
             });
 
+            // Announced before the health is taken, because the number the original writes carries
+            // the health as it stood before the hit.
+            Damaged?.Invoke(new DamageDealt(target, damage, self: false, killed, projectile));
+
             // Applied locally so health bars respond immediately; the server's Damage packet is
             // authoritative and will correct it.
             target.Hp -= damage;
-            Damaged?.Invoke(new DamageDealt(target, damage, self: false, killed, projectile));
 
             if (killed)
                 target.Dead = true;

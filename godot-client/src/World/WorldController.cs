@@ -64,6 +64,18 @@ public partial class WorldController : Node
 
     private float _cameraAngle = 7f * Mathf.Pi / 4f;
     private Entity _focus;
+
+    /// <summary>
+    /// The body the server has asked the camera to follow, by id, or -1 for our own.
+    /// </summary>
+    /// <remarks>
+    /// Held as an id rather than as the entity, because SetFocus can name somebody who is not in
+    /// the map yet: the same tick carries both, and which is drained first is not ours to decide.
+    /// Resolved every frame in <see cref="Draw"/>, which also means the camera follows the body
+    /// across an update that replaces the entity object.
+    /// </remarks>
+    private int _focusObjectId = -1;
+
     private bool _autofire;
 
     /// <summary>Starts autofire on, for unattended runs. See LaunchOptions.</summary>
@@ -167,10 +179,10 @@ public partial class WorldController : Node
         _overlay = overlay;
         _overlay?.Configure(new SheetConditionIcons(assets));
 
-        // The overlay draws in screen space but the numbers belong to places in the world, so it is
-        // given the projection rather than a snapshot of where things were when they were made.
+        // The overlay draws in screen space but its text belongs to bodies in the world, so it is
+        // given a way to ask where one is rather than a snapshot of where it was.
         if (_overlay != null)
-            _overlay.Project = (x, y, z) => _world.Unproject(_world.Projection.ToScene(x, y, z));
+            _overlay.AnchorOf = AnchorOf;
         _hud = hud;
         _chat = chat;
 
@@ -189,7 +201,6 @@ public partial class WorldController : Node
         _combat = new Combat(_map, data, session, clock);
         _combat.Struck += OnProjectileStruck;
         _combat.Damaged += OnDamageDealt;
-        _combat.Fired += (shot, x, y, angle) => Muzzle(shot, x, y, angle);
         _interaction = new Interaction(_map);
         _vault = new VaultStore(_session, _data);
         _inventory = new Inventory(_map, data, session, clock);
@@ -306,6 +317,10 @@ public partial class WorldController : Node
     private void OnMapLoaded(MapInfoPacket mapInfo)
     {
         _announcedArrival = false;
+
+        // A different world is a different set of bodies, so whatever the camera was watching is
+        // not in it. Left alone, the camera would sit on an id that now belongs to somebody else.
+        _focusObjectId = -1;
         _worldName = WorldName(mapInfo);
         _worldId = mapInfo.Name ?? string.Empty;
         WorldEntering?.Invoke(_worldName, mapInfo.Difficulty);
@@ -315,6 +330,11 @@ public partial class WorldController : Node
         _combat.Clear();
         _particles.Clear();
         _departing.Clear();
+
+        // The vault contents belong to the world that sent them. The server sends the snapshot on
+        // arrival in the vault and never again, so carrying the old one out would leave the panel
+        // able to open anywhere, showing a grid that stopped being true the moment we left.
+        _vault.Clear();
         _minimap?.Configure(_map, _tileColors);
 
         // Per-map XML overlays replace base definitions for the types they mention.
@@ -345,29 +365,193 @@ public partial class WorldController : Node
     private int _lastLevel = -1;
 
     /// <summary>
+    /// Where a body is this frame, so the text hanging over it can follow it.
+    /// </summary>
+    /// <remarks>
+    /// The overlay asks this once per text per frame. A body the world has dropped answers
+    /// <see cref="FloatingAnchor.Gone"/>, which is the original's <c>go_.map_ == null</c>; one that
+    /// is dead or standing on ground we have not been sent answers not drawn, which is the
+    /// original's <c>drawn_</c> (<c>Map.as:415-418</c>) -- its text keeps ageing out of sight.
+    /// </remarks>
+    private FloatingAnchor AnchorOf(int objectId)
+    {
+        var entity = _map?.GetEntity(objectId);
+
+        if (entity?.Desc == null)
+            return new FloatingAnchor { Gone = true };
+
+        if (entity.Dead || entity.Square is not { IsKnown: true })
+            return default;
+
+        var anchor = _world.Unproject(_world.Projection.ToScene(entity.X, entity.Y, entity.Z));
+
+        float top = _world.Unproject(
+            _world.Projection.ToScene(entity.X, entity.Y, entity.Z + SpriteHeightTiles(entity))).Y;
+
+        return new FloatingAnchor
+        {
+            Drawn = true,
+            Screen = anchor,
+            SpriteHeight = Mathf.Abs(anchor.Y - top),
+        };
+    }
+
+    /// <summary>
     /// The number thrown off something that was hit.
     /// </summary>
     /// <remarks>
-    /// Red over your own character and pale gold over anything else, because damage you took and
-    /// damage you dealt are the two things you must never confuse mid-fight.
+    /// <para>
+    /// <c>"-" + damage + "[" + hp_ + "]"</c> in red, or in purple where the armour was bypassed --
+    /// <c>GameObject.showDamageText</c>, reached from <c>GameObject.damage</c> with
+    /// <c>isArmorBroken() || projectile.armorPiercing_ || groundDamage</c>. The same format over
+    /// everything, ours and theirs alike: the original tells damage taken from damage dealt by
+    /// which body the number is over, not by its colour.
+    /// </para>
+    /// <para>
+    /// The health in the brackets is the health <em>before</em> this hit, because the original
+    /// never subtracts damage from <c>hp_</c> -- that number only ever comes from a server update,
+    /// so the bracket reads one packet stale. Kept, because it is what the original shows.
+    /// </para>
     /// </remarks>
-    private void ShowDamage(Entity target, int amount, bool self)
+    private void ShowDamage(Entity target, int amount, bool self, bool piercing = false,
+        bool fromServer = false)
     {
         if (amount <= 0 || _overlay == null || !WantsDamageText(self))
             return;
 
-        // The client predicts its own hits and the server confirms some of them; showing both would
-        // double every number. Whichever arrives first wins for a moment.
+        // The client predicts its own hits and the server confirms everybody else's; a hit reported
+        // by both within a few frames is one hit counted twice. Only a report from the *other*
+        // source suppresses, because two hits from the same source are two hits -- a weapon that
+        // fires three shots into one body writes three numbers, as the original does, having no
+        // guard of any kind here.
         int now = _clock.FrameMs;
-        if (_shownDamageAt.TryGetValue(target.ObjectId, out int last) && now - last < DamageTextGapMs)
+        if (_shownDamageAt.TryGetValue(target.ObjectId, out var last) &&
+            last.FromServer != fromServer && now - last.Ms < DamageTextGapMs)
+        {
+            return;
+        }
+
+        _shownDamageAt[target.ObjectId] = (now, fromServer);
+
+        bool bypassed = piercing || target.IsArmorBroken;
+
+        _overlay.AddFloatingText(target.ObjectId,
+            string.Create(System.Globalization.CultureInfo.InvariantCulture, $"-{amount}[{target.Hp}]"),
+            bypassed ? new Color("9000ff") : new Color("ff0000"));
+    }
+
+    /// <summary>
+    /// Puts the conditions a hit carried onto the body it hit, and says so over its head.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>GameObject.damage</c> walks the packet's effects and writes the name of each one the body
+    /// was not already carrying -- red, three seconds, and staggered five hundred milliseconds
+    /// further apart each time, so a hit landing three of them reads as three lines in turn rather
+    /// than one pile. An effect the body is immune to writes "Immune" instead, with no stagger, and
+    /// does not stick to it.
+    /// </para>
+    /// <para>
+    /// Only the effects in that switch are announced. The boosts and the flags a body simply
+    /// carries -- healing, berserk, invulnerable, the stat lifts -- fall through it silently.
+    /// </para>
+    /// </remarks>
+    /// <param name="petEffects">
+    /// The effects this shot applies on a pet's behalf, which are skipped whole: neither put on the
+    /// body nor named over it, as the original skips them at the top of its loop.
+    /// </param>
+    private void ApplyConditions(Entity target, System.Collections.Generic.IReadOnlyList<ConditionEffectIndex> effects,
+        System.Collections.Generic.HashSet<ConditionEffectIndex> petEffects = null)
+    {
+        if (effects.Count == 0)
             return;
 
-        _shownDamageAt[target.ObjectId] = now;
+        int stagger = 0;
 
-        _overlay.AddFloatingText(target.X, target.Y, target.Z,
-            self ? $"-{amount}" : amount.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            self ? new Color("ff4040") : new Color("ffe9a8"));
+        foreach (var effect in effects)
+        {
+            if (petEffects != null && petEffects.Contains(effect))
+                continue;
+
+            if (Immune(target, effect))
+            {
+                // Immunity is announced and the effect is dropped: the original never sets the bit
+                // on this path, so the body does not so much as flicker.
+                _overlay?.AddFloatingText(target.ObjectId, _strings.Get("GameObject.immune"),
+                    ImmuneColour, lifetimeMs: ConditionTextMs);
+                continue;
+            }
+
+            var flag = effect.ToFlag();
+            bool announce = ConditionNames.ContainsKey(effect) && !target.Has(flag);
+
+            target.Conditions |= flag;
+
+            if (!announce)
+                continue;
+
+            _overlay?.AddFloatingText(target.ObjectId, _strings.Get(ConditionNames[effect]),
+                ImmuneColour, lifetimeMs: ConditionTextMs, delayMs: stagger);
+
+            stagger += ConditionStaggerMs;
+        }
     }
+
+    /// <summary>Whether this body shrugs off this effect, for the seven the original checks.</summary>
+    private static bool Immune(Entity target, ConditionEffectIndex effect) => effect switch
+    {
+        ConditionEffectIndex.Slowed => target.IsSlowedImmune,
+        ConditionEffectIndex.ArmorBroken => target.IsArmorBreakImmune,
+        ConditionEffectIndex.Stunned => target.IsStunImmune,
+        ConditionEffectIndex.Dazed => target.IsDazedImmune,
+        ConditionEffectIndex.Paralyzed => target.IsParalyzeImmune,
+        ConditionEffectIndex.Petrify => target.IsPetrifyImmune,
+        ConditionEffectIndex.Curse => target.IsCurseImmune,
+        _ => false,
+    };
+
+    /// <summary>Both the effect names and "Immune" are red. Three seconds each.</summary>
+    private static readonly Color ImmuneColour = new("ff0000");
+
+    private const float ConditionTextMs = 3000f;
+
+    private const int ConditionStaggerMs = 500;
+
+    /// <summary>
+    /// The localisation key for each effect the original names over a body it lands on.
+    /// </summary>
+    /// <remarks>
+    /// Exactly the cases in <c>GameObject.damage</c>'s switch, keyed as
+    /// <c>ConditionEffect.effects_</c> keys them (<c>ConditionEffect.as:125-174</c>). Anything
+    /// missing from here is an effect the original applies without a word.
+    /// </remarks>
+    private static readonly System.Collections.Generic.Dictionary<ConditionEffectIndex, string> ConditionNames = new()
+    {
+        [ConditionEffectIndex.Quiet] = "conditionEffect.Quiet",
+        [ConditionEffectIndex.Weak] = "conditionEffect.Weak",
+        [ConditionEffectIndex.Sick] = "conditionEffect.Sick",
+        [ConditionEffectIndex.Blind] = "conditionEffect.Blind",
+        [ConditionEffectIndex.Hallucinating] = "conditionEffect.Hallucinating",
+        [ConditionEffectIndex.Drunk] = "conditionEffect.Drunk",
+        [ConditionEffectIndex.Confused] = "conditionEffect.Confused",
+        [ConditionEffectIndex.StunImmune] = "conditionEffect.StunImmune",
+        [ConditionEffectIndex.Invisible] = "conditionEffect.Invisible",
+        [ConditionEffectIndex.Speedy] = "conditionEffect.Speedy",
+        [ConditionEffectIndex.Bleeding] = "conditionEffect.Bleeding",
+        [ConditionEffectIndex.Stasis] = "conditionEffect.Stasis",
+        [ConditionEffectIndex.StasisImmune] = "conditionEffect.StasisImmune",
+        [ConditionEffectIndex.NinjaSpeedy] = "conditionEffect.NinjaSpeedy",
+        [ConditionEffectIndex.Unstable] = "conditionEffect.Unstable",
+        [ConditionEffectIndex.Darkness] = "conditionEffect.Darkness",
+        [ConditionEffectIndex.PetrifyImmune] = "conditionEffect.PetrifyImmune",
+        [ConditionEffectIndex.Slowed] = "conditionEffect.Slowed",
+        [ConditionEffectIndex.ArmorBroken] = "conditionEffect.ArmorBroken",
+        [ConditionEffectIndex.Stunned] = "conditionEffect.Stunned",
+        [ConditionEffectIndex.Dazed] = "conditionEffect.Dazed",
+        [ConditionEffectIndex.Paralyzed] = "conditionEffect.Paralyzed",
+        [ConditionEffectIndex.Petrify] = "conditionEffect.Petrify",
+        [ConditionEffectIndex.Curse] = "conditionEffect.Curse",
+    };
 
     /// <summary>Whether the player has asked to see this kind of thing's health.</summary>
     private bool WantsHealthBar(Resources.ObjectDesc desc)
@@ -387,8 +571,11 @@ public partial class WorldController : Node
     private bool WantsDamageText(bool self) =>
         self ? Options is not { AllyDamageText: false } : Options is not { EnemyDamageText: false };
 
-    /// <summary>When each entity last had a number thrown off it, so the two sources cannot double up.</summary>
-    private readonly System.Collections.Generic.Dictionary<int, int> _shownDamageAt = new();
+    /// <summary>
+    /// When each entity last had a number thrown off it, and which of the two accounts of a hit
+    /// wrote it, so that only a report from the other one is taken for a repeat.
+    /// </summary>
+    private readonly System.Collections.Generic.Dictionary<int, (int Ms, bool FromServer)> _shownDamageAt = new();
 
     private const int DamageTextGapMs = 120;
 
@@ -403,21 +590,151 @@ public partial class WorldController : Node
     /// </remarks>
     private void OnDamageDealt(DamageDealt hit)
     {
-        ShowDamage(hit.Target, hit.Amount, hit.Self);
+        var shot = hit.Projectile?.ProjectileDesc;
+
+        // What the shot carries goes on the body it hit, exactly as the server's own account of a
+        // hit does -- `Projectile.as:265,270` hands `projProps_.effects_` to `damage`, which is the
+        // only reason an enemy we paralyse ourselves says so. A killing blow lands none of them:
+        // `damage` takes the dead branch and never reaches the loop.
+        if (!hit.Killed && shot?.Effects is { Count: > 0 })
+            ApplyConditions(hit.Target, shot.Effects, shot.PetEffects);
+
+        ShowDamage(hit.Target, hit.Amount, hit.Self, shot is { ArmorPiercing: true });
+
         Struck(hit.Target, hit.Killed, hit.Projectile);
     }
 
-    /// <summary>Plays the level-up chime when the server raises our level.</summary>
+    /// <summary>
+    /// Announces a level the server has just given us: the chime, the shout and the swirl.
+    /// </summary>
+    /// <remarks>
+    /// All three together, because any one of them alone is easy to miss. The original fires the
+    /// same three off a single level change -- <c>Player.handleLevelUp</c> plays the chime and calls
+    /// <c>levelUpEffect</c>, which queues the green text and adds a <c>LevelUpEffect</c> to the map.
+    /// </remarks>
     private void NoticeLevelUp()
     {
         var player = _map.Player;
         int level = player?.Level ?? -1;
+        bool levelled = level > _lastLevel && _lastLevel > 0;
 
-        if (level > _lastLevel && _lastLevel > 0)
-            _audio?.PlayEffect("level_up");
+        if (levelled)
+            HandleLevelUp(player);
 
         _lastLevel = level;
-        NoticeExperience(player);
+
+        // The original announces experience only on an update that did *not* carry a level
+        // (`GameServerConnectionConcrete.as:1678-1690` is an if/else), so the frame that says
+        // "Level Up!" does not also throw a number.
+        NoticeExperience(player, levelled);
+    }
+
+    /// <summary>
+    /// Our own level-up: the chime, and one or two lines in turn.
+    /// </summary>
+    /// <remarks>
+    /// <c>Player.handleLevelUp</c>. A level that unlocks a class says so <em>first</em> and without
+    /// a swirl of its own, then says "Level Up!" with one -- and because both are queued, the
+    /// second waits for the first rather than being drawn on top of it.
+    /// </remarks>
+    private void HandleLevelUp(LocalPlayer player)
+    {
+        _audio?.PlayEffect("level_up");
+
+        if (NewUnlocks(player).Count > 0)
+            LevelUpEffect(player, "Player.NewClassUnlocked", particles: false);
+
+        LevelUpEffect(player, "Player.levelUp");
+    }
+
+    /// <summary>
+    /// Queues one green line over a body, and optionally throws the swirl.
+    /// </summary>
+    /// <remarks><c>Player.levelUpEffect</c>: green, two seconds, and queued behind whatever it
+    /// already has to say.</remarks>
+    private void LevelUpEffect(Entity who, string key, bool particles = true)
+    {
+        if (particles)
+            _particles.LevelUp(who);
+
+        _overlay?.AddQueuedText(who.ObjectId, _strings.Get(key), LevelUpColour,
+            lifetimeMs: LevelUpTextMs);
+    }
+
+    /// <summary>The green of a level, <c>0xFF00</c>, and the two seconds it is held for.</summary>
+    private static readonly Color LevelUpColour = new("00ff00");
+
+    private const float LevelUpTextMs = 2000f;
+
+    /// <summary>
+    /// The classes this level has just unlocked, if any.
+    /// </summary>
+    /// <remarks>
+    /// <c>PlayerModel.getNewUnlocks</c>, whose only use is deciding whether "New Class Unlocked!"
+    /// is said. It reads the account's best level in each class as the character list reported it at
+    /// sign-in; if that reading never arrived, nothing is claimed to be unlocked, which costs a line
+    /// rather than inventing one.
+    /// </remarks>
+    private System.Collections.Generic.List<Resources.ObjectDesc> NewUnlocks(LocalPlayer player)
+    {
+        var account = App.ServiceLocator.Account;
+
+        if (_data == null || account == null || player == null)
+            return new System.Collections.Generic.List<Resources.ObjectDesc>();
+
+        return _data.NewUnlocks(player.ObjectType, player.Level,
+            type => account.BestLevels.TryGetValue(type, out int best) ? best : 0);
+    }
+
+    /// <summary>
+    /// Reacts to a player's skin changing to, or away from, one an equipment set applies.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The skin is the whole signal. The server owns set matching and says nothing about it beyond
+    /// writing the skin and size stats, so the client never decides that a set is complete — it
+    /// notices that a player is suddenly wearing a skin some set names and does the two things the
+    /// server has no part in: the burst in the set's colour and the bullet substitution
+    /// (<c>GameServerConnectionConcrete.as:1654-1677</c>).
+    /// </para>
+    /// <para>
+    /// A level of -1 means this is the first status this player has ever sent, so they were already
+    /// dressed when they came into view rather than having just completed the set. That one gets the
+    /// bullet but not the burst, which is what stops a crowded vault from flashing at everyone who
+    /// walks in.
+    /// </para>
+    /// </remarks>
+    private void NoticeSetSkin(Entity entity, int previousSkin, int previousLevel)
+    {
+        if (entity.Skin == previousSkin || entity.Desc is not { IsPlayer: true })
+            return;
+
+        var set = _data?.GetSkinSet(entity.Skin);
+        if (set == null)
+        {
+            // Any other skin, the class's own included, means no set is worn: the bullets go back
+            // to the weapon's.
+            entity.ProjectileOverrideNew = string.Empty;
+            entity.ProjectileOverrideOld = string.Empty;
+            return;
+        }
+
+        if (previousLevel != -1 && set.Color >= 0)
+            _particles.LevelUp(entity, set.Color);
+
+        if (string.IsNullOrEmpty(set.BulletType))
+            return;
+
+        // What the substitution stands in for: the first projectile of whatever weapon is held now.
+        var weapon = entity.Equipment is { Length: > 0 } && entity.Equipment[0] >= 0
+            ? _data.GetObject((ushort)entity.Equipment[0])
+            : null;
+
+        if (weapon?.Projectiles == null || !weapon.Projectiles.TryGetValue(0, out var held))
+            return;
+
+        entity.ProjectileOverrideNew = set.BulletType;
+        entity.ProjectileOverrideOld = held.ObjectId;
     }
 
     /// <summary>The experience we last saw, so a gain can be noticed rather than announced.</summary>
@@ -427,22 +744,48 @@ public partial class WorldController : Node
     /// Throws the experience gained off the character.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Derived from the stat rather than from a packet, because nothing on the wire says "you
     /// gained experience" -- the server simply sends a new total, several times a second while
     /// anything nearby is dying. Levelling resets the total, so a drop is a level rather than a
     /// loss and says nothing.
+    /// </para>
+    /// <para>
+    /// A level-20 character says nothing at all, because the experience it earns buys nothing:
+    /// <c>Player.handleExpUp</c> returns immediately unless the player has asked to see it anyway
+    /// (<c>forceEXP</c>, off by default). Left on, a maxed character throws a number every time
+    /// anything nearby dies for the rest of its life.
+    /// </para>
     /// </remarks>
-    private void NoticeExperience(LocalPlayer player)
+    /// <param name="levelled">Whether this same reading also carried a level, which speaks instead.</param>
+    private void NoticeExperience(LocalPlayer player, bool levelled)
     {
         if (player == null)
             return;
 
-        int gained = player.Experience - _lastExperience;
+        int previous = _lastExperience;
         _lastExperience = player.Experience;
 
-        if (gained > 0 && gained < 1_000_000 && _lastExperience >= 0)
-            _overlay?.AddFloatingText(player.X, player.Y, player.Z, $"+{gained} XP", new Color("7fe07f"));
+        // Nothing was gained "since" the first reading of the session, and a level speaks for
+        // itself: both are the original's, which only reaches `handleExpUp` when it had a previous
+        // level to compare against and the level did not change.
+        if (previous < 0 || levelled)
+            return;
+
+        // `Player.bForceExp`: 1 shows it for everyone, 2 for yourself only -- and this path is only
+        // ever our own character, so the two land in the same place here.
+        if (player.Level == MaxLevel && (Options?.AlwaysShowExp ?? 0) == 0)
+            return;
+
+        int gained = player.Experience - previous;
+
+        // `Player.handleExpUp`: "+{exp} EXP", green, the standard second.
+        if (gained > 0 && gained < 1_000_000)
+            _overlay?.AddFloatingText(player.ObjectId, $"+{gained} EXP", LevelUpColour);
     }
+
+    /// <summary>The level past which experience buys nothing. <c>Player.handleExpUp</c>.</summary>
+    private const int MaxLevel = 20;
 
     private void OnEntered(CreateSuccessPacket packet)
     {
@@ -586,6 +929,12 @@ public partial class WorldController : Node
         }
 
         StatApplier.Apply(entity, definition.Stats, isSelf);
+
+        // The original runs a new object through the same status handler a tick does, with a tick
+        // time of zero (GameServerConnectionConcrete.as:1119), which is how a player who was already
+        // wearing a set when they came into view arrives with its bullets.
+        NoticeSetSkin(entity, previousSkin: 0, previousLevel: -1);
+
         _map.Add(entity, definition.Stats.Position.X, definition.Stats.Position.Y);
 
         // Stamped after the position is known, because whether an arrival is worth showing depends
@@ -635,7 +984,19 @@ public partial class WorldController : Node
             if (!isSelf)
                 entity.OnTickPosition(status.Position.X, status.Position.Y, tick.TickTime);
 
+            int previousSkin = entity.Skin;
+            int previousLevel = entity.Level;
+
             StatApplier.Apply(entity, status, isSelf);
+            NoticeSetSkin(entity, previousSkin, previousLevel);
+
+            // Somebody else's level: the shout and the swirl, but no chime and no unlock line --
+            // the original calls `levelUpEffect` straight for anyone who is not us
+            // (`GameServerConnectionConcrete.as:1682-1684`), and reserves `handleLevelUp` for our
+            // own. A level of -1 is a body we have only just met rather than one that has risen.
+            if (!isSelf && previousLevel != -1 && entity.Level > previousLevel &&
+                entity.Desc is { IsPlayer: true })
+                LevelUpEffect(entity, "Player.levelUp");
         }
     }
 
@@ -645,7 +1006,17 @@ public partial class WorldController : Node
         entity?.OnGoto(packet.Position.X, packet.Position.Y);
 
         if (entity is LocalPlayer player)
+        {
             player.OnMoved();
+
+            // Published straight away rather than on the next frame, because the input answering
+            // the next tick reads these fields: a claim made from where we used to be is the
+            // server's own teleport being walked back. Whatever the camera is following is left
+            // alone -- it may be somebody else, and a teleport is no reason to stop watching them.
+            _session.PlayerX = player.X;
+            _session.PlayerY = player.Y;
+            _session.HasPlayerPosition = true;
+        }
     }
 
     /// <summary>Packets the session does not answer itself.</summary>
@@ -699,8 +1070,16 @@ public partial class WorldController : Node
                 _trading.Handle(packet);
                 break;
 
-            case AccountListPacket list when list.ListId == AccountListId.Starred:
-                _party.SetStarred(list.AccountIds);
+            // Both lists, each arriving whole: the lock list first and the ignore list second, as
+            // the server sends them.
+            case AccountListPacket list:
+                _party.SetList(list.ListId, list.AccountIds);
+                break;
+
+            // The camera alone. A body we have not been sent yet is remembered by id and picked up
+            // once it arrives, the way the quest marker is.
+            case SetFocusPacket focus:
+                SetFocus(focus.ObjectId);
                 break;
 
             case GuildResultPacket guild:
@@ -713,7 +1092,7 @@ public partial class WorldController : Node
                 break;
 
             case NameResultPacket name when !name.Success:
-                _chat?.AddSystem(name.ErrorText);
+                _chat?.AddSystem(name.ErrorText, error: true);
                 break;
 
             case BuyResultPacket buy:
@@ -820,7 +1199,6 @@ public partial class WorldController : Node
 
         float centre = shot.Angle + shot.AngleInc * (shot.NumShots - 1) / 2f;
         owner.SetAttack(centre, now);
-        Muzzle(desc, shot.StartingPos.X, shot.StartingPos.Y, centre);
     }
 
     /// <summary>
@@ -844,10 +1222,9 @@ public partial class WorldController : Node
         if (container?.Projectiles == null || !container.Projectiles.TryGetValue(0, out var desc))
             return;
 
-        Muzzle(desc, owner.X, owner.Y, shot.Angle);
-
         _combat.SpawnCosmetic(desc, (ushort)shot.ContainerType, shot.OwnerId, shot.BulletId,
-            shot.Angle, owner.X, owner.Y, now);
+            shot.Angle, owner.X, owner.Y, now,
+            owner.ProjectileOverrideNew, owner.ProjectileOverrideOld);
     }
 
     /// <summary>A projectile the server authored, such as an ability shot or a nova.</summary>
@@ -861,6 +1238,8 @@ public partial class WorldController : Node
         }
 
         bool mine = shot.OwnerId == _session.PlayerObjectId;
+        var owner = _map.GetEntity(shot.OwnerId);
+
         _combat.SpawnRemote(
             desc,
             (ushort)shot.ContainerType,
@@ -871,7 +1250,9 @@ public partial class WorldController : Node
             shot.StartingPos.Y,
             now,
             shot.Damage,
-            damagesPlayers: !mine);
+            damagesPlayers: !mine,
+            overrideNew: owner?.ProjectileOverrideNew,
+            overrideOld: owner?.ProjectileOverrideOld);
 
         // Only shots we own are acknowledged.
         if (mine)
@@ -894,6 +1275,19 @@ public partial class WorldController : Node
         _dead = true;
 
         _map.Player?.SetInput(0f, 0f, 0f);
+
+        // Nothing further arrives about this character -- the server ends the session on the same
+        // packet -- so whatever the last tick said is what the vitals would go on showing. The
+        // original never faces the question, because a death takes the whole game screen away and
+        // puts the fame view in its place (`HandleNormalDeathCommand.as:33` dispatching
+        // `ShowFameViewSignal`, which the mediator answers with `SetScreenSignal`). This port keeps
+        // the world behind the summary on purpose, so the bars under it are emptied instead of
+        // being left reading full health over the words "You have died".
+        if (_map.Player != null)
+        {
+            _map.Player.Hp = 0;
+            _map.Player.Mp = 0;
+        }
 
         Died?.Invoke(death);
     }
@@ -923,18 +1317,35 @@ public partial class WorldController : Node
         if (target == null)
             return;
 
-        target.Hp -= damage.DamageAmount;
+        // Conditions before the number, as `GameObject.damage` takes them, so an armour break
+        // landing in this packet is already on the body when the number decides its colour.
+        ApplyConditions(target, damage.Effects);
 
         // The number, for damage that did not come from one of our own shots -- another player's
-        // work, a wall of poison, anything the client did not predict for itself.
+        // work, a wall of poison, anything the client did not predict for itself. Written before
+        // the health is taken, because the original's number carries the health from before the hit.
         if (damage.DamageAmount > 0 && target.Desc is { IsEnemy: true } or { IsPlayer: true })
-            ShowDamage(target, damage.DamageAmount, ReferenceEquals(target, _map.Player));
+        {
+            ShowDamage(target, damage.DamageAmount, ReferenceEquals(target, _map.Player),
+                _combat.Find(damage.ObjectId, damage.BulletId)?.ProjectileDesc
+                    is { ArmorPiercing: true },
+                fromServer: true);
+        }
 
-        foreach (var effect in damage.Effects)
-            target.Conditions |= effect.ToFlag();
+        target.Hp -= damage.DamageAmount;
 
         if (damage.Kill)
+        {
             target.Dead = true;
+
+            // Said out loud for another player, because the flag is the only thing on this wire
+            // that carries a death: the victim is left out of their own packet, so the one screen
+            // that can show a player dying is somebody else's, and a run with nobody watching it
+            // has no other way to say whether the flag arrived.
+            if (target.Desc is { IsPlayer: true })
+                GD.Print($"[damage] kill flag for {target.Name ?? target.ObjectType.ToString()} " +
+                         $"({damage.DamageAmount} damage from {damage.ObjectId})");
+        }
 
         // Only things that fight make a noise when they are hit. A struck decoration is silent, and
         // so is a scratch that did nothing.
@@ -1093,6 +1504,10 @@ public partial class WorldController : Node
         _session.RecordPosition();
         _session.Poll();
         SayOnEntryIfDue(player, now);
+        VaultGestureIfDue(player, now);
+        BuyGestureIfDue(now);
+        DragIfDue(player, now);
+        SayLaterIfDue(player, now);
 
         NoticeLevelUp();
         _hud?.Refresh(_map.Player);
@@ -1159,10 +1574,23 @@ public partial class WorldController : Node
     /// TODO, but a client that only answered sometimes would be a client that desynchronises
     /// against any server that counts them.
     /// </para>
+    /// <para>
+    /// Except where the server has already decided it. This one damages a blast from the world like
+    /// any other hit and sends the number back as a Damage packet, so its Aoe is the telegraph
+    /// alone -- the ring, drawn where the grenade was aimed. Applying it here as well would take the
+    /// health twice and draw the number twice.
+    /// </para>
     /// </remarks>
     private void OnAoe(AoePacket blast)
     {
         var player = _map.Player;
+
+        if (blast.ServerApplied)
+        {
+            if (Options is not { Particles: false } and not { AoeParticles: false })
+                _particles.Blast(blast.Position.X, blast.Position.Y, blast.Radius, blast.OrigType);
+            return;
+        }
 
         if (player == null)
         {
@@ -1183,11 +1611,13 @@ public partial class WorldController : Node
         {
             int damage = Entity.ApplyDefense(blast.Damage, player.Defense, false, player.Conditions);
 
-            player.Hp -= damage;
-            ShowDamage(player, damage, self: true);
-
+            // The blast's effect goes on the same way a projectile's does -- `onAoe` hands it to
+            // `damage` as a one-element vector -- so it is named over the player like any other.
             if (blast.Effect != 0)
-                player.Conditions |= blast.Effect.ToFlag();
+                ApplyConditions(player, new[] { blast.Effect });
+
+            ShowDamage(player, damage, self: true);
+            player.Hp -= damage;
 
             if (damage > 0)
                 _audio?.PlayEffect(player.Hp <= 0 ? player.Desc?.DeathSound : player.Desc?.HitSound);
@@ -1204,25 +1634,26 @@ public partial class WorldController : Node
     /// Something the server wants said about a particular thing in the world.
     /// </summary>
     /// <remarks>
-    /// Over the thing it is about, not in the chat log. These are "Quest Complete!", the effect of
-    /// a potion, an enemy shrugging off a hit -- all of them about a position on screen, and all of
+    /// <para>
+    /// Over the thing it is about, and nowhere else. These are "Quest Complete!", the effect of a
+    /// potion, an enemy shrugging off a hit -- all of them about a position on screen, and all of
     /// them useless three lines up in a log by the time they are read.
+    /// </para>
+    /// <para>
+    /// A notification about something this client has never heard of is <em>dropped</em>:
+    /// <c>onNotification</c> is one <c>if(_loc2_ != null)</c> with no else. It matters because the
+    /// server sends some of these world-wide regardless of distance -- "Opened by", "Unlocked by",
+    /// the answer to a <c>/spawn</c> -- and writing those to the log would put a line in front of
+    /// every player who cannot see who said it.
+    /// </para>
     /// </remarks>
     private void OnNotification(NotificationPacket notification)
     {
-        string message = LineBuilder.Resolve(notification.Message, _strings);
         var entity = _map.GetEntity(notification.ObjectId);
-
-        // The server says a quest is done in the same breath as it says anything else about the
-        // player, so the key is the only thing that distinguishes it.
-        if (notification.Message != null && notification.Message.Contains("quest_complete"))
-            QuestCompleted();
-
         if (entity == null)
-        {
-            _chat?.AddSystem(message);
             return;
-        }
+
+        string message = LineBuilder.Resolve(notification.Message, _strings);
 
         var colour = new Color(
             notification.Color.R / 255f, notification.Color.G / 255f, notification.Color.B / 255f);
@@ -1231,7 +1662,28 @@ public partial class WorldController : Node
         if (colour.R + colour.G + colour.B < 0.05f)
             colour = Colors.White;
 
-        _overlay?.AddFloatingText(entity.X, entity.Y, entity.Z, message, colour);
+        if (ReferenceEquals(entity, _map.Player))
+        {
+            // The server says a quest is done in the same breath as it says anything else about
+            // the player, so the key is the only thing that distinguishes it.
+            if (notification.Message != null && notification.Message.Contains("quest_complete"))
+            {
+                // Written twice, overlapping. `onNotification` calls `makeNotification` inside the
+                // quest branch and then again unconditionally below it
+                // (`GameServerConnectionConcrete.as:1171` and `:1174`), so a completed quest reads
+                // heavier than anything else. Kept: it is what the original puts on screen.
+                _overlay?.AddFloatingText(entity.ObjectId, message, colour);
+                QuestCompleted();
+            }
+
+            _overlay?.AddFloatingText(entity.ObjectId, message, colour);
+            return;
+        }
+
+        // Anything else's notification, which the player can turn off for everything that is not
+        // trying to kill them (`Parameters.data_.noAllyNotifications`).
+        if (entity.Desc is { IsEnemy: true } || Options is not { AllyNotifications: false })
+            _overlay?.AddFloatingText(entity.ObjectId, message, colour);
     }
 
     /// <summary>How often a damaging tile can hurt the same square's occupant.</summary>
@@ -1252,9 +1704,18 @@ public partial class WorldController : Node
     /// drew would fall one step behind for the rest of the session and mispredict every shot after
     /// it. Standing in lava was quietly corrupting the damage stream.
     /// </para>
+    /// <para>
+    /// None of which holds without a shared stream. A session that has no generator cannot predict
+    /// the roll, and guessing at the minimum showed a number the ground never charged while the
+    /// server's own roll took the health. Such a session leaves the whole burn to the server, which
+    /// rolls it once and sends the Damage packet here like any other hit.
+    /// </para>
     /// </remarks>
     private void ApplyGroundDamage(int now)
     {
+        if (_session.Random == null)
+            return;
+
         var player = _map.Player;
         var square = player?.Square;
 
@@ -1273,14 +1734,15 @@ public partial class WorldController : Node
 
         square.LastDamageMs = now;
 
-        int damage = _session.Random == null
-            ? square.Desc.MinDamage
-            : (int)_session.Random.NextIntRange((uint)square.Desc.MinDamage, (uint)square.Desc.MaxDamage);
+        int damage = (int)_session.Random.NextIntRange(
+            (uint)square.Desc.MinDamage, (uint)square.Desc.MaxDamage);
 
         // Armour does not help against the floor, which is why the original passes the rolled
-        // number straight through rather than through its defence formula.
+        // number straight through rather than through its defence formula. The number is purple:
+        // the original tags the hit with its GROUND_DAMAGE effect (`Player.as:726-729`), which is
+        // one of the three things `showDamageText` calls armour bypassed.
+        ShowDamage(player, damage, self: true, piercing: true);
         player.Hp -= damage;
-        ShowDamage(player, damage, self: true);
 
         if (damage > 0)
             _audio?.PlayEffect(player.Hp <= 0 ? player.Desc?.DeathSound : player.Desc?.HitSound);
@@ -1746,6 +2208,249 @@ public partial class WorldController : Node
     /// <summary>Keeps the vault panel open wherever the player is standing. See GameScene.OpenVault.</summary>
     public bool HoldVaultOpen { get; set; }
 
+    /// <summary>How many gifts to claim, once the server has said what is waiting.</summary>
+    /// <remarks>
+    /// For unattended runs, and for the same reason <see cref="HoldVaultOpen"/> exists: the panel
+    /// answers to clicks, and a script has no way to make one. One gesture per update, because each
+    /// accepted one is answered with a new version and a gesture quoting the old one is refused.
+    /// </remarks>
+    public int ClaimGifts { get; set; }
+
+    /// <summary>Whether to buy one more vault chest once the server has said what the vault is.</summary>
+    public bool BuyVaultChest { get; set; }
+
+    /// <summary>Vault squares to take out into the pack, by flat index. Set from the command line.</summary>
+    public System.Collections.Generic.Queue<int> TakeFromVault { get; set; }
+
+    /// <summary>When the next scripted vault gesture may be made.</summary>
+    private int _vaultGestureAtMs;
+
+    /// <summary>
+    /// Makes the next scripted vault gesture, one at a time.
+    /// </summary>
+    /// <remarks>
+    /// On the frame rather than on the update that carries the vault, because the vault arrives the
+    /// moment the player enters the room -- which is before the client has a body to put anything
+    /// into. Spaced out for the same reason the scripted lines are: each accepted gesture is
+    /// answered with a new version, and one quoting the old version is refused.
+    /// </remarks>
+    private void VaultGestureIfDue(LocalPlayer player, int now)
+    {
+        const int SettleMs = 2000;
+        const int GapMs = 1500;
+
+        if (player?.Equipment == null || !_vault.Known)
+            return;
+
+        bool taking = TakeFromVault is { Count: > 0 };
+        if (!BuyVaultChest && !taking && (ClaimGifts <= 0 || _vault.Gifts.Count == 0))
+            return;
+
+        if (_vaultGestureAtMs == 0)
+        {
+            _vaultGestureAtMs = now + SettleMs;
+            return;
+        }
+
+        if (now < _vaultGestureAtMs)
+            return;
+
+        _vaultGestureAtMs = now + GapMs;
+
+        if (BuyVaultChest)
+        {
+            BuyVaultChest = false;
+            _vault.Buy();
+            return;
+        }
+
+        if (ClaimGifts > 0 && _vault.Gifts.Count > 0)
+        {
+            ClaimGifts--;
+            OnVaultSlotActivated(new SlotAddress(SlotOwner.VaultGift, 0));
+            return;
+        }
+
+        OnVaultSlotActivated(new SlotAddress(SlotOwner.Vault, TakeFromVault.Dequeue()));
+    }
+
+    /// <summary>How many times to press Buy at whatever vendor is in reach, for an unattended run.</summary>
+    public int BuyFromMerchant { get; set; }
+
+    /// <summary>When the next scripted purchase may go out.</summary>
+    private int _buyGestureAtMs;
+
+    /// <summary>
+    /// Presses Buy at the vendor in reach, for an unattended check of a shop.
+    /// </summary>
+    /// <remarks>
+    /// Spaced out and delayed like the vault gestures, and for the same reason: a merchant is not
+    /// in reach until the world has streamed in, and the answer to one purchase is what the next
+    /// one has to be pressed against.
+    /// </remarks>
+    private void BuyGestureIfDue(int now)
+    {
+        const int SettleMs = 2500;
+        const int GapMs = 1500;
+
+        if (BuyFromMerchant <= 0 || NearbyMerchant == null)
+            return;
+
+        if (_buyGestureAtMs == 0)
+        {
+            _buyGestureAtMs = now + SettleMs;
+            return;
+        }
+
+        if (now < _buyGestureAtMs)
+            return;
+
+        _buyGestureAtMs = now + GapMs;
+        BuyFromMerchant--;
+        OnBuyPressed();
+    }
+
+    /// <summary>Drags to make in the player's own slots, as pairs of flat numbers.</summary>
+    public System.Collections.Generic.Queue<(int From, int To)> Drags { get; set; }
+
+    /// <summary>Slots to activate, by flat number, as clicking one does.</summary>
+    public System.Collections.Generic.Queue<int> Activations { get; set; }
+
+    /// <summary>Slots to drop on the ground, by flat number, as dragging one outside does.</summary>
+    public System.Collections.Generic.Queue<int> Discards { get; set; }
+
+    /// <summary>Squares of the bag underfoot to take from, as clicking one does.</summary>
+    public System.Collections.Generic.Queue<int> TakeFromBag { get; set; }
+
+    /// <summary>Presses of the interact key still to make, on whatever is underfoot.</summary>
+    /// <remarks>
+    /// Last of the scripted gestures, so a run that opens a portal with a key and then steps
+    /// through it does the two in that order. Shared with the session rather than copied, so what
+    /// is left of the script survives the change of world that stepping through a portal is.
+    /// </remarks>
+    public System.Collections.Generic.Queue<int> Interactions { get; set; }
+
+    /// <summary>When the next scripted gesture may be made.</summary>
+    private int _dragAtMs;
+
+    /// <summary>
+    /// Makes the next scripted drag or click, one at a time, drags first.
+    /// </summary>
+    /// <remarks>
+    /// The same handlers a released drag and a clicked slot land in, given the same slots: all of
+    /// what either gesture is once the mouse has finished with it. Spaced out because each one is
+    /// answered with the containers as the server now holds them, and a second sent before that
+    /// answer would be drawn from a picture that is about to change.
+    /// </remarks>
+    private void DragIfDue(LocalPlayer player, int now)
+    {
+        const int SettleMs = 2000;
+        const int GapMs = 1000;
+
+        bool dragging = Drags is { Count: > 0 };
+        bool clicking = Activations is { Count: > 0 };
+        bool discarding = Discards is { Count: > 0 };
+        bool taking = TakeFromBag is { Count: > 0 };
+        bool reaching = Interactions is { Count: > 0 };
+        if (player?.Equipment == null
+            || (!dragging && !clicking && !discarding && !taking && !reaching))
+            return;
+
+        // After whatever was scripted to be said, since a line can be the one that moves the player
+        // to a world where the gesture is allowed at all.
+        if (ScriptedLines is { Count: > 0 })
+        {
+            _dragAtMs = now + SettleMs;
+            return;
+        }
+
+        if (_dragAtMs == 0)
+        {
+            _dragAtMs = now + SettleMs;
+            return;
+        }
+
+        if (now < _dragAtMs)
+            return;
+
+        _dragAtMs = now + GapMs;
+
+        if (dragging)
+        {
+            var (from, to) = Drags.Dequeue();
+            OnSlotDropped(
+                new SlotAddress(SlotOwner.Player, from), new SlotAddress(SlotOwner.Player, to));
+            return;
+        }
+
+        if (clicking)
+        {
+            OnSlotActivated(Activations.Dequeue());
+            return;
+        }
+
+        if (discarding)
+        {
+            OnSlotDroppedOutside(new SlotAddress(SlotOwner.Player, Discards.Dequeue()));
+            return;
+        }
+
+        if (taking)
+        {
+            OnContainerSlotActivated(TakeFromBag.Dequeue());
+            return;
+        }
+
+        Interactions.Dequeue();
+        Interact();
+    }
+
+    /// <summary>Lines to send once every scripted gesture has been made.</summary>
+    public System.Collections.Generic.Queue<string> LaterLines { get; set; }
+
+    /// <summary>When the next line that waited for the gestures may be said.</summary>
+    private int _laterAtMs;
+
+    /// <summary>
+    /// Sends the next line that was told to wait for the gestures.
+    /// </summary>
+    /// <remarks>
+    /// The settle is measured per world, so a gesture that changed worlds is followed by a pause in
+    /// the world it landed in rather than by a line spoken into a map that is still arriving.
+    /// </remarks>
+    private void SayLaterIfDue(LocalPlayer player, int now)
+    {
+        const int SettleMs = 2000;
+        const int GapMs = 2000;
+
+        if (LaterLines == null || LaterLines.Count == 0 || player == null)
+            return;
+
+        // Everything scripted comes first: the lines said on entry, and then every gesture.
+        if (ScriptedLines is { Count: > 0 }
+            || Drags is { Count: > 0 }
+            || Activations is { Count: > 0 }
+            || Discards is { Count: > 0 }
+            || TakeFromBag is { Count: > 0 }
+            || Interactions is { Count: > 0 })
+        {
+            _laterAtMs = now + SettleMs;
+            return;
+        }
+
+        if (_laterAtMs == 0)
+        {
+            _laterAtMs = now + SettleMs;
+            return;
+        }
+
+        if (now < _laterAtMs)
+            return;
+
+        OnChatSubmitted(LaterLines.Dequeue());
+        _laterAtMs = now + GapMs;
+    }
+
     /// <summary>The vault access object the player is standing on, if any.</summary>
     private Entity NearbyVault =>
         _interaction.Current is { Kind: InteractionKind.Vault, Entity: { } entity } ? entity : null;
@@ -1761,13 +2466,18 @@ public partial class WorldController : Node
     /// Losing the panel by leaving is intended: storage stays somewhere you go, rather than
     /// something you carry. A drag in flight is cancelled rather than landed, since the slot it
     /// started from is about to stop being addressable.
+    ///
+    /// The contents are the condition, not just the chest. The server sends the snapshot on
+    /// arriving in the vault world and nowhere else, so anywhere else the panel would be a frame
+    /// around nothing -- and the original has no vault panel outside the vault at all, only Vault
+    /// Chest containers standing in the room, opened by walking onto one.
     /// </remarks>
     private void UpdateVault()
     {
         if (_hud == null)
             return;
 
-        if (NearbyVault != null || HoldVaultOpen)
+        if (_vault.Known && (NearbyVault != null || HoldVaultOpen))
         {
             _hud.UseVault(_vault);
 
@@ -1840,8 +2550,13 @@ public partial class WorldController : Node
         if (typing || (OptionsAreOpen != null && OptionsAreOpen()))
             return;
 
+        // Letting go ends the firing stance, which is the original's mouse-up (MapUserInput.as:251).
+        // Turning autofire off comes down the same path, and the original treats it the same way.
         if (!_autofire && !Input.IsActionPressed("shoot"))
+        {
+            player.IsShooting = false;
             return;
+        }
 
         if (_combat.TryShoot(now, AimAngle()))
             PlayItemSound(_combat.EquippedWeapon);
@@ -1911,7 +2626,10 @@ public partial class WorldController : Node
 
     private void Draw(int now)
     {
-        var focus = _focus ?? _map.Player;
+        // Resolved here rather than when the packet lands, because the body being watched may not
+        // have arrived yet and because an update replaces the entity object without changing the id.
+        var watched = _focusObjectId >= 0 ? _map.GetEntity(_focusObjectId) : null;
+        var focus = watched ?? _focus ?? _map.Player;
         if (focus == null)
             return;
 
@@ -2165,6 +2883,17 @@ public partial class WorldController : Node
             variant = entity.MerchandiseType;
         }
 
+        // A skin replaces the sheet the body is drawn from, so it is looked up as the skin object's
+        // own texture rather than the class's. <c>ReskinHandler.as:21-32</c> resolves it the same
+        // way -- the skin's <c>AnimatedTexture</c> becomes the player's animated character -- and a
+        // skin the content cannot name is simply not worn, which leaves the class sprite standing
+        // rather than nothing at all.
+        else if (entity.Skin != 0 && _data?.GetObject((ushort)entity.Skin) is { } skin)
+        {
+            texture = skin.Texture;
+            variant = entity.Skin;
+        }
+
         var resolved = _textures.Resolve(texture, variant, entity.AltTextureIndex);
         if (!resolved.IsValid)
             return;
@@ -2202,6 +2931,14 @@ public partial class WorldController : Node
             draw.Mirrored = frame.Mirrored;
             SizeQuad(ref draw, entity, frame.Sprite, frame.RegionCells, frame.RegionCells);
             draw.AnchorX = AnchorFor(frame);
+
+            // What a dye put on. The sheet's own mask says which pixels are cloth and which are
+            // accessory; the two colours are the player's `Texture1` and `Texture2`. Only an
+            // animated sheet carries a mask, which is why this is here and not beside the still
+            // case: a dye paints a body, and a body is always animated.
+            draw.Mask = frame.Mask;
+            draw.DyeOne = DyeColour(entity.Texture1);
+            draw.DyeTwo = DyeColour(entity.Texture2);
         }
         else
         {
@@ -2412,6 +3149,58 @@ public partial class WorldController : Node
     /// <summary>The entity the server has named as the current objective, or zero for none.</summary>
     private int _questObjectId;
 
+    /// <summary>The green a guildmate's name is written in. <c>Parameters.as:20</c>.</summary>
+    private static readonly Color FellowGuildColour = new("a6ff5d");
+
+    /// <summary>The gold a player who has picked their own name is written in.</summary>
+    /// <remarks><c>Parameters.NAME_CHOSEN_COLOR = 0xFCDF00</c> (<c>Parameters.as:21</c>).</remarks>
+    private static readonly Color NameChosenColour = new("fcdf00");
+
+    /// <summary>
+    /// What one packed dye paints, or transparent for a layer left alone.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The top byte says how to read the rest, exactly as <c>TextureRedrawer.getTexture</c> reads it
+    /// (<c>TextureRedrawer.as:161-186</c>): <c>0</c> is nothing at all, <c>1</c> is a solid
+    /// <c>0xRRGGBB</c>, and <c>4</c>, <c>5</c>, <c>9</c> and <c>10</c> are an index into the
+    /// <c>textile{n}x{n}</c> sheet of that size.
+    /// </para>
+    /// <para>
+    /// Only the solid case paints here. A textile is a repeating pattern rather than a colour, so
+    /// it needs a second sampler the sprite shader does not have; every one of the 141 dyes the
+    /// content ships is type <c>1</c>, and the textiles are a separate set of items. A textile
+    /// therefore leaves the layer undyed rather than painting it some wrong flat colour.
+    /// </para>
+    /// </remarks>
+    private static Color DyeColour(int packed)
+    {
+        int type = (packed >> 24) & 0xFF;
+        if (type != 1)
+            return default;
+
+        return new Color(
+            ((packed >> 16) & 0xFF) / 255f,
+            ((packed >> 8) & 0xFF) / 255f,
+            (packed & 0xFF) / 255f);
+    }
+
+    /// <summary>
+    /// Whether this player is in the same guild as us.
+    /// </summary>
+    /// <remarks>
+    /// Matched on the guild's name, as the original matches it (<c>Player.setGuildName</c>,
+    /// <c>Player.as:356</c>): nobody is their own guildmate, and being in no guild makes nobody one.
+    /// </remarks>
+    private bool IsGuildmate(Entity entity)
+    {
+        var self = _map.Player;
+        return self != null
+               && !ReferenceEquals(entity, self)
+               && !string.IsNullOrEmpty(self.Guild)
+               && self.Guild == entity.Guild;
+    }
+
     private void DrawOverlay(int now)
     {
         if (_overlay == null)
@@ -2463,7 +3252,36 @@ public partial class WorldController : Node
                 SpriteHeight = Mathf.Abs(anchor.Y - top),
                 Bubble = bubble,
                 Name = named ? entity.Name : null,
-                NameColor = desc.IsPlayer ? new Color(0.99f, 0.87f, 0f) : Colors.White,
+
+                // A guildmate's name is drawn in the guild's own green rather than the usual
+                // gold, which is how the original tells at a glance who is standing with you:
+                // `Player.getNameColor` returns `FELLOW_GUILD_COLOR` when the guild matches the
+                // local player's (`Player.as:340-360`, `Parameters.as:20`).
+                // `Player.getNameColor` in order (`Player.as:757-764`): a guildmate's green first,
+                // then the chosen-name gold, and plain white for an account still wearing a name
+                // off the generated list. Drawing everybody gold made the last case invisible,
+                // which is the one it exists to show.
+                NameColor = desc.IsPlayer
+                    ? (IsGuildmate(entity)
+                        ? FellowGuildColour
+                        : entity.NameChosen ? NameChosenColour : Colors.White)
+                    : Colors.White,
+
+                // The guild goes under the name, and only where there is a name to put it under.
+                Guild = named && desc.IsPlayer && !string.IsNullOrEmpty(entity.Guild)
+                    ? entity.Guild
+                    : null,
+                GuildRank = entity.GuildRank,
+
+                // The star beside the name, drawn only where there is a name to put it beside.
+                // `makeNameBitmapData` composites it into the plate for every player, whatever the
+                // rating, and an administrator's is a colour of its own (`Player.as:750-756`).
+                ShowStar = named && desc.IsPlayer,
+                Stars = entity.Stars,
+                Admin = entity.Admin,
+
+                // The halo `/glow` sets, which the original paints around the whole sprite.
+                Glow = entity.GlowColor,
                 Hp = entity.Hp,
                 MaxHp = entity.MaxHp,
                 ShowHealthBar = showBar,
@@ -2513,6 +3331,19 @@ public partial class WorldController : Node
     private int _questAvailableAtMs;
 
     private int _questNewUntilMs;
+
+    /// <summary>
+    /// Points the camera at a body, or gives it back when the body named is our own.
+    /// </summary>
+    /// <remarks>
+    /// The whole of what SetFocus asks for. The player is not moved: the server holds them still
+    /// with the Paused effect while the camera is elsewhere, so walking away is not the way out —
+    /// naming yourself is, and the server answers that with our own id.
+    /// </remarks>
+    private void SetFocus(int objectId)
+    {
+        _focusObjectId = _map.Player != null && objectId == _map.Player.ObjectId ? -1 : objectId;
+    }
 
     private void SetQuest(int objectId)
     {
@@ -2670,14 +3501,6 @@ public partial class WorldController : Node
         _particles.Impact(projectile.X, projectile.Y, projectile.Z, projectile.Angle, colour, count);
     }
 
-    /// <summary>
-    /// The flash where a shot leaves.
-    /// </summary>
-    /// <remarks>
-    /// New rather than ported: the original gives firing no visual at all beyond the projectile
-    /// appearing, and on a slow-moving shot there is nothing to say the trigger was pulled until it
-    /// has crossed a tile. Coloured from the shot itself so it belongs to the weapon that fired it.
-    /// </remarks>
     /// <summary>The range the view distance may be set to, as camera multipliers.</summary>
     private const float NearestZoom = 2f;
 
@@ -2715,15 +3538,6 @@ public partial class WorldController : Node
         Options is { DefaultCameraAngle: 45 }
             ? 7f * Mathf.Pi / 4f + Mathf.Pi / 4f
             : 7f * Mathf.Pi / 4f;
-
-    private void Muzzle(ProjectileDesc shot, float x, float y, float angle)
-    {
-        if (Options is { Particles: false })
-            return;
-
-        int colour = shot is { ParticleTrail: true } ? shot.ParticleTrailColor : 0xFFE9A8;
-        _particles.Muzzle(x, y, 0.35f, angle, colour);
-    }
 
     private void LeaveTrail(Projectile projectile, int now)
     {
@@ -2847,17 +3661,19 @@ public partial class WorldController : Node
 
     private static CharFrame SelectFrame(Entity entity, AnimatedChar animated, int now, float cameraAngle)
     {
-        // Attacking wins over walking, and holds the pose for a fixed window after the shot.
-        // Turning to face the shot is a lasting change, not a choice made for this frame: the
-        // original assigns facing_ here, so a character that stops after firing goes on facing
-        // the way it fired.
-        if (entity.IsAttacking(now))
+        // Attacking wins over walking, and lasts for as long as the trigger is held plus one attack
+        // period after the last shot -- Player.getTexture's
+        // "isShooting || currentTime < attackStart_ + attackPeriod_". Turning to face the shot is a
+        // lasting change, not a choice made for this frame: the original assigns facing_ here, so a
+        // character that stops after firing goes on facing the way it fired.
+        bool holding = entity is LocalPlayer { IsShooting: true } && entity.AttackStartMs != int.MinValue;
+
+        if (holding || entity.IsAttacking(now))
         {
             if (entity.Desc is not { DontFaceAttacks: true })
                 entity.Facing = entity.AttackAngle;
 
-            float phase = (now - entity.AttackStartMs) % Entity.AttackPeriodMs / (float)Entity.AttackPeriodMs;
-            return animated.Frame(entity.Facing, cameraAngle, CharAction.Attack, phase);
+            return animated.Frame(entity.Facing, cameraAngle, CharAction.Attack, entity.AttackPhase(now));
         }
 
         // Which way a character faces is which way it is going. Every character has this, not just

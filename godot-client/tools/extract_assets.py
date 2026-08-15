@@ -261,11 +261,22 @@ def parse_xml_lists(data_text: str) -> dict[str, object]:
             names.append(resolve_embed_file(stub_class).stem + ".xml")
         return names
 
+    # The skins are their own constant in EmbeddedData rather than a member of objectFiles, because
+    # the original parsed them into the class model instead of the object library
+    # (ParseSkinsXmlCommand.as:50-70). Here they are ordinary object definitions -- a skin is a type
+    # with an <AnimatedTexture>, which is exactly what the renderer needs to draw one -- so they are
+    # appended to the object list. They collide with nothing: no skin type appears in any other file.
+    objects = resolve_list("objectFiles")
+    objects.append(resolve_embed_file("EmbeddedData_SkinsCXML").stem + ".xml")
+
     return {
         "ground": resolve_list("groundFiles"),
-        "objects": resolve_list("objectFiles"),
+        "objects": objects,
         "regions": resolve_list("regionFiles"),
         "spawnRegions": resolve_list("spawnRegionFiles"),
+        # Not object definitions: this one names the skin and bullet a completed set puts on its
+        # wearer, and is parsed into its own index (ParseSkinsXmlCommand.as:44-47).
+        "equipmentSets": resolve_embed_file("EmbeddedData_EquipmentSetsCXML").stem + ".xml",
         # Everything past this index in "objects" is a dungeon override rather than base data.
         "baseObjectCount": BASE_OBJECT_FILE_COUNT,
     }

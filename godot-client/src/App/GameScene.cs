@@ -75,6 +75,37 @@ public partial class GameScene : Node
     /// </remarks>
     public bool OpenVault { get; set; }
 
+    /// <summary>How many gifts to claim from the vault panel. Set from the command line.</summary>
+    /// <remarks>
+    /// For screenshots, and for the same reason <see cref="OpenVault"/> exists: claiming is a click
+    /// on a square, and an unattended run has no way to make one.
+    /// </remarks>
+    public int ClaimGifts { get; set; }
+
+    /// <summary>Whether to buy one more vault chest. Set from the command line.</summary>
+    public bool BuyVaultChest { get; set; }
+
+    /// <summary>How many times to press Buy at the vendor in reach, for unattended checks of a shop.</summary>
+    public int BuyFromMerchant { get; set; }
+
+    /// <summary>Vault squares to take out into the pack, by flat index. Set from the command line.</summary>
+    public System.Collections.Generic.Queue<int> TakeFromVault { get; set; }
+
+    /// <summary>Inventory drags to make, as pairs of flat slots. Set from the command line.</summary>
+    public System.Collections.Generic.Queue<(int From, int To)> Drags { get; set; }
+
+    /// <summary>Slots to click, by flat number. Set from the command line.</summary>
+    public System.Collections.Generic.Queue<int> Activations { get; set; }
+
+    /// <summary>Slots to drop on the ground, by flat number. Set from the command line.</summary>
+    public System.Collections.Generic.Queue<int> Discards { get; set; }
+
+    /// <summary>Squares of the bag underfoot to take from. Set from the command line.</summary>
+    public System.Collections.Generic.Queue<int> TakeFromBag { get; set; }
+
+    /// <summary>Presses of the interact key to make, on whatever is underfoot. Set from the command line.</summary>
+    public System.Collections.Generic.Queue<int> Interactions { get; set; }
+
     /// <summary>Opens the options page once in the world. Set from the command line.</summary>
     public bool OpenOptions { get; set; }
 
@@ -92,6 +123,15 @@ public partial class GameScene : Node
     /// of world instead of restarting in the new one.
     /// </remarks>
     public System.Collections.Generic.Queue<string> ScriptedLines { get; set; }
+
+    /// <summary>
+    /// Lines to send once every scripted gesture has been made. Set from the command line.
+    /// </summary>
+    /// <remarks>
+    /// One queue for the session, as <see cref="ScriptedLines"/> is, so it survives the change of
+    /// world a gesture can make — which is the whole point of it.
+    /// </remarks>
+    public System.Collections.Generic.Queue<string> LaterLines { get; set; }
 
     /// <summary>Raised when the session ends, with a reason to show the player.</summary>
     public event Action<string> Ended;
@@ -284,6 +324,15 @@ public partial class GameScene : Node
         _controller.StartingCameraAngle = StartingCameraAngle;
         _controller.CenterOnPlayer = ServiceLocator.Settings?.CenterOnPlayer ?? true;
         _controller.HoldVaultOpen = OpenVault;
+        _controller.ClaimGifts = ClaimGifts;
+        _controller.BuyVaultChest = BuyVaultChest;
+        _controller.BuyFromMerchant = BuyFromMerchant;
+        _controller.TakeFromVault = TakeFromVault;
+        _controller.Drags = Drags;
+        _controller.Activations = Activations;
+        _controller.Discards = Discards;
+        _controller.TakeFromBag = TakeFromBag;
+        _controller.Interactions = Interactions;
 
         _controller.HudVisibilityChanged += hidden => ShowInterface(!hidden);
         _controller.WorldEntering += (name, difficulty) => _loading?.Show(name, difficulty);
@@ -321,14 +370,15 @@ public partial class GameScene : Node
         _controller.CharacterToggled += ShowCharacter;
         _controller.AccountToggled += ShowAccount;
 
-        _account.Connect($"http://{_host}:8888", _guid, _password);
-        _character.Connect($"http://{_host}:8888", _guid, _password, _characterId);
+        _account.Connect($"http://{_host}:{ServerConfig.AppPort}", _guid, _password);
+        _character.Connect($"http://{_host}:{ServerConfig.AppPort}", _guid, _password, _characterId);
 
         // The character sheet is deliberately absent from this list. It opens beside the world
         // rather than over it, and the player keeps playing while it is up.
         _controller.OptionsAreOpen = () => _options.IsOpen || _guild.IsOpen;
-        _guild.Configure(_session, $"http://{_host}:8888", _guid, _password);
+        _guild.Configure(_session, $"http://{_host}:{ServerConfig.AppPort}", _guid, _password);
         _controller.ScriptedLines = ScriptedLines;
+        _controller.LaterLines = LaterLines;
         _trade.Configure(_controller.Trading, ServiceLocator.Assets, ServiceLocator.Data);
         _controller.Trading.Requested += who =>
             _controller.Chat?.AddSystem($"{who} wants to trade. Type /trade {who} to accept.");
@@ -455,6 +505,15 @@ public partial class GameScene : Node
         _controller.StartingCameraAngle = StartingCameraAngle;
         _controller.CenterOnPlayer = ServiceLocator.Settings?.CenterOnPlayer ?? true;
         _controller.HoldVaultOpen = OpenVault;
+        _controller.ClaimGifts = ClaimGifts;
+        _controller.BuyVaultChest = BuyVaultChest;
+        _controller.BuyFromMerchant = BuyFromMerchant;
+        _controller.TakeFromVault = TakeFromVault;
+        _controller.Drags = Drags;
+        _controller.Activations = Activations;
+        _controller.Discards = Discards;
+        _controller.TakeFromBag = TakeFromBag;
+        _controller.Interactions = Interactions;
 
         _controller.HudVisibilityChanged += hidden => ShowInterface(!hidden);
         _controller.WorldEntering += (name, difficulty) => _loading?.Show(name, difficulty);
@@ -492,14 +551,15 @@ public partial class GameScene : Node
         _controller.CharacterToggled += ShowCharacter;
         _controller.AccountToggled += ShowAccount;
 
-        _account.Connect($"http://{_host}:8888", _guid, _password);
-        _character.Connect($"http://{_host}:8888", _guid, _password, _characterId);
+        _account.Connect($"http://{_host}:{ServerConfig.AppPort}", _guid, _password);
+        _character.Connect($"http://{_host}:{ServerConfig.AppPort}", _guid, _password, _characterId);
 
         // The character sheet is deliberately absent from this list. It opens beside the world
         // rather than over it, and the player keeps playing while it is up.
         _controller.OptionsAreOpen = () => _options.IsOpen || _guild.IsOpen;
-        _guild.Configure(_session, $"http://{_host}:8888", _guid, _password);
+        _guild.Configure(_session, $"http://{_host}:{ServerConfig.AppPort}", _guid, _password);
         _controller.ScriptedLines = ScriptedLines;
+        _controller.LaterLines = LaterLines;
         _trade.Configure(_controller.Trading, ServiceLocator.Assets, ServiceLocator.Data);
         _controller.Trading.Requested += who =>
             _controller.Chat?.AddSystem($"{who} wants to trade. Type /trade {who} to accept.");

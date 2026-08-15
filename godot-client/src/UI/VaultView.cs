@@ -645,17 +645,33 @@ public sealed partial class VaultView : ModalPanel
 
         y += SortBarHeight + Padding;
 
-        // The rail down the left, the grid beside it at exactly its own width.
+        float gridHeight = GridHeight;
+
+        // The rail down the left, alongside the grid and never past it. On a short screen there is
+        // less room than the buttons want at their natural size, and a rail laid out at that size
+        // regardless walks out through the bottom of the frame -- so the pitch is whatever divides
+        // the room the grid has, and the buttons keep their square by shrinking with it.
+        float pitch = _rail.Count > 0
+            ? Mathf.Min(RailButtonSize + RailGap, (gridHeight + RailGap) / _rail.Count)
+            : 0f;
+
+        float railSide = Mathf.Max(1f, Mathf.Floor(pitch - RailGap));
+
         for (int i = 0; i < _rail.Count; i++)
         {
-            _rail[i].Position = new Vector2(Padding, y + i * (RailButtonSize + RailGap));
-            _rail[i].Size = new Vector2(RailButtonSize, RailButtonSize);
+            // Centred in the column the panel's width was built around, so a shrunk rail stays
+            // under the one above it rather than drifting to the frame.
+            _rail[i].Position = new Vector2(
+                Padding + Mathf.Round((RailButtonSize - railSide) / 2f),
+                Mathf.Round(y + i * pitch));
+
+            _rail[i].Size = new Vector2(railSide, railSide);
         }
 
         float gridLeft = Padding + RailButtonSize + RailGap * 2f;
 
         _grid.Position = new Vector2(gridLeft, y);
-        _grid.Size = new Vector2(GridWidth + GutterWidth, GridHeight);
+        _grid.Size = new Vector2(GridWidth + GutterWidth, gridHeight);
 
         Recentre();
         Reflow();

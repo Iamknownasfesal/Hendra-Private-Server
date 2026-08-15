@@ -129,20 +129,35 @@ public sealed class AppEngineClient : IDisposable
         return Inflate(body) ?? body;
     }
 
-    /// <summary>Inflates the body if it is compressed, otherwise reads it as UTF-8.</summary>
-    /// <remarks>
-    /// The byte-order mark is stripped. Some of these responses are files served straight off disk
-    /// and were saved with one; UTF8.GetString keeps it as a zero-width character, which is
-    /// invisible in a log and makes a JSON parser reject the document at position zero.
-    /// </remarks>
+    /// <summary>Reads the body as text, inflating it first if that is what it is.</summary>
     private static string Decode(byte[] body)
     {
-        byte[] bytes = Inflate(body) ?? body;
+        // Text first, and only inflate what is not already text. Inflating first looks safer than
+        // it is: a short plain body can be a *valid* raw-deflate stream by accident -- "[]", the
+        // empty language table, inflates without complaint into a byte that is not text at all --
+        // and the reply then arrives as one replacement character instead of as itself. Compressed
+        // bodies are effectively never valid UTF-8, so trying that way round costs nothing.
+        return AsText(body) ?? AsText(Inflate(body)) ?? Encoding.UTF8.GetString(body);
+    }
 
-        if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
-            return Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3);
+    /// <summary>The bytes as text if they are text, or null if they are not valid UTF-8.</summary>
+    /// <remarks>The byte-order mark goes with it: some of these responses are files served straight
+    /// off disk and were saved with one, and <c>GetString</c> keeps it as a zero-width character
+    /// that is invisible in a log and makes a JSON parser reject the document at position zero.</remarks>
+    private static string AsText(byte[] bytes)
+    {
+        if (bytes == null || bytes.Length == 0)
+            return null;
 
-        return Encoding.UTF8.GetString(bytes);
+        try
+        {
+            var strict = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+            return strict.GetString(bytes).TrimStart('﻿');
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

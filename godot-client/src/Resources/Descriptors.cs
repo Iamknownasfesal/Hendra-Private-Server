@@ -99,6 +99,28 @@ public sealed class ProjectileDesc
     public HashSet<ConditionEffectIndex> PetEffects;
 }
 
+/// <summary>
+/// What wearing a complete equipment set does to the wearer's appearance, keyed by the skin the
+/// set puts on them.
+/// </summary>
+/// <remarks>
+/// The skin and the size are the server's business — it writes them as stats when the last piece
+/// goes on and takes them away when one comes off. These two are the client's own: the original
+/// reads them out of the same <c>ActivateOnEquipAll</c> node the moment a player's skin changes to
+/// one a set names (<c>GameServerConnectionConcrete.as:1655-1670</c>).
+/// </remarks>
+public sealed class SkinSetDesc
+{
+    /// <summary>The skin the set applies. This is the key the set is found by.</summary>
+    public int SkinType;
+
+    /// <summary>The colour of the burst thrown when the set completes. -1 when the set names none.</summary>
+    public int Color = -1;
+
+    /// <summary>The object id whose artwork replaces the weapon's own bullet, or null.</summary>
+    public string BulletType;
+}
+
 /// <summary>Movement and rendering overrides that apply only while an object is moving.</summary>
 public sealed class WhileMovingDesc
 {
@@ -137,6 +159,20 @@ public sealed class ObjectDesc
     /// Null for anything that is not a player class.
     /// </remarks>
     public int[] StatMaxima;
+
+    /// <summary>
+    /// What has to be levelled before this class can be rolled: <c>&lt;UnlockLevel level="5"
+    /// type="0x0307"&gt;Archer&lt;/UnlockLevel&gt;</c>, one entry per requirement.
+    /// </summary>
+    /// <remarks>
+    /// The class is named by its id in the element's text, which is how the original resolves it
+    /// (<c>SavedCharactersList.levelRequirementsMet</c> reads <c>idToType_[element.toString()]</c>)
+    /// and why the type attribute beside it is only a fallback here. The id is kept unresolved
+    /// because a requirement routinely names a class the document has not reached yet. Empty for a
+    /// class that is available from the start, and for anything that is not a player class.
+    /// </remarks>
+    public List<(string Id, int Type, int Level)> UnlockLevels = new();
+
     public bool IsEnemy;
 
     /// <summary>A Hero of Oryx, or a boss of one of the Realm's roaming encounters.</summary>

@@ -47,6 +47,16 @@ public partial class ServiceLocator : Node
     public static RustSession Session => _instance?._session;
 
     /// <summary>
+    /// The account as the character list last described it, or null before a sign-in.
+    /// </summary>
+    /// <remarks>
+    /// The world needs one thing from it: the best level each class has reached, which is what
+    /// decides whether a level-up has unlocked a class. The original holds the same reading in its
+    /// <c>PlayerModel</c> for the same reason, taken at sign-in and left alone thereafter.
+    /// </remarks>
+    public static Account.AccountInfo Account { get; set; }
+
+    /// <summary>
     /// Sound effects and music.
     /// </summary>
     /// <remarks>
@@ -189,6 +199,9 @@ public partial class ServiceLocator : Node
         foreach (string file in manifest.Xml.Objects)
             LoadXml(file, data.AddObjects);
 
+        if (manifest.Xml.EquipmentSets != null)
+            LoadXml(manifest.Xml.EquipmentSets, data.AddEquipmentSets);
+
         Data = data;
         GD.Print($"[content] {Assets.Sheets.Count} sheets, {Data.Objects.Count} objects, {Data.Ground.Count} terrain types.");
     }
@@ -236,6 +249,35 @@ public partial class ServiceLocator : Node
         catch (Exception ex)
         {
             GD.PushWarning($"[content] could not load language strings: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Fetches the account, so the world knows how far each class has been taken.
+    /// </summary>
+    /// <remarks>
+    /// The sign-in page already has this and sets it directly; this is for the ways into a world
+    /// that skip the page, which would otherwise leave a session unable to tell a level-up that
+    /// unlocked a class from one that did not. Not fatal for the same reason the language table is
+    /// not: the game is playable without it, one line poorer.
+    /// </remarks>
+    public static async System.Threading.Tasks.Task LoadAccountAsync(string baseUrl, string guid, string password)
+    {
+        try
+        {
+            using var client = new Account.AppEngineClient(baseUrl);
+            string xml = await client.PostAsync("/char/list",
+                new System.Collections.Generic.Dictionary<string, string>
+                {
+                    ["guid"] = guid,
+                    ["password"] = password,
+                });
+
+            Account = Hendra.Account.CharListResult.Parse(xml).Account;
+        }
+        catch (Exception ex)
+        {
+            GD.PushWarning($"[content] could not load the account: {ex.Message}");
         }
     }
 

@@ -38,6 +38,32 @@ public sealed class LocalPlayer : Entity
     /// <summary>Below this speed a sliding player is treated as stopped.</summary>
     private const float SlideRestThreshold = 0.00012f;
 
+    /// <summary>How far a debug lurch travels in one frame, in tiles. Zero for an honest client.</summary>
+    /// <remarks>Set by <c>--lurch</c>, and only acted on while <see cref="Movement.NoClip"/> is on.</remarks>
+    public static float Lurch;
+
+    /// <summary>How long between lurches, in milliseconds.</summary>
+    /// <remarks>
+    /// Long enough for the server's travelling allowance to fill back up, so the jump is refused
+    /// for crossing a wall rather than for being faster than the stats permit.
+    /// </remarks>
+    private const int LurchPeriodMs = 2000;
+
+    private int _sinceLurch;
+
+    /// <summary>
+    /// Whether the trigger is being held.
+    /// </summary>
+    /// <remarks>
+    /// <c>Player.isShooting</c>. The attack pose shows while this is set as well as for one attack
+    /// period after the last shot, which is the whole of <c>Player.getTexture</c>'s test:
+    /// <c>isShooting || currentTime &lt; attackStart_ + attackPeriod_</c>. Holding the pose off the
+    /// trigger rather than off the last shot keeps a character in its firing stance through
+    /// anything that swallows the shot itself, being stunned most of all. An ability clears it,
+    /// because the original passes <c>false</c> for the flag when it fires one.
+    /// </remarks>
+    public bool IsShooting;
+
     public int Speed;
     public int Dexterity;
     public int Attack;
@@ -45,6 +71,23 @@ public sealed class LocalPlayer : Entity
     public int Wisdom;
     public int Mp;
     public int MaxMp;
+
+    /// <summary>
+    /// The bounds a shot from the equipped weapon rolls between, and the private-drop bonus.
+    /// </summary>
+    /// <remarks>
+    /// Stats in the same array as the eight above -- <c>StatsManager.NumStatTypes</c> is 11 -- but
+    /// of a different kind: no class declares them and no character saves them. The first two are
+    /// rewritten from whatever is in the weapon slot every time the inventory changes
+    /// (<c>BaseStatManager.SetWeaponDamage</c>), which is what makes them worth carrying: they are
+    /// the damage the server will actually roll, after any bonus the item's own tooltip does not
+    /// know about. Luck is read by the loot roll alone and is zero throughout this content.
+    /// </remarks>
+    public int DamageMin;
+
+    public int DamageMax;
+
+    public int Luck;
 
     /// <summary>
     /// How much air is left, from 100 down to 0.
@@ -55,10 +98,21 @@ public sealed class LocalPlayer : Entity
     /// </summary>
     public int Breath = 100;
 
-    /// <summary>Gold, and the fame the character has banked. Both are spent at vendors.</summary>
+    /// <summary>Gold the account holds, which is what a vendor priced in gold charges against.</summary>
     public int Credits;
 
+    /// <summary>The fame this character has banked, which is its lifetime experience over a thousand.</summary>
+    /// <remarks>
+    /// Not what a vendor charges: the original keeps the two apart as <c>Fame</c> and
+    /// <c>CurrentFame</c> (<c>Player.cs:291-292</c>), and only the second is money.
+    /// </remarks>
     public int Fame;
+
+    /// <summary>The fame the account may spend, which is what a vendor priced in fame charges.</summary>
+    public int CurrentFame;
+
+    /// <summary>Prestige the account holds, which the prestige shop charges against.</summary>
+    public int Prestige;
 
     /// <summary>Experience toward the next level, and what it takes to reach it.</summary>
     /// <remarks>
@@ -75,17 +129,34 @@ public sealed class LocalPlayer : Entity
     /// <summary>
     /// How much of each stat comes from equipment rather than levelling, indexed to match
     /// <see cref="Resources.ObjectDesc.StatMaxima"/>: MaxHP, MaxMP, Attack, Defense, Speed,
-    /// Dexterity, Vitality, Wisdom.
+    /// Dexterity, Vitality, Wisdom -- and then the three the sheet has no row for, which the
+    /// server boosts like any other: DamageMin, DamageMax and Luck.
     /// </summary>
     /// <remarks>
     /// The server sends these separately from the totals, and the stat values it sends already
     /// include them -- so the interface shows the total with the boosted part called out, rather
     /// than adding the two together.
     /// </remarks>
-    public readonly int[] Boosts = new int[8];
+    public readonly int[] Boosts = new int[11];
 
     /// <summary>Whether the character owns a backpack, which is what makes slots 16-23 usable.</summary>
     public bool HasBackpack;
+
+    /// <summary>
+    /// What is left of the three timed boosts, in whole seconds: experience, loot drop, loot tier.
+    /// </summary>
+    /// <remarks>
+    /// <c>XPBoostTime</c>, <c>LDBoostTime</c> and <c>LTBoostTime</c> (<c>Player.cs:356-358</c>).
+    /// The original also sends an <c>XPBoost</c> flag, which it derives from the first of these --
+    /// <c>(XPBoostTime != 0) ? 1 : 0</c> (<c>Player.cs:355</c>) -- so <see cref="ExperienceBoosted"/>
+    /// asks the clock rather than keeping a second copy that could disagree with it.
+    /// </remarks>
+    public int ExperienceBoostSeconds;
+    public int LootDropBoostSeconds;
+    public int LootTierBoostSeconds;
+
+    /// <summary>Whether the experience boost is running, which is what the original's flag says.</summary>
+    public bool ExperienceBoosted => ExperienceBoostSeconds != 0;
 
     /// <summary>
     /// How many of each stacked potion is held.
@@ -239,6 +310,30 @@ public sealed class LocalPlayer : Entity
 
         float destinationX = X + deltaMs * VelocityX;
         float destinationY = Y + deltaMs * VelocityY;
+
+        // The debug lurch: every so often, cover several tiles in one frame instead of a fraction
+        // of one. A Move packet carries whatever position the client has reached, and at twenty
+        // ticks a second an honest one has only ever reached a third of a tile — far too little for
+        // a wall to be between where it was and where it says it is. Standing still first is what
+        // pays for the jump: the server hands out travelling time and lets what is unused build up,
+        // so a client that says nothing for a second may then legitimately claim several tiles.
+        // This is that claim, and the only thing that can refuse it is a server that looks at the
+        // ground the whole way rather than only at the end.
+        if (Movement.NoClip && Lurch > 0f)
+        {
+            _sinceLurch += deltaMs;
+            if (_sinceLurch >= LurchPeriodMs)
+            {
+                _sinceLurch = 0;
+
+                float heading = MathF.Sqrt(VelocityX * VelocityX + VelocityY * VelocityY);
+                if (heading > 0f)
+                {
+                    destinationX = X + Lurch * VelocityX / heading;
+                    destinationY = Y + Lurch * VelocityY / heading;
+                }
+            }
+        }
 
         var result = Movement.Resolve(map, X, Y, destinationX, destinationY);
 

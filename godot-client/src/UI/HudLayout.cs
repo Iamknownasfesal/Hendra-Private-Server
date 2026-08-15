@@ -203,10 +203,14 @@ public readonly struct HudLayout
     /// <remarks>
     /// The ceiling on a hand-picked interface scale. Past it the chat panel and the vitals grow
     /// into each other, which is a worse answer to "the text is small" than a smaller number.
+    /// Deliberately not floored at <see cref="MinScale"/>: a window smaller than
+    /// <see cref="MinimumSpace"/> can only hold the layout at a fractional scale, and flooring here
+    /// would hand back a number that overlaps -- which is the one thing this function exists to
+    /// rule out. <see cref="ScaleFor"/> makes the same trade for the same reason.
     /// </remarks>
     public static float LargestFor(Vector2 window) =>
         window.X <= 0f || window.Y <= 0f ? MinScale
-            : Mathf.Max(MinScale, Mathf.Min(window.X / MinimumSpace.X, window.Y / MinimumSpace.Y));
+            : Mathf.Min(window.X / MinimumSpace.X, window.Y / MinimumSpace.Y);
 
     /// <summary>The rectangle the layout is solved in, for a window of the given size.</summary>
     public static Vector2 SpaceFor(Vector2 window) =>

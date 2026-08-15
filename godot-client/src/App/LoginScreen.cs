@@ -119,8 +119,11 @@ public partial class LoginScreen : Control
         column.AddChild(_signIn);
 
         // Registering is the same two fields, so it is a second button rather than a third page.
-        // The server creates the account and the client signs straight in with it.
-        _register = new UI.GameButton("Create an account with these details", compact: true);
+        // The server creates the account and the client signs straight in with it. Labelled with
+        // the original's word for it -- "Register" throughout WebLoginDialog.as:48 and
+        // RegisterPromptDialog.as:14-16 -- which is also the word the failed sign-in message uses
+        // to point at this button.
+        _register = new UI.GameButton("Register", compact: true);
         _register.Pressed += OnRegisterPressed;
         column.AddChild(_register);
 
@@ -198,7 +201,13 @@ public partial class LoginScreen : Control
     /// box is drawn here instead and the sprite that goes in it is the real one — the same
     /// eight-pixel frame the game draws when the character is standing still.
     /// </remarks>
-    private static Control Portrait(ushort objectType, int size)
+    /// <param name="available">
+    /// False for a class the account may not play, which draws the sprite as a half-transparent
+    /// black silhouette. That is the original's own treatment, applied in
+    /// <c>SavedCharacter.getImage</c> (SavedCharacter.as:53-55) through the colour transform at
+    /// SavedCharacter.as:28, which multiplies the colour away and the alpha by a half.
+    /// </param>
+    private static Control Portrait(ushort objectType, int size, bool available = true)
     {
         var holder = new Control
         {
@@ -226,12 +235,45 @@ public partial class LoginScreen : Control
             // Nearest, or an eight-pixel sprite blown up to forty is a smear.
             TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
             MouseFilter = MouseFilterEnum.Ignore,
+            Modulate = available ? Colors.White : new Color(0f, 0f, 0f, 0.5f),
         };
 
         view.SetAnchorsPreset(LayoutPreset.FullRect);
         holder.AddChild(view);
         return holder;
     }
+
+    /// <summary>
+    /// The padlock stamped on a class the account may not play.
+    /// </summary>
+    /// <remarks>
+    /// The original's own sprite, not a drawn one: <c>lofiInterface2</c> index 5, which is what
+    /// CharacterBox.as:116 puts on a locked box and what the skin list and the player menu use for
+    /// the same idea. It is a white silhouette on the sheet, so it takes whatever colour it is
+    /// modulated to.
+    /// </remarks>
+    private static Control Padlock(int size)
+    {
+        var sprite = ServiceLocator.Assets?.GetSprite("lofiInterface2", LockSpriteIndex) ?? default;
+        if (!sprite.IsValid)
+            return null;
+
+        var view = new TextureRect
+        {
+            Texture = new AtlasTexture { Atlas = sprite.Sheet, Region = sprite.Region },
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
+            MouseFilter = MouseFilterEnum.Ignore,
+            CustomMinimumSize = new Vector2(size, size),
+            Size = new Vector2(size, size),
+            Modulate = new Color(0.92f, 0.9f, 0.86f),
+        };
+
+        return view;
+    }
+
+    /// <summary>Where the padlock sits on the <c>lofiInterface2</c> sheet. See CharacterBox.as:116.</summary>
+    private const int LockSpriteIndex = 5;
 
     /// <summary>
     /// One character on the list: class and level over its vital and stat lines.
@@ -468,12 +510,32 @@ public partial class LoginScreen : Control
         }
     }
 
-    /// <summary>Fills the form and signs in. Development only.</summary>
+    /// <summary>
+    /// The name to claim when the account reaches the naming step, if a run has one in mind.
+    /// </summary>
+    /// <remarks>
+    /// Set by an unattended run rather than by anything a player does. Naming happens partway
+    /// through signing in, so there is no moment outside this screen at which it could be supplied.
+    /// </remarks>
+    public string ClaimName { get; set; }
+
+    /// <summary>The class to create once the character list is up, by object type, or -1 for none.</summary>
+    public int PickClassType { get; set; } = -1;
+
+    /// <summary>Fills the form and signs in, as pressing the button does.</summary>
     public void PrefillForTesting(string account, string password)
     {
         _guid.Text = account;
         _password.Text = password;
         OnSignInPressed();
+    }
+
+    /// <summary>Fills the form and registers, as pressing Register does.</summary>
+    public void RegisterForTesting(string account, string password)
+    {
+        _guid.Text = account;
+        _password.Text = password;
+        OnRegisterPressed();
     }
 
     private async void OnSignInPressed()
@@ -504,6 +566,10 @@ public partial class LoginScreen : Control
             string xml = await client.PostAsync("/char/list", credentials);
             _charList = CharListResult.Parse(xml);
 
+            // Kept for the world, which reads the account's best level in each class to tell a
+            // level-up that unlocked something from one that did not.
+            ServiceLocator.Account = _charList.Account;
+
             // Belt and braces: a guest is never persisted, so it can only have come from the path
             // above. Its character list would look playable right up until the world server refused
             // the login.
@@ -519,6 +585,11 @@ public partial class LoginScreen : Control
                 ServiceLocator.Settings.Password = _password.Text;
                 ServiceLocator.ApplySettings();
             }
+
+            // Before the list is drawn, so the class boxes know which of them are locked the first
+            // time they are built rather than correcting themselves a moment later.
+            _offers = await FetchClassOffersAsync(baseUrl, _guid.Text, _password.Text);
+
             ShowCharacters();
         }
         catch (AppEngineException ex)
@@ -543,6 +614,13 @@ public partial class LoginScreen : Control
 
     private void ShowCharacters()
     {
+        // Cleared here rather than only when a sign-in begins, so that drawing the list is
+        // idempotent. Two sign-ins can be in flight at once — a remembered account signs itself in
+        // and the player may press the button before it answers — and each clears before it waits
+        // on the server, so whichever answers second would otherwise append its characters below
+        // the first's and show everything twice.
+        ClearCharacters();
+
         _servers.Clear();
         foreach (var server in _charList.Servers)
         {
@@ -562,6 +640,15 @@ public partial class LoginScreen : Control
         {
             _status.Text = string.Empty;
             _name.CallDeferred(Control.MethodName.GrabFocus);
+
+            // An unattended run types the name and presses the button, rather than stopping here
+            // for a keyboard that is not there.
+            if (!string.IsNullOrEmpty(ClaimName))
+            {
+                _name.Text = ClaimName;
+                ClaimName = null;
+                OnSetNamePressed();
+            }
             return;
         }
 
@@ -591,14 +678,25 @@ public partial class LoginScreen : Control
 
         if (living.Count < Math.Max(_charList.MaxCharacters, 1))
             AddClassPicker(living.Count == 0);
+
+        // The same call the class card's own handler makes, for a run with nobody to click it.
+        if (PickClassType >= 0)
+        {
+            ushort classType = (ushort)PickClassType;
+            PickClassType = -1;
+            RequestCreate(classType);
+        }
     }
 
     /// <summary>
-    /// Offers the classes this account may create.
+    /// Offers the classes this account may create, showing the locked ones as locked.
     /// </summary>
     /// <remarks>
-    /// Every known class is offered rather than trying to predict which are unlocked: the server
-    /// decides, and answers a refusal with a message saying why.
+    /// A locked class is drawn the way the original draws it: the portrait blacked out to a
+    /// half-transparent silhouette, a padlock stamped on the box, the word LOCKED in red, and the
+    /// requirement plus the buy price in the tooltip — CharacterBox.as:86-124 and
+    /// ClassToolTip.as:64-120. Thirteen of the fourteen are locked on a fresh account, so offering
+    /// them all alike makes almost every first click a refusal.
     /// </remarks>
     private void AddClassPicker(bool onlyOption)
     {
@@ -620,33 +718,211 @@ public partial class LoginScreen : Control
         foreach (var playerClass in classes)
         {
             ushort classType = playerClass.Type;
+            string name = playerClass.DisplayId ?? playerClass.Id ?? "?";
+
+            // No entry at all means the account server never answered, in which case every class is
+            // offered as before rather than the whole picker being struck out on a failed request.
+            _offers.TryGetValue(classType, out var offer);
+            bool locked = offer.Locked != null;
 
             // Click only, for the reason the character boxes are: creating a character by accident
             // costs a slot, and CardButton stays out of the focus chain.
-            var button = new UI.CardButton(UI.Style.Steel)
+            var button = new UI.CardButton(locked ? UI.Style.Steel : UI.Style.Gold)
             {
-                CustomMinimumSize = new Vector2(126, 78),
-                TooltipText = playerClass.DisplayId ?? playerClass.Id,
+                CustomMinimumSize = new Vector2(126, 92),
+                TooltipText = locked ? LockedTooltip(name, offer) : name,
             };
-            button.Pressed += () => RequestCreate(classType);
+
+            if (locked)
+            {
+                // The original puts a buy button on a locked box. There is no shop here, so the
+                // click says what the box is waiting for instead of sending a create the server is
+                // certain to refuse.
+                string reason = LockedTooltip(name, offer);
+                button.Pressed += () => _status.Text = reason;
+            }
+            else
+            {
+                button.Pressed += () => RequestCreate(classType);
+            }
+
             grid.AddChild(button);
 
             var stack = new VBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
-            stack.AddThemeConstantOverride("separation", 2);
+            stack.AddThemeConstantOverride("separation", 1);
             stack.SetAnchorsPreset(LayoutPreset.FullRect);
             button.AddChild(stack);
 
-            var art = Portrait(classType, 34);
+            var art = Portrait(classType, 34, available: !locked);
             art.SizeFlagsHorizontal = SizeFlags.ExpandFill;
             stack.AddChild(art);
 
-            stack.AddChild(new Label
+            if (locked)
             {
-                Text = playerClass.DisplayId ?? playerClass.Id ?? "?",
+                var status = new Label
+                {
+                    Text = "LOCKED",
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    MouseFilter = MouseFilterEnum.Ignore,
+                };
+
+                // The original's own red, from the status field at CharacterBox.as:244.
+                status.AddThemeColorOverride("font_color", new Color(1f, 0f, 0f));
+                status.AddThemeFontSizeOverride("font_size", 14);
+                stack.AddChild(status);
+            }
+
+            var label = new Label
+            {
+                Text = name,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 MouseFilter = MouseFilterEnum.Ignore,
-            });
+            };
+
+            if (locked)
+                label.AddThemeColorOverride("font_color", new Color(0.55f, 0.55f, 0.55f));
+
+            stack.AddChild(label);
+
+            // Stamped over the box rather than laid out in it, which is where the original puts it
+            // -- top left, over the portrait (CharacterBox.as:116-121).
+            var padlock = locked ? Padlock(16) : null;
+            if (padlock != null)
+            {
+                padlock.Position = new Vector2(5f, 5f);
+                button.AddChild(padlock);
+            }
         }
+    }
+
+    /// <summary>
+    /// What a locked box says when the pointer rests on it.
+    /// </summary>
+    /// <remarks>
+    /// The original's three parts, in the original's order: the heading, the requirement, and the
+    /// price to skip it — ClassToolTip.as:87-119.
+    /// </remarks>
+    private static string LockedTooltip(string name, ClassOffer offer)
+    {
+        var text = new System.Text.StringBuilder();
+        text.Append(name).Append('\n').Append("TO UNLOCK\n").Append(Article(offer.Locked));
+
+        if (offer.Cost > 0)
+            text.Append("\nor buy now for ").Append(offer.Cost).Append(" Gold");
+
+        return text.ToString();
+    }
+
+    /// <summary>
+    /// Fixes the indefinite article in a sentence the server wrote, and gives it a capital.
+    /// </summary>
+    /// <remarks>
+    /// The reason arrives as prose assembled around a class name the server does not inspect, so it
+    /// says "a Archer" and "a Assassin". The original never had the problem — it built the sentence
+    /// from a format string and the class name separately (ClassToolTip.as:102-105) — and a tooltip
+    /// is the last place a player should be reading around a grammar mistake.
+    /// </remarks>
+    private static string Article(string sentence)
+    {
+        if (string.IsNullOrEmpty(sentence))
+            return sentence;
+
+        int at = sentence.IndexOf(" a ", StringComparison.Ordinal);
+        if (at >= 0 && at + 3 < sentence.Length && "AEIOUaeiou".IndexOf(sentence[at + 3]) >= 0)
+            sentence = sentence[..(at + 2)] + "n" + sentence[(at + 2)..];
+
+        return char.ToUpperInvariant(sentence[0]) + sentence[1..];
+    }
+
+    /// <summary>What the account server says about one class.</summary>
+    private readonly struct ClassOffer
+    {
+        /// <summary>Why this class cannot be played, or null when it can.</summary>
+        public string Locked { get; init; }
+
+        /// <summary>What unlocking it outright costs, or zero when it is not for sale.</summary>
+        public int Cost { get; init; }
+    }
+
+    /// <summary>
+    /// Which classes this account may play, by object type.
+    /// </summary>
+    /// <remarks>
+    /// Empty until a sign-in fills it, and left empty if the request fails, which offers every class
+    /// rather than locking the picker shut on a network error.
+    /// </remarks>
+    private Dictionary<ushort, ClassOffer> _offers = new();
+
+    /// <summary>
+    /// Asks the account server which classes this account has unlocked.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A second request rather than a second field on <c>/char/list</c>: the account server already
+    /// resolves this exactly — the per-class rule against the account's best level in each class —
+    /// and answers it on <c>/classes</c>, while <c>/char/list</c> carries only living characters and
+    /// so cannot say what a dead one reached.
+    /// </para>
+    /// <para>
+    /// That route is bearer-authenticated, so the credentials are exchanged for a token first. Any
+    /// failure returns an empty map and is not reported: the picker degrades to offering everything,
+    /// which is what it did before, rather than a sign-in failing over a decoration.
+    /// </para>
+    /// </remarks>
+    private static async System.Threading.Tasks.Task<Dictionary<ushort, ClassOffer>> FetchClassOffersAsync(
+        string baseUrl, string guid, string password)
+    {
+        var offers = new Dictionary<ushort, ClassOffer>();
+
+        try
+        {
+            using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+
+            string credentials = System.Text.Json.JsonSerializer.Serialize(new { name = guid, password });
+            using var body = new System.Net.Http.StringContent(
+                credentials, System.Text.Encoding.UTF8, "application/json");
+
+            var signIn = await http.PostAsync($"{baseUrl}/login", body);
+            if (!signIn.IsSuccessStatusCode)
+                return offers;
+
+            using var session = System.Text.Json.JsonDocument.Parse(await signIn.Content.ReadAsStringAsync());
+            if (!session.RootElement.TryGetProperty("token", out var token))
+                return offers;
+
+            http.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.GetString());
+
+            var answer = await http.GetAsync($"{baseUrl}/classes");
+            if (!answer.IsSuccessStatusCode)
+                return offers;
+
+            using var listed = System.Text.Json.JsonDocument.Parse(await answer.Content.ReadAsStringAsync());
+
+            foreach (var entry in listed.RootElement.EnumerateArray())
+            {
+                if (!entry.TryGetProperty("object_type", out var type))
+                    continue;
+
+                string locked = entry.TryGetProperty("locked", out var why)
+                                && why.ValueKind == System.Text.Json.JsonValueKind.String
+                    ? why.GetString()
+                    : null;
+
+                int cost = entry.TryGetProperty("cost", out var price)
+                           && price.ValueKind == System.Text.Json.JsonValueKind.Number
+                    ? price.GetInt32()
+                    : 0;
+
+                offers[(ushort)type.GetUInt32()] = new ClassOffer { Locked = locked, Cost = cost };
+            }
+        }
+        catch (Exception ex)
+        {
+            GD.PushWarning($"[login] could not read class unlocks: {ex.Message}");
+        }
+
+        return offers;
     }
 
     private void RequestCreate(ushort classType)
@@ -680,9 +956,20 @@ public partial class LoginScreen : Control
         return _charList.Servers[index];
     }
 
+    /// <summary>Empties the character list before it is rebuilt.</summary>
+    /// <remarks>
+    /// Detached here and freed afterwards, rather than only queued for freeing. A queued node is
+    /// still a child until the end of the frame, so a second sign-in that lands in the same frame
+    /// as the first — which is what a remembered account does, since it signs in by itself and the
+    /// player may press the button before it finishes — rebuilds the list underneath the old one
+    /// and shows every character twice.
+    /// </remarks>
     private void ClearCharacters()
     {
         foreach (var child in _characters.GetChildren())
+        {
+            _characters.RemoveChild(child);
             child.QueueFree();
+        }
     }
 }

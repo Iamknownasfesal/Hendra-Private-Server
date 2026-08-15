@@ -127,7 +127,12 @@ public sealed class Interaction
 
         return desc.Class switch
         {
-            "Portal" or "GuildHallPortal" => InteractionKind.Portal,
+            // A portal whose world has ended offers nothing. `PortalPanel` drops its Enter button
+            // when the server says the door is shut (`PortalPanel.as:92-97`), and the server
+            // refuses the entry either way (`UsePortalHandler.cs:56`) -- so without this the client
+            // invites the player through a door and is turned back.
+            "Portal" or "GuildHallPortal" =>
+                entity.PortalActive ? InteractionKind.Portal : InteractionKind.None,
 
             // Only the chests that actually hold something. A ClosedVaultChest is a SellableObject
             // in the original -- a chest you buy, not one you open -- and a ClosedGiftChest is a

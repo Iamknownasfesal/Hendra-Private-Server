@@ -75,6 +75,9 @@ public struct Particle
     /// <summary>Orbit radius, or a flow particle's remaining allowance, in tiles.</summary>
     public float Distance;
 
+    /// <summary>How fast an orbiting particle sweeps around its anchor, in radians per second.</summary>
+    public float Spin;
+
     /// <summary>A flow particle's current speed, in tiles per second.</summary>
     public float Speed;
 
@@ -160,6 +163,7 @@ public sealed class ParticleSystem
     {
         Shocker,
         RisingFury,
+        LevelUp,
     }
 
     public ParticleSystem(GameMap map, int seed = 0)
@@ -181,6 +185,7 @@ public sealed class ParticleSystem
         _particles.Clear();
         _emitters.Clear();
         Jitter = 0f;
+        _jittering = false;
     }
 
     // ----------------------------------------------------------------------------------------
@@ -236,6 +241,7 @@ public sealed class ParticleSystem
                 if (anchor == null)
                     return false;
 
+                particle.Angle += particle.Spin * seconds;
                 particle.X = anchor.X + particle.Distance * MathF.Cos(particle.Angle);
                 particle.Y = anchor.Y + particle.Distance * MathF.Sin(particle.Angle);
                 particle.Z += particle.Dz * seconds;
@@ -359,22 +365,32 @@ public sealed class ParticleSystem
         return true;
     }
 
+    /// <summary>How far the camera may eventually wander, in tiles.</summary>
+    /// <remarks><c>Camera.MAX_JITTER</c> (<c>Camera.as:20</c>).</remarks>
+    private const float MaxJitter = 0.5f;
+
+    /// <summary>How long the shake takes to reach <see cref="MaxJitter"/>, in milliseconds.</summary>
+    /// <remarks><c>Camera.JITTER_BUILDUP_MS</c> (<c>Camera.as:21</c>).</remarks>
+    private const int JitterBuildupMs = 10_000;
+
+    /// <summary>Whether an earthquake is still building.</summary>
+    private bool _jittering;
+
     /// <summary>
-    /// Winds the camera shake down.
+    /// Builds the camera shake up.
     /// </summary>
     /// <remarks>
-    /// The original ramped it up over ten seconds and never turned it off -- <c>isJittering_</c> is
-    /// set true by the Jitter effect and has no other assignment anywhere, so a single earthquake
-    /// left the camera shaking for the rest of the session. Here it decays instead.
+    /// A linear ramp rather than a decay, which is what <c>Camera.update</c> (<c>Camera.as:112-119</c>)
+    /// does: the shake starts at nothing and grows towards half a tile over ten seconds. A realm
+    /// quake reconnects everybody after eight of those, so what a player actually feels is a rumble
+    /// that keeps getting worse right up until the castle takes them — which is the point of it.
     /// </remarks>
     private void UpdateJitter(int deltaMs)
     {
-        const float DecayPerSecond = 0.35f;
-
-        if (Jitter <= 0f)
+        if (!_jittering)
             return;
 
-        Jitter = MathF.Max(0f, Jitter - DecayPerSecond * (deltaMs / 1000f));
+        Jitter = MathF.Min(MaxJitter, Jitter + deltaMs * MaxJitter / JitterBuildupMs);
     }
 
     private void UpdateEmitters(int nowMs)
@@ -408,6 +424,10 @@ public sealed class ParticleSystem
 
                 case EmitterKind.RisingFury:
                     EmitFurySpark(anchor, emitter.Color);
+                    break;
+
+                case EmitterKind.LevelUp:
+                    EmitLevelUpPair(anchor, emitter.Color, emitter.Remaining);
                     break;
             }
 
@@ -499,14 +519,6 @@ public sealed class ParticleSystem
     }
 
     /// <summary>
-    /// The flash at the muzzle when a shot goes out.
-    /// </summary>
-    /// <remarks>
-    /// Also new. The original gives firing no visual at all beyond the projectile appearing, and on
-    /// a weapon with a slow projectile there is nothing to tell you the shot happened until it has
-    /// travelled a tile. This puts something where the trigger was pulled.
-    /// </remarks>
-    /// <summary>
     /// A blast: a ring of sparks thrown outward from where something went off.
     /// </summary>
     /// <remarks>
@@ -526,49 +538,6 @@ public sealed class ParticleSystem
                 x + MathF.Cos(angle) * radius * 0.6f,
                 y + MathF.Sin(angle) * radius * 0.6f,
                 0.4f, angle, 0xFF6A2A, 3);
-        }
-    }
-
-    public void Muzzle(float x, float y, float z, float angle, int color)
-    {
-        // The flash itself: one bright mote at the muzzle that fades fast, with the sparks thrown
-        // out around it. Without the core it reads as a few specks rather than as a discharge.
-        Emit(new Particle
-        {
-            X = x,
-            Y = y,
-            Z = z,
-            Color = color,
-            Motion = ParticleMotion.Drift,
-            LifetimeMs = 110,
-            TimeLeftMs = 110,
-            Size = 260f,
-            InitialSize = 260f,
-            Shrinks = true,
-            TrailColor = -1,
-        });
-
-        for (int i = 0; i < 5; i++)
-        {
-            float spread = angle + (Next() - 0.5f) * 0.7f;
-            float speed = 0.8f + Next() * 0.8f;
-
-            Emit(new Particle
-            {
-                X = x,
-                Y = y,
-                Z = z,
-                Dx = MathF.Cos(spread) * speed,
-                Dy = MathF.Sin(spread) * speed,
-                Color = color,
-                Motion = ParticleMotion.Drift,
-                LifetimeMs = 220,
-                TimeLeftMs = 220,
-                Size = 130f,
-                InitialSize = 130f,
-                Shrinks = true,
-                TrailColor = -1,
-            });
         }
     }
 
@@ -1068,11 +1037,85 @@ public sealed class ParticleSystem
         });
     }
 
-    /// <summary>Starts the camera shaking. It winds back down on its own.</summary>
+    /// <summary>How many motes each of a level-up's two swirls sheds.</summary>
+    private const int LevelUpMotes = 20;
+
+    /// <summary>How long a level-up's swirls take to complete, in milliseconds.</summary>
+    private const int LevelUpDurationMs = 2000;
+
+    /// <summary>
+    /// The two counter-rotating green swirls that climb a character who has gained a level.
+    /// </summary>
+    /// <remarks>
+    /// The original held forty particles alive for the whole two seconds and drove each one's height
+    /// from a shared clock, so a particle was only actually shown while its height lay between zero
+    /// and one and was invisible on either side of that window. The visible half is all that is
+    /// emitted here: a mote is born at the moment its height would have reached zero and dies as it
+    /// reaches one, which puts the same motes in the same places without the thirty idle ones.
+    /// </remarks>
+    public void LevelUp(Entity target, int color = 0x00FF00)
+    {
+        AddEmitter(EmitterKind.LevelUp, target.ObjectId, color,
+            intervalMs: LevelUpDurationMs / 2 / LevelUpMotes, count: LevelUpMotes, nowMs: 0);
+    }
+
+    /// <summary>
+    /// One mote from each of the two swirls, half a turn apart.
+    /// </summary>
+    /// <param name="index">
+    /// Which mote of the swirl this is, counting down. It sets the bearing the mote starts at, which
+    /// is what spreads the swirl into a helix rather than firing every mote from the same side.
+    /// </param>
+    private void EmitLevelUpPair(Entity anchor, int color, int index)
+    {
+        const float Radius = 0.5f;
+        const int MoteLifetimeMs = LevelUpDurationMs / 2;
+
+        // A full turn over the effect's whole duration, which is half a turn in a mote's own life.
+        float spin = MathF.Tau / (LevelUpDurationMs / 1000f);
+        float bearing = MathF.PI + MathF.PI * index / LevelUpMotes;
+
+        EmitLevelUpMote(anchor, color, bearing, Radius, spin, MoteLifetimeMs);
+        EmitLevelUpMote(anchor, color, bearing + MathF.PI, Radius, spin, MoteLifetimeMs);
+    }
+
+    private void EmitLevelUpMote(Entity anchor, int color, float angle, float radius, float spin, int lifetimeMs)
+    {
+        Emit(new Particle
+        {
+            X = anchor.X + radius * MathF.Cos(angle),
+            Y = anchor.Y + radius * MathF.Sin(angle),
+            Z = 0f,
+            Color = color,
+            Motion = ParticleMotion.Orbit,
+            LifetimeMs = lifetimeMs,
+            TimeLeftMs = lifetimeMs,
+            Size = 100f,
+            AnchorId = anchor.ObjectId,
+            Angle = angle,
+            Distance = radius,
+            Spin = spin,
+
+            // One tile of climb over the mote's life, which is the height the original ran to before
+            // it stopped drawing the particle.
+            Dz = 1000f / lifetimeMs,
+            TrailColor = -1,
+        });
+    }
+
+    /// <summary>
+    /// Starts the camera shaking, from nothing.
+    /// </summary>
+    /// <remarks>
+    /// <c>Camera.startJitter</c> (<c>Camera.as:107-110</c>) sets a flag and zeroes the amplitude,
+    /// and nothing anywhere clears the flag again: the only thing that stops an earthquake in the
+    /// original is arriving somewhere else, which builds a fresh camera. <see cref="Clear"/> is that
+    /// here, and the world controller calls it on every map change.
+    /// </remarks>
     public void StartJitter()
     {
-        const float MaxJitter = 0.5f;
-        Jitter = MaxJitter;
+        _jittering = true;
+        Jitter = 0f;
     }
 
     // ----------------------------------------------------------------------------------------

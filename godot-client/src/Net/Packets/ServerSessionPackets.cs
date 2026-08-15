@@ -277,6 +277,14 @@ public sealed class DeathPacket : ServerPacket
     public int ZombieType;
     public int ZombieId;
 
+    /// <summary>What the character finished with, bonuses included.</summary>
+    /// <remarks>
+    /// Not on the original's wire, which spends two integers on a zombie mode nothing implements
+    /// and leaves the death screen to work the number out for itself. This server sends it, because
+    /// the bonuses are decided there and no client can recompute them.
+    /// </remarks>
+    public int FinalFame;
+
     public bool IsZombie => ZombieId != -1;
 
     public override void Read(ref NetReader r)

@@ -518,6 +518,8 @@ public partial class OptionsView : Control
             Toggle("Ally Notifications", () => Options.AllyNotifications, on => Options.AllyNotifications = on);
             Toggle("Enemy Damage Text", () => Options.EnemyDamageText, on => Options.EnemyDamageText = on);
             Toggle("Ally Damage Text", () => Options.AllyDamageText, on => Options.AllyDamageText = on);
+            Choice("Always Show EXP", new[] { "Off", "On", "Self" },
+                () => Options.AlwaysShowExp, value => Options.AlwaysShowExp = value);
             Toggle("Curse Indication", () => Options.CurseIndication, on => Options.CurseIndication = on);
             Choice("Ally Shoot", new[] { "Show All", "Hide Projectiles", "Hide All" },
                 () => Options.AllyShoot, value => Options.AllyShoot = value);
