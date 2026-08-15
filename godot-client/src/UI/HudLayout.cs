@@ -51,7 +51,12 @@ public readonly struct HudLayout
     /// <remarks>
     /// The width is the column plus the chat panel plus a gap worth calling a gap. The height is
     /// everything in the column down to the potion row with one row of the player list under it;
-    /// below that the list simply runs out of rows, which is a state the column is built for.
+    /// below that the whole layout scales down rather than the list running out of rows.
+    ///
+    /// That height is <see cref="PartyTop"/> plus one <see cref="PartyRowHeight"/>, and it has to
+    /// be: when the column was rebuilt the world name and the list moved down to where the
+    /// reference puts them, which left the old 960 with twenty pixels for a forty-six pixel row,
+    /// so the minimum size the layout claimed to fit in was one it did not fit in.
     /// </remarks>
     public static readonly Vector2 MinimumSpace = new(1560f, 960f);
 

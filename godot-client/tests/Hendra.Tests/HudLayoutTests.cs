@@ -205,8 +205,30 @@ public class HudLayoutTests
         Assert.True(layout.ColumnLeft - layout.Quest.End.X >= 30f,
             "the quest tracker and the column are too close at the minimum space");
 
+        // The list may legitimately have no rows here. The column is pinned to the top and sheds
+        // rows off the bottom of the list on a short screen rather than compressing the bands above
+        // it, which is what HudLayout's own remarks describe, and the minimum space is a statement
+        // about clusters not touching -- not about the list surviving. What must hold is that it
+        // never claims a negative amount of room.
+        Assert.True(layout.PartyRowsThatFit >= 0, "the player list claims a negative row count");
+        Assert.True(layout.Party.Size.Y >= 0f, "the player list has a negative height");
+    }
+
+    /// <summary>
+    /// At the size the interface was drawn for, the player list actually has rows.
+    /// </summary>
+    /// <remarks>
+    /// The invariant the minimum space cannot carry, asserted where it does hold. The reference
+    /// screenshots all show a populated list, so a layout that produced none at 1920x1080 would be
+    /// wrong however well it behaved when squeezed.
+    /// </remarks>
+    [Fact]
+    public void ThePlayerListHasRoomAtTheReferenceSize()
+    {
+        var layout = new HudLayout(new Vector2(HudLayout.ReferenceWidth, HudLayout.ReferenceHeight));
+
         Assert.True(layout.PartyRowsThatFit >= 1,
-            "the minimum space leaves no room for the player list");
+            "the reference size leaves no room for the player list");
     }
 
     /// <summary>

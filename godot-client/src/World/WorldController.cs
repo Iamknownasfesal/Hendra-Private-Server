@@ -297,14 +297,22 @@ public partial class WorldController : Node
     /// controller's handlers stay on the list and answer nothing.
     /// </para>
     /// </remarks>
+    /// <remarks>
+    /// The validity check comes first and is not redundant. A controller can be disposed while one
+    /// of these lambdas is still in flight -- a drag released as the world changes is the way to
+    /// see it -- and <c>IsInsideTree</c> on a disposed object throws rather than answering false,
+    /// so testing liveness first would be the thing that crashed.
+    /// </remarks>
+    private bool Live => GodotObject.IsInstanceValid(this) && IsInsideTree();
+
     private Action Alive(Action handler) =>
-        () => { if (IsInsideTree()) handler(); };
+        () => { if (Live) handler(); };
 
     private Action<T> Alive<T>(Action<T> handler) =>
-        value => { if (IsInsideTree()) handler(value); };
+        value => { if (Live) handler(value); };
 
     private Action<T1, T2> Alive<T1, T2>(Action<T1, T2> handler) =>
-        (one, two) => { if (IsInsideTree()) handler(one, two); };
+        (one, two) => { if (Live) handler(one, two); };
 
     public override void _ExitTree()
     {
