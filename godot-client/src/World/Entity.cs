@@ -85,6 +85,19 @@ public class Entity
     /// <summary>The guild this entity belongs to, or empty. Arrives as a stat.</summary>
     public string Guild = string.Empty;
 
+    /// <summary>
+    /// The account's star rating, which is what colours the star beside a player's name.
+    /// </summary>
+    /// <remarks>
+    /// A stat like any other, and zero until one arrives -- which is the lowest band, and the band
+    /// almost every name in a Nexus is in, so a server that never sends it still draws the plate
+    /// the reference draws.
+    /// </remarks>
+    public int Stars;
+
+    /// <summary>Whether this player is staff, which takes the star out of the rating's colours.</summary>
+    public bool Admin;
+
     public float AttackAngle;
     public int AttackStartMs = int.MinValue;
 
