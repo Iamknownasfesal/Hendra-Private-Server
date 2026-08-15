@@ -32,8 +32,19 @@ public sealed class LaunchOptions
     /// </remarks>
     public int CreateClassType { get; private set; } = -1;
 
+    /// <summary>
+    /// Stop on the title screen, whatever else was passed.
+    /// </summary>
+    /// <remarks>
+    /// The title screen is what the client shows when it has been given nothing to connect with, so
+    /// it can normally be reached by leaving the connection flags off. This says so explicitly
+    /// instead, which is what lets an unattended capture of it use the same command line as every
+    /// other capture rather than a shorter one that also has to remember not to sign in.
+    /// </remarks>
+    public bool StopOnTitle { get; private set; }
+
     public bool CanAutoCreate =>
-        !string.IsNullOrEmpty(Host) && !string.IsNullOrEmpty(Guid) && CreateClassType >= 0;
+        !StopOnTitle && !string.IsNullOrEmpty(Host) && !string.IsNullOrEmpty(Guid) && CreateClassType >= 0;
 
     /// <summary>Where to write a screenshot, or null to take none.</summary>
     public string ScreenshotPath { get; private set; }
@@ -99,7 +110,7 @@ public sealed class LaunchOptions
 
     /// <summary>Whether enough was supplied to connect without the login screen.</summary>
     public bool CanAutoConnect =>
-        !string.IsNullOrEmpty(Host) && !string.IsNullOrEmpty(Guid) && CharacterId >= 0;
+        !StopOnTitle && !string.IsNullOrEmpty(Host) && !string.IsNullOrEmpty(Guid) && CharacterId >= 0;
 
     public static LaunchOptions Parse()
     {
@@ -129,6 +140,7 @@ public sealed class LaunchOptions
                 case "--character": options.OpenCharacterPanel = true; break;
                 case "--account": options.OpenAccountPanel = true; break;
                 case "--vault": options.OpenVault = true; break;
+                case "--title": options.StopOnTitle = true; break;
                 case "--menu": options.OpenMenu = true; break;
                 case "--options":
                 {
