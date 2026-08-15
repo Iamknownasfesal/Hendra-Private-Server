@@ -1115,7 +1115,6 @@ public partial class WorldController : Node
         _party.Update(now);
         _hud?.ShowPrompt(_interaction.Current.Exists ? _interaction.Current.Label : null);
         _hud?.ShowContainer(OpenContainer);
-        UpdateVault();
         _hud?.ShowMerchant(NearbyMerchant, _map.Player);
         _hud?.ShowParty(_party.Members);
         _hud?.ShowWorld(_worldName, PlayersHere(), 0);
@@ -1136,6 +1135,12 @@ public partial class WorldController : Node
 
         NoticeLevelUp();
         _hud?.Refresh(_map.Player);
+
+        // After the HUD has read the player, never before it. The vault panel is handed the class's
+        // equippable slots at the moment it opens, and that is the only time it asks -- so opening
+        // it earlier in the frame than the refresh that works those slots out left every item in
+        // storage drawn as one this character cannot use. Which is most of the panel, in red.
+        UpdateVault();
 
         // Pushed in rather than pulled: the view is handed the numbers it draws and never reaches
         // back into the inventory to ask.
@@ -1818,6 +1823,82 @@ public partial class WorldController : Node
     /// <summary>Keeps the vault panel open wherever the player is standing. See GameScene.OpenVault.</summary>
     public bool HoldVaultOpen { get; set; }
 
+    /// <summary>The potion rack, which the scene owns and every world in turn borrows.</summary>
+    private UI.PotionRackView _rack;
+
+    /// <summary>Keeps the rack open wherever the player is standing. See GameScene.OpenPotionRack.</summary>
+    public bool HoldRackOpen { get; set; }
+
+    /// <summary>
+    /// Points the rack at this world's vault.
+    /// </summary>
+    /// <remarks>
+    /// The panel outlives the controller -- the interface is built once and every change of world
+    /// makes a new controller -- so the store behind it has to be replaced rather than the panel.
+    /// The same problem, and the same answer, as <see cref="UI.VaultView.Use"/>.
+    /// </remarks>
+    public void UsePotionRack(UI.PotionRackView rack, bool holdOpen)
+    {
+        _rack = rack;
+        HoldRackOpen = holdOpen;
+        _rack?.Use(_vault);
+    }
+
+    /// <summary>Takes one item out of storage into the first free carried slot.</summary>
+    public void TakeFromVault(SlotAddress from) => OnVaultSlotActivated(from);
+
+    /// <summary>
+    /// Sends every stat potion the player is carrying into the first free storage slots.
+    /// </summary>
+    /// <remarks>
+    /// One move per bottle rather than one packet for all of them, because the server has no such
+    /// packet: this is the same swap the player would make by dragging, done for them. The slots
+    /// are claimed as they are used so two bottles cannot be sent to the same square.
+    /// </remarks>
+    public void DepositPotions()
+    {
+        var player = _map?.Player;
+        if (player?.Equipment == null || _vault == null)
+            return;
+
+        int free = 0;
+        int sent = 0;
+
+        for (int slot = Inventory.CarriedFirstSlot; slot < player.Equipment.Length; slot++)
+        {
+            int type = player.Equipment[slot];
+            if (type == Inventory.NoItem || !IsStatPotion(type))
+                continue;
+
+            while (free < _vault.Slots.Count && _vault.ItemAt(free) != VaultStore.NoItem)
+                free++;
+
+            if (free >= _vault.Slots.Count)
+            {
+                _chat?.AddSystem("The vault is full.");
+                return;
+            }
+
+            _vault.Move(new SlotAddress(SlotOwner.Player, slot), new SlotAddress(SlotOwner.Vault, free));
+            free++;
+            sent++;
+        }
+
+        if (sent == 0)
+            _chat?.AddSystem("No potions to deposit.");
+    }
+
+    /// <summary>Whether an item type is one of the bottles the rack has a shelf for.</summary>
+    private bool IsStatPotion(int type)
+    {
+        var desc = _data?.GetObject((ushort)type);
+        string name = desc?.DisplayId ?? desc?.Id;
+
+        return name != null &&
+               (name.StartsWith("Potion of ", StringComparison.Ordinal) ||
+                name.StartsWith("Greater Potion of ", StringComparison.Ordinal));
+    }
+
     /// <summary>The vault access object the player is standing on, if any.</summary>
     private Entity NearbyVault =>
         _interaction.Current is { Kind: InteractionKind.Vault, Entity: { } entity } ? entity : null;
@@ -1839,7 +1920,13 @@ public partial class WorldController : Node
         if (_hud == null)
             return;
 
-        if (NearbyVault != null || HoldVaultOpen)
+        UpdateRack();
+
+        // The held-open case waits for a character. The panel is handed the class's equippable
+        // slots once, when it opens, and a panel forced open on the first frame of the session --
+        // before any player entity has arrived -- is handed nothing, and then draws every item in
+        // storage as one this character cannot use for the rest of the session.
+        if (NearbyVault != null || (HoldVaultOpen && _map?.Player != null))
         {
             _hud.UseVault(_vault);
 
@@ -1860,6 +1947,34 @@ public partial class WorldController : Node
             });
 
         _hud.ShowVault(false);
+    }
+
+    /// <summary>
+    /// Opens the rack in the room the vault is in, and closes it on the way out.
+    /// </summary>
+    /// <remarks>
+    /// It shows the same storage the vault panel does, so it belongs in the same place: standing on
+    /// the access object is what opens both, and there is no separate object on this server to
+    /// stand on. The launch flag is the other way in, for a screenshot nobody is driving.
+    /// </remarks>
+    private void UpdateRack()
+    {
+        if (_rack == null)
+            return;
+
+        if (HoldRackOpen)
+        {
+            if (!_rack.Visible)
+            {
+                _rack.PlaceIn(_hud.Size);
+                _rack.Open();
+            }
+
+            return;
+        }
+
+        if (_rack.Visible && NearbyVault == null)
+            _rack.Close();
     }
 
     /// <summary>

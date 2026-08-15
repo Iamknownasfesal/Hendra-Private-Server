@@ -44,12 +44,14 @@ public static class SlotHighlights
     /// plainly red and calming the border down puts the meaning on the whole square, which is
     /// where it belongs: the item is the thing that is wrong, not its edge.
     ///
-    /// Still twenty-one points of luminance clear of the board it sits on, which is the ladder's
-    /// rule and the reason this is not darker still.
+    /// Both tones are measured off the reference's vault rather than mixed by eye: a fully
+    /// saturated maroon plate under a lighter maroon border, which is a good deal darker and far
+    /// redder than the brick this used to be. Against the grey plate beside it the difference is
+    /// the hue, not the brightness, which is what lets a grid of forty of them still read as a grid.
     /// </remarks>
-    public static readonly Color RedFill = new("5f1e1e");
+    public static readonly Color RedFill = new("470000");
 
-    public static readonly Color RedEdge = new("8f2222");
+    public static readonly Color RedEdge = new("610000");
 
     /// <summary>
     /// The plate under an item that has been put on the table.

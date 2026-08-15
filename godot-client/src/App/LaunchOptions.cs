@@ -68,6 +68,9 @@ public sealed class LaunchOptions
     /// <summary>Opens the vault panel once in the world, for unattended screenshots of it.</summary>
     public bool OpenVault { get; private set; }
 
+    /// <summary>Opens the potion rack once in the world, for unattended screenshots of it.</summary>
+    public bool OpenPotionRack { get; private set; }
+
     /// <summary>Opens the options page once in the world. Same purpose as the three above.</summary>
     public bool OpenOptions { get; private set; }
 
@@ -129,6 +132,7 @@ public sealed class LaunchOptions
                 case "--character": options.OpenCharacterPanel = true; break;
                 case "--account": options.OpenAccountPanel = true; break;
                 case "--vault": options.OpenVault = true; break;
+                case "--rack": options.OpenPotionRack = true; break;
                 case "--menu": options.OpenMenu = true; break;
                 case "--options":
                 {

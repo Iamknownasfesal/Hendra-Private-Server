@@ -168,7 +168,7 @@ public partial class Boot : Control
         // waiting on a download before showing the world would be a poor trade.
         _ = Assets.RemoteTextures.LoadAsync(_appServerUrl, ServiceLocator.Assets, ServiceLocator.Data);
 
-        _game = new GameScene { Autofire = _options?.Autofire ?? false, AutoAbility = _options?.AutoAbility ?? false, AutoWalk = _options?.AutoWalk ?? false, OpenCharacterPanel = _options?.OpenCharacterPanel ?? false, OpenAccountPanel = _options?.OpenAccountPanel ?? false, OpenVault = _options?.OpenVault ?? false, OpenOptions = _options?.OpenOptions ?? false, OptionsTab = _options?.OptionsTab, OpenMenu = _options?.OpenMenu ?? false,
+        _game = new GameScene { Autofire = _options?.Autofire ?? false, AutoAbility = _options?.AutoAbility ?? false, AutoWalk = _options?.AutoWalk ?? false, OpenCharacterPanel = _options?.OpenCharacterPanel ?? false, OpenAccountPanel = _options?.OpenAccountPanel ?? false, OpenVault = _options?.OpenVault ?? false, OpenPotionRack = _options?.OpenPotionRack ?? false, OpenOptions = _options?.OpenOptions ?? false, OptionsTab = _options?.OptionsTab, OpenMenu = _options?.OpenMenu ?? false,
             StartingCameraAngle = _options?.CameraAngleDegrees * Mathf.Pi / 180f, ScriptedLines = new System.Collections.Generic.Queue<string>(_options?.Say ?? new System.Collections.Generic.List<string>()) };
         _game.Ended += OnSessionEnded;
         _game.Died += OnCharacterDied;
@@ -203,7 +203,7 @@ public partial class Boot : Control
         // waiting on a download before showing the world would be a poor trade.
         _ = Assets.RemoteTextures.LoadAsync(_appServerUrl, ServiceLocator.Assets, ServiceLocator.Data);
 
-        _game = new GameScene { Autofire = _options?.Autofire ?? false, AutoAbility = _options?.AutoAbility ?? false, AutoWalk = _options?.AutoWalk ?? false, OpenCharacterPanel = _options?.OpenCharacterPanel ?? false, OpenAccountPanel = _options?.OpenAccountPanel ?? false, OpenVault = _options?.OpenVault ?? false, OpenOptions = _options?.OpenOptions ?? false, OptionsTab = _options?.OptionsTab, OpenMenu = _options?.OpenMenu ?? false,
+        _game = new GameScene { Autofire = _options?.Autofire ?? false, AutoAbility = _options?.AutoAbility ?? false, AutoWalk = _options?.AutoWalk ?? false, OpenCharacterPanel = _options?.OpenCharacterPanel ?? false, OpenAccountPanel = _options?.OpenAccountPanel ?? false, OpenVault = _options?.OpenVault ?? false, OpenPotionRack = _options?.OpenPotionRack ?? false, OpenOptions = _options?.OpenOptions ?? false, OptionsTab = _options?.OptionsTab, OpenMenu = _options?.OpenMenu ?? false,
             StartingCameraAngle = _options?.CameraAngleDegrees * Mathf.Pi / 180f, ScriptedLines = new System.Collections.Generic.Queue<string>(_options?.Say ?? new System.Collections.Generic.List<string>()) };
         _game.Ended += OnSessionEnded;
         _game.Died += OnCharacterDied;
