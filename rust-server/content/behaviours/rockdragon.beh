@@ -66,7 +66,7 @@ enemy "Dragon Head" {
         on timed(11000) -> spawnbody
     }
     loot {
-        threshold(0.05) {  }
+        threshold(0.05) { item("Potion of Defense", 0.16666666666666666) item("Potion of Attack", 0.16666666666666666) item("Potion of Speed", 0.16666666666666666) item("Potion of Vitality", 0.16666666666666666) item("Potion of Wisdom", 0.16666666666666666) item("Potion of Dexterity", 0.16666666666666666) }
         threshold(0.05) {  }
         threshold(0.01) { tier(8, weapon, 0.15) tier(9, weapon, 0.1) tier(10, weapon, 0.07) tier(11, weapon, 0.05) tier(4, ability, 0.15) tier(5, ability, 0.07) tier(8, armor, 0.2) tier(9, armor, 0.15) tier(10, armor, 0.1) tier(11, armor, 0.07) tier(12, armor, 0.04) tier(5, ring, 0.03) item("Potion of Defense", 0.1) item("Potion of Attack", 0.1) item("Potion of Vitality", 0.1) item("Potion of Wisdom", 0.1) item("Potion of Speed", 0.1) item("Potion of Dexterity", 0.1) item("Ray Katana", 0.01) item("FireStorm", 0.001) item("Ring of Boiling Lava", 0.005) item("Seal of Splashing Lava", 0.005) item("Flaming Sword of Fury", 0.005) item("Steel Armor of Magma", 0.005) }
     }

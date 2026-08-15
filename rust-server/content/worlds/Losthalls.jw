@@ -1,0 +1,12 @@
+{"id":0,
+"isLimbo":false,
+"name":"Lost Halls",
+"sbName":"Lost Halls",
+"difficulty":5,
+"background":0,
+"blocking":1,
+"restrictTp":true,
+"showDisplays":false,
+"portals":[0x33d1],
+"maps":["Losthall.jm"],
+"music":["safe"]}

@@ -1,0 +1,12 @@
+{"id":0,
+"isLimbo":false,
+"name":"Golem World",
+"sbName":"Golem World",
+"difficulty":5,
+"background":0,
+"blocking":1,
+"restrictTp":true,
+"showDisplays":false,
+"portals":[0x7028],
+"maps":["golemking.jm"],
+"music":["safe"]}

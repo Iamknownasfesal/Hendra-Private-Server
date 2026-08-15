@@ -1,0 +1,1994 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<Objects>
+  <Object type="0x0e32" id="Davy Jones">
+    <Class>Character</Class>
+    <Enemy/>
+    <AnimatedTexture>
+      <File>chars16x16rEncounters</File>
+      <Index>26</Index>
+    </AnimatedTexture>
+    <AltTexture id="1">
+      <AnimatedTexture>
+        <File>chars16x16rEncounters</File>
+        <Index>26</Index>
+      </AnimatedTexture>
+    </AltTexture>
+    <AltTexture id="2">
+      <AnimatedTexture>
+        <File>chars16x16rEncounters</File>
+        <Index>26</Index>
+      </AnimatedTexture>
+    </AltTexture>
+    <AltTexture id="3">
+      <AnimatedTexture>
+        <File>chars16x16rEncounters</File>
+        <Index>27</Index>
+      </AnimatedTexture>
+      <Effect particle="SwirlingMist" cooldown="0.2">XMLEffect</Effect>
+    </AltTexture>
+    <AltTexture id="4">
+      <AnimatedTexture>
+        <File>chars16x16rEncounters</File>
+        <Index>28</Index>
+      </AnimatedTexture>
+    </AltTexture>
+    <AltTexture id="5">
+      <AnimatedTexture>
+        <File>chars16x16rEncounters</File>
+        <Index>29</Index>
+      </AnimatedTexture>
+    </AltTexture>
+    <AltTexture id="6">
+      <AnimatedTexture>
+        <File>chars16x16rEncounters</File>
+        <Index>30</Index>
+      </AnimatedTexture>
+    </AltTexture>
+    <HitSound>monster/pirates_hit</HitSound>
+    <DeathSound>monster/skull_shrine_death</DeathSound>
+    <Size>0</Size>
+    <MaxHitPoints>16000</MaxHitPoints>
+    <StasisImmune/>
+    <Defense>35</Defense>
+    <God/>
+    <Quest/>
+    <XpMult>1.75</XpMult>
+    <KeepDamageRecord/>
+    <Projectile id="0">
+      <ObjectId>Ghost Boss Slash</ObjectId>
+      <Speed>65</Speed>
+      <Damage>130</Damage>
+      <LifetimeMS>1700</LifetimeMS>
+      <Size>100</Size>
+      <ConditionEffect duration="4">Bleeding</ConditionEffect>
+    </Projectile>
+    <Projectile id="1">
+      <ObjectId>Ghost Boss Spinner</ObjectId>
+      <Speed>45</Speed>
+      <Damage>140</Damage>
+      <Size>110</Size>
+      <LifetimeMS>3600</LifetimeMS>
+      <Boomerang/>
+      <ConditionEffect duration="4">Bleeding</ConditionEffect>
+    </Projectile>
+  </Object>
+  <Object type="0x0e2d" id="Captain Summoner">
+    <Class>Character</Class>
+    <Texture>
+      <File>invisible</File>
+      <Index>0</Index>
+    </Texture>
+    <NoMiniMap/>
+    <MaxHitPoints>10</MaxHitPoints>
+    <Size>0</Size>
+  </Object>
+  <Object type="0x0e50" id="Ghost Pirate Sr">
+    <Class>Character</Class>
+    <Enemy/>
+    <AnimatedTexture>
+      <File>chars16x16rEncounters</File>
+      <Index>31</Index>
+    </AnimatedTexture>
+    <AltTexture id="1">
+      <AnimatedTexture>
+        <File>chars16x16rEncounters</File>
+        <Index>32</Index>
+      </AnimatedTexture>
+      <Effect particle="SwirlingMist" cooldown="0.2">XMLEffect</Effect>
+    </AltTexture>
+    <NoMiniMap/>
+    <XpMult>0</XpMult>
+    <Size>0</Size>
+    <MaxHitPoints>1700</MaxHitPoints>
+    <Defense>15</Defense>
+    <HitSound>monster/ghosts_death</HitSound>
+    <DeathSound>monster/flaming_skulls_hit</DeathSound>
+    <Projectile id="0">
+      <ObjectId>Ghost Sr Slash</ObjectId>
+      <Speed>60</Speed>
+      <Damage>80</Damage>
+      <LifetimeMS>1700</LifetimeMS>
+      <Size>100</Size>
+    </Projectile>
+  </Object>
+  <Object type="0x0e36" id="Ghost Lanturn On">
+    <Class>Character</Class>
+    <Enemy/>
+    <NoMiniMap/>
+    <StasisImmune/>
+    <Group>GhostShip Lamps</Group>
+    <Texture>
+      <File>lofiObj3</File>
+      <Index>0xac</Index>
+    </Texture>
+    <HitSound>monster/traps_hit</HitSound>
+    <DeathSound>monster/flaming_skulls_hit</DeathSound>
+    <Projectile id="0">
+      <ObjectId>Lanturn Blast</ObjectId>
+      <Speed>40</Speed>
+      <Damage>85</Damage>
+      <LifetimeMS>600</LifetimeMS>
+      <Size>140</Size>
+      <ConditionEffect duration="2">Paralyzed</ConditionEffect>
+    </Projectile>
+    <XpMult>0.0</XpMult>
+    <Size>120</Size>
+    <ShadowColor>0xfec937a</ShadowColor>
+    <MaxHitPoints>600</MaxHitPoints>
+    <Defense>5000</Defense>
+  </Object>
+  <Object type="0x0e35" id="Ghost Lanturn Off">
+    <Class>Character</Class>
+    <Enemy/>
+    <NoMiniMap/>
+    <StasisImmune/>
+    <Group>GhostShip Lamps</Group>
+    <Texture>
+      <File>lofiObj3</File>
+      <Index>0xad</Index>
+    </Texture>
+    <HitSound>monster/traps_hit</HitSound>
+    <DeathSound>spell/fire_nova</DeathSound>
+    <MaxHitPoints>2000</MaxHitPoints>
+    <XpMult>0.0</XpMult>
+    <Size>120</Size>
+    <Defense>2</Defense>
+  </Object>
+  <Object type="0x0e41" id="Yellow Key">
+    <Class>Character</Class>
+    <Texture>
+      <File>lofiObj3</File>
+      <Index>0xae</Index>
+    </Texture>
+    <Size>80</Size>
+    <MaxHitPoints>100</MaxHitPoints>
+    <NoMiniMap/>
+    <ShadowSize>80</ShadowSize>
+    <DeathSound>weapon/obsidian_dagger</DeathSound>
+  </Object>
+  <Object type="0x0e40" id="Red Key">
+    <Class>Character</Class>
+    <Texture>
+      <File>lofiObj3</File>
+      <Index>0xaf</Index>
+    </Texture>
+    <Size>80</Size>
+    <MaxHitPoints>100</MaxHitPoints>
+    <NoMiniMap/>
+    <ShadowSize>80</ShadowSize>
+    <DeathSound>weapon/obsidian_dagger</DeathSound>
+  </Object>
+  <Object type="0x0e3f" id="Green Key">
+    <Class>Character</Class>
+    <Texture>
+      <File>lofiObj3</File>
+      <Index>0xb6</Index>
+    </Texture>
+    <Size>80</Size>
+    <MaxHitPoints>100</MaxHitPoints>
+    <NoMiniMap/>
+    <ShadowSize>80</ShadowSize>
+    <DeathSound>weapon/obsidian_dagger</DeathSound>
+  </Object>
+  <Object type="0x0e3e" id="Purple Key">
+    <Class>Character</Class>
+    <Texture>
+      <File>lofiObj3</File>
+      <Index>0xb7</Index>
+    </Texture>
+    <Size>80</Size>
+    <MaxHitPoints>100</MaxHitPoints>
+    <NoMiniMap/>
+    <ShadowSize>80</ShadowSize>
+    <DeathSound>weapon/obsidian_dagger</DeathSound>
+  </Object>
+  <Object type="0x0e2e" id="Yellow Opener">
+    <Class>Character</Class>
+    <Texture>
+      <File>lofiObj3</File>
+      <Index>0xae</Index>
+    </Texture>
+    <Size>0</Size>
+    <MaxHitPoints>100</MaxHitPoints>
+    <NoMiniMap/>
+  </Object>
+  <Object type="0x0e30" id="Red Opener">
+    <Class>Character</Class>
+    <Texture>
+      <File>lofiObj3</File>
+      <Index>0xaf</Index>
+    </Texture>
+    <Size>0</Size>
+    <MaxHitPoints>100</MaxHitPoints>
+    <NoMiniMap/>
+  </Object>
+  <Object type="0x0e33" id="Green Opener">
+    <Class>Character</Class>
+    <Texture>
+      <File>lofiObj3</File>
+      <Index>0xb8</Index>
+    </Texture>
+    <Size>0</Size>
+    <MaxHitPoints>100</MaxHitPoints>
+    <NoMiniMap/>
+  </Object>
+  <Object type="0x0e34" id="Purple Opener">
+    <Class>Character</Class>
+    <Texture>
+      <File>lofiObj3</File>
+      <Index>0xb9</Index>
+    </Texture>
+    <Size>0</Size>
+    <MaxHitPoints>100</MaxHitPoints>
+    <NoMiniMap/>
+  </Object>
+  <Object type="0x0e4a" id="VDoor">
+    <Class>Character</Class>
+    <Enemy/>
+    <NoMiniMap/>
+    <StasisImmune/>
+    <Texture>
+      <File>lofiObj3</File>
+      <Index>0xba</Index>
+    </Texture>
+    <MaxHitPoints>10</MaxHitPoints>
+    <XpMult>0.0</XpMult>
+    <Size>0</Size>
+  </Object>
+  <Object type="0x0e49" id="HDoor">
+    <Class>Character</Class>
+    <Enemy/>
+    <NoMiniMap/>
+    <StasisImmune/>
+    <Texture>
+      <File>lofiObj3</File>
+      <Index>0xbb</Index>
+    </Texture>
+    <MaxHitPoints>10</MaxHitPoints>
+    <XpMult>0.0</XpMult>
+    <Size>0</Size>
+  </Object>
+  <Object type="0x0e3a" id="Violent Spirit">
+    <Class>Character</Class>
+    <AnimatedTexture>
+      <File>chars8x8rEncounters</File>
+      <Index>36</Index>
+    </AnimatedTexture>
+    <HitSound>monster/flaming_skulls_hit</HitSound>
+    <DeathSound>monster/beholder_death</DeathSound>
+    <MaxHitPoints>1200</MaxHitPoints>
+    <XpMult>0</XpMult>
+    <Enemy/>
+    <Size>0</Size>
+    <Z>0.3</Z>
+    <Flying/>
+    <Projectile>
+      <ObjectId>Ghostly Arrow</ObjectId>
+      <Speed>80</Speed>
+      <Damage>40</Damage>
+      <Size>50</Size>
+      <LifetimeMS>400</LifetimeMS>
+    </Projectile>
+  </Object>
+  <Object type="0x0e48" id="Lost Soul">
+    <Class>Character</Class>
+    <Group>GhostShip Group</Group>
+    <Enemy/>
+    <Texture>
+      <File>lofiObj3</File>
+      <Index>0xbc</Index>
+    </Texture>
+    <Animation prob="1.0" period="0.0">
+      <Frame time="0.2">
+        <RandomTexture>
+          <Texture>
+            <File>lofiObj3</File>
+            <Index>0xbc</Index>
+          </Texture>
+          <Texture>
+            <File>lofiObj3</File>
+            <Index>0xbd</Index>
+          </Texture>
+          <Texture>
+            <File>lofiObj3</File>
+            <Index>0xbe</Index>
+          </Texture>
+        </RandomTexture>
+      </Frame>
+    </Animation>
+    <XpMult>0</XpMult>
+    <Size>90</Size>
+    <ShadowSize>80</ShadowSize>
+    <MaxHitPoints>500</MaxHitPoints>
+    <Defense>30</Defense>
+    <Z>0.33</Z>
+    <DeathSound>monster/flaming_skulls_hit</DeathSound>
+    <Projectile id="0">
+      <ObjectId>Spirit Bolt</ObjectId>
+      <Damage>40</Damage>
+      <Speed>35</Speed>
+      <Size>50</Size>
+      <LifetimeMS>600</LifetimeMS>
+    </Projectile>
+  </Object>
+  <Object type="0x0e45" id="Ghost of Roger">
+    <Class>Character</Class>
+    <Group>GhostShip Group</Group>
+    <Enemy/>
+    <AnimatedTexture>
+      <File>chars16x16rEncounters</File>
+      <Index>33</Index>
+    </AnimatedTexture>
+    <XpMult>1.0</XpMult>
+    <Size>120</Size>
+    <MaxHitPoints>2300</MaxHitPoints>
+    <Defense>50</Defense>
+    <Z>0.15</Z>
+    <HitSound>monster/ghosts_death</HitSound>
+    <DeathSound>monster/flaming_skulls_hit</DeathSound>
+    <Projectile id="0">
+      <ObjectId>Roger Blast</ObjectId>
+      <Speed>65</Speed>
+      <Damage>110</Damage>
+      <LifetimeMS>2000</LifetimeMS>
+      <Size>100</Size>
+    </Projectile>
+    <Projectile id="1">
+      <ObjectId>Skull Bolt</ObjectId>
+      <Speed>70</Speed>
+      <Damage>50</Damage>
+      <LifetimeMS>1000</LifetimeMS>
+      <Size>100</Size>
+    </Projectile>
+  </Object>
+  <Object type="0x0e47" id="Maggot Sack">
+    <Class>Character</Class>
+    <Group>GhostShip Group</Group>
+    <Enemy/>
+    <Texture>
+      <File>invisible</File>
+      <Index>0</Index>
+    </Texture>
+    <XpMult>0</XpMult>
+    <Size>0</Size>
+    <MaxHitPoints>200</MaxHitPoints>
+  </Object>
+  <Object type="0x0e46" id="Maggot">
+    <Class>Character</Class>
+    <Group>GhostShip Group</Group>
+    <Enemy/>
+    <AnimatedTexture>
+      <File>chars8x8rEncounters</File>
+      <Index>30</Index>
+    </AnimatedTexture>
+    <XpMult>1.0</XpMult>
+    <Size>40</Size>
+    <ShadowSize>85</ShadowSize>
+    <MaxHitPoints>200</MaxHitPoints>
+    <Defense>2</Defense>
+    <HitSound>monster/blobs_hit</HitSound>
+    <DeathSound>monster/blobs_death</DeathSound>
+    <Projectile id="0">
+      <ObjectId>Invisible</ObjectId>
+      <Damage>30</Damage>
+      <Speed>0</Speed>
+      <Size>80</Size>
+      <LifetimeMS>200</LifetimeMS>
+      <ConditionEffect duration="3">Sick</ConditionEffect>
+    </Projectile>
+  </Object>
+  <Object type="0x0e44" id="School of Ghostfish">
+    <Class>Character</Class>
+    <Group>GhostShip Group</Group>
+    <Enemy/>
+    <AnimatedTexture>
+      <File>chars8x8rEncounters</File>
+      <Index>31</Index>
+    </AnimatedTexture>
+    <XpMult>1.0</XpMult>
+    <Size>110</Size>
+    <MaxHitPoints>1600</MaxHitPoints>
+    <Defense>3</Defense>
+    <Z>0.1</Z>
+    <HitSound>monster/cubes_death</HitSound>
+    <DeathSound>monster/dark_elves_death</DeathSound>
+    <Projectile id="0">
+      <ObjectId>Fish Shot</ObjectId>
+      <Speed>40</Speed>
+      <Damage>50</Damage>
+      <LifetimeMS>1300</LifetimeMS>
+      <Size>80</Size>
+    </Projectile>
+  </Object>
+  <Object type="0x0e43" id="Zombie Pirate Sr">
+    <Class>Character</Class>
+    <Group>GhostShip Group</Group>
+    <Enemy/>
+    <AnimatedTexture>
+      <File>chars16x16rEncounters</File>
+      <Index>34</Index>
+    </AnimatedTexture>
+    <AltTexture id="1">
+      <AnimatedTexture>
+        <File>chars16x16rEncounters</File>
+        <Index>35</Index>
+      </AnimatedTexture>
+    </AltTexture>
+    <BloodProb>0.5</BloodProb>
+    <BloodColor>0x50d71b</BloodColor>
+    <XpMult>1.0</XpMult>
+    <Size>110</Size>
+    <MaxHitPoints>1200</MaxHitPoints>
+    <Defense>17</Defense>
+    <HitSound>monster/pirates_hit</HitSound>
+    <DeathSound>monster/undead_hobbits_death</DeathSound>
+    <Projectile id="0">
+      <ObjectId>Zombie Shot</ObjectId>
+      <Speed>55</Speed>
+      <Damage>66</Damage>
+      <LifetimeMS>1700</LifetimeMS>
+      <Size>110</Size>
+    </Projectile>
+  </Object>
+  <Object type="0x0e42" id="Zombie Pirate Jr">
+    <Class>Character</Class>
+    <Group>GhostShip Group</Group>
+    <Enemy/>
+    <AnimatedTexture>
+      <File>chars8x8rEncounters</File>
+      <Index>32</Index>
+    </AnimatedTexture>
+    5171081
+    <XpMult>1.0</XpMult>
+    <Size>110</Size>
+    <MaxHitPoints>700</MaxHitPoints>
+    <Defense>11</Defense>
+    <HitSound>monster/pirates_hit</HitSound>
+    <DeathSound>monster/undead_hobbits_death</DeathSound>
+    <BloodProb>0.5</BloodProb>
+    <BloodColor>0x50d71b</BloodColor>
+    <Projectile id="0">
+      <ObjectId>Zombie Shot</ObjectId>
+      <Speed>33</Speed>
+      <Damage>50</Damage>
+      <LifetimeMS>1700</LifetimeMS>
+      <Size>80</Size>
+    </Projectile>
+  </Object>
+  <Object type="0x0e31" id="Lil' Ghost Pirate">
+    <Class>Character</Class>
+    <Group>GhostShip Group</Group>
+    <Enemy/>
+    <AnimatedTexture>
+      <File>chars8x8rEncounters</File>
+      <Index>33</Index>
+    </AnimatedTexture>
+    <AltTexture id="1">
+      <AnimatedTexture>
+        <File>chars8x8rEncounters</File>
+        <Index>33</Index>
+      </AnimatedTexture>
+      <Effect particle="SwirlingMist" cooldown="0.2">XMLEffect</Effect>
+    </AltTexture>
+    <NoMiniMap/>
+    <XpMult>0.005</XpMult>
+    <Size>0</Size>
+    <MaxHitPoints>700</MaxHitPoints>
+    <Defense>0</Defense>
+    <HitSound>monster/ghosts_death</HitSound>
+    <DeathSound>monster/flaming_skulls_hit</DeathSound>
+    <Projectile id="0">
+      <ObjectId>Ghost Swipe</ObjectId>
+      <Speed>66</Speed>
+      <Damage>50</Damage>
+      <LifetimeMS>1700</LifetimeMS>
+      <Size>90</Size>
+    </Projectile>
+  </Object>
+  <Object type="0x0e2f" id="GhostShip Rat">
+    <Class>Character</Class>
+    <Enemy/>
+    <DisplayId>Ghost Ship Rat</DisplayId>
+    <AnimatedTexture>
+      <File>chars8x8rEncounters</File>
+      <Index>34</Index>
+    </AnimatedTexture>
+    <HitSound>monster/bats_hit</HitSound>
+    <DeathSound>monster/flayers_hit</DeathSound>
+    <XpMult>1.0</XpMult>
+    <Size>100</Size>
+    <MaxHitPoints>650</MaxHitPoints>
+    <Defense>5</Defense>
+    <Projectile id="0">
+      <ObjectId>Rat Tail</ObjectId>
+      <Speed>45</Speed>
+      <Damage>45</Damage>
+      <LifetimeMS>1500</LifetimeMS>
+      <Size>100</Size>
+      <ConditionEffect duration="1">Stunned</ConditionEffect>
+    </Projectile>
+  </Object>
+  <Object type="0x6391" id="LH Marble Colossus">
+    <DisplayId>Marble Colossus</DisplayId>
+    <Enemy/>
+    <Class>Character</Class>
+    <AnimatedTexture>
+      <File>chars16x16dMountains1</File>
+      <Index>0x08</Index>
+    </AnimatedTexture>
+    <HitSound>monster/oryx_hit</HitSound>
+    <DeathSound>monster/oryx_death</DeathSound>
+    <Size>140</Size>
+    <StunImmune/>
+    <StasisImmune/>
+    <DazedImmune/>
+    <ParalyzeImmune/>
+    <MaxHitPoints>125000</MaxHitPoints>
+    <Defense>50</Defense>
+    <Quest/>
+    <God/>
+    <Level>1</Level>
+    <XpMult>1</XpMult>
+    <Projectile id="0">
+      <ObjectId>Colossal Bullet</ObjectId>
+      <Damage>300</Damage>
+      <Speed>30</Speed>
+      <Size>100</Size>
+      <LifetimeMS>6200</LifetimeMS>
+      <MultiHit/>
+    </Projectile>
+    <Projectile id="1">
+      <ObjectId>Colossal Dark Boomerang</ObjectId>
+      <Damage>200</Damage>
+      <Speed>80</Speed>
+      <LifetimeMS>3000</LifetimeMS>
+      <Amplitude>0.5</Amplitude>
+      <Frequency>8</Frequency>
+      <ConditionEffect duration="2">Stunned</ConditionEffect>
+      <Boomerang/>
+    </Projectile>
+    <Projectile id="2">
+      <ObjectId>Colossal Slash</ObjectId>
+      <Damage>100</Damage>
+      <Speed>90</Speed>
+      <LifetimeMS>1200</LifetimeMS>
+      <ArmorPiercing/>
+      <MultiHit/>
+    </Projectile>
+    <Projectile id="3">
+      <ObjectId>Colossal Light Boomerang</ObjectId>
+      <Damage>150</Damage>
+      <Speed>60</Speed>
+      <LifetimeMS>6000</LifetimeMS>
+      <ConditionEffect duration="2.5">Slowed</ConditionEffect>
+      <Boomerang/>
+    </Projectile>
+    <Projectile id="4">
+      <ObjectId>Colossal Blast</ObjectId>
+      <Damage>115</Damage>
+      <Speed>75</Speed>
+      <LifetimeMS>3250</LifetimeMS>
+      <MultiHit/>
+      <ConditionEffect duration="0.6">Paralyzed</ConditionEffect>
+    </Projectile>
+    <Projectile id="5">
+      <ObjectId>Colossal Spear</ObjectId>
+      <Damage>250</Damage>
+      <Speed>75</Speed>
+      <LifetimeMS>2200</LifetimeMS>
+      <ConditionEffect duration="3">Unstable</ConditionEffect>
+    </Projectile>
+    <Projectile id="6">
+      <ObjectId>Colossal Star</ObjectId>
+      <Damage>100</Damage>
+      <Speed>80</Speed>
+      <LifetimeMS>8000</LifetimeMS>
+      <Parametric/>
+      <MultiHit/>
+      <ConditionEffect duration="2.5">Confused</ConditionEffect>
+    </Projectile>
+    <Projectile id="7">
+      <ObjectId>Colossal Wheel</ObjectId>
+      <Damage>180</Damage>
+      <Speed>50</Speed>
+      <LifetimeMS>4000</LifetimeMS>
+    </Projectile>
+    <Projectile id="8">
+      <ObjectId>Colossal Rock</ObjectId>
+      <Size>50</Size>
+      <Damage>80</Damage>
+      <Speed>70</Speed>
+      <LifetimeMS>2500</LifetimeMS>
+      <MultiHit/>
+      <ArmorPiercing/>
+      <ConditionEffect duration="4">Blind</ConditionEffect>
+    </Projectile>
+    <Projectile id="9">
+      <ObjectId>Colossal Ball</ObjectId>
+      <Damage>35</Damage>
+      <Speed>45</Speed>
+      <LifetimeMS>2500</LifetimeMS>
+      <ArmorPiercing/>
+      <Wavy/>
+      <ConditionEffect duration="1.2">Paralyzed</ConditionEffect>
+    </Projectile>
+    <Projectile id="10">
+      <ObjectId>Colossal Rock</ObjectId>
+      <Size>50</Size>
+      <Damage>80</Damage>
+      <Speed>90</Speed>
+      <LifetimeMS>2500</LifetimeMS>
+      <MultiHit/>
+      <ArmorPiercing/>
+      <ConditionEffect duration="4">Blind</ConditionEffect>
+    </Projectile>
+    <Projectile id="11">
+      <ObjectId>Colossal Spinner</ObjectId>
+      <Damage>150</Damage>
+      <Speed>50</Speed>
+      <LifetimeMS>5000</LifetimeMS>
+      <Amplitude>0.25</Amplitude>
+      <Frequency>10</Frequency>
+      <ConditionEffect duration="3">Paralyzed</ConditionEffect>
+      <ConditionEffect duration="4">Confused</ConditionEffect>
+      <MultiHit/>
+      <Wavy/>
+    </Projectile>
+    <Projectile id="12">
+      <ObjectId>Colossal Slash</ObjectId>
+      <Damage>200</Damage>
+      <Speed>30</Speed>
+      <LifetimeMS>15000</LifetimeMS>
+      <MultiHit/>
+    </Projectile>
+    <Projectile id="13">
+      <ObjectId>Colossal Slash</ObjectId>
+      <Damage>200</Damage>
+      <Speed>50</Speed>
+      <LifetimeMS>15000</LifetimeMS>
+      <MultiHit/>
+    </Projectile>
+    <Projectile id="14">
+      <ObjectId>Void Bullet</ObjectId>
+      <Damage>200</Damage>
+      <Speed>25</Speed>
+      <LifetimeMS>15000</LifetimeMS>
+      <MultiHit/>
+    </Projectile>
+    <Projectile id="15">
+      <ObjectId>Colossal Bullet</ObjectId>
+      <Damage>300</Damage>
+      <Speed>110</Speed>
+      <Size>150</Size>
+      <LifetimeMS>6200</LifetimeMS>
+      <MultiHit/>
+    </Projectile>
+  </Object>
+
+  <Object type="0x6136" id="Colossal Bullet">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x1c</Index>
+    </Texture>
+    <Rotation>185</Rotation>
+  </Object>
+  <Object type="0x6143" id="Colossal Spear">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x1e</Index>
+    </Texture>
+    <AngleCorrection>1</AngleCorrection>
+  </Object>
+  <Object type="0x6131" id="Colossal Slash">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x1f</Index>
+    </Texture>
+    <AngleCorrection>1</AngleCorrection>
+  </Object>
+  <Object type="0x6139" id="Colossal Blast">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x3e</Index>
+    </Texture>
+    <AngleCorrection>1</AngleCorrection>
+  </Object>
+  <Object type="0x6112" id="Colossal Dark Boomerang">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x4d</Index>
+    </Texture>
+    <Rotation>-50</Rotation>
+  </Object>
+  <Object type="0x6121" id="Colossal Light Boomerang">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x4e</Index>
+    </Texture>
+    <Rotation>-50</Rotation>
+  </Object>
+  <Object type="0x6138" id="Colossal Ball">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x2c</Index>
+    </Texture>
+    <Rotation>300</Rotation>
+  </Object>
+  <Object type="0x6321" id="Colossal Star">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x2d</Index>
+    </Texture>
+    <Rotation>80</Rotation>
+  </Object>
+  <Object type="0x6161" id="Colossal Wheel">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x2e</Index>
+    </Texture>
+    <Rotation>50</Rotation>
+  </Object>
+  <Object type="0x6313" id="Colossal Rock">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x4f</Index>
+    </Texture>
+  </Object>
+
+  <Object type="0x6459" id="Colossal Spinner">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiProjsBig</File>
+      <Index>0x23</Index>
+    </Texture>
+    <Rotation>80</Rotation>
+  </Object>
+
+  <Object type="0x6316" id="Lost Hall Wall">
+    <Class>Wall</Class>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x2b</Index>
+    </Texture>
+    <Top>
+      <Texture>
+        <File>lofiObj6</File>
+        <Index>0x3b</Index>
+      </Texture>
+    </Top>
+    <HitSound>monster/stone_walls_hit</HitSound>
+    <DeathSound>monster/stone_walls_death</DeathSound>
+    <Static/>
+    <FullOccupy/>
+    <OccupySquare/>
+    <EnemyOccupySquare/>
+    <BlocksSight/>
+  </Object>
+
+  <Object type="0x33d1" id="Lost Hall Portal">
+    <Class>Portal</Class>
+    <IntergamePortal/>
+    <DungeonName>Lost Halls</DungeonName>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x48</Index>
+    </Texture>
+    <DisplayId>Lost Halls</DisplayId>
+  </Object>
+
+  <Object type="0x6953" id="Lost Halls Key" legendary="true">
+    <Class>Equipment</Class>
+    <Item/>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x47</Index>
+    </Texture>
+    <SlotType>10</SlotType>
+    <Description>...</Description>
+    <Sound>use_key</Sound>
+    <Consumable/>
+    <Activate id="Lost Hall Portal">Create</Activate>
+    <BagType>10</BagType>
+    <Track/>
+  </Object>
+
+  <Object type="0x0243" id="Marble Seal"  >
+    <DisplayId>Marble Seal</DisplayId>
+    <Class>Equipment</Class>
+    <Item/>
+    <Texture>
+      <File>lostHallsObjects8x8</File>
+      <Index>39</Index>
+    </Texture>
+    <Usable/>
+    <SlotType>12</SlotType>
+    <BagType>6</BagType>
+    <FameBonus>6</FameBonus>
+    <MpCost>135</MpCost>
+    <Activate effect="Armored" duration="6" range="4.5" color="0xff0080" target="player" center="player" visualEffect="5" useWisMod="true">GenericActivate</Activate>
+    <Activate effect="Damaging" duration="6" range="4.5" color="0xff0080" target="player" center="player" visualEffect="0" useWisMod="true">GenericActivate</Activate>
+    <Description>A seal made from the Marble Colossus' head. The power of a pure and mighty paladin still remains within.</Description>
+    <ActivateOnEquip stat="21" amount="5">IncrementStat</ActivateOnEquip>
+    <Cooldown>5.5</Cooldown>
+    <Legendary/>
+  </Object>
+  <Object type="0x0244" id="Staff of Unholy Sacrifice"  >
+    <Class>Equipment</Class>
+    <Item/>
+    <Texture>
+      <File>lostHallsObjects8x8</File>
+      <Index>40</Index>
+    </Texture>
+    <SlotType>17</SlotType>
+    <Description>A commanding staff used by vile cult leaders. It has a strange force inside it that prevents it from facing forward of the user.</Description>
+    <ExtraTooltipData>
+      <EffectInfo name="" description="Shoots backwards"/>
+    </ExtraTooltipData>
+    <RateOfFire>0.85</RateOfFire>
+    <Projectile>
+      <ObjectId>Cultist Fire Shot</ObjectId>
+      <Size>70</Size>
+      <Speed>115</Speed>
+      <MinDamage>130</MinDamage>
+      <MaxDamage>155</MaxDamage>
+      <LifetimeMS>700</LifetimeMS>
+      <MultiHit/>
+    </Projectile>
+    <BagType>6</BagType>
+    <FameBonus>6</FameBonus>
+    <NumProjectiles>4</NumProjectiles>
+    <ArcGap>345</ArcGap>
+    <OldSound>magicShoot</OldSound>
+  </Object>
+  <Object type="0x024c" id="Bow of the Void"  >
+    <Class>Equipment</Class>
+    <Item/>
+    <Texture>
+      <File>lostHallsObjects8x8</File>
+      <Index>0xa7</Index>
+    </Texture>
+    <SlotType>3</SlotType>
+    <Description>Every shot that hits a target frees the soul of a forgotten hero. Every shot that misses is trapped for eternity.</Description>
+    <RateOfFire>1.1</RateOfFire>
+    <Sound>weapon/golden_bow</Sound>
+    <Projectile>
+      <ObjectId>Void Arrow</ObjectId>
+      <Speed>160</Speed>
+      <MinDamage>180</MinDamage>
+      <MaxDamage>300</MaxDamage>
+      <LifetimeMS>350</LifetimeMS>
+      <MultiHit/>
+      <Amplitude>0.35</Amplitude>
+      <Frequency>0.2</Frequency>
+    </Projectile>
+    <BagType>6</BagType>
+    <FameBonus>6</FameBonus>
+    <NumProjectiles>1</NumProjectiles>
+    <OldSound>arrowShoot</OldSound>
+  </Object>
+  <Object type="0x024d" id="Quiver of the Shadows"  >
+    <Class>Equipment</Class>
+    <Item/>
+    <Texture>
+      <File>lostHallsObjects8x8</File>
+      <Index>0xa8</Index>
+    </Texture>
+    <SlotType>15</SlotType>
+    <Description>A mysterious quiver formed of pure evil and dark matter. Its ethereal existence creates a small implosion of nearby atmosphere when drawn.</Description>
+    <Sound>spell/fire_spray</Sound>
+    <Projectile>
+      <ObjectId>Indigo Dark Arrow</ObjectId>
+      <Speed>160</Speed>
+      <MinDamage>400</MinDamage>
+      <MaxDamage>500</MaxDamage>
+      <LifetimeMS>625</LifetimeMS>
+      <Size>120</Size>
+      <MultiHit/>
+      <ArmorPiercing/>
+      <ParticleTrail lifetimeMS="150">0x380087</ParticleTrail>
+    </Projectile>
+    <ActivateOnEquip stat="21" amount="2">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="22" amount="-2">IncrementStat</ActivateOnEquip>
+    <Usable/>
+    <BagType>6</BagType>
+    <FameBonus>6</FameBonus>
+    <MpCost>80</MpCost>
+    <ArcGap>8</ArcGap>
+    <NumProjectiles>5</NumProjectiles>
+    <Activate>Shoot</Activate>
+  </Object>
+  <Object type="0x024e" id="Armor of Nil"  >
+    <Class>Equipment</Class>
+    <Item/>
+    <Description>This armor does not deflect projectiles like most materials known to man. It absorbs and engulfs them, sending them to a new plane of reality.</Description>
+    <Texture>
+      <File>lostHallsObjects8x8</File>
+      <Index>0xa9</Index>
+    </Texture>
+    <SlotType>6</SlotType>
+    <ActivateOnEquip stat="21" amount="21">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="22" amount="-2">IncrementStat</ActivateOnEquip>
+    <BagType>6</BagType>
+    <FameBonus>6</FameBonus>
+  </Object>
+  <Object type="0x024f" id="Sourcestone"  >
+    <Class>Equipment</Class>
+    <Item/>
+    <Texture>
+      <File>lostHallsObjects8x8</File>
+      <Index>0xaa</Index>
+    </Texture>
+    <SlotType>9</SlotType>
+    <Description>Unknown.</Description>
+    <ActivateOnEquip stat="0" amount="90">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="3" amount="90">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="20" amount="6">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="28" amount="6">IncrementStat</ActivateOnEquip>
+    <BagType>6</BagType>
+    <FameBonus>6</FameBonus>
+  </Object>
+  <Object type="0x0251" id="Omnipotence Ring"  >
+    <Class>Equipment</Class>
+    <Item/>
+    <Texture>
+      <File>lostHallsObjects8x8</File>
+      <Index>0xab</Index>
+    </Texture>
+    <SlotType>9</SlotType>
+    <Description>An unfathomable amount of strength pulses through this ring. Only the most righteous mortals can touch this ring and live.</Description>
+    <ActivateOnEquip stat="0" amount="110">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="3" amount="110">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="20" amount="12">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="21" amount="12">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="22" amount="12">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="28" amount="12">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="26" amount="12">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="27" amount="12">IncrementStat</ActivateOnEquip>
+    <BagType>6</BagType>
+    <FameBonus>7</FameBonus>
+  </Object>
+  <Object type="0x0250" id="Skull of Corrupted Souls"  >
+    <Class>Equipment</Class>
+    <Item/>
+    <Texture>
+      <File>lostHallsObjects8x8</File>
+      <Index>0xad</Index>
+    </Texture>
+    <Usable/>
+    <SlotType>19</SlotType>
+    <Description>The cursed skull of a corrupted mind. Good intentions can go horribly wrong.</Description>
+    <ActivateOnEquip stat="0" amount="66">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="26" amount="6">IncrementStat</ActivateOnEquip>
+    <Activate radius="2.25" totalDamage="450" healRange="4.2" heal="160" ignoreDef="40" wisMin="50" wisPerRad="10" color="4C4C4C" incrRad="0.8" wisDamageBase="50" condEffect="Curse" condDuration="4">VampireBlast</Activate>
+    <MpCost>100</MpCost>
+    <BagType>6</BagType>
+    <FameBonus>6</FameBonus>
+  </Object>
+  <Object type="0x0252" id="Ritual Robe"  >
+    <Class>Equipment</Class>
+    <Item/>
+    <Description>A thin hood with a faded golden lace worn for sacrificial ceremonies. It has an aura of evil around it.</Description>
+    <Texture>
+      <File>lostHallsObjects8x8</File>
+      <Index>0xae</Index>
+    </Texture>
+    <SlotType>14</SlotType>
+    <ActivateOnEquip stat="21" amount="10">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="20" amount="12">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="28" amount="15">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="27" amount="10">IncrementStat</ActivateOnEquip>
+    <BagType>6</BagType>
+    <FameBonus>6</FameBonus>
+  </Object>
+  <Object type="0x0253" id="Bloodshed Ring"  >
+    <Class>Equipment</Class>
+    <Item/>
+    <Texture>
+      <File>lostHallsObjects8x8</File>
+      <Index>0xaf</Index>
+    </Texture>
+    <SlotType>9</SlotType>
+    <Description>A seemingly shattered ring that keeps itself together with an unknown magnetic force. It only stays together on the finger of a true killer.</Description>
+    <ActivateOnEquip stat="0" amount="80">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="21" amount="8">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="26" amount="8">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="28" amount="8">IncrementStat</ActivateOnEquip>
+    <BagType>6</BagType>
+    <FameBonus>6</FameBonus>
+  </Object>
+  <Object type="0x0254" id="Sword of the Colossus"  >
+    <Class>Equipment</Class>
+    <Item/>
+    <Texture>
+      <File>lostHallsObjects8x8</File>
+      <Index>0xb0</Index>
+    </Texture>
+    <SlotType>1</SlotType>
+    <Description>A sword with an impossibly sharp edge. It has been designed with holy magic to slash like no other blade.</Description>
+    <RateOfFire>1.3</RateOfFire>
+    <Sound>weapon/golden_bow</Sound>
+    <Projectile>
+      <ObjectId>Colossus Slash</ObjectId>
+      <Speed>100</Speed>
+      <MinDamage>300</MinDamage>
+      <MaxDamage>320</MaxDamage>
+      <LifetimeMS>450</LifetimeMS>
+      <Amplitude>0.7</Amplitude>
+      <Frequency>0.5</Frequency>
+      <FaceDir/>
+    </Projectile>
+    <BagType>6</BagType>
+    <FameBonus>6</FameBonus>
+    <NumProjectiles>1</NumProjectiles>
+    <OldSound>bladeSwing</OldSound>
+  </Object>
+  <Object type="0x0255" id="Breastplate of New Life"  >
+    <Class>Equipment</Class>
+    <Item/>
+    <Description>A fine sheet of marble charged with the same energy that powers the Marble Colossus. What it lacks in physical durability, it makes up for with a life-breathing aura.</Description>
+    <Texture>
+      <File>lostHallsObjects8x8</File>
+      <Index>0xb1</Index>
+    </Texture>
+    <SlotType>7</SlotType>
+    <ActivateOnEquip stat="20" amount="5">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="21" amount="20">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="0" amount="160">IncrementStat</ActivateOnEquip>
+    <BagType>6</BagType>
+    <FameBonus>6</FameBonus>
+  </Object>
+  <Object type="0x0256" id="Magical Lodestone"  >
+    <Class>Equipment</Class>
+    <Item/>
+    <Texture>
+      <File>lostHallsObjects8x8</File>
+      <Index>0xb2</Index>
+    </Texture>
+    <SlotType>9</SlotType>
+    <Description>The source of power for the Marble Colossus found within his core. It is intended to give life to golems, but it can provide benefits to the living as well.</Description>
+    <ActivateOnEquip stat="21" amount="10">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="28" amount="10">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="20" amount="10">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="22" amount="5">IncrementStat</ActivateOnEquip>
+    <BagType>6</BagType>
+    <FameBonus>6</FameBonus>
+  </Object>
+  <Object type="0x0257" id="Cloak of Bloody Surprises"  >
+    <Class>Equipment</Class>
+    <Item/>
+    <Texture>
+      <File>lostHallsObjects8x8</File>
+      <Index>0xb3</Index>
+    </Texture>
+    <Usable/>
+    <SlotType>13</SlotType>
+    <Description>Many Rogues have tried to use this to escape their asylum. All have failed.</Description>
+    <MpCost>95</MpCost>
+    <Activate effect="Invisible" duration="4.5">ConditionEffectSelf</Activate>
+    <Activate effect="Berserk" duration="3">ConditionEffectSelf</Activate>
+    <Activate stat="20" amount="25" duration="3.5">StatBoostSelf</Activate>
+    <ActivateOnEquip stat="21" amount="2">IncrementStat</ActivateOnEquip>
+    <Cooldown>6</Cooldown>
+    <BagType>6</BagType>
+    <FameBonus>6</FameBonus>
+  </Object>
+
+  <Object type="0xb0eb" id="Cultist Fire Shot">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lostHallsObjects8x8</File>
+      <Index>0x98</Index>
+    </Texture>
+    <AngleCorrection>1</AngleCorrection>
+  </Object>
+  <Object type="0xb105" id="Void Arrow">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lostHallsObjects8x8</File>
+      <Index>0xc2</Index>
+    </Texture>
+    <AngleCorrection>1</AngleCorrection>
+  </Object>
+  <Object type="0xb106" id="Colossus Slash">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lostHallsObjects8x8</File>
+      <Index>0xc3</Index>
+    </Texture>
+    <AngleCorrection>1</AngleCorrection>
+  </Object>
+
+  <Object type="0x6535" id="LH Sentry">
+    <DisplayId>Spectral Sentry</DisplayId>
+    <Enemy/>
+    <Class>Character</Class>
+    <AnimatedTexture>
+      <File>chars16x16dMountains1</File>
+      <Index>0x09</Index>
+    </AnimatedTexture>
+    <HitSound>monster/oryx_hit</HitSound>
+    <Size>140</Size>
+    <StunImmune/>
+    <StasisImmune/>
+    <DazedImmune/>
+    <ParalyzeImmune/>
+    <MaxHitPoints>75000</MaxHitPoints>
+    <Defense>10</Defense>
+    <Hero/>
+    <Quest/>
+    <God/>
+    <Level>20</Level>
+    <XpMult>1</XpMult>
+    <Projectile id="0">
+      <ObjectId>Spectral Blue Star</ObjectId>
+      <Damage>150</Damage>
+      <Speed>100</Speed>
+      <LifetimeMS>2000</LifetimeMS>
+      <ArmorPiercing/>
+      <MultiHit/>
+    </Projectile>
+    <Projectile id="1">
+      <ObjectId>Spectral Green Star</ObjectId>
+      <Damage>125</Damage>
+      <Speed>85</Speed>
+      <LifetimeMS>2000</LifetimeMS>
+      <ConditionEffect duration="2.5">Slowed</ConditionEffect>
+      <ArmorPiercing/>
+      <MultiHit/>
+    </Projectile>
+    <Projectile id="2">
+      <ObjectId>Spectral Red Star</ObjectId>
+      <Damage>150</Damage>
+      <Speed>50</Speed>
+      <LifetimeMS>2000</LifetimeMS>
+      <ConditionEffect duration="4">Bleeding</ConditionEffect>
+      <ArmorPiercing/>
+      <MultiHit/>
+    </Projectile>
+    <Projectile id="3">
+      <ObjectId>Spectral Blue Star</ObjectId>
+      <Damage>200</Damage>
+      <Speed>115</Speed>
+      <Size>115</Size>
+      <LifetimeMS>2000</LifetimeMS>
+      <ArmorPiercing/>
+      <MultiHit/>
+    </Projectile>
+    <Projectile id="4">
+      <ObjectId>Spectral Green Star</ObjectId>
+      <Damage>175</Damage>
+      <Speed>100</Speed>
+      <Size>115</Size>
+      <LifetimeMS>2000</LifetimeMS>
+      <ConditionEffect duration="3.5">Slowed</ConditionEffect>
+      <ArmorPiercing/>
+      <MultiHit/>
+    </Projectile>
+    <Projectile id="5">
+      <ObjectId>Spectral Red Star</ObjectId>
+      <Damage>200</Damage>
+      <Speed>65</Speed>
+      <Size>115</Size>
+      <LifetimeMS>2000</LifetimeMS>
+      <ConditionEffect duration="5">Bleeding</ConditionEffect>
+      <ArmorPiercing/>
+      <MultiHit/>
+    </Projectile>
+  </Object>
+  <Object type="0x6542" id="Spectral Blue Star">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x49</Index>
+    </Texture>
+    <Rotation>-120</Rotation>
+  </Object>
+  <Object type="0x6529" id="Spectral Green Star">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x4a</Index>
+    </Texture>
+    <Rotation>-120</Rotation>
+  </Object>
+  <Object type="0x6431" id="Spectral Red Star">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x4b</Index>
+    </Texture>
+    <Rotation>-120</Rotation>
+  </Object>
+  <Object type="0x9531" id="Sentry Spinners">
+    <Class>Projectile</Class>
+    <RandomTexture>
+      <Texture>
+        <File>lofiObj6</File>
+        <Index>0x49</Index>
+      </Texture>
+      <Texture>
+        <File>lofiObj6</File>
+        <Index>0x4a</Index>
+      </Texture>
+      <Texture>
+        <File>lofiObj6</File>
+        <Index>0x4b</Index>
+      </Texture>
+    </RandomTexture>
+    <Rotation>-90</Rotation>
+  </Object>
+  <Object type="0x6141" id="Sword of the Cloaked Sentry">
+    <Class>Equipment</Class>
+    <Item/>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x57</Index>
+    </Texture>
+    <SlotType>1</SlotType>
+    <Description>.........CuR...sE.d......</Description>
+    <RateOfFire>1.25</RateOfFire>
+    <Sound>weapon/golden_bow</Sound>
+    <Projectile>
+      <ObjectId>Sentry Spinners</ObjectId>
+      <Speed>155</Speed>
+      <MinDamage>100</MinDamage>
+      <MaxDamage>125</MaxDamage>
+      <LifetimeMS>350</LifetimeMS>
+      <Amplitude>0.35</Amplitude>
+      <Frequency>0.85</Frequency>
+    </Projectile>
+    <BagType>6</BagType>
+    <FameBonus>6</FameBonus>
+    <NumProjectiles>2</NumProjectiles>
+    <ArcGap>15</ArcGap>
+    <OldSound>bladeSwing</OldSound>
+  </Object>
+
+  <Object type="0x6713" id="Cloaked-Blooded Robe">
+    <Class>Equipment</Class>
+    <Item/>
+    <Description>....cUr......sE.D.....</Description>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x58</Index>
+    </Texture>
+    <SlotType>14</SlotType>
+    <ActivateOnEquip stat="3" amount="55">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="20" amount="9">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="22" amount="5">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="21" amount="-5">IncrementStat</ActivateOnEquip>
+    <BagType>4</BagType>
+    <FameBonus>6</FameBonus>
+  </Object>
+
+  <Object type="0x8131" id="Blue Spectral Amulet">
+    <Class>Equipment</Class>
+    <Item/>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x59</Index>
+    </Texture>
+    <SlotType>9</SlotType>
+    <Description>......Cu..R.....sE....d...</Description>
+    <ActivateOnEquip stat="3" amount="90">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="27" amount="9">IncrementStat</ActivateOnEquip>
+    <BagType>6</BagType>
+    <FameBonus>6</FameBonus>
+  </Object>
+
+  <Object type="0x8153" id="Green Spectral Amulet">
+    <Class>Equipment</Class>
+    <Item/>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x5a</Index>
+    </Texture>
+    <SlotType>9</SlotType>
+    <Description>......Cu..R.....sE....d...</Description>
+    <ActivateOnEquip stat="22" amount="9">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="28" amount="9">IncrementStat</ActivateOnEquip>
+    <BagType>6</BagType>
+    <FameBonus>6</FameBonus>
+  </Object>
+
+  <Object type="0x8173" id="Red Spectral Amulet">
+    <Class>Equipment</Class>
+    <Item/>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x5b</Index>
+    </Texture>
+    <SlotType>9</SlotType>
+    <Description>......Cu..R.....sE....d...</Description>
+    <ActivateOnEquip stat="0" amount="90">IncrementStat</ActivateOnEquip>
+    <ActivateOnEquip stat="26" amount="9">IncrementStat</ActivateOnEquip>
+    <BagType>6</BagType>
+    <FameBonus>6</FameBonus>
+  </Object>
+
+  <Object type="0x9315" id="Void Large Bullet">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiProjsBig</File>
+      <Index>0x21</Index>
+    </Texture>
+    <AngleCorrection>1</AngleCorrection>
+  </Object>
+
+  <Object type="0x9491" id="Void Vortex">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiProjsBig</File>
+      <Index>0x22</Index>
+    </Texture>
+    <Rotation>-60</Rotation>
+  </Object>
+
+  <Object type="0x8317" id="Void Laser">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiProjsBig</File>
+      <Index>0x20</Index>
+    </Texture>
+    <AngleCorrection>1</AngleCorrection>
+  </Object>
+
+  <Object type="0x9314" id="Void Bullet">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x0c</Index>
+    </Texture>
+  </Object>
+
+  <Object type="0x9514" id="Void Blast">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x0d</Index>
+    </Texture>
+    <AngleCorrection>1</AngleCorrection>
+  </Object>
+
+  <Object type="0x8455" id="Void Small Shuriken">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x3d</Index>
+    </Texture>
+    <Rotation>80</Rotation>
+  </Object>
+
+  <Object type="0x8565" id="Void Shuriken">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x3c</Index>
+    </Texture>
+    <Rotation>80</Rotation>
+  </Object>
+
+  <Object type="0x8932" id="Void Wheel">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x0e</Index>
+    </Texture>
+    <Rotation>80</Rotation>
+  </Object>
+
+  <Object type="0x8532" id="Void Spin">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x3e</Index>
+    </Texture>
+    <Rotation>80</Rotation>
+  </Object>
+
+  <Object type="0x9551" id="Void Spear">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x0f</Index>
+    </Texture>
+    <AngleCorrection>1</AngleCorrection>
+  </Object>
+
+  <Object type="0x5144" id="LH Void Entity">
+    <DisplayId>Void Entity</DisplayId>
+    <Enemy/>
+    <Class>Character</Class>
+    <AnimatedTexture>
+      <File>chars16x16dMountains1</File>
+      <Index>0x0a</Index>
+    </AnimatedTexture>
+    <Sound>weapon/wand_of_dark_magic</Sound>
+    <DeathSound>monster/slimes_death</DeathSound>
+    <Size>200</Size>
+    <StunImmune/>
+    <StasisImmune/>
+    <DazedImmune/>
+    <ParalyzeImmune/>
+    <MaxHitPoints>125000</MaxHitPoints>
+    <Defense>60</Defense>
+    <Quest/>
+    <Level>1</Level>
+    <XpMult>1</XpMult>
+    <Projectile id="0">
+      <ObjectId>Void Bullet</ObjectId>
+      <Damage>175</Damage>
+      <Speed>100</Speed>
+      <Size>120</Size>
+      <LifetimeMS>2500</LifetimeMS>
+      <ArmorPiercing/>
+      <MultiHit/>
+      <ConditionEffect duration="2">Darkness</ConditionEffect>
+    </Projectile>
+    <Projectile id="1">
+      <ObjectId>Void Blast</ObjectId>
+      <Damage>185</Damage>
+      <Speed>80</Speed>
+      <Size>120</Size>
+      <LifetimeMS>3500</LifetimeMS>
+      <MultiHit/>
+      <ConditionEffect duration="1">Paralyzed</ConditionEffect>
+    </Projectile>
+    <Projectile id="2">
+      <ObjectId>Void Small Shuriken</ObjectId>
+      <Damage>180</Damage>
+      <Speed>70</Speed>
+      <Size>120</Size>
+      <LifetimeMS>4200</LifetimeMS>
+      <MultiHit/>
+      <ConditionEffect duration="3">Confused</ConditionEffect>
+    </Projectile>
+    <Projectile id="3">
+      <ObjectId>Void Shuriken</ObjectId>
+      <Damage>225</Damage>
+      <Speed>100</Speed>
+      <Size>120</Size>
+      <LifetimeMS>1800</LifetimeMS>
+      <MultiHit/>
+      <ConditionEffect duration="5">Quiet</ConditionEffect>
+    </Projectile>
+    <Projectile id="4">
+      <ObjectId>Void Wheel</ObjectId>
+      <Damage>200</Damage>
+      <Speed>80</Speed>
+      <Size>120</Size>
+      <LifetimeMS>2000</LifetimeMS>
+      <MultiHit/>
+      <ConditionEffect duration="3">Unstable</ConditionEffect>
+    </Projectile>
+    <Projectile id="5">
+      <ObjectId>Void Spin</ObjectId>
+      <Damage>175</Damage>
+      <Speed>60</Speed>
+      <Size>120</Size>
+      <LifetimeMS>2500</LifetimeMS>
+      <MultiHit/>
+      <ConditionEffect duration="3">Petrify</ConditionEffect>
+    </Projectile>
+    <Projectile id="6">
+      <ObjectId>Void Spear</ObjectId>
+      <Damage>250</Damage>
+      <Speed>70</Speed>
+      <Size>120</Size>
+      <LifetimeMS>4000</LifetimeMS>
+      <MultiHit/>
+      <ConditionEffect duration="3">Blind</ConditionEffect>
+    </Projectile>
+    <Projectile id="7">
+      <ObjectId>Void Large Bullet</ObjectId>
+      <Damage>200</Damage>
+      <Speed>110</Speed>
+      <Size>250</Size>
+      <LifetimeMS>2000</LifetimeMS>
+      <ArmorPiercing/>
+      <MultiHit/>
+      <ConditionEffect duration="2">Darkness</ConditionEffect>
+    </Projectile>
+    <Projectile id="8">
+      <ObjectId>Void Vortex</ObjectId>
+      <Damage>425</Damage>
+      <Speed>50</Speed>
+      <Size>240</Size>
+      <LifetimeMS>6000</LifetimeMS>
+      <MultiHit/>
+      <ConditionEffect duration="3">Quiet</ConditionEffect>
+    </Projectile>
+    <Projectile id="9">
+      <ObjectId>Void Laser</ObjectId>
+      <Damage>300</Damage>
+      <Speed>110</Speed>
+      <Size>160</Size>
+      <LifetimeMS>2500</LifetimeMS>
+      <MultiHit/>
+      <ConditionEffect duration="3">Quiet</ConditionEffect>
+    </Projectile>
+    <Projectile id="10">
+      <ObjectId>Void Bullet</ObjectId>
+      <Damage>175</Damage>
+      <Speed>100</Speed>
+      <Size>120</Size>
+      <Amplitude>0.35</Amplitude>
+      <Frequency>7</Frequency>
+      <LifetimeMS>2500</LifetimeMS>
+      <ArmorPiercing/>
+      <MultiHit/>
+      <ConditionEffect duration="2">Darkness</ConditionEffect>
+    </Projectile>
+  </Object>
+  <Object type="0x501c" id="The Magicial lord of sky">
+    <DisplayId>The Magicial lord of sky</DisplayId>
+    <Enemy/>
+    <Class>Character</Class>
+    <AnimatedTexture>
+      <File>chars16x16dMountains1</File>
+      <Index>0x0b</Index>
+    </AnimatedTexture>
+    <HitSound>monster/oryx_hit</HitSound>
+    <Size>140</Size>
+    <StunImmune/>
+    <StasisImmune/>
+    <DazedImmune/>
+    <ParalyzeImmune/>
+    <MaxHitPoints>100000</MaxHitPoints>
+    <Defense>50</Defense>
+    <Quest/>
+    <God/>
+    <Level>20</Level>
+    <XpMult>1</XpMult>
+    <Projectile id="0">
+      <ObjectId>Normal Atan</ObjectId>
+      <Damage>75</Damage>
+      <Speed>30</Speed>
+      <Size>150</Size>
+      <LifetimeMS>4200</LifetimeMS>
+      <MultiHit/>
+    </Projectile>
+    <Projectile id="1">
+      <ObjectId>Blast Atan</ObjectId>
+      <Damage>90</Damage>
+      <Speed>70</Speed>
+      <LifetimeMS>3000</LifetimeMS>
+      <Amplitude>0.5</Amplitude>
+      <Frequency>8</Frequency>
+      <ConditionEffect duration="1">Slowed</ConditionEffect>
+    </Projectile>
+    <Projectile id="2">
+      <ObjectId>Mob Atan</ObjectId>
+      <Damage>150</Damage>
+      <Speed>40</Speed>
+      <LifetimeMS>2400</LifetimeMS>
+      <ArmorPiercing/>
+      <MultiHit/>
+    </Projectile>
+    <Projectile id="3">
+      <ObjectId>Void Arrow</ObjectId>
+      <Damage>120</Damage>
+      <Speed>60</Speed>
+      <LifetimeMS>2400</LifetimeMS>
+      <ArmorPiercing/>
+      <MultiHit/>
+    </Projectile>
+  </Object>
+  <Object type="0x501d" id="Sword Atan">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiProjsBig</File>
+      <Index>0x25</Index>
+    </Texture>
+    <AngleCorrection>1</AngleCorrection>
+  </Object>
+  <Object type="0x501e" id="Blast Atan">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiProjsBig</File>
+      <Index>0x26</Index>
+    </Texture>
+    <AngleCorrection>1</AngleCorrection>
+  </Object>
+  <Object type="0x501f" id="Normal Atan">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiProjsBig</File>
+      <Index>0x27</Index>
+    </Texture>
+    <AngleCorrection>1</AngleCorrection>
+  </Object>
+  <Object type="0x502a" id="Mob Atan">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiProjsBig</File>
+      <Index>0x28</Index>
+    </Texture>
+    <AngleCorrection>1</AngleCorrection>
+  </Object>
+  <Object type="0x502b" id="Left hand of  Magicial lord of sky">
+    <DisplayId>Left hand of  Magicial lord of sky</DisplayId>
+    <Enemy/>
+    <Class>Character</Class>
+    <AnimatedTexture>
+      <File>chars16x16dMountains1</File>
+      <Index>0x0c</Index>
+    </AnimatedTexture>
+    <HitSound>monster/oryx_hit</HitSound>
+    <Size>140</Size>
+    <StunImmune/>
+    <StasisImmune/>
+    <DazedImmune/>
+    <MaxHitPoints>40000</MaxHitPoints>
+    <Defense>25</Defense>
+    <God/>
+    <Level>1</Level>
+    <XpMult>1</XpMult>
+    <Projectile id="0">
+      <ObjectId>Shot Projectile 4</ObjectId>
+      <Damage>200</Damage>
+      <Speed>30</Speed>
+      <Size>70</Size>
+      <LifetimeMS>6200</LifetimeMS>
+      <MultiHit/>
+    </Projectile>
+    <Projectile id="1">
+      <ObjectId>Shot Projectile 13</ObjectId>
+      <Damage>90</Damage>
+      <Speed>80</Speed>
+      <Size>70</Size>
+      <LifetimeMS>3000</LifetimeMS>
+      <Amplitude>0.5</Amplitude>
+      <Frequency>8</Frequency>
+      <ConditionEffect duration="2">Weak</ConditionEffect>
+    </Projectile>
+  </Object>
+  <Object type="0x502c" id="Right hand of  Magicial lord of sky">
+    <DisplayId>Right hand of  Magicial lord of sky</DisplayId>
+    <Enemy/>
+    <Class>Character</Class>
+    <AnimatedTexture>
+      <File>chars16x16dMountains1</File>
+      <Index>0x0c</Index>
+    </AnimatedTexture>
+    <HitSound>monster/oryx_hit</HitSound>
+    <Size>140</Size>
+    <StunImmune/>
+    <StasisImmune/>
+    <DazedImmune/>
+    <MaxHitPoints>40000</MaxHitPoints>
+    <Defense>25</Defense>
+    <God/>
+    <Level>1</Level>
+    <XpMult>1</XpMult>
+    <Projectile id="0">
+      <ObjectId>Shot Projectile 7</ObjectId>
+      <Damage>200</Damage>
+      <Speed>30</Speed>
+      <Size>70</Size>
+      <LifetimeMS>6200</LifetimeMS>
+      <MultiHit/>
+    </Projectile>
+    <Projectile id="1">
+      <ObjectId>Shot Projectile 16</ObjectId>
+      <Damage>90</Damage>
+      <Speed>80</Speed>
+      <Size>70</Size>
+      <LifetimeMS>3000</LifetimeMS>
+      <Amplitude>0.5</Amplitude>
+      <Frequency>8</Frequency>
+      <ConditionEffect duration="2">Quiet</ConditionEffect>
+    </Projectile>
+  </Object>
+  <Object type="0x502d" id="The Void Portal">
+    <Class>Portal</Class>
+    <IntergamePortal/>
+    <DungeonName>The Void</DungeonName>
+    <Texture>
+      <File>lofiObjBig</File>
+      <Index>0x151</Index>
+    </Texture>
+    <DisplayId>The Void</DisplayId>
+  </Object>
+  <Object type="0x7023" id="Golem King">
+    <DisplayId>Golem King</DisplayId>
+    <Enemy/>
+    <Class>Character</Class>
+    <AnimatedTexture>
+      <File>chars16x16dMountains1</File>
+      <Index>13</Index>
+    </AnimatedTexture>
+    <HitSound>monster/oryx_hit</HitSound>
+    <Size>160</Size>
+    <StunImmune/>
+    <StasisImmune/>
+    <DazedImmune/>
+    <MaxHitPoints>90000</MaxHitPoints>
+    <Defense>50</Defense>
+    <Quest/>
+    <God/>
+    <Level>1</Level>
+    <XpMult>1</XpMult>
+    <Projectile id="0">
+      <ObjectId>Big Top</ObjectId>
+      <Damage>60</Damage>
+      <Speed>90</Speed>
+      <Size>60</Size>
+      <LifetimeMS>4200</LifetimeMS>
+      <ConditionEffect duration="1">Slowed</ConditionEffect>
+      <MultiHit/>
+      <ArmorPiercing/>
+    </Projectile>
+    <Projectile id="1">
+      <ObjectId>Big Top Duz</ObjectId>
+      <Damage>250</Damage>
+      <Speed>40</Speed>
+      <Size>110</Size>
+      <LifetimeMS>3000</LifetimeMS>
+      <ConditionEffect duration="5">Quiet</ConditionEffect>
+    </Projectile>
+    <Projectile id="2">
+      <ObjectId>Big Top 2</ObjectId>
+      <Damage>100</Damage>
+      <Speed>90</Speed>
+      <LifetimeMS>3400</LifetimeMS>
+      <MultiHit/>
+    </Projectile>
+    <Projectile id="3">
+      <ObjectId>Fire Shot</ObjectId>
+      <Damage>15</Damage>
+      <Speed>60</Speed>
+      <LifetimeMS>2400</LifetimeMS>
+      <ConditionEffect duration="5">Armor Broken</ConditionEffect>
+      <ArmorPiercing/>
+      <MultiHit/>
+    </Projectile>
+    <Projectile id="4">
+      <ObjectId>Big Top Duz</ObjectId>
+      <Damage>250</Damage>
+      <Speed>40</Speed>
+      <Size>110</Size>
+      <LifetimeMS>3000</LifetimeMS>
+      <ConditionEffect duration="5">Quiet</ConditionEffect>
+      <Boomerang/>
+    </Projectile>
+  </Object>
+  <Object type="0x7024" id="Big Top">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiProjsBig</File>
+      <Index>0x32</Index>
+    </Texture>
+    <AngleCorrection>1</AngleCorrection>
+  </Object>
+  <Object type="0x7025" id="Big Top Duz">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiProjsBig</File>
+      <Index>0x40</Index>
+    </Texture>
+    <AngleCorrection>1</AngleCorrection>
+  </Object>
+  <Object type="0x7026" id="Big Top 2">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiProjsBig</File>
+      <Index>0x36</Index>
+    </Texture>
+    <AngleCorrection>1</AngleCorrection>
+  </Object>
+  <Object type="0x7027" id="Fire Shot">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiProjsBig</File>
+      <Index>0x05</Index>
+    </Texture>
+  </Object>
+  <Object type="0x7029" id="Golem World Key">
+    <Class>Equipment</Class>
+    <Item/>
+    <Texture>
+      <File>lofiObj3</File>
+      <Index>0xb7</Index>
+    </Texture>
+    <SlotType>10</SlotType>
+    <Description>Golem World's Key</Description>
+    <Sound>use_key</Sound>
+    <Consumable/>
+    <Activate id="Golem King Portal">Create</Activate>
+    <BagType>10</BagType>
+    <Track/>
+  </Object>
+  <Object type="0x7031" id="Golem Mob">
+    <DisplayId>Golem Mob</DisplayId>
+    <Enemy/>
+    <Class>Character</Class>
+    <AnimatedTexture>
+      <File>chars16x16dMountains1</File>
+      <Index>13</Index>
+    </AnimatedTexture>
+    <HitSound>monster/oryx_hit</HitSound>
+    <DeathSound>monster/oryx_death</DeathSound>
+    <Size>70</Size>
+    <MaxHitPoints>2500</MaxHitPoints>
+    <Defense>15</Defense>
+    <Level>1</Level>
+    <XpMult>1</XpMult>
+    <Projectile id="0">
+      <ObjectId>Big Top</ObjectId>
+      <Damage>50</Damage>
+      <Speed>90</Speed>
+      <Size>100</Size>
+      <LifetimeMS>4200</LifetimeMS>
+      <MultiHit/>
+      <ArmorPiercing/>
+    </Projectile>
+    <Projectile id="1">
+      <ObjectId>Fire Shot</ObjectId>
+      <Damage>85</Damage>
+      <Speed>100</Speed>
+      <LifetimeMS>2400</LifetimeMS>
+      <ConditionEffect duration="5">Armor Broken</ConditionEffect>
+      <MultiHit/>
+    </Projectile>
+  </Object>
+  <Object type="0x7101" id="Barriel Guy">
+    <DisplayId>Barriel Guy</DisplayId>
+    <Enemy/>
+    <Class>Character</Class>
+    <AnimatedTexture>
+      <File>chars16x16dMountains1</File>
+      <Index>14</Index>
+    </AnimatedTexture>
+    <HitSound>monster/oryx_hit</HitSound>
+    <Size>130</Size>
+    <MaxHitPoints>115000</MaxHitPoints>
+    <Defense>30</Defense>
+    <Quest/>
+    <God/>
+    <Level>1</Level>
+    <XpMult>1</XpMult>
+    <Projectile id="0">
+      <ObjectId>Wood Shot</ObjectId>
+      <Damage>170</Damage>
+      <Speed>70</Speed>
+      <Size>115</Size>
+      <LifetimeMS>1600</LifetimeMS>
+      <ConditionEffect duration="5">Armor Broken</ConditionEffect>
+      <ConditionEffect duration="3">Blind</ConditionEffect>
+      <ArmorPiercing/>
+    </Projectile>
+    <Projectile id="1">
+      <ObjectId>Purple Slime</ObjectId>
+      <Damage>110</Damage>
+      <Speed>100</Speed>
+      <Size>150</Size>
+      <LifetimeMS>1200</LifetimeMS>
+      <ConditionEffect duration="3">Slowed</ConditionEffect>
+      <ConditionEffect duration="3">Quiet</ConditionEffect>
+    </Projectile>
+  </Object>
+  <Object type="0x7102" id="Wood Shot">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiProjsBig</File>
+      <Index>0x39</Index>
+    </Texture>
+  </Object>
+  <Object type="0x7103" id="Purple Slime">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiProjsBig</File>
+      <Index>0x38</Index>
+    </Texture>
+  </Object>
+  <Object type="0x7113" id="Ent World">
+    <Class>Portal</Class>
+    <IntergamePortal/>
+    <DungeonName>Ent World</DungeonName>
+    <Texture>
+      <File>lofiObj4</File>
+      <Index>0x13</Index>
+    </Texture>
+    <DisplayId>Ent World</DisplayId>
+  </Object>
+  <Object type="0x7139" id="Bandit Robber Rat">
+    <DisplayId>Bandit Rat</DisplayId>
+    <Enemy/>
+    <Class>Character</Class>
+    <AnimatedTexture>
+      <File>chars16x16dMountains1</File>
+      <Index>15</Index>
+    </AnimatedTexture>
+    <HitSound>monster/oryx_hit</HitSound>
+    <Size>130</Size>
+    <MaxHitPoints>115000</MaxHitPoints>
+    <Defense>20</Defense>
+    <Level>20</Level>
+    <XpMult>1</XpMult>
+    <Projectile id="0">
+      <ObjectId>Green Blast</ObjectId>
+      <Damage>210</Damage>
+      <Speed>65</Speed>
+      <Size>150</Size>
+      <LifetimeMS>1600</LifetimeMS>
+      <ConditionEffect duration="5">Bleeding</ConditionEffect>
+      <ConditionEffect duration="5">Dazed</ConditionEffect>
+      <ArmorPiercing/>
+    </Projectile>
+    <Projectile id="1">
+      <ObjectId>Green Hot</ObjectId>
+      <Damage>110</Damage>
+      <Speed>130</Speed>
+      <Size>100</Size>
+      <LifetimeMS>1200</LifetimeMS>
+      <ConditionEffect duration="5">Confused</ConditionEffect>
+      <ConditionEffect duration="5">Weak</ConditionEffect>
+    </Projectile>
+    <Projectile id="3">
+      <ObjectId>Green Blast</ObjectId>
+      <Damage>100</Damage>
+      <Speed>55</Speed>
+      <Size>80</Size>
+      <LifetimeMS>1600</LifetimeMS>
+      <ConditionEffect duration="5">Paralyzed</ConditionEffect>
+      <ArmorPiercing/>
+    </Projectile>
+  </Object>
+  <Object type="0x7121" id="Green Blast">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x78</Index>
+    </Texture>
+    <AngleCorrection>2</AngleCorrection>
+  </Object>
+  <Object type="0x7122" id="Green Hot">
+    <Class>Projectile</Class>
+    <Texture>
+      <File>lofiObj6</File>
+      <Index>0x77</Index>
+    </Texture>
+  </Object>
+  <Object type="0x7135" id="Bandit Rat">
+    <Class>Portal</Class>
+    <IntergamePortal/>
+    <DungeonName>Bandit Rat</DungeonName>
+    <Texture>
+      <File>lofiEnvironment</File>
+      <Index>0x5d</Index>
+    </Texture>
+    <DisplayId>Bandit Rat</DisplayId>
+  </Object>
+</Objects>

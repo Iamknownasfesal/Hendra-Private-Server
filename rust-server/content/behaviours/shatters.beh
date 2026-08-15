@@ -1314,11 +1314,11 @@ enemy "shtrs Bridge Closer" {
         conditional_effect(invincible, true)
     }
     state Closer {
-        change_ground_on_death(1)
+        change_ground_on_death(["shtrs Bridge"], ["shtrs Pure Evil"], 1)
         suicide()
     }
     state TwilightClose {
-        change_ground_on_death(1)
+        change_ground_on_death(["shtrs Shattered Floor", "shtrs Disaster Floor"], ["shtrs Pure Evil"], 1)
         suicide()
     }
 }
@@ -1328,11 +1328,11 @@ enemy "shtrs Bridge Closer2" {
         conditional_effect(invincible, true)
     }
     state Closer {
-        change_ground_on_death(1)
+        change_ground_on_death(["shtrs Bridge"], ["shtrs Pure Evil"], 1)
         suicide()
     }
     state TwilightClose {
-        change_ground_on_death(1)
+        change_ground_on_death(["shtrs Shattered Floor", "shtrs Disaster Floor"], ["shtrs Pure Evil"], 1)
         suicide()
     }
 }
@@ -1342,11 +1342,11 @@ enemy "shtrs Bridge Closer3" {
         conditional_effect(invincible, true)
     }
     state Closer {
-        change_ground_on_death(1)
+        change_ground_on_death(["shtrs Bridge"], ["shtrs Pure Evil"], 1)
         suicide()
     }
     state TwilightClose {
-        change_ground_on_death(1)
+        change_ground_on_death(["shtrs Shattered Floor", "shtrs Disaster Floor"], ["shtrs Pure Evil"], 1)
         suicide()
     }
 }
@@ -1356,11 +1356,11 @@ enemy "shtrs Bridge Closer4" {
         conditional_effect(invincible, true)
     }
     state Closer {
-        change_ground_on_death(1)
+        change_ground_on_death(["shtrs Bridge"], ["shtrs Pure Evil"], 1)
         suicide()
     }
     state TwilightClose {
-        change_ground_on_death(1)
+        change_ground_on_death(["shtrs Shattered Floor", "shtrs Disaster Floor"], ["shtrs Pure Evil"], 1)
         suicide()
     }
 }
@@ -1370,7 +1370,7 @@ enemy "shtrs Spawn Bridge" {
         conditional_effect(invincible, true)
     }
     state Open {
-        change_ground_on_death(1)
+        change_ground_on_death(["shtrs Pure Evil"], ["shtrs Bridge"], 1)
         suicide()
     }
 }
@@ -1381,11 +1381,11 @@ enemy "shtrs Spawn Bridge 2" {
         on entity_not_exists("shtrs Abandoned Switch 3", 500) -> Open
     }
     state Open {
-        change_ground_on_death(1)
+        change_ground_on_death(["shtrs Pure Evil"], ["shtrs Shattered Floor"], 1)
         suicide()
     }
     state CloseBridge2 {
-        change_ground_on_death(1)
+        change_ground_on_death(["shtrs Shattered Floor"], ["shtrs Pure Evil"], 1)
         suicide()
     }
 }
@@ -1396,7 +1396,7 @@ enemy "shtrs Spawn Bridge 3" {
         on entity_not_exists("shtrs Twilight Archmage", 500) -> Open
     }
     state Open {
-        change_ground_on_death(1)
+        change_ground_on_death(["shtrs Pure Evil"], ["shtrs Shattered Floor"], 1)
         suicide()
     }
 }
@@ -1407,7 +1407,7 @@ enemy "shtrs Spawn Bridge 5" {
         on entity_not_exists("shtrs Royal Guardian L", 100) -> Open
     }
     state Open {
-        change_ground_on_death(1)
+        change_ground_on_death(["Dark Cobblestone"], ["Hot Lava"], 1)
         suicide()
     }
 }

@@ -1,0 +1,12 @@
+{"id":0,
+"isLimbo":false,
+"name":"Renewed Sewers",
+"sbName":"Renewed Sewers",
+"difficulty":4,
+"background":0,
+"blocking":3,
+"restrictTp":true,
+"showDisplays":false,
+"portals":[0x272],
+"maps":["sewers1.jm"],
+"music":["caverns"]}

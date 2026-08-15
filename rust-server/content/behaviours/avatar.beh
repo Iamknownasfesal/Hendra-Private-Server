@@ -1,6 +1,6 @@
 enemy "shtrs Defense System" {
     drop_portal_on_death("The Shatters", probability: 1, timeout: 70)
-    change_ground_on_death(30)
+    change_ground_on_death(["Pure Evil"], ["shtrs Disaster Floor", "shtrs Shattered Floor"], 30)
     state stars {
         taunt("BURN!!")
         on hp_below(0.8, "Throwing niggos") -> Throwing_niggos

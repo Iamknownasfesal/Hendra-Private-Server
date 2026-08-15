@@ -1,0 +1,14 @@
+-- A new account owns one vault chest, not four. This supersedes the `DEFAULT 4` that
+-- `0001_initial.sql` declares; that file is deliberately left untouched, because `sqlx::migrate!`
+-- checksums every applied migration and editing an old one — even its comments — makes every
+-- database that has already run it refuse to start with "migration 1 was previously applied but has
+-- been modified".
+--
+-- `<VaultCount>1</VaultCount>` under `<NewAccounts>` in the original's `XmlDatas/data/init.xml:37`,
+-- read into `NewAccounts.VaultCount` (`common/resources/AppSettings.cs:71`, `:84`) and written by
+-- `Database.Register` (`common/Database.cs:90`). This server has always served that same 1 from
+-- `/app/init` while creating accounts with four, so the two halves disagreed with each other.
+--
+-- Only the default moves. Accounts that already own four keep four: their chests two through four
+-- may hold items, and lowering the count would put those rows out of reach.
+ALTER TABLE account ALTER COLUMN vault_chests SET DEFAULT 1;

@@ -1,0 +1,12 @@
+{"id":0,
+"isLimbo":false,
+"name":"Bandit Rat",
+"sbName":"Bandit Rat",
+"difficulty":4,
+"background":0,
+"blocking":1,
+"restrictTp":false,
+"showDisplays":false, 
+"portals":[0x7135],
+"maps":["ratmap.jm"],
+"music":["weed"]}

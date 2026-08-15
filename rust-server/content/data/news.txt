@@ -1,0 +1,33 @@
+[{
+	"slot": 3, 
+	"linkType": 1, 
+	"title": "Join Discord", 
+	"image": "https://cdn.discordapp.com/attachments/297688921373147137/577143140750721033/png.jpg", 
+	"priority": 759, 
+	"linkDetail": "https://discord.gg/Dntzy97", 
+	"platform": "kabam.com,kongregate,steam,rotmg", 
+	"startTime": 1413334800000, 
+	"endTime": 1914022340000
+}, 
+{
+	"slot": 2, 
+	"linkType": 1, 
+	"title": "Join Discord", 
+	"image": "https://cdn.discordapp.com/attachments/297688921373147137/577143140750721033/png.jpg", 
+	"priority": 756, 
+	"linkDetail": "https://discord.gg/Dntzy97", 
+	"platform": "kabam.com,kongregate,steam,rotmg", 
+	"startTime": 1412730000000, 
+	"endTime": 1913417540000
+}, 
+{
+	"slot": 1, 
+	"linkType": 1, 
+	"title": "Join our Discord channel", 
+	"image": "https://cdn.discordapp.com/attachments/559724808485601281/572120625368268810/unknown.png", 
+	"priority": 757, 
+	"linkDetail": "https://discord.gg/Dntzy97", 
+	"platform": "kabam.com,kongregate,steam,rotmg", 
+	"startTime": 1413199137000, 
+	"endTime": 1913935940000
+}]

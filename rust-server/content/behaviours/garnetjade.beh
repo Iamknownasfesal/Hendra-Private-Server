@@ -131,7 +131,7 @@ enemy "Garnet Statue" {
     }
     loot {
         threshold(0.05) {  }
-        threshold(0.05) {  }
+        threshold(0.05) { item("Potion of Defense", 0.16666666666666666) item("Potion of Attack", 0.16666666666666666) item("Potion of Speed", 0.16666666666666666) item("Potion of Vitality", 0.16666666666666666) item("Potion of Wisdom", 0.16666666666666666) item("Potion of Dexterity", 0.16666666666666666) }
         threshold(0.05) { item("Kageboshi", 0.01) }
     }
 }
@@ -269,7 +269,7 @@ enemy "Jade Statue" {
     }
     loot {
         threshold(0.05) {  }
-        threshold(0.05) {  }
+        threshold(0.05) { item("Potion of Defense", 0.16666666666666666) item("Potion of Attack", 0.16666666666666666) item("Potion of Speed", 0.16666666666666666) item("Potion of Vitality", 0.16666666666666666) item("Potion of Wisdom", 0.16666666666666666) item("Potion of Dexterity", 0.16666666666666666) }
         threshold(0.05) { item("Wand of the Fallen", 0.01) }
     }
 }
