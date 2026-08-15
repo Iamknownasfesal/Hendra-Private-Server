@@ -29,10 +29,16 @@ public static class Style
     // gone and the interface is opaque grey plate with hard one-pixel edges, which is what the
     // pixel font and the bevelled buttons need behind them to read as one thing.
 
-    /// <summary>Panel chrome: opaque grey, not translucent black.</summary>
-    public static readonly Color Panel = new("474747");
+    /// <summary>
+    /// Panel chrome: the grey the HUD column is filled with, behind the bars and the slot grids.
+    /// </summary>
+    public static readonly Color Panel = new("363636");
 
-    public static readonly Color PanelInset = new("3a3a3a");
+    /// <summary>
+    /// The near-black a slot grid is bedded into, and the body colour of every floating panel.
+    /// It is the darkest of the three surfaces and reads as the hole the plates sit in.
+    /// </summary>
+    public static readonly Color PanelInset = new("242222");
 
     /// <summary>The one-pixel outer border every panel carries.</summary>
     public static readonly Color PanelEdge = new("1e1e1e");
@@ -51,16 +57,16 @@ public static class Style
     // of luminance. Near-black board, mid-grey plates, bright borders. If a later colour change
     // closes one of those gaps, the grid stops carrying the layout and that is a bug, not a taste.
 
-    /// <summary>An empty slot's plate: the lighter of the two, because there is nothing on it.</summary>
-    public static readonly Color SlotEmpty = new("454545");
+    /// <summary>A slot's plate. Full and empty slots carry the same grey; only the border differs.</summary>
+    public static readonly Color SlotEmpty = new("575757");
 
-    public static readonly Color SlotEmptyEdge = new("545454");
+    public static readonly Color SlotEmptyEdge = new("616161");
 
-    /// <summary>A slot with something in it, a step darker so the artwork is the bright thing.</summary>
-    public static readonly Color Slot = new("3a3a3a");
+    /// <summary>A slot with something in it. The same plate as an empty one.</summary>
+    public static readonly Color Slot = new("575757");
 
-    /// <summary>Two pixels, and bright. This is what draws the grid.</summary>
-    public static readonly Color SlotBorder = new("8a8a8a");
+    /// <summary>Four pixels, one step lighter than the plate. This is what draws the grid.</summary>
+    public static readonly Color SlotBorder = new("616161");
 
     /// <summary>The border under the pointer, and for the hundred milliseconds after a key press.</summary>
     public static readonly Color SlotBorderHi = new("e2e2e2");
@@ -85,26 +91,52 @@ public static class Style
     /// </remarks>
     public static readonly Color SlotRestricted = SlotHighlights.RedFill;
 
-    // Bars. All four read the same way: an edge, a track, a flat fill, and a highlight along the
-    // top of the fill that moves with it.
-    public static readonly Color FameFill = new("f2a01c");
+    // Bars. All four read the same way: a flat fill, a lighter band along the top few pixels of it,
+    // and a dark line along the bottom. Health is green and mana is blue; the red is nowhere in
+    // this interface, and a red health bar is the single fastest way to be told apart from it.
+    public static readonly Color FameFill = new("df7522");
+    public static readonly Color FameFillHigh = new("fb8426");
 
-    public static readonly Color HpFill = new("e02b2b");
-    public static readonly Color MpFill = new("3f7fd0");
-    public static readonly Color XpFill = new("5fbb2e");
-    public static readonly Color BarTrack = new("2b2b2b");
-    public static readonly Color BarEdge = new("141414");
+    public static readonly Color HpFill = new("78c237");
+    public static readonly Color HpFillHigh = new("87da3e");
+    public static readonly Color MpFill = new("5d81da");
+    public static readonly Color MpFillHigh = new("6991f5");
+    public static readonly Color XpFill = new("78c237");
+    public static readonly Color XpFillHigh = new("87da3e");
+    public static readonly Color BarTrack = new("242222");
+    public static readonly Color BarEdge = new("201105");
     public static readonly Color BarHighlight = new(1f, 1f, 1f, 0.28f);
 
-    // Buttons: a flat face with a two-tone one-pixel bevel, inverted while held.
-    public static readonly Color ButtonFace = new("5a5a5a");
+    // Buttons. There are four plates and each one means something, so the colour is the label:
+    // steel is the ordinary way on, red closes or quits, olive commits, orange spends currency.
+    // Every one is a flat face with a lighter band along its top edge and a darker one along the
+    // bottom, inverted while held.
 
-    public static readonly Color ButtonBevelHigh = new("7d7d7d");
-    public static readonly Color ButtonBevelLow = new("2e2e2e");
-    public static readonly Color ButtonHover = new("6b6b6b");
+    /// <summary>The ordinary button: desaturated blue-grey. Options, Journal, Servers, Enter.</summary>
+    public static readonly Color ButtonFace = new("7a9595");
 
-    /// <summary>The one saturated thing in the top left corner, and the one asking for a click.</summary>
-    public static readonly Color ButtonPromo = new("f2a01c");
+    public static readonly Color ButtonBevelHigh = new("98bfbf");
+    public static readonly Color ButtonBevelLow = new("4e6666");
+    public static readonly Color ButtonHover = new("8fabab");
+
+    /// <summary>The way out: Quit, and every panel's Close.</summary>
+    public static readonly Color ButtonDanger = new("de2d41");
+
+    public static readonly Color ButtonDangerHigh = new("ff4b67");
+
+    /// <summary>The action a screen exists for: Continue, Play, Deposit All.</summary>
+    public static readonly Color ButtonCommit = new("769300");
+
+    public static readonly Color ButtonCommitHigh = new("a6c037");
+    public static readonly Color ButtonCommitLow = new("5c7200");
+
+    /// <summary>The one that costs currency: Upgrade, Buy Character Slot.</summary>
+    public static readonly Color ButtonPromo = new("e69b07");
+
+    /// <summary>A switch in its on position. Its off position is <see cref="ButtonDanger"/>.</summary>
+    public static readonly Color ToggleOn = new("5a8c25");
+
+    public static readonly Color ToggleOnHigh = new("82bd47");
 
     public static readonly Color TierNormal = new("ffffff");
 
@@ -131,8 +163,14 @@ public static class Style
     public static readonly Color ChatName = new("5cd05c");
     public static readonly Color IconFame = new("e8622a");
     public static readonly Color IconGold = new("d6dc3f");
-    public static readonly Color TabActive = new("cfcfcf");
-    public static readonly Color TabIdle = new("3f3f3f");
+    /// <summary>The plate under the selected tab, which is the lighter of the pair.</summary>
+    public static readonly Color TabActive = new("505050");
+
+    /// <summary>An unselected tab, sunk almost into the page behind it.</summary>
+    public static readonly Color TabIdle = new("2c2c2c");
+
+    /// <summary>A selected tab's label. Unselected ones take <see cref="TextDim"/>.</summary>
+    public static readonly Color TabActiveText = new("ffffff");
 
     public static readonly Color Text = new("ffffff");
     public static readonly Color TextDim = new("b4b4b4");
@@ -170,34 +208,50 @@ public static class Style
     public static readonly Color StatusLow = new("e02b2b");
     public static readonly Color StatusDead = new("6b6a6a");
 
-    // Secondary interface: the panels that open over the world. A gold frame around a near-black
-    // body, deliberately heavier than the flat grey chrome that is always on screen -- the contrast
-    // is what says "this opened" rather than "this was always here".
-    public static readonly Color ModalFrame = new("b4913f");
+    // Secondary interface: the panels that open over the world. There is no gold anywhere in it.
+    // A panel is the same near-black body as the rest of the interface, lifted off the world by a
+    // thin light-grey edge and marked at the corners by small bracket ticks. What says "this
+    // opened" is the edge and the shadow, not a frame in a second colour.
+    public static readonly Color ModalFrame = new("8d8d8d");
 
-    public static readonly Color ModalFrameDark = new("6b5423");
+    public static readonly Color ModalFrameDark = new("4a4a4a");
 
     /// <summary>The board the plates sit on. Near-black, and the same colour as the gutters.</summary>
-    public static readonly Color ModalBody = new("1c1c1c");
+    public static readonly Color ModalBody = new("242222");
 
-    public static readonly Color ModalHeader = new("141414");
+    /// <summary>The title band, a hair cooler than the body it sits on.</summary>
+    public static readonly Color ModalHeader = new("242426");
 
     /// <summary>A full-width band across the grid: the gift and locked dividers, and the sort bar.</summary>
-    public static readonly Color ModalBand = new("3a3a3a");
+    public static readonly Color ModalBand = new("333333");
 
     /// <summary>The trough a group of controls sits in, a step above the board and below a plate.</summary>
-    public static readonly Color ModalTrough = new("2a2a2a");
+    public static readonly Color ModalTrough = new("313030");
     public static readonly Color ModalStripe = new(1f, 1f, 1f, 0.04f);
 
-    public static readonly Color StatLabel = new("c9b184");
-    public static readonly Color StatValue = new("ffffff");
+    /// <summary>The caption over an attribute, which is quieter than the number under it.</summary>
+    public static readonly Color StatLabel = new("999999");
 
-    /// <summary>An attribute that has reached its class ceiling, which is the point of the grid.</summary>
-    public static readonly Color StatValueMax = new("ffd54a");
+    /// <summary>An attribute's number: yellow, on its own darker plate.</summary>
+    public static readonly Color StatValue = new("fcdf00");
 
-    public static readonly Color StatBonus = new("5cd05c");
+    /// <summary>
+    /// An attribute carried past its class ceiling. Blue rather than yellow, which is the one
+    /// difference the grid draws: in the reference every attribute at or under its maximum is
+    /// yellow, and only the one standing above it turns.
+    /// </summary>
+    public static readonly Color StatValueMax = new("0095ff");
+
+    /// <summary>The plate an attribute's number sits on, and the border around it.</summary>
+    public static readonly Color StatCell = new("333333");
+
+    public static readonly Color StatCellEdge = new("404040");
+
+    public static readonly Color StatBonus = new("0095ff");
     public static readonly Color StatPenalty = new("e05050");
-    public static readonly Color StatNumber = new("5cd05c");
+
+    /// <summary>A tally's value in the statistics list. Saturated green, brighter than the guild green.</summary>
+    public static readonly Color StatNumber = new("14eb00");
 
     /// <summary>
     /// Black, for the outline under a token and the edge around a sprite.
