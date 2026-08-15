@@ -73,6 +73,16 @@ public sealed partial class SlotView : Control
     /// </remarks>
     public string Hotkey { get; set; }
 
+    /// <summary>
+    /// Whether to caption an occupied slot with what fires it.
+    /// </summary>
+    /// <remarks>
+    /// The reference does not, anywhere, so this is off unless a call site has a reason. It is
+    /// kept because the binding is genuinely useful on a screen that is teaching the controls,
+    /// which is not the HUD.
+    /// </remarks>
+    public bool ShowBinding { get; set; }
+
     /// <summary>The mouse button this slot is bound to, drawn in its corner. Null for most slots.</summary>
     /// <summary>
     /// The input action this slot fires on, or null for a slot that is not bound to one.
@@ -480,14 +490,13 @@ public sealed partial class SlotView : Control
         if (string.IsNullOrEmpty(Hotkey))
             return;
 
+        // Only when the slot is empty. The reference puts the number in a slot that has nothing
+        // in it and nothing at all in a slot that has something -- an occupied cell carries its
+        // tier tag and no other mark. Captioning a full slot as well put a digit on eight items
+        // out of eight and, with the mouse glyph below, a mark on ten of the twelve cells that
+        // the game leaves bare.
         if (_sprite.IsValid)
-        {
-            int caption = TagSize;
-            float tag = Style.Measure(Hotkey, caption);
-            this.DrawToken(
-                new Vector2(Size.X - tag - 4f, caption + 2f), Hotkey, caption, Style.TextDim);
             return;
-        }
 
         // The scale's own figure, unless the slot is too short to hold it.
         int size = Mathf.Min(EmptyNumberSize, (int)(Size.Y * 0.78f));
@@ -498,10 +507,17 @@ public sealed partial class SlotView : Control
             new Vector2(Mathf.Round((Size.X - width) / 2f), baseline), Hotkey, size, EmptyNumberColour);
     }
 
-    /// <summary>What fires this slot, for the weapon and the ability.</summary>
+    /// <summary>
+    /// What fires this slot, for the weapon and the ability.
+    /// </summary>
+    /// <remarks>
+    /// Off by default. The reference's worn weapon and ability slots are bare -- no mouse glyph,
+    /// no key name -- so this is drawn only where a caller asks for it, and the HUD's worn strip
+    /// does not.
+    /// </remarks>
     private void DrawMouseBind()
     {
-        if (string.IsNullOrEmpty(BoundAction) || !_sprite.IsValid)
+        if (!ShowBinding || string.IsNullOrEmpty(BoundAction) || !_sprite.IsValid)
             return;
 
         float height = Mathf.Min(22f, Size.Y * 0.30f);
@@ -579,9 +595,12 @@ public sealed partial class SlotView : Control
     /// </summary>
     /// <remarks>
     /// The same view draws a 26-pixel trade offer and a 79-pixel carried square, and one figure
-    /// cannot serve both: at the trade size a 28-pixel tag is the whole slot, and at the carried
-    /// size a 14-pixel one is a smudge. A third of the slot's height is what the reference draws --
-    /// its <c>ST</c> stands seventeen pixels in a seventy-five-pixel cell.
+    /// cannot serve both: at the trade size a large tag is the whole slot, and at the carried size
+    /// a small one is a smudge, so it is taken as a share of the slot rather than fixed.
+    ///
+    /// The share and the ceiling both come off the reference, where a worn slot's <c>T5</c> stands
+    /// nineteen pixels in an eighty-two-pixel cell. The old ceiling of thirty was what actually
+    /// bound at HUD sizes and left every tag about a third short.
     /// </remarks>
-    private int TagSize => Mathf.Clamp(Mathf.RoundToInt(Size.Y * 0.36f), Style.FontTag, 30);
+    private int TagSize => Mathf.Clamp(Mathf.RoundToInt(Size.Y * 0.45f), Style.FontTag, 44);
 }

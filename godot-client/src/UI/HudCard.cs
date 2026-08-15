@@ -122,10 +122,17 @@ public sealed partial class ClockLine : Control
         MouseFilter = MouseFilterEnum.Ignore;
     }
 
-    /// <summary>Sets the level shown in the badge. The clock reads itself.</summary>
+    /// <summary>
+    /// Says whether there is a character to caption. The clock reads itself.
+    /// </summary>
+    /// <remarks>
+    /// The badge reads <c>XP</c>, not the level. It captions the rule under it -- that rule is the
+    /// experience track -- and the reference draws exactly those two letters there whatever level
+    /// the character is. The level itself is on the attributes sheet and on the character rows.
+    /// </remarks>
     public void Set(int level)
     {
-        string text = level > 0 ? level.ToString(CultureInfo.InvariantCulture) : string.Empty;
+        string text = level > 0 ? "XP" : string.Empty;
         if (_level == text)
             return;
 

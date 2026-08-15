@@ -1120,9 +1120,13 @@ public partial class HudView : Control
         _avatar.Set(ClassPortrait(player.ObjectType));
 
         _clock.Set(player.Level);
+        // Empty at the cap, not full. There is no experience left to earn at twenty, and the
+        // reference draws the rule as a bare grey track there -- filling it green says the
+        // opposite of what the bar is for, and puts the interface's loudest green on a line that
+        // has stopped meaning anything.
         _xpBar.Set(player.Level >= 0 && player.Level < MaxLevel && player.NextLevelExperience > 0
             ? player.Experience / (float)player.NextLevelExperience
-            : 1f);
+            : 0f);
 
         RefreshQuest(player);
     }
