@@ -8,80 +8,108 @@ namespace Hendra.UI;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The client had no way out of itself. Quitting meant closing the window, going back to the
-/// character list meant the same and signing in again, and the options page was reachable only by
-/// finding a gear on the player card — the <c>options</c> action exists in the input map with no
-/// key bound to it at all. Escape is where every game of this shape puts that, and it was doing
-/// nothing.
+/// Not a dialog in the middle of the screen. It takes over the right-hand interface column — the
+/// full-height strip the minimap and the vitals live in — putting the game's mark where the map was
+/// and a stack of full-width plates down the rest of it, while the world and every other cluster go
+/// dark behind a wash. That is what the reference does, and it is the better shape for it: the
+/// column is already the part of the screen nothing is fought in, so the menu costs no view of the
+/// world, and the mark at the top says which game you are looking at the way a pause screen should.
 /// </para>
 /// <para>
 /// It does not pause. Nothing can: the world is on a server that keeps ticking, and a menu that
 /// implied otherwise would get people killed while they read it. What it does instead is hold back
 /// input — see <c>GameScene</c>, which folds this into the same predicate the options page uses —
-/// so the character stands still rather than walking on under the panel.
+/// so the character stands still rather than walking on under the wash.
+/// </para>
+/// <para>
+/// Every button that opens a page closes this first. The pages are earlier children of the same
+/// canvas, so one left open underneath would be painted over by the wash rather than shown.
 /// </para>
 /// </remarks>
 public partial class SystemMenu : Control
 {
-    private const float PanelWidth = 340f;
-    private const float Padding = 16f;
-    private const float ButtonHeight = 36f;
-    private const float ButtonGap = 8f;
+    /// <summary>How far a plate is inset from each side of the column.</summary>
+    private const float ColumnInset = 29f;
 
-    private ModalPanel _shell;
-    private HudMenuButton _resume;
-    private HudMenuButton _options;
-    private HudMenuButton _nexus;
-    private HudMenuButton _characters;
-    private HudMenuButton _quit;
+    private const float PlateHeight = 53f;
+
+    /// <summary>
+    /// One plate, its shadow, and the gap after it.
+    /// </summary>
+    /// <remarks>
+    /// Not a round number because the stack is not built from one: the seven plates above the
+    /// commit button span 387 pixels in the reference over six gaps, which is this.
+    /// </remarks>
+    private const float ButtonPitch = 64.6f;
+
+    /// <summary>The gap under Quit, which sets Continue apart from the stack it ends.</summary>
+    private const float CommitGap = 59f;
+
+    /// <summary>Continue's distance from the foot of the screen.</summary>
+    private const float BottomMargin = 30f;
+
+    /// <summary>
+    /// How much of the screen behind survives the wash.
+    /// </summary>
+    /// <remarks>
+    /// Measured rather than chosen: white interface text under the reference's wash reads 81, and
+    /// its muted grey reads 57, which is the same factor twice.
+    /// </remarks>
+    private const float Survives = 0.318f;
+
+    /// <summary>The mark's width, as a fraction of the column's.</summary>
+    private const float LogoShare = 0.825f;
+
+    private GameLogo _logo;
+    private TitleFooter _footer;
+    private GameButton[] _stack;
+    private GameButton _quit;
+    private GameButton _continue;
 
     /// <summary>Raised for the options page, which this menu does not own.</summary>
     public event Action OptionsRequested;
 
-    /// <summary>Raised to go back to the Nexus, which is a reconnect rather than a teleport.</summary>
-    public event Action NexusRequested;
+    /// <summary>Raised to end the session and go back to the server and character list.</summary>
+    public event Action ServersRequested;
 
-    /// <summary>Raised to end the session and return to the character list.</summary>
-    public event Action CharactersRequested;
+    /// <summary>Raised for the account sheet.</summary>
+    public event Action AccountRequested;
 
     /// <summary>Raised to close the game.</summary>
     public event Action QuitRequested;
 
-    public bool IsOpen => _shell is { Visible: true };
-
-    /// <summary>
-    /// Whether leaving for the Nexus would achieve anything.
-    /// </summary>
-    /// <remarks>
-    /// Dimmed rather than hidden while the player is already there. A button that disappears makes
-    /// the menu change shape between openings and leaves you hunting for the row that moved; a
-    /// dimmed one says "this is here, and there is nothing for it to do right now".
-    /// </remarks>
-    public bool CanReturnToNexus
-    {
-        set
-        {
-            if (_nexus != null)
-                _nexus.Disabled = !value;
-        }
-    }
+    public bool IsOpen => Visible;
 
     public override void _Ready()
     {
-        MouseFilter = MouseFilterEnum.Ignore;
+        // The wash swallows the pointer, so a click on the darkened world neither walks the
+        // character nor reaches the interface it is drawn over.
+        MouseFilter = MouseFilterEnum.Stop;
+        Visible = false;
 
-        _shell = new ModalPanel("Menu");
-        AddChild(_shell);
+        _logo = new GameLogo(1f);
+        AddChild(_logo);
 
-        _resume = Add("Resume", Close);
-        _options = Add("Options", () => { Close(); OptionsRequested?.Invoke(); });
-        _nexus = Add("Return to Nexus", () => { Close(); NexusRequested?.Invoke(); });
-        _characters = Add("Character Select", () => { Close(); CharactersRequested?.Invoke(); });
+        _stack = new[]
+        {
+            Add("Options", () => { Close(); OptionsRequested?.Invoke(); }),
 
-        // The one that ends the session gets the warning colour, and sits apart from the rest at
-        // the bottom, because it is the one press here that cannot be undone.
-        _quit = Add("Quit Game", () => QuitRequested?.Invoke());
-        _quit.Face = Style.HpFill.Darkened(0.35f);
+            // Nothing keeps a quest log, a server directory this client can switch between mid-
+            // session, or a credits page, so these say so rather than pretending.
+            Add("Journal", null),
+            Add("Servers", () => { Close(); ServersRequested?.Invoke(); }),
+            Add("Legends", null),
+            Add("Account", () => { Close(); AccountRequested?.Invoke(); }),
+            Add("Credits", null),
+        };
+
+        _quit = Add("Quit", () => QuitRequested?.Invoke(), Style.PlateDanger);
+        _continue = Add("Continue", Close, Style.PlateCommit);
+
+        // The two lines along the foot of the screen, in the same words the title screen sets them
+        // in. Its own node so it is painted after the wash rather than under it.
+        _footer = new TitleFooter(ClientBuild.VersionLine, ClientBuild.CopyrightLine);
+        AddChild(_footer);
 
         Resized += Reflow;
         if (GetParent() is HudLayer layer)
@@ -90,60 +118,85 @@ public partial class SystemMenu : Control
         Reflow();
     }
 
-    private HudMenuButton Add(string label, Action pressed)
+    private GameButton Add(string label, Action pressed, Style.ButtonPlate? plate = null)
     {
-        var button = new HudMenuButton(label);
-        button.Pressed += pressed;
-        _shell.Body.AddChild(button);
+        // Compact, which is the size the reference sets these labels at: a cap of sixteen pixels
+        // rather than the twenty a menu button on the title screen wears.
+        var button = new GameButton(label, compact: true, plate: plate);
+
+        if (pressed == null)
+            button.Disabled = true;
+        else
+            button.Pressed += pressed;
+
+        AddChild(button);
         return button;
     }
 
-    /// <summary>Centres the panel and stacks the buttons down it.</summary>
+    /// <summary>
+    /// Fills the interface's right-hand column.
+    /// </summary>
+    /// <remarks>
+    /// The column is read out of <see cref="HudLayout"/> rather than written here, so the menu
+    /// keeps sitting over the same strip the map and the vitals do however wide that strip becomes.
+    /// The stack is measured up from the foot of the screen for the same reason it is drawn that
+    /// way: Continue is the button the hand goes to, and it should not move when a row above it
+    /// does.
+    /// </remarks>
     private void Reflow()
     {
-        if (_shell == null)
+        if (_logo == null || Size.X <= 0f || Size.Y <= 0f)
             return;
 
-        var buttons = new[] { _resume, _options, _nexus, _characters, _quit };
+        var column = new HudLayout(Size).Minimap;
 
-        // The gap before Quit is doubled, which is the whole of the separation it needs.
-        float body = Padding * 2f + buttons.Length * ButtonHeight
-                     + (buttons.Length - 1) * ButtonGap + ButtonGap;
+        float width = Mathf.Round(column.Size.X - ColumnInset * 2f);
+        float left = Mathf.Round(column.Position.X + ColumnInset);
 
-        float height = body + ModalPanel.HeaderHeight + (ModalPanel.FrameWidth + 1f) * 2f;
+        _logo.LogoWidth = Mathf.Round(column.Size.X * LogoShare);
+        _logo.Position = new Vector2(
+            Mathf.Round(column.Position.X + (column.Size.X - _logo.Size.X) / 2f),
+            Mathf.Round(column.Position.Y + (column.Size.Y - _logo.Size.Y) / 2f));
 
-        _shell.Size = new Vector2(PanelWidth, height);
-        _shell.Position = new Vector2(
-            Mathf.Round((Size.X - PanelWidth) / 2f), Mathf.Round((Size.Y - height) / 2f));
+        _continue.Position = new Vector2(left, Mathf.Round(Size.Y - BottomMargin - PlateHeight));
+        _continue.Size = new Vector2(width, PlateHeight);
 
-        float width = _shell.Body.Size.X - Padding * 2f;
-        float y = Padding;
+        float quit = _continue.Position.Y - CommitGap - PlateHeight;
+        _quit.Position = new Vector2(left, Mathf.Round(quit));
+        _quit.Size = new Vector2(width, PlateHeight);
 
-        foreach (var button in buttons)
+        for (int i = 0; i < _stack.Length; i++)
         {
-            if (button == _quit)
-                y += ButtonGap;
+            _stack[i].Position = new Vector2(
+                left, Mathf.Round(quit - (_stack.Length - i) * ButtonPitch));
 
-            button.Position = new Vector2(Padding, y);
-            button.Size = new Vector2(width, ButtonHeight);
-            y += ButtonHeight + ButtonGap;
+            _stack[i].Size = new Vector2(width, PlateHeight);
         }
+
+        // The version lines are centred over the world rather than over the screen, so the column
+        // the menu is standing in does not push them off centre.
+        _footer.Position = Vector2.Zero;
+        _footer.Size = new Vector2(column.Position.X, Size.Y);
     }
+
+    /// <summary>The wash, which is the only thing this node draws itself.</summary>
+    public override void _Draw() =>
+        DrawRect(new Rect2(Vector2.Zero, Size), new Color(0f, 0f, 0f, 1f - Survives));
 
     public void Toggle()
     {
-        if (_shell == null)
+        if (_logo == null)
             return;
 
-        if (_shell.Visible)
+        if (Visible)
         {
-            _shell.Close();
+            Close();
             return;
         }
 
         Reflow();
-        _shell.Open();
+        Visible = true;
     }
 
-    public void Close() => _shell?.Close();
+    public void Close() => Visible = false;
 }

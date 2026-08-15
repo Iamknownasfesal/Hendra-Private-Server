@@ -226,9 +226,8 @@ public partial class GameScene : Node
         // Last, so it draws over everything else on the canvas: it is the way out of all of them.
         _menu = new SystemMenu();
         _menu.OptionsRequested += () => _options.Toggle();
-        _menu.NexusRequested += () =>
-            Reconnect(string.Empty, _port, GameIds.Nexus, 0, System.Array.Empty<byte>(), false);
-        _menu.CharactersRequested += () => Ended?.Invoke(string.Empty);
+        _menu.ServersRequested += () => Ended?.Invoke(string.Empty);
+        _menu.AccountRequested += ShowAccount;
         _menu.QuitRequested += () => GetTree().Quit();
         _hudLayer.AddChild(_menu);
 
@@ -423,7 +422,6 @@ public partial class GameScene : Node
         if (_menu == null)
             return;
 
-        _menu.CanReturnToNexus = _controller is { InNexus: false };
         _menu.Toggle();
     }
 
@@ -497,10 +495,7 @@ public partial class GameScene : Node
             }
 
             if (OpenMenu && !_menu.IsOpen)
-            {
-                _menu.CanReturnToNexus = !_controller.InNexus;
                 _menu.Toggle();
-            }
         };
         _controller.OptionsToggled += () => _options.Toggle();
         _controller.DebugToggled += () => _debug.Toggle();
@@ -685,10 +680,7 @@ public partial class GameScene : Node
             }
 
             if (OpenMenu && !_menu.IsOpen)
-            {
-                _menu.CanReturnToNexus = !_controller.InNexus;
                 _menu.Toggle();
-            }
         };
         _controller.OptionsToggled += () => _options.Toggle();
         _controller.DebugToggled += () => _debug.Toggle();
