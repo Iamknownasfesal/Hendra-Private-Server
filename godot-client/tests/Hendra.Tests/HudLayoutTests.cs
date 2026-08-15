@@ -81,11 +81,9 @@ public class HudLayoutTests
             ("the middle of the screen", space / 2f),
             ("under the player card", new Vector2(HudLayout.Margin + 40f, layout.PlayerCard.End.Y + 120f)),
             ("right of the player card", new Vector2(layout.PlayerCard.End.X + 60f, layout.PlayerCard.Position.Y)),
-            ("between the chat and the vitals", new Vector2(layout.Chat.End.X + 20f, space.Y - 40f)),
-            ("between the vitals and the equipment", new Vector2(layout.Swap.Position.X - 30f, space.Y - 40f)),
-            ("under the party list", new Vector2(layout.Party.Position.X + 40f, layout.Party.End.Y + 60f)),
-            ("left of the minimap", new Vector2(layout.Minimap.Position.X - 30f, 120f)),
-            ("above the hotbar", new Vector2(layout.Hotbar.Position.X + 40f, layout.Hotbar.Position.Y - 40f)),
+            ("right of the chat", new Vector2(layout.Chat.End.X + 20f, space.Y - 40f)),
+            ("under the quest tracker", new Vector2(layout.Quest.Position.X + 40f, layout.Quest.End.Y + 60f)),
+            ("left of the column", new Vector2(layout.ColumnLeft - 30f, 120f)),
         };
 
         foreach (var (where, at) in gaps)
@@ -176,19 +174,16 @@ public class HudLayoutTests
         var layout = new HudLayout(space);
         var panel = layout.Modal;
 
-        foreach (var (name, rect, _) in layout.Clusters())
-            Assert.False(panel.Intersects(rect), $"the panel covers {name} at {width}x{height}");
+        // The column is the one thing it must never cover: half of what the panel says is only
+        // meaningful read against the bars beside it.
+        Assert.False(panel.Intersects(layout.Column), $"the panel covers the column at {width}x{height}");
 
         Assert.True(panel.End.X <= space.X && panel.End.Y <= space.Y,
             $"the panel runs off the screen at {width}x{height}");
 
-        // The centre of the screen is where the fighting happens, and the panel must never be in it.
-        Assert.False(panel.HasPoint(new Vector2(space.X / 2f, space.Y / 2f)),
-            $"the panel covers the middle of the world at {width}x{height}");
-
-        // It has to come out of the card it was opened from, not float somewhere below it.
-        Assert.Equal(layout.PlayerCard.End.Y + HudLayout.ModalGutter, panel.Position.Y, 1);
-        Assert.Equal(layout.PlayerCard.Position.X, panel.Position.X, 1);
+        // It is docked against the column, which is what makes it read as a second column that
+        // slid out from under the first rather than as a dialog that appeared somewhere.
+        Assert.Equal(layout.ColumnLeft - HudLayout.ModalGutter, panel.End.X, 1);
     }
 
     /// <summary>
@@ -204,14 +199,14 @@ public class HudLayoutTests
     {
         var layout = new HudLayout(HudLayout.MinimumSpace);
 
-        Assert.True(layout.Vitals.Position.X - layout.Chat.End.X >= 30f,
-            "the chat and the vitals are too close at the minimum space");
+        Assert.True(layout.ColumnLeft - layout.Chat.End.X >= 30f,
+            "the chat and the column are too close at the minimum space");
 
-        Assert.True(layout.Swap.Position.X - layout.Vitals.End.X >= 30f,
-            "the vitals and the equipment row are too close at the minimum space");
+        Assert.True(layout.ColumnLeft - layout.Quest.End.X >= 30f,
+            "the quest tracker and the column are too close at the minimum space");
 
-        Assert.True(layout.HotbarTabs.Position.Y - layout.Party.End.Y >= 30f,
-            "the party list and the inventory tabs are too close at the minimum space");
+        Assert.True(layout.PartyRowsThatFit >= 1,
+            "the minimum space leaves no room for the player list");
     }
 
     /// <summary>
@@ -244,18 +239,20 @@ public class HudLayoutTests
     {
         var layout = new HudLayout(new Vector2(HudLayout.ReferenceWidth, HudLayout.ReferenceHeight));
 
-        Assert.Equal(new Rect2(20f, 20f, 300f, HudLayout.CardHeight), layout.PlayerCard);
-        Assert.Equal(new Rect2(1615f, 0f, 305f, 300f), layout.Minimap);
-        Assert.Equal(new Rect2(1615f, 322f, 270f, 84f), layout.Party);
-        Assert.Equal(new Rect2(20f, 863f, 530f, 195f), layout.Chat);
+        Assert.Equal(new Rect2(0f, 0f, 420f, 80f), layout.PlayerCard);
+        Assert.Equal(new Rect2(1560f, 0f, 360f, 367f), layout.Minimap);
+        Assert.Equal(new Rect2(1560f, 367f, 360f, 48f), layout.IconRow);
+        Assert.Equal(new Rect2(1569f, 415f, 342f, 34f), layout.FameBar);
+        Assert.Equal(new Rect2(1569f, 456f, 342f, 34f), layout.HealthBar);
+        Assert.Equal(new Rect2(1569f, 498f, 342f, 34f), layout.ManaBar);
+        Assert.Equal(new Rect2(1571f, 540f, 338f, 90f), layout.EquipmentRow);
+        Assert.Equal(new Rect2(1567f, 639f, 346f, 45f), layout.HotbarTabs);
+        Assert.Equal(new Rect2(1576f, 684f, 328f, 162f), layout.Hotbar);
+        Assert.Equal(new Rect2(1576f, 850f, 328f, 41f), layout.PotionRow);
 
-        // The vitals are centred on the viewport, and nothing else is.
-        Assert.Equal(HudLayout.ReferenceWidth / 2f, layout.Vitals.GetCenter().X, 1);
-
-        // Both bottom-right clusters end on the same margin, which is what lines their right edges
-        // up in the reference.
-        Assert.Equal(HudLayout.ReferenceWidth - HudLayout.Margin, layout.Hotbar.End.X, 1);
-        Assert.Equal(HudLayout.ReferenceWidth - HudLayout.Margin, layout.EquipmentRow.End.X, 1);
-        Assert.Equal(HudLayout.ReferenceHeight - HudLayout.Margin, layout.EquipmentRow.End.Y, 1);
+        // The column runs floor to ceiling and is flush to the right edge, which is most of what
+        // makes the interface read as this game rather than as a HUD with a map in the corner.
+        Assert.Equal(HudLayout.ReferenceWidth, layout.Column.End.X, 1);
+        Assert.Equal(HudLayout.ReferenceHeight, layout.Column.End.Y, 1);
     }
 }

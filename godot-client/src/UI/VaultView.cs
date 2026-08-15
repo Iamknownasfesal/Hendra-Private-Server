@@ -251,7 +251,7 @@ public sealed partial class VaultView : ModalPanel
     /// </remarks>
     private void Reposition()
     {
-        float right = _screen.X - HudLayout.Margin * 2f - HudLayout.MinimapWidth;
+        float right = _screen.X - HudLayout.Margin * 2f - HudLayout.ColumnWidth;
 
         Position = new Vector2(
             Mathf.Round(Mathf.Max(0f, right - PanelWidth)),

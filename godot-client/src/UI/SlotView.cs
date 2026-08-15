@@ -26,8 +26,29 @@ public sealed partial class SlotView : Control
     /// <summary>How long a slot's border flashes when its key is pressed.</summary>
     private const double FlashSeconds = 0.1;
 
-    /// <summary>How thick the border is. Two: one vanishes, and the border is what draws the grid.</summary>
-    public const float Border = 2f;
+    /// <summary>How thick a slot's border is where nothing says otherwise.</summary>
+    /// <remarks>
+    /// Four, which is what the reference draws: at two the grid disappears against the near-black
+    /// gutter it is bedded into, and the border is the whole of what makes eight squares read as a
+    /// grid rather than as one large plate with items scattered on it.
+    /// </remarks>
+    public const float Border = 4f;
+
+    /// <summary>
+    /// This slot's own border, or zero for a slot whose frame is drawn by whatever holds it.
+    /// </summary>
+    /// <remarks>
+    /// The worn strip is the case for zero: its four cells share their dividers, so the strip draws
+    /// one bevel between two slots rather than each slot drawing its own against its neighbour's.
+    /// A slot with no border of its own still lights one while it is hovered or flashing.
+    /// </remarks>
+    public float BorderWidth { get; set; } = Border;
+
+    /// <summary>The colour of the large number an empty slot carries.</summary>
+    public Color EmptyNumberColour { get; set; } = Style.SlotEmptyNumber;
+
+    /// <summary>How tall that number is set. The reference draws it at half the cell.</summary>
+    public int EmptyNumberSize { get; set; } = Style.FontEmptySlot;
 
     private Assets.Sprite _sprite;
     private Resources.ObjectDesc _desc;
@@ -378,7 +399,7 @@ public sealed partial class SlotView : Control
     /// Revision five: the item should look like it is in the slot rather than floating in the middle
     /// of one. Revision two left about six tenths and the reference is nearer nine.
     /// </remarks>
-    private const float ArtworkFill = 0.88f;
+    private const float ArtworkFill = 0.92f;
 
     /// <summary>
     /// Where the item's artwork goes: a square, centred, whatever shape the slot is.
@@ -429,11 +450,16 @@ public sealed partial class SlotView : Control
     {
         bool lit = _flashUntil > 0.0 || _glow > 0.5f;
 
-        // Two pixels, drawn inside the bounds rather than centred on them -- Godot straddles the
-        // rectangle it is given, so a two-pixel border on the outer edge would put one pixel of
-        // every slot into its neighbour's gutter and shift the grid by half a pixel. One is what
-        // revision two drew and it disappears at every scale.
-        DrawRect(full.Grow(-Border / 2f), lit ? Style.SlotBorderHi : edge, filled: false, width: Border);
+        // A slot whose frame belongs to whatever holds it still lights one, at the default width,
+        // so a key press is acknowledged on the worn strip as visibly as on the carried grid.
+        float width = BorderWidth > 0f ? BorderWidth : lit ? Border : 0f;
+        if (width <= 0f)
+            return;
+
+        // Drawn inside the bounds rather than centred on them -- Godot straddles the rectangle it
+        // is given, so a border on the outer edge would put half of every slot's frame into its
+        // neighbour's gutter and shift the whole grid by half a pixel.
+        DrawRect(full.Grow(-width / 2f), lit ? Style.SlotBorderHi : edge, filled: false, width: width);
     }
 
     /// <summary>
@@ -456,19 +482,20 @@ public sealed partial class SlotView : Control
 
         if (_sprite.IsValid)
         {
-            float tag = Style.Measure(Hotkey, Style.FontTag);
+            int caption = TagSize;
+            float tag = Style.Measure(Hotkey, caption);
             this.DrawToken(
-                new Vector2(Size.X - tag - 4f, Style.FontTag + 4f), Hotkey, Style.FontTag, Style.TextDim);
+                new Vector2(Size.X - tag - 4f, caption + 2f), Hotkey, caption, Style.TextDim);
             return;
         }
 
         // The scale's own figure, unless the slot is too short to hold it.
-        int size = Mathf.Min(Style.FontEmptySlot, (int)(Size.Y * 0.5f));
+        int size = Mathf.Min(EmptyNumberSize, (int)(Size.Y * 0.78f));
         float width = Style.Measure(Hotkey, size);
         float baseline = Style.BaselineIn(Size.Y, size);
 
-        this.DrawToken(
-            new Vector2(Mathf.Round((Size.X - width) / 2f), baseline), Hotkey, size, Style.SlotEmptyNumber);
+        this.DrawText(
+            new Vector2(Mathf.Round((Size.X - width) / 2f), baseline), Hotkey, size, EmptyNumberColour);
     }
 
     /// <summary>What fires this slot, for the weapon and the ability.</summary>
@@ -537,9 +564,24 @@ public sealed partial class SlotView : Control
         if (tag == null || !_sprite.IsValid)
             return;
 
-        float width = Style.Measure(tag, Style.FontTag);
+        int size = TagSize;
+        float width = Style.Measure(tag, size);
 
+        // Clear of the bottom edge by about a third of its own height, as the reference sets it:
+        // a tag flush to the border reads as something that has slipped out of the slot.
         this.DrawToken(
-            new Vector2(Size.X - width - 3f, Size.Y - 4f), tag, Style.FontTag, Style.TierColour(tag));
+            new Vector2(Size.X - width - 5f, Size.Y - Mathf.Round(size * 0.32f)),
+            tag, size, Style.TierColour(tag));
     }
+
+    /// <summary>
+    /// How big a slot's corner captions are set, which follows the slot.
+    /// </summary>
+    /// <remarks>
+    /// The same view draws a 26-pixel trade offer and a 79-pixel carried square, and one figure
+    /// cannot serve both: at the trade size a 28-pixel tag is the whole slot, and at the carried
+    /// size a 14-pixel one is a smudge. A third of the slot's height is what the reference draws --
+    /// its <c>ST</c> stands seventeen pixels in a seventy-five-pixel cell.
+    /// </remarks>
+    private int TagSize => Mathf.Clamp(Mathf.RoundToInt(Size.Y * 0.36f), Style.FontTag, 30);
 }

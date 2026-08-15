@@ -51,8 +51,13 @@ public class CharacterStatsTests
         Assert.Equal(2, stats.Dungeons.Count);
 
         Assert.Equal("Pirate Caves", CharacterStats.Label(13));
-        Assert.Equal("Low", CharacterStats.Tier(13));
-        Assert.Null(CharacterStats.Tier(0));
+
+        // The dungeons tab reads its rows out of this table rather than out of id order, and a
+        // tally the blob never carried answers zero rather than throwing.
+        Assert.Contains(13, CharacterStats.DungeonsByName);
+        Assert.DoesNotContain(0, CharacterStats.DungeonsByName);
+        Assert.Equal(3, stats.Value(13));
+        Assert.Equal(0, stats.Value(99));
     }
 
     [Fact]

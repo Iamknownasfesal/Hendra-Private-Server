@@ -317,7 +317,7 @@ public sealed partial class PotionRackView : ModalPanel
 
         Position = new Vector2(
             Mathf.Round(Mathf.Max(0f,
-                _screen.X - HudLayout.Margin * 2f - HudLayout.MinimapWidth - PanelWidth)),
+                _screen.X - HudLayout.Margin * 2f - HudLayout.ColumnWidth - PanelWidth)),
             Mathf.Round(Mathf.Min(TopEdge, Mathf.Max(0f, _screen.Y - Size.Y - BottomEdge))));
 
         _sheet.QueueRedraw();

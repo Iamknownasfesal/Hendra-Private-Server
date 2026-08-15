@@ -43,15 +43,20 @@ public partial class HudPanel : Control
 }
 
 /// <summary>
-/// A labelled bar. Fame, experience, health and magic are all this control.
+/// A labelled bar. Fame, health and magic are all this control.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Every bar in the interface reads the same way, which is the point: a one-pixel dark edge, a
-/// track, a flat fill with a one-pixel highlight along the top of the <i>fill</i> -- it moves with
-/// the fill rather than spanning the track -- the stat's name inset on the left and its value inset
-/// on the right. Revision one centred a single label; that made four bars that each had to be read
-/// before it could be told apart.
+/// Three bands rather than a fill and an edge: a lighter strip along the top five pixels, the flat
+/// fill under it, and a hard dark line along the bottom three. That is what gives the bar its
+/// thickness in the reference, and it is why there is no outer border -- the light band and the
+/// dark line are the border, and they belong to the <i>fill</i>, so an emptying bar loses them
+/// with the colour rather than keeping a frame around a hole.
+/// </para>
+/// <para>
+/// The stat's name sits inset on the left and its value is centred on the whole bar, not on the
+/// filled part. Centring is the thing that reads as this game rather than as a progress bar: the
+/// number stays where the eye already is however much health is left.
 /// </para>
 /// <para>
 /// The fill eases towards its value over about 150 milliseconds rather than snapping, and a drop
@@ -59,16 +64,11 @@ public partial class HudPanel : Control
 /// changed; a bar that slides tells you which way and by how much, which is the thing you actually
 /// need while something is hitting you.
 /// </para>
-/// <para>
-/// Both texts are drawn rather than made into labels, because they have to sit over the fill and
-/// keep their outline at every percentage -- and because two labels per bar across four bars is
-/// eight nodes to keep in step for text that never moves.
-/// </para>
 /// </remarks>
 public partial class HudBar : Control
 {
-    /// <summary>How far in from each end the two texts sit.</summary>
-    private const float Inset = 6f;
+    /// <summary>How far in from the left edge the stat's name sits.</summary>
+    private const float Inset = 9f;
 
     /// <summary>How fast the fill converges. Higher is quicker; twenty settles in about 150ms.</summary>
     private const float FillRate = 20f;
@@ -76,35 +76,43 @@ public partial class HudBar : Control
     /// <summary>The chip's rate, slow enough that a hit leaves a mark you can see after it lands.</summary>
     private const float ChipRate = 6f;
 
-    /// <summary>What a bar's label and value are set at, which is a step up from body text.</summary>
-    private const int BarFontSize = Style.FontName;
+    /// <summary>How much of a fill's own colour survives in the line under it.</summary>
+    private const float BottomLineDarkening = 0.855f;
 
     private readonly int _fontSize;
 
     private string _name = string.Empty;
     private string _value = string.Empty;
-    private string _bonus = string.Empty;
 
     private float _target;
     private float _shown;
     private float _chip;
 
-    public HudBar(Color fill, int fontSize = Style.FontBody)
+    /// <summary>
+    /// What a bar's label and value are set at.
+    /// </summary>
+    /// <remarks>
+    /// Thirty, which is the size at which this face's capitals stand sixteen pixels tall -- the
+    /// height the reference's own do. It is the largest type in the interface and deliberately so:
+    /// these three strings are the ones that have to be readable without looking away from what is
+    /// hitting you.
+    /// </remarks>
+    public const int BarFontSize = 30;
+
+    public HudBar(Color fill, Color high, int fontSize = BarFontSize)
     {
         _fill = fill;
+        _high = high;
         _fontSize = fontSize;
         MouseFilter = MouseFilterEnum.Ignore;
     }
 
     private Color _fill;
+    private Color _high;
 
     /// <summary>
-    /// The bar's colour, which the top row changes when it stops being the level bar.
+    /// The bar's colour. Repaints on assignment, since a full bar has nothing else to redraw for.
     /// </summary>
-    /// <remarks>
-    /// Repaints on assignment. It used to be a plain property, and a bar that was full when its
-    /// colour changed kept the old one until something else happened to it.
-    /// </remarks>
     public Color Fill
     {
         get => _fill;
@@ -118,17 +126,39 @@ public partial class HudBar : Control
         }
     }
 
-    /// <summary>Sets the fill, the name on the left and the value on the right.</summary>
-    public void Set(int current, int maximum, string name, string value, string bonus = "")
+    /// <summary>The lighter band along the top of the fill.</summary>
+    public Color High
+    {
+        get => _high;
+        set
+        {
+            if (_high == value)
+                return;
+
+            _high = value;
+            QueueRedraw();
+        }
+    }
+
+    /// <summary>
+    /// What the centred value is written in.
+    /// </summary>
+    /// <remarks>
+    /// Green on health and magic, white on fame, which is the reference's own arrangement: the two
+    /// numbers that change while you are being hit share a colour so a glance finds both at once.
+    /// </remarks>
+    public Color ValueColour { get; set; } = Style.Text;
+
+    /// <summary>Sets the fill, the name on the left and the value centred on the bar.</summary>
+    public void Set(int current, int maximum, string name, string value)
     {
         _target = maximum > 0 ? Mathf.Clamp(current / (float)maximum, 0f, 1f) : 0f;
 
-        if (_name == name && _value == value && _bonus == bonus)
+        if (_name == name && _value == value)
             return;
 
         _name = name;
         _value = value;
-        _bonus = bonus;
         QueueRedraw();
     }
 
@@ -155,46 +185,32 @@ public partial class HudBar : Control
         DrawRect(full, Style.BarTrack);
 
         if (_chip > _shown)
-            DrawRect(new Rect2(1f, 1f, (Size.X - 2f) * _chip, Size.Y - 2f),
-                Fill.Lightened(0.4f) with { A = 0.55f });
+            DrawRect(new Rect2(0f, 0f, Size.X * _chip, Size.Y), Fill.Lerp(Style.Text, 0.45f));
 
-        float width = (Size.X - 2f) * _shown;
+        float width = Mathf.Round(Size.X * _shown);
         if (width >= 1f)
         {
-            DrawRect(new Rect2(1f, 1f, width, Size.Y - 2f), Fill);
+            float top = HudLayout.BarTopBand;
+            float bottom = HudLayout.BarBottomLine;
 
-            // The fill's own highlight, one pixel along its top edge only.
-            DrawRect(new Rect2(1f, 1f, width, 1f), Style.BarHighlight);
+            DrawRect(new Rect2(0f, 0f, width, top), High);
+            DrawRect(new Rect2(0f, top, width, Size.Y - top - bottom), Fill);
+            DrawRect(new Rect2(0f, Size.Y - bottom, width, bottom), Fill.Darkened(BottomLineDarkening));
         }
 
-        DrawRect(full, Style.BarEdge, filled: false, width: 1f);
-
-        // Both texts on the same baseline, which is the vertical middle of the bar. Kept whole
-        // white at every fill: a value that dims as the bar empties is unreadable exactly when it
-        // matters.
-        //
-        // A step larger than the rest of the interface and outlined, because these are the strings
-        // it must be possible to read without looking away from what is hitting you -- and because
-        // they are all that identifies each bar now that the icon beside it is gone.
-        float baseline = Style.BaselineIn(Size.Y, BarFontSize);
+        // Both strings outlined, because the bar under them is a saturated colour and the value is
+        // written in another one -- green on green is exactly the case an outline exists for.
+        float baseline = Style.BaselineIn(Size.Y, _fontSize);
 
         if (_name.Length > 0)
-            this.DrawOverWorld(new Vector2(Inset, baseline), _name, BarFontSize, Style.Text);
+            this.DrawOverWorld(new Vector2(Inset, baseline), _name, _fontSize, Style.Text);
 
         if (_value.Length == 0)
             return;
 
-        // What equipment is adding, in green immediately after the value. Omitted at zero: six
-        // bars all saying "(+0)" is noise, and the point of the suffix is that it stands out.
-        float bonusWidth = _bonus.Length == 0 ? 0f : Style.Measure(_bonus, BarFontSize, bold: true) + 4f;
-        float right = Size.X - Inset - bonusWidth;
-
         this.DrawOverWorld(
-            new Vector2(right - Style.Measure(_value, BarFontSize, bold: true), baseline),
-            _value, BarFontSize, Style.Text);
-
-        if (_bonus.Length > 0)
-            this.DrawOverWorld(new Vector2(right + 4f, baseline), _bonus, BarFontSize, Style.StatBonus);
+            new Vector2(Mathf.Round((Size.X - Style.Measure(_value, _fontSize)) / 2f), baseline),
+            _value, _fontSize, ValueColour);
     }
 }
 
@@ -226,6 +242,24 @@ public partial class HudIconButton : Control
 
     public Color Tint { get; set; } = Style.Text;
 
+    /// <summary>The plate that appears under the glyph while the pointer is on it.</summary>
+    /// <remarks>
+    /// Settable because the button appears on two different greys: on the column it has to be a
+    /// step off <see cref="Style.Panel"/>, and the steel of an ordinary button there reads as a
+    /// coloured square somebody left behind.
+    /// </remarks>
+    public Color Hover { get; set; } = Style.ButtonHover;
+
+    /// <summary>
+    /// A button for something this build has no panel for.
+    /// </summary>
+    /// <remarks>
+    /// Greyed and inert rather than absent. The reference's own icon row has one of these in it --
+    /// the party sword, with no party to open -- and a row that closes up around a missing icon
+    /// moves every icon after it.
+    /// </remarks>
+    public bool Disabled { get; set; }
+
     private int _badge;
 
     /// <summary>
@@ -256,21 +290,24 @@ public partial class HudIconButton : Control
 
     public override void _GuiInput(InputEvent @event)
     {
-        if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
-        {
+        if (@event is not InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
+            return;
+
+        AcceptEvent();
+
+        if (!Disabled)
             Pressed?.Invoke();
-            AcceptEvent();
-        }
     }
 
     public override void _Draw()
     {
         // A lit plate under the glyph rather than a white wash over it: the chrome is opaque grey
         // now and a translucent overlay on it just looks like a smudge.
-        if (_hovered)
-            DrawRect(new Rect2(Vector2.Zero, Size), Style.ButtonHover);
+        if (_hovered && !Disabled)
+            DrawRect(new Rect2(Vector2.Zero, Size), Hover);
 
-        _icon?.Invoke(this, new Rect2(Vector2.Zero, Size).Grow(-_inset), Tint);
+        _icon?.Invoke(this, new Rect2(Vector2.Zero, Size).Grow(-_inset),
+            Disabled ? Tint.Darkened(0.5f) : Tint);
 
         if (_badge <= 0)
             return;
@@ -302,7 +339,7 @@ public partial class HudIconButton : Control
 /// </remarks>
 public partial class HudMenuButton : Control
 {
-    private readonly string _label;
+    private string _label;
 
     private bool _hovered;
     private bool _held;
@@ -318,6 +355,20 @@ public partial class HudMenuButton : Control
 
     public event Action Pressed;
 
+    /// <summary>What the plate says. Settable, because the interact plate changes verb.</summary>
+    public string Label
+    {
+        get => _label;
+        set
+        {
+            if (_label == value)
+                return;
+
+            _label = value ?? string.Empty;
+            QueueRedraw();
+        }
+    }
+
     /// <summary>
     /// The face colour, for the one button that carries the accent.
     /// </summary>
@@ -325,7 +376,14 @@ public partial class HudMenuButton : Control
     /// Special Offer, and nothing else. One saturated thing in the corner is a thing being pointed
     /// at; three are a decorated corner.
     /// </remarks>
-    public Color Face { get; set; } = Style.ButtonFace;
+    public Color Face
+    {
+        get => Plate.Face;
+        set => Plate = Plate with { Face = value };
+    }
+
+    /// <summary>The whole plate -- face, light frame and dark foot -- picked as one thing.</summary>
+    public Style.ButtonPlate Plate { get; set; } = Style.PlateSteel;
 
     /// <summary>
     /// Whether the button is refusing presses.
@@ -391,10 +449,22 @@ public partial class HudMenuButton : Control
         var full = new Rect2(Vector2.Zero, Size);
 
         var face = _disabled ? Face.Darkened(0.45f)
-            : _hovered && !_held ? Face.Lerp(Style.ButtonHover, 0.6f)
+            : _held ? Face.Darkened(0.25f)
+            : _hovered ? Face.Lightened(0.18f)
             : Face;
 
-        DrawRect(full, face);
+        // The plate sits on whatever is behind it rather than floating over it, so a hard shadow
+        // goes down first, inset to the same width the frame's bands run at.
+        DrawRect(
+            new Rect2(full.Position.X + Style.ButtonFrameSide, full.End.Y,
+                full.Size.X - Style.ButtonFrameSide * 2f, Style.ButtonShadowHeight),
+            Style.ButtonShadow);
+
+        DrawRect(
+            new Rect2(full.Position.X + Style.ButtonFrameSide, full.Position.Y + Style.ButtonFrameTop,
+                full.Size.X - Style.ButtonFrameSide * 2f, full.Size.Y - Style.ButtonFrameTop * 2f),
+            face);
+
         DrawBevel(full, inverted: _held);
 
         // The label shifts with the plate, so a held button reads as pressed rather than as
@@ -414,16 +484,32 @@ public partial class HudMenuButton : Control
         DrawRect(new Rect2(Size.X - 8f, 4f, 4f, 4f), Style.HpFill);
     }
 
-    /// <summary>The one-pixel two-tone edge that gives the plate its thickness.</summary>
+    /// <summary>
+    /// The frame that gives the plate its thickness: light along the top and both sides, dark
+    /// along the bottom, with all four corners notched out.
+    /// </summary>
+    /// <remarks>
+    /// The same shape <see cref="GameButton"/> draws, off the same measured figures, so the escape
+    /// menu's plates and the ones over the world are one button rather than two that resemble each
+    /// other. Holding swaps light for dark, which is what makes the plate read as pushed in.
+    /// </remarks>
     private void DrawBevel(in Rect2 full, bool inverted)
     {
-        var high = inverted ? Style.ButtonBevelLow : Style.ButtonBevelHigh;
-        var low = inverted ? Style.ButtonBevelHigh : Style.ButtonBevelLow;
+        var high = inverted ? Plate.Low : Plate.High;
+        var low = inverted ? Plate.High : Plate.Low;
 
-        DrawRect(new Rect2(full.Position, new Vector2(full.Size.X, 1f)), high);
-        DrawRect(new Rect2(full.Position, new Vector2(1f, full.Size.Y)), high);
-        DrawRect(new Rect2(full.Position.X, full.End.Y - 1f, full.Size.X, 1f), low);
-        DrawRect(new Rect2(full.End.X - 1f, full.Position.Y, 1f, full.Size.Y), low);
+        float side = Style.ButtonFrameSide;
+        float cap = Style.ButtonFrameTop;
+        float inner = full.Size.X - side * 2f;
+        float tall = full.Size.Y - cap * 2f;
+
+        if (inner <= 0f || tall <= 0f)
+            return;
+
+        DrawRect(new Rect2(full.Position.X + side, full.Position.Y, inner, cap), high);
+        DrawRect(new Rect2(full.Position.X, full.Position.Y + cap, side, tall), high);
+        DrawRect(new Rect2(full.End.X - side, full.Position.Y + cap, side, tall), high);
+        DrawRect(new Rect2(full.Position.X + side, full.End.Y - cap, inner, cap), low);
     }
 }
 
