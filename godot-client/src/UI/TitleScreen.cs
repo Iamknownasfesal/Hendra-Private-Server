@@ -4,29 +4,55 @@ using Godot;
 namespace Hendra.UI;
 
 /// <summary>
-/// The first screen: the title art, and three ways off it.
+/// The first screen: the game's mark, and three ways off it.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The original's <c>TitleView</c> stacks four layers — a live map behind, a dark wash over it, the
-/// title graphic, and a bar of three buttons: Play in the centre, Servers to the left, Account to
-/// the right — with version text on a band near the bottom of the eight-hundred-by-six-hundred
-/// stage.
+/// The original's <c>TitleView</c> stacks a live map, a dark wash over it, the title graphic and a
+/// bar of buttons, with version text near the bottom of an eight-hundred-by-six-hundred stage. The
+/// live map is not reproduced — it exists to show the game moving before you have signed in, which
+/// needs a whole second world running against no server, and the art covers almost all of it
+/// anyway.
 /// </para>
 /// <para>
-/// The live map behind is not reproduced. It exists to show the game moving before you have signed
-/// in, which needs a whole second world running against no server; the title art is opaque over
-/// almost all of it anyway.
+/// What replaces it is the page every other full-screen menu in this game is printed on: the
+/// near-black wash, the drifting scatter of diamonds, the bracket ornament in the corners. A title
+/// screen that shares its page with the options and character screens belongs to the same game,
+/// which the stock nebula it used to show did not.
 /// </para>
 /// <para>
-/// The art is 800 by 600 and is scaled to fit whatever the window is, keeping its proportions. It
-/// was authored for that size and stretching it to a wide monitor is worse than letterboxing it.
+/// Everything is laid out against 1920 by 1080 and scaled by the window's height, because that is
+/// the resolution the references were measured at.
 /// </para>
 /// </remarks>
 public partial class TitleScreen : Control
 {
-    private TextureRect _art;
-    private Control _buttons;
+    /// <summary>The resolution the layout below is measured in.</summary>
+    private const float ReferenceHeight = 1080f;
+
+    private const float LogoWidth = 880f;
+    private const float LogoTop = 150f;
+
+    private const float ButtonWidth = 280f;
+    private const float ButtonHeight = 52f;
+    private const float ButtonGap = 22f;
+    private const float ButtonTop = 800f;
+
+    /// <summary>
+    /// What this client calls itself.
+    /// </summary>
+    /// <remarks>
+    /// Five parts, the way the original prints its own. The protocol carries a separate build string
+    /// that the server checks — this one is for the player, and the two are allowed to differ.
+    /// </remarks>
+    private const string Version = "0.1.0.0.0";
+
+    private MenuBackdrop _page;
+    private GameLogo _logo;
+    private TitleFooter _footer;
+    private TitlePlate _account;
+    private TitlePlate _play;
+    private TitlePlate _quit;
 
     /// <summary>Raised when the player wants to sign in and pick a character.</summary>
     public event Action PlayPressed;
@@ -41,86 +67,203 @@ public partial class TitleScreen : Control
     {
         this.FillScreen();
 
-        var backdrop = new ColorRect { Color = Style.Void };
-        backdrop.SetAnchorsPreset(LayoutPreset.FullRect);
-        backdrop.MouseFilter = MouseFilterEnum.Ignore;
-        AddChild(backdrop);
+        _page = new MenuBackdrop();
+        AddChild(_page);
 
-        _art = new TextureRect
-        {
-            // The manifest's key, not the class's name -- asking for "TitleScreen" quietly returned
-            // null and the screen has been a black rectangle with three buttons on it ever since.
-            Texture = App.ServiceLocator.Assets?.GetImage("OriginalTitleScreen"),
-            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-            // Covers the window rather than letterboxing inside it: the art is a wash and a
-            // wordmark, so cropping its edges costs nothing and black bars down both sides of a
-            // wide monitor look like a fault.
-            StretchMode = TextureRect.StretchModeEnum.KeepAspectCovered,
-            MouseFilter = MouseFilterEnum.Ignore,
-        };
-        _art.SetAnchorsPreset(LayoutPreset.FullRect);
-        AddChild(_art);
+        _logo = new GameLogo(LogoWidth);
+        AddChild(_logo);
 
-        // The original runs a live world behind its title, which is a whole second simulation for a
-        // screen you look at for four seconds. This is the part of that worth keeping: the first
-        // thing a player sees should be moving.
-        AddChild(new Starfield());
-        AddChild(new Vignette());
-
-        // The buttons sit on the art's own band rather than the window's, so they stay where the
-        // artwork expects them however the window is shaped.
-        _buttons = new Control { MouseFilter = MouseFilterEnum.Ignore };
-        AddChild(_buttons);
-
-        // A centre container rather than a centre anchor: the anchor puts the bar's corner on the
-        // middle of the screen, which reads as centred only until you look at it.
-        var centre = new CenterContainer();
-        centre.SetAnchorsPreset(LayoutPreset.FullRect);
-        centre.MouseFilter = MouseFilterEnum.Ignore;
-        _buttons.AddChild(centre);
-
-        var bar = new HBoxContainer();
-        bar.AddThemeConstantOverride("separation", 18);
-        centre.AddChild(bar);
-
-        // Account left, Play centre, Quit right. The original puts Servers here too, but its
-        // Servers screen picks between named worlds the app server hands back -- and this client
+        // Account left, Play in the middle, Quit right. The original puts Servers here too, but its
+        // Servers screen picks between named worlds the app server hands back — and this client
         // already shows that list once you have signed in, which is the only point at which it
         // knows what the worlds are.
-        bar.AddChild(MenuButton("Account", () => AccountPressed?.Invoke()));
-        bar.AddChild(MenuButton("Play", () => PlayPressed?.Invoke(), primary: true));
-        bar.AddChild(MenuButton("Quit", () => QuitPressed?.Invoke()));
+        _account = Add("Account", Style.ButtonFace, Style.ButtonBevelHigh, Style.ButtonBevelLow,
+            () => AccountPressed?.Invoke());
 
-        GetViewport().SizeChanged += PlaceButtons;
-        PlaceButtons();
+        _play = Add("Play", Style.ButtonCommit, Style.ButtonCommitHigh, Style.ButtonCommitLow,
+            () => PlayPressed?.Invoke());
+
+        _quit = Add("Quit", Style.ButtonDanger, Style.ButtonDangerHigh, Style.ButtonDanger.Darkened(0.25f),
+            () => QuitPressed?.Invoke());
+
+        // Its own node, added last. A Control paints itself before its children, so version text
+        // drawn by this screen would be painted over by the page it is standing on.
+        _footer = new TitleFooter(
+            $"v {Version}, build id: {BuildId}",
+            $"Copyright © {DateTime.Now.Year} Hendra. All Rights reserved.");
+        AddChild(_footer);
+
+        Resized += Reflow;
+        Reflow();
+    }
+
+    private TitlePlate Add(string label, Color face, Color high, Color low, Action pressed)
+    {
+        var button = new TitlePlate(label, face, high, low);
+        button.Pressed += pressed;
+        AddChild(button);
+        return button;
+    }
+
+    /// <summary>Places the page, the mark, the button row and the version lines.</summary>
+    private void Reflow()
+    {
+        var window = Size;
+        if (window.X <= 0f || window.Y <= 0f || _logo == null)
+            return;
+
+        float s = window.Y / ReferenceHeight;
+
+        _page.Size = window;
+        _footer.Size = window;
+
+        _logo.LogoWidth = Mathf.Round(LogoWidth * s);
+        _logo.Position = new Vector2(Mathf.Round((window.X - _logo.Size.X) / 2f), Mathf.Round(LogoTop * s));
+
+        var buttons = new[] { _account, _play, _quit };
+        float width = Mathf.Round(ButtonWidth * s);
+        float gap = Mathf.Round(ButtonGap * s);
+        float row = width * buttons.Length + gap * (buttons.Length - 1);
+        float x = Mathf.Round((window.X - row) / 2f);
+
+        foreach (var button in buttons)
+        {
+            button.Position = new Vector2(x, Mathf.Round(ButtonTop * s));
+            button.Size = new Vector2(width, Mathf.Round(ButtonHeight * s));
+            x += width + gap;
+        }
+
+        QueueRedraw();
     }
 
     /// <summary>
-    /// Puts the button bar along the bottom of the window.
+    /// A short identifier for exactly this build.
     /// </summary>
     /// <remarks>
-    /// The original pins its bar to a band on an 800 by 600 stage, which works because the stage is
-    /// the window. Here the art covers the window and overflows it, so a position measured from the
-    /// artwork lands off the bottom edge on anything wider than four by three. The window is the
-    /// thing the player can see, so the window is what it is measured from.
+    /// Taken from the assembly's module identity, which the compiler regenerates on every build. A
+    /// hand-written constant here would be a number that stops moving the first time somebody
+    /// forgets to bump it, which makes the line worse than useless when a player quotes it.
     /// </remarks>
-    private void PlaceButtons()
+    private static string BuildId =>
+        System.Reflection.Assembly.GetExecutingAssembly().ManifestModule.ModuleVersionId
+            .ToString("N")[..9];
+}
+
+/// <summary>
+/// The two lines along the foot of the title screen: what this build is, and whose it is.
+/// </summary>
+/// <remarks>
+/// The references carry the same pair on the Escape menu, centred over the world and set in the
+/// interface's own face at the largest size it uses. Here they are the only text on the page below
+/// the buttons, and they are set dim rather than white: on a near-black page white would make the
+/// small print the second-loudest thing on the screen.
+/// </remarks>
+public partial class TitleFooter : Control
+{
+    private const float ReferenceHeight = 1080f;
+    private const float VersionBaseline = 996f;
+    private const float CopyrightBaseline = 1042f;
+
+    private readonly string _version;
+    private readonly string _copyright;
+
+    public TitleFooter(string version, string copyright)
     {
-        const float BarHeight = 60f;
-        const float BottomMargin = 46f;
-
-        var window = GetViewportRect().Size;
-        if (window.X <= 0f || window.Y <= 0f)
-            return;
-
-        _buttons.Position = new Vector2(0f, window.Y - BarHeight - BottomMargin);
-        _buttons.Size = new Vector2(window.X, BarHeight);
+        _version = version;
+        _copyright = copyright;
+        MouseFilter = MouseFilterEnum.Ignore;
     }
 
-    private static Button MenuButton(string text, Action pressed, bool primary = false)
+    public override void _Notification(int what)
     {
-        var button = new GameButton(text, primary);
-        button.Pressed += pressed;
-        return button;
+        if (what == NotificationResized)
+            QueueRedraw();
+    }
+
+    public override void _Draw()
+    {
+        if (Size.X <= 0f || Size.Y <= 0f)
+            return;
+
+        float s = Size.Y / ReferenceHeight;
+        int size = Mathf.Max(Style.SmallestReadable, Mathf.RoundToInt(Style.FontTitle * s));
+
+        Line(_version, VersionBaseline * s, size);
+        Line(_copyright, CopyrightBaseline * s, size);
+    }
+
+    private void Line(string text, float baseline, int size) =>
+        this.DrawText(
+            new Vector2(Mathf.Round((Size.X - Style.Measure(text, size)) / 2f), Mathf.Round(baseline)),
+            text, size, Style.TextDim);
+}
+
+/// <summary>
+/// The game's button plate, at the size the menus use it.
+/// </summary>
+/// <remarks>
+/// Three bands, which is what the references show: a lighter cap four pixels tall and inset five at
+/// each end, the flat face, and a darker cap of the same shape along the bottom. Held swaps the two
+/// caps and drops the label a pixel, so the plate visibly goes in.
+/// </remarks>
+public partial class TitlePlate : Button
+{
+    /// <summary>How tall the caps are, and how far they are inset — the reference's own figures.</summary>
+    private const float CapHeight = 4f;
+
+    private const float CapInset = 5f;
+
+    /// <summary>The plate height those figures were measured at.</summary>
+    private const float ReferenceHeight = 52f;
+
+    private readonly string _label;
+    private readonly Color _face;
+    private readonly Color _high;
+    private readonly Color _low;
+
+    private bool _hovered;
+
+    public TitlePlate(string label, Color face, Color high, Color low)
+    {
+        _label = label;
+        _face = face;
+        _high = high;
+        _low = low;
+
+        Text = string.Empty;
+        FocusMode = FocusModeEnum.None;
+
+        foreach (string state in new[] { "normal", "hover", "pressed", "disabled", "focus" })
+            AddThemeStyleboxOverride(state, new StyleBoxEmpty());
+    }
+
+    public override void _Ready()
+    {
+        MouseEntered += () => { _hovered = true; QueueRedraw(); };
+        MouseExited += () => { _hovered = false; QueueRedraw(); };
+    }
+
+    public override void _Draw()
+    {
+        bool held = ButtonPressed || IsPressed();
+
+        var face = held ? _face.Darkened(0.2f) : _hovered ? _face.Lightened(0.12f) : _face;
+        var top = held ? _low : _high;
+        var bottom = held ? _high : _low;
+
+        float scale = Mathf.Max(1f, Size.Y / ReferenceHeight);
+        float cap = Mathf.Round(CapHeight * scale);
+        float inset = Mathf.Round(CapInset * scale);
+
+        DrawRect(new Rect2(0f, cap, Size.X, Size.Y - cap * 2f), face);
+        DrawRect(new Rect2(inset, 0f, Size.X - inset * 2f, cap), top);
+        DrawRect(new Rect2(inset, Size.Y - cap, Size.X - inset * 2f, cap), bottom);
+
+        int size = Mathf.Max(Style.SmallestReadable, Mathf.RoundToInt(Style.FontName * scale));
+        var at = new Vector2(
+            Mathf.Round((Size.X - Style.Measure(_label, size)) / 2f),
+            Style.BaselineIn(Size.Y, size)) + (held ? Vector2.One : Vector2.Zero);
+
+        this.DrawText(at, _label, size, Style.Text);
     }
 }
