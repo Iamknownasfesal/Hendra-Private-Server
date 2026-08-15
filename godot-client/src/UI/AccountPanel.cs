@@ -25,16 +25,23 @@ namespace Hendra.UI;
 /// </remarks>
 public partial class AccountPanel : Control
 {
-    private const float Inset = 12f;
-    private const float RowHeight = 28f;
-    private const float HeaderHeight = 34f;
+    private const float Inset = 22f;
+    private const float RowHeight = 41f;
+
+    /// <summary>The identity block above the rows: the account's name and its rating.</summary>
+    private const float IdentityHeight = 74f;
 
     /// <summary>How many classes the game has, which is the width of each star colour band.</summary>
     private const int Classes = 14;
 
+    /// <summary>Set to the size the sheets use, which is above the interface's shared scale.</summary>
+    private const int NameSize = 32;
+
+    private const int RowSize = 26;
+
     private readonly List<Row> _rows = new();
 
-    private ModalPanel _shell;
+    private SheetShell _shell;
     private Label _name;
     private Label _rank;
     private HudGlyph _star;
@@ -61,7 +68,7 @@ public partial class AccountPanel : Control
     {
         MouseFilter = MouseFilterEnum.Ignore;
 
-        _shell = new ModalPanel("Account");
+        _shell = new SheetShell("Account");
         _shell.Closed += () => Closed?.Invoke();
         AddChild(_shell);
 
@@ -69,13 +76,13 @@ public partial class AccountPanel : Control
         {
             ClipText = true,
             TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
-        }.Typeset(Style.FontName, Style.Text);
+        }.Typeset(NameSize, Style.Text);
         _shell.Body.AddChild(_name);
 
         _star = new HudGlyph(HudIcons.Star, Fame.Colour(0, Classes));
         _shell.Body.AddChild(_star);
 
-        _rank = new Label().Typeset(Style.FontSmall, Style.TextDim);
+        _rank = new Label().Typeset(Style.FontName, Style.TextDim);
         _shell.Body.AddChild(_rank);
 
         // Every row is the same shape, so the panel is a list rather than a layout.
@@ -92,7 +99,7 @@ public partial class AccountPanel : Control
         {
             HorizontalAlignment = HorizontalAlignment.Center,
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
-        }.Typeset(Style.FontSmall, Style.TextDim);
+        }.Typeset(Style.FontName, Style.TextDim);
         _shell.Body.AddChild(_note);
 
         Resized += Reflow;
@@ -121,33 +128,34 @@ public partial class AccountPanel : Control
             ? Size
             : new Vector2(HudLayout.ReferenceWidth, HudLayout.ReferenceHeight));
 
-        // The same slot the character sheet uses: the two are never open together.
+        // The same slot the character sheet uses: the two are never open together. Only as tall as
+        // it needs to be, though -- six rows of an account do not want the sheet's whole column.
         var rect = layout.Modal;
-        rect.Size = new Vector2(rect.Size.X, HeaderHeight + 44f + _rows.Count * RowHeight + 46f);
+        rect.Size = new Vector2(rect.Size.X,
+            SheetShell.BandHeight + 8f + IdentityHeight + _rows.Count * RowHeight + 52f);
 
         _shell.Position = rect.Position;
         _shell.Size = rect.Size;
 
         float width = _shell.Body.Size.X;
 
-        _name.Position = new Vector2(Inset, 10f);
-        _name.Size = new Vector2(width - Inset * 2f - 24f, 22f);
+        _name.Position = new Vector2(Inset, 8f);
+        _name.Size = new Vector2(width - Inset * 2f - 34f, 30f);
 
-        _star.Position = new Vector2(width - Inset - 18f, 12f);
-        _star.Size = new Vector2(18f, 18f);
+        _star.Position = new Vector2(width - Inset - 26f, 10f);
+        _star.Size = new Vector2(26f, 26f);
 
-        _rank.Position = new Vector2(Inset, 32f);
-        _rank.Size = new Vector2(width - Inset * 2f, 16f);
+        _rank.Position = new Vector2(Inset, 40f);
+        _rank.Size = new Vector2(width - Inset * 2f, 24f);
 
         for (int i = 0; i < _rows.Count; i++)
         {
-            _rows[i].Position = new Vector2(Inset, HeaderHeight + 20f + i * RowHeight);
+            _rows[i].Position = new Vector2(Inset, IdentityHeight + i * RowHeight);
             _rows[i].Size = new Vector2(width - Inset * 2f, RowHeight);
-            _rows[i].Striped = i % 2 == 1;
         }
 
-        _note.Position = new Vector2(Inset, HeaderHeight + 26f + _rows.Count * RowHeight);
-        _note.Size = new Vector2(width - Inset * 2f, 30f);
+        _note.Position = new Vector2(Inset, IdentityHeight + 8f + _rows.Count * RowHeight);
+        _note.Size = new Vector2(width - Inset * 2f, 34f);
     }
 
     public void Toggle()
@@ -207,8 +215,8 @@ public partial class AccountPanel : Control
             ? $"{account.Rank} stars · administrator"
             : $"{account.Rank} stars";
 
-        _rows[0].Set(account.Credits.ToString("N0", CultureInfo.InvariantCulture), Style.IconGold);
-        _rows[1].Set(account.Fame.ToString("N0", CultureInfo.InvariantCulture), Style.IconFame);
+        _rows[0].Set(account.Credits.ToString(CultureInfo.InvariantCulture), Style.IconGold);
+        _rows[1].Set(account.Fame.ToString(CultureInfo.InvariantCulture), Style.IconFame);
         _rows[2].Set(string.IsNullOrEmpty(account.GuildName) ? "—" : account.GuildName, Style.Text);
         _rows[3].Set(GuildRank(account), Style.Text);
         _rows[4].Set(list.Characters.Count.ToString(CultureInfo.InvariantCulture), Style.Text);
@@ -236,14 +244,12 @@ public partial class AccountPanel : Control
         private readonly Label _label;
         private readonly Label _value;
 
-        private bool _striped;
-
         public Row(string label)
         {
             MouseFilter = MouseFilterEnum.Ignore;
 
             _label = new Label { Text = label, VerticalAlignment = VerticalAlignment.Center }
-                .Typeset(Style.FontSmall, Style.Text);
+                .Typeset(RowSize, Style.Text);
             AddChild(_label);
 
             _value = new Label
@@ -252,14 +258,8 @@ public partial class AccountPanel : Control
                 VerticalAlignment = VerticalAlignment.Center,
                 ClipText = true,
                 TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
-            }.Typeset(Style.FontSmall, Style.StatNumber);
+            }.Typeset(RowSize, Style.StatNumber);
             AddChild(_value);
-        }
-
-        public bool Striped
-        {
-            get => _striped;
-            set { _striped = value; QueueRedraw(); }
         }
 
         public void Set(string value, Color colour)
@@ -275,17 +275,19 @@ public partial class AccountPanel : Control
             if (what != NotificationResized)
                 return;
 
-            _label.Position = new Vector2(6f, 0f);
-            _label.Size = new Vector2(Size.X / 2f, Size.Y);
+            _label.Position = new Vector2(15f, 0f);
+            _label.Size = new Vector2(Size.X / 2f, Plate);
 
-            _value.Position = new Vector2(Size.X / 2f - 6f, 0f);
-            _value.Size = new Vector2(Size.X / 2f, Size.Y);
+            _value.Position = new Vector2(Size.X / 2f - 15f, 0f);
+            _value.Size = new Vector2(Size.X / 2f, Plate);
         }
+
+        /// <summary>The plate, which is shorter than the row so the rows sit in their own gutters.</summary>
+        private const float Plate = 36f;
 
         public override void _Draw()
         {
-            if (_striped)
-                DrawRect(new Rect2(Vector2.Zero, Size), Style.ModalStripe);
+            DrawRect(new Rect2(0f, 0f, Size.X, Plate), Style.ModalTrough);
         }
     }
 }

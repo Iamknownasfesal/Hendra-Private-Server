@@ -108,47 +108,68 @@ public sealed class CharacterStats
     private static bool IsDungeon(int id) => id is >= 13 and <= 18 or >= 21 and <= 24;
 
     /// <summary>
-    /// What each id is called, and which tier a dungeon belongs to.
+    /// What each id is called.
     /// </summary>
     /// <remarks>
-    /// The names are the server's field names turned into words. A real localisation table keyed by
-    /// id is what the brief asks for and what should replace this the moment the language file
-    /// carries these keys -- <see cref="Label"/> is the single place to change.
+    /// The wording is the game's own rather than the server's field names: the sheet says "Hits"
+    /// where the server's struct says <c>ShotsThatDamage</c>, and "Encounter kills" where it says
+    /// <c>CubeKills</c>. The dungeon names come from the original client's own list, which is why
+    /// id 23 is the Forbidden Jungle and not, as this table used to claim, Deadwater Docks --
+    /// that dungeon has a different id and this server does not count it at all. A localisation
+    /// table keyed by id should replace this the moment the language file carries these keys;
+    /// <see cref="Label"/> is the single place to change.
     /// </remarks>
-    private static readonly (string Label, string Tier)[] Names =
+    private static readonly string[] Names =
     {
-        ("Shots Fired", null),
-        ("Shots That Damage", null),
-        ("Abilities Used", null),
-        ("Tiles Uncovered", null),
-        ("Teleports", null),
-        ("Potions Drunk", null),
-        ("Monster Kills", null),
-        ("Monster Assists", null),
-        ("God Kills", null),
-        ("God Assists", null),
-        ("Cube Kills", null),
-        ("Oryx Kills", null),
-        ("Quests Completed", null),
-        ("Pirate Caves", "Low"),
-        ("Undead Lairs", "Mid"),
-        ("Abyss of Demons", "Mid"),
-        ("Snake Pits", "Low"),
-        ("Spider Dens", "Low"),
-        ("Sprite Worlds", "High"),
-        ("Level Up Assists", null),
-        ("Minutes Active", null),
-        ("Tombs of the Ancients", "High"),
-        ("Ocean Trenches", "Mid"),
-        ("Deadwater Docks", "Low"),
-        ("Manors of the Immortals", "High"),
+        "Shots fired",
+        "Hits",
+        "Ability uses",
+        "Tiles discovered",
+        "Teleports",
+        "Potions drunk",
+        "Kills",
+        "Assists",
+        "Lesser Gods kills",
+        "Lesser Gods assists",
+        "Encounter kills",
+        "Oryx kills",
+        "Quests completed",
+        "Pirate Caves",
+        "Undead Lairs",
+        "Abysses of Demons",
+        "Snake Pits",
+        "Spider Den",
+        "Sprite World",
+        "Party level-ups",
+        "Minutes active",
+        "Tomb of the Ancients",
+        "Ocean Trench",
+        "Forbidden Jungle",
+        "Manor of the Immortals",
     };
 
     /// <summary>The words for a tally, or its bare id if this build does not know it.</summary>
     public static string Label(int id) =>
-        id >= 0 && id < Names.Length ? Names[id].Label : $"Statistic {id}";
+        id >= 0 && id < Names.Length ? Names[id] : $"Statistic {id}";
 
-    /// <summary>Which tier a dungeon sits in, for the group headers. Null for a statistic.</summary>
-    public static string Tier(int id) =>
-        id >= 0 && id < Names.Length ? Names[id].Tier : null;
+    /// <summary>
+    /// The dungeons the server counts, sorted by the name they are shown under.
+    /// </summary>
+    /// <remarks>
+    /// Alphabetical, as the original's own dungeon list is, rather than in the server's id order:
+    /// this is a table read by looking one entry up, not a sequence.
+    /// </remarks>
+    public static readonly int[] DungeonsByName = { 15, 23, 24, 22, 13, 16, 17, 18, 21, 14 };
+
+    /// <summary>What one tally reads, or zero for one the blob did not carry.</summary>
+    public int Value(int id)
+    {
+        foreach (var entry in _entries)
+        {
+            if (entry.Id == id)
+                return entry.Value;
+        }
+
+        return 0;
+    }
 }
