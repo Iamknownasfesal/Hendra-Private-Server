@@ -77,7 +77,11 @@ public partial class MapLoadingView : Control
             HorizontalAlignment = HorizontalAlignment.Center,
             MouseFilter = MouseFilterEnum.Ignore,
         };
-        _name.AddThemeFontSizeOverride("font_size", 34);
+        // Named explicitly rather than left to the theme. This view is built before the theme
+        // reaches it, so the world's name was coming up in the engine's fallback sans -- the one
+        // screen in the game not set in its own face, and the first one a player sees.
+        _name.AddThemeFontOverride("font", Style.Sans);
+        _name.AddThemeFontSizeOverride("font_size", Style.FontTitle);
         _name.AddThemeColorOverride("font_color", Style.Text);
         column.AddChild(_name);
 
