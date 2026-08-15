@@ -27,13 +27,13 @@ pub mod xml;
 pub use activate::{Appearance, Effect};
 pub use catalog::{Catalog, LoadProblem, LoadReport};
 pub use desc::{
-    ActivateDesc, ItemDesc, ObjectDesc, ObjectType, ProjectileDesc, SizeRange, SpawnCount,
-    StatBoost, TileDesc, TileType,
+    ActivateDesc, ItemDesc, ObjectDesc, ObjectType, ProjectileDesc, SizeRange, SkinDesc,
+    SpawnCount, StatBoost, TileDesc, TileType,
 };
 pub use effect::{AppliedEffect, ConditionEffect, ConditionSet};
-pub use equipment_set::{EquipmentSet, Piece};
+pub use equipment_set::{EquipmentSet, Piece, SetSkin};
 pub use map::{Composition, Map, MapError};
-pub use player::{PlayerDesc, STATS, Stat, StatGrowth, Unlock};
+pub use player::{ALL_STATS, PlayerDesc, STAT_COUNT, STATS, Stat, StatGrowth, Unlock};
 pub use region::{Region, TERRAIN_COUNT, Terrain};
 pub use world::{WorldDef, WorldError};
 pub use xml::{Node, XmlError};

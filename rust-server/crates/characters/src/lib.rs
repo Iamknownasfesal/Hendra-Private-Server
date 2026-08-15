@@ -14,25 +14,6 @@ use hendra_content::player::Locked;
 use hendra_content::{Catalog, ObjectType};
 use hendra_store::{Character, Store, StoreError};
 
-/// What every class carries on top of the gear its own slots decide.
-#[derive(Debug, Clone)]
-pub struct CommonItems {
-    /// Catalog ids, in the order they should be carried.
-    pub names: Vec<String>,
-}
-
-impl CommonItems {
-    pub fn new<I, S>(names: I) -> CommonItems
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        CommonItems {
-            names: names.into_iter().map(Into::into).collect(),
-        }
-    }
-}
-
 /// How many slots are worn rather than carried.
 ///
 /// Weapon, ability, armour and ring, the four the game has always had. Everything past them is the
@@ -96,11 +77,38 @@ pub async fn offers(
         .collect())
 }
 
+/// Whether this install hands every class to every account.
+///
+/// `NewAccounts/ClassesUnlocked` in the original's settings, which ships as `1`
+/// (`XmlDatas/data/init.xml:34`). `Database.Verify` (`common/Database.cs:140-145`) acts on it at
+/// every single login, writing a class-stats row for every class in the game; registration
+/// (`:406-409`) and guest creation (`:104-111`) do the same. An account on such an install
+/// therefore has an entry — and so an unlock — for every class before it has played anything,
+/// which is why that server's character list offers all fourteen as `unrestricted` and reports a
+/// `<ClassStats>` for each.
+///
+/// Read from the environment because the content here carries no settings file of its own. Unset
+/// means off: an install that says nothing keeps its unlock ladder rather than silently opening
+/// every class.
+fn classes_all_unlocked() -> bool {
+    static SETTING: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+    *SETTING.get_or_init(|| {
+        matches!(
+            std::env::var("HENDRA_CLASSES_UNLOCKED").as_deref(),
+            Ok("1") | Ok("true")
+        )
+    })
+}
+
 /// What an account has unlocked, loaded once and asked many times.
 pub struct Unlocks {
     /// Keyed by identity rather than runtime number, because this outlives a load.
     progress: HashMap<uuid::Uuid, (i16, i32)>,
     purchased: Vec<uuid::Uuid>,
+
+    /// Set when the install opens every class to everyone. See [`classes_all_unlocked`].
+    everything: bool,
 }
 
 impl Unlocks {
@@ -108,6 +116,7 @@ impl Unlocks {
         Ok(Unlocks {
             progress: store.class_progress(account_id).await?,
             purchased: store.purchased_classes(account_id).await?,
+            everything: classes_all_unlocked(),
         })
     }
 
@@ -126,12 +135,33 @@ impl Unlocks {
         total.clamp(0, u8::MAX as i32) as u8
     }
 
+    /// The best level and fame this account has ever reached with one class.
+    ///
+    /// Zeroes for a class never played, which is what a class-select screen shows before anybody
+    /// has taken it anywhere. Read from the same map the unlock decision uses, so the level a
+    /// screen displays and the level a lock is measured against cannot drift apart.
+    pub fn best(&self, catalog: &Catalog, object_type: ObjectType) -> (i32, i32) {
+        catalog
+            .object(object_type)
+            .and_then(|desc| self.progress.get(&desc.uuid))
+            .map(|(level, fame)| (*level as i32, *fame))
+            .unwrap_or((0, 0))
+    }
+
     /// Why this class cannot be played, if it cannot.
     ///
     /// Takes the catalog because progress is keyed by identity and the unlock names a runtime
     /// number: the two have to be brought together somewhere, and here is the only place that has
     /// both.
     pub fn locked(&self, catalog: &Catalog, class: &hendra_content::PlayerDesc) -> Option<Locked> {
+        // An install that unlocks everything has already written the class-stats row the ladder
+        // would be measured against, so the ladder never refuses anything. Answered here rather
+        // than at each caller, so the list, the picker and character creation cannot disagree about
+        // which classes are open.
+        if self.everything {
+            return None;
+        }
+
         let best_level = |needed: ObjectType| {
             catalog
                 .object(needed)
@@ -167,10 +197,8 @@ pub fn default_class(catalog: &Catalog) -> Option<ObjectType> {
 pub async fn create(
     store: &Store,
     catalog: &Catalog,
-    common: &CommonItems,
     account_id: i64,
     class: ObjectType,
-    name: &str,
 ) -> Result<Character, CreateError> {
     let desc = catalog.class(class).ok_or(CreateError::NoSuchClass)?;
     let desc_uuid = catalog
@@ -186,10 +214,10 @@ pub async fn create(
     // Health comes from the class, so a warrior is not a wizard with a different sprite.
     let max_hp = desc.starting_hp().max(1);
     let character = store
-        .create_character(account_id, desc_uuid, name, max_hp)
+        .create_character(account_id, desc_uuid, max_hp)
         .await?;
 
-    let mut slots = starting_slots(catalog, desc, common);
+    let mut slots = starting_slots(catalog, desc);
     slots.sort_by_key(|(slot, _)| *slot);
 
     if !slots.is_empty() {
@@ -201,49 +229,49 @@ pub async fn create(
 
 /// What a fresh character of this class holds.
 ///
-/// Nothing is written down: every class in the files lists its equipment as empty, so a character
-/// built from them alone would arrive with nothing to shoot. The lowest tier that fits each worn
-/// slot is what the game has always handed out, and deriving it means a new class needs no new
-/// configuration to be playable.
+/// The class says so itself, in the `Equipment` list it declares: item types in slot order, with a
+/// hole where the class starts with nothing. A class that declares an empty list starts empty, and
+/// no tier is derived to cover for it — handing out a weapon the class never listed is how a wizard
+/// ends up wearing a ring nobody granted. This is `Database.CreateCharacter`'s
+/// `Items = InitInventory(playerDesc.Equipment)` (`common/Database.cs:998`), whose `InitInventory`
+/// (`:937-944`) likewise only pads the tail with empties and invents nothing.
+///
+/// So the code here has no say in whether a new character is armed; the content does, and ours
+/// differs from the 2020 import deliberately. In that import every one of the fourteen classes
+/// declares `Equipment` as twenty-four `-1`, and the engine has no fallback, so a new character
+/// spawns with no weapon — and with no weapon it cannot kill, so it cannot get a drop, so it can
+/// never obtain one. That is not a quirk of the game to be preserved but a stripped content dump:
+/// the same import also ships an unclosed `<Region>` that stops the world server booting at all.
+/// Our `EmbeddedData_PlayersCXML.xml` therefore gives each class the tier-zero item for the first
+/// three slot types it declares — weapon, ability, armour — and leaves the ring empty, which is
+/// what the retail game does. It is a content decision of this fork, recorded here because it is
+/// the one place someone asks why a wizard starts holding a wand; it is not a claim about what the
+/// reference server does.
 pub fn starting_slots(
     catalog: &Catalog,
     class: &hendra_content::PlayerDesc,
-    common: &CommonItems,
 ) -> Vec<(i16, uuid::Uuid)> {
-    let mut slots: Vec<(i16, uuid::Uuid)> = Vec::new();
+    class
+        .equipment
+        .iter()
+        .enumerate()
+        .filter_map(|(slot, declared)| {
+            let object_type = (*declared)?;
 
-    for worn in 0..EQUIPPED_SLOTS as usize {
-        // A class listing fewer worn slots than four gets fewer, rather than a slot filled with
-        // whatever happened to match nothing.
-        let Some(slot_type) = class.slot_type(worn) else {
-            continue;
-        };
-        let Some(object_type) = catalog.lowest_tier_for_slot(slot_type) else {
-            continue;
-        };
-        let Some(item) = catalog.object(object_type) else {
-            continue;
-        };
-        slots.push((worn as i16, item.uuid));
-    }
+            // An item the catalog does not have is skipped rather than fatal, so a half-converted
+            // content directory still lets someone play.
+            let Some(item) = catalog.object(object_type) else {
+                tracing::warn!(
+                    class = ?class.object_type,
+                    ?object_type,
+                    "a class starts with an item the catalog does not have"
+                );
+                return None;
+            };
 
-    let mut next_carried = EQUIPPED_SLOTS;
-    for name in &common.names {
-        // Anything the catalog does not have is skipped rather than fatal: a half-converted content
-        // directory should still let someone play.
-        let Some(item) = catalog
-            .type_of(name)
-            .and_then(|found| catalog.object(found))
-        else {
-            tracing::warn!(item = %name, "common kit names an item the catalog does not have");
-            continue;
-        };
-
-        slots.push((next_carried, item.uuid));
-        next_carried += 1;
-    }
-
-    slots
+            Some((slot as i16, item.uuid))
+        })
+        .collect()
 }
 
 /// Whether a character may put an item in one of its own slots.
@@ -477,6 +505,7 @@ mod stars {
         Unlocks {
             progress,
             purchased: Vec::new(),
+            everything: false,
         }
         .stars()
     }

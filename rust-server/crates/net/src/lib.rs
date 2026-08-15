@@ -24,13 +24,14 @@
 pub mod codec;
 pub mod entity;
 pub mod message;
+pub mod slot;
 pub mod snapshot;
 pub mod world;
 
 pub use codec::{
     CodecError, POSITION_SCALE, Reader, Writer, dequantize, quantize, unzigzag, zigzag,
 };
-pub use entity::{EntityId, EntityState, FieldMask};
+pub use entity::{EntityId, EntityState, FieldMask, Merchandise, NO_ITEM, STAT_COUNT};
 pub use message::{
     AccountList, ClientMessage, GuildCommand, Input, MAX_SCENERY, MAX_TRADE_SLOTS, MarketCommand,
     PROTOCOL_VERSION, RejectReason, ServerMessage, TradeSlot, begin_snapshot,

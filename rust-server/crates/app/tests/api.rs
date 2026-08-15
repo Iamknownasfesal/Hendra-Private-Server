@@ -82,7 +82,6 @@ async fn app(schema: &str) -> Option<Arc<App>> {
         store,
         key(),
         Arc::new(content()),
-        hendra_characters::CommonItems::new(["Health Potion"]),
     )))
 }
 
@@ -128,6 +127,31 @@ fn get(path: &str, token: Option<&str>) -> Request<Body> {
         builder = builder.header("authorization", format!("Bearer {token}"));
     }
     builder.body(Body::empty()).unwrap()
+}
+
+/// A form post, which is how the legacy endpoints are asked for anything.
+fn post_form(path: &str, fields: &[(&str, String)]) -> Request<Body> {
+    let body = fields
+        .iter()
+        .map(|(name, value)| format!("{name}={value}"))
+        .collect::<Vec<_>>()
+        .join("&");
+
+    Request::builder()
+        .method("POST")
+        .uri(path)
+        .header("content-type", "application/x-www-form-urlencoded")
+        .body(Body::from(body))
+        .unwrap()
+}
+
+/// Sends one request and returns the status and the body as it was written, for the endpoints that
+/// answer in XML rather than JSON.
+async fn send_text(app: &Arc<App>, request: Request<Body>) -> (StatusCode, String) {
+    let response = router(app.clone()).oneshot(request).await.unwrap();
+    let status = response.status();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    (status, String::from_utf8_lossy(&bytes).into_owned())
 }
 
 fn credentials(name: &str, password: &str) -> serde_json::Value {
@@ -316,11 +340,11 @@ async fn characters_needs_a_token_and_lists_only_that_account_s() {
     let other = theirs["account_id"].as_i64().unwrap();
 
     app.store
-        .create_character(account, a_class(), "Wizard", 800)
+        .create_character(account, a_class(), 800)
         .await
         .unwrap();
     app.store
-        .create_character(other, a_class(), "Archer", 800)
+        .create_character(other, a_class(), 800)
         .await
         .unwrap();
 
@@ -331,7 +355,7 @@ async fn characters_needs_a_token_and_lists_only_that_account_s() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body.as_array().unwrap().len(), 1);
-    assert_eq!(body[0]["name"], "Wizard");
+    assert_eq!(body[0]["name"], "Fesal");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -542,7 +566,7 @@ async fn selecting_a_character_puts_it_in_the_token() {
 
     let character = app
         .store
-        .create_character(account, a_class(), "Wizard", 800)
+        .create_character(account, a_class(), 800)
         .await
         .unwrap();
 
@@ -576,12 +600,7 @@ async fn a_character_belonging_to_someone_else_cannot_be_selected() {
 
     let other = app
         .store
-        .create_character(
-            theirs["account_id"].as_i64().unwrap(),
-            a_class(),
-            "Theirs",
-            800,
-        )
+        .create_character(theirs["account_id"].as_i64().unwrap(), a_class(), 800)
         .await
         .unwrap();
 
@@ -627,7 +646,7 @@ async fn deleting_a_character_takes_its_items_with_it() {
 
     let character = app
         .store
-        .create_character(account, a_class(), "Wizard", 800)
+        .create_character(account, a_class(), 800)
         .await
         .unwrap();
     app.store
@@ -670,7 +689,7 @@ async fn a_character_belonging_to_someone_else_cannot_be_deleted() {
 
     let other = app
         .store
-        .create_character(other_account, a_class(), "Theirs", 800)
+        .create_character(other_account, a_class(), 800)
         .await
         .unwrap();
 
@@ -863,12 +882,15 @@ async fn a_created_character_gets_its_own_class_s_gear_and_health() {
             "POST",
             "/characters",
             &token,
-            serde_json::json!({ "class": WIZARD, "name": "Merlin" }),
+            serde_json::json!({ "class": WIZARD }),
         ),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(made["name"], "Merlin");
+
+    // A class is all that is asked for, and the character comes back wearing the account's name:
+    // `Player.cs:423` reads the name off the account and `DbChar` never held one.
+    assert_eq!(made["name"], "Fesal");
 
     let character = app
         .store
@@ -892,10 +914,13 @@ async fn a_created_character_gets_its_own_class_s_gear_and_health() {
             })
     };
 
+    // The three the Wizard's own Equipment list names, and nothing after them: the ring slot and
+    // the whole pack start empty, because the class grants no ring and no potions.
     assert_eq!(named(0).as_deref(), Some("Energy Staff"));
     assert_eq!(named(1).as_deref(), Some("Fire Spray Spell"));
     assert_eq!(named(2).as_deref(), Some("Robe of the Neophyte"));
-    assert_eq!(named(4).as_deref(), Some("Health Potion"), "the common kit");
+    assert_eq!(named(3), None, "the class grants no ring");
+    assert_eq!(named(4), None, "the class grants nothing carried");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1087,6 +1112,25 @@ async fn init_tells_a_client_everything_it_needs_before_it_has_an_account() {
     assert!(body["servers"].is_array());
 }
 
+/// Asks for a name on behalf of a token.
+async fn claim(app: &Arc<App>, token: &str, name: &str) -> StatusCode {
+    send(
+        app,
+        authed("POST", "/name", token, serde_json::json!({ "name": name })),
+    )
+    .await
+    .0
+}
+
+/// What every account in a schema holds together, so a rename can be checked against it.
+async fn all_fame(app: &Arc<App>) -> i64 {
+    sqlx::query_scalar::<_, Option<i64>>("SELECT SUM(fame) FROM account")
+        .fetch_one(app.store.pool())
+        .await
+        .unwrap()
+        .unwrap_or(0)
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn an_account_can_be_renamed_but_not_to_one_that_is_taken() {
     let app = app_or_skip!("a_rename");
@@ -1094,40 +1138,94 @@ async fn an_account_can_be_renamed_but_not_to_one_that_is_taken() {
     let (_, mine) = send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
     send(&app, post("/register", credentials("Taken", PASSWORD))).await;
     let token = mine["token"].as_str().unwrap().to_string();
+    let account = mine["account_id"].as_i64().unwrap();
 
+    // `Fesal` is a name somebody chose, so choosing again is the five thousand fame
+    // `ChooseNameHandler.cs:63` asks for. Without it there is no rename at any name.
     assert_eq!(
-        send(
-            &app,
-            authed(
-                "POST",
-                "/name",
-                &token,
-                serde_json::json!({ "name": "Taken" })
-            )
-        )
-        .await
-        .0,
-        StatusCode::CONFLICT
+        claim(&app, &token, "Renamed").await,
+        StatusCode::PAYMENT_REQUIRED
     );
 
-    assert_eq!(
-        send(
-            &app,
-            authed(
-                "POST",
-                "/name",
-                &token,
-                serde_json::json!({ "name": "Renamed" })
-            )
-        )
+    app.store
+        .credit(account, hendra_store::Currency::Fame, 5000)
         .await
-        .0,
-        StatusCode::OK
+        .unwrap();
+
+    // A name already worn is refused, and refusing costs nothing: the original takes the fame
+    // first and then loops forever on the collision, which would leave five thousand fame spent
+    // for a name never given.
+    let before = all_fame(&app).await;
+    assert_eq!(claim(&app, &token, "Taken").await, StatusCode::CONFLICT);
+    assert_eq!(all_fame(&app).await, before);
+
+    // A character made under the old name, to be found under the new one.
+    let character = app
+        .store
+        .create_character(account, a_class(), 800)
+        .await
+        .unwrap();
+    assert_eq!(character.name, "Fesal");
+
+    assert_eq!(claim(&app, &token, "Renamed").await, StatusCode::OK);
+    assert_eq!(all_fame(&app).await, before - 5000);
+
+    // The character is renamed with the account, because it never had a name to be left holding:
+    // `Player.cs:423` reads `client.Account.Name` afresh every time a character is put in a world.
+    assert_eq!(
+        app.store.character(character.id).await.unwrap().name,
+        "Renamed"
     );
 
     // And the new name is the one that logs in.
     assert_eq!(
         send(&app, post("/login", credentials("Renamed", PASSWORD)))
+            .await
+            .0,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_account_that_never_chose_a_name_chooses_one_for_nothing() {
+    let app = app_or_skip!("a_firstname");
+
+    // `Darq` is one of the reserved names an unnamed account is given, which is what stands for
+    // `Account.NameChosen` being false (`common/Database.cs:82-84`).
+    let (_, mine) = send(&app, post("/register", credentials("Darq", PASSWORD))).await;
+    let token = mine["token"].as_str().unwrap().to_string();
+
+    let before = all_fame(&app).await;
+    assert_eq!(claim(&app, &token, "Fesal").await, StatusCode::OK);
+    assert_eq!(all_fame(&app).await, before);
+
+    // Having chosen once, the next one is paid for.
+    assert_eq!(
+        claim(&app, &token, "Second").await,
+        StatusCode::PAYMENT_REQUIRED
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_name_must_be_three_to_ten_letters_and_not_a_reserved_one() {
+    let app = app_or_skip!("a_namerules");
+
+    let (_, mine) = send(&app, post("/register", credentials("Drol", PASSWORD))).await;
+    let token = mine["token"].as_str().unwrap().to_string();
+
+    // `ChooseNameHandler.cs:38-39`: letters only, three to ten of them, and none of the reserved.
+    for refused in ["Ab", "Elevenchars", "Fesal1", "Two Words", "Eango", "eango"] {
+        assert_eq!(
+            claim(&app, &token, refused).await,
+            StatusCode::BAD_REQUEST,
+            "{refused:?} should not be a name"
+        );
+    }
+
+    // The first letter is raised before the rules are read, so a lowercase name is the same name.
+    assert_eq!(claim(&app, &token, "fesal").await, StatusCode::OK);
+    assert_eq!(
+        send(&app, post("/login", credentials("Fesal", PASSWORD)))
             .await
             .0,
         StatusCode::OK
@@ -1205,14 +1303,27 @@ async fn a_fame_list_is_a_players_own_characters_best_first() {
     let token = mine["token"].as_str().unwrap();
     let account = mine["account_id"].as_i64().unwrap();
 
-    for (name, fame) in [("Small", 10), ("Great", 900), ("Middling", 100)] {
+    for fame in [10, 900, 100] {
         let character = app
             .store
-            .create_character(account, a_class(), name, 800)
+            .create_character(account, a_class(), 800)
             .await
             .unwrap();
         app.store
-            .save_character(character.id, 800, 100, 20, 0, fame)
+            .save_character(
+                character.id,
+                &hendra_store::Saved {
+                    hp: 800,
+                    mp: 100,
+                    max_hp: 800,
+                    max_mp: 100,
+                    level: 20,
+                    experience: 0,
+                    fame,
+                    stats: [0; 8],
+                },
+                None,
+            )
             .await
             .unwrap();
     }
@@ -1220,8 +1331,119 @@ async fn a_fame_list_is_a_players_own_characters_best_first() {
     let (status, body) = send(&app, get("/fame", Some(token))).await;
 
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body[0]["name"], "Great");
-    assert_eq!(body[2]["name"], "Small");
+    assert_eq!(body[0]["fame"], 900);
+    assert_eq!(body[2]["fame"], 10);
+
+    // All three wear the account's name, because that is the only name a character has.
+    for character in body.as_array().unwrap() {
+        assert_eq!(character["name"], "Fesal");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_dead_characters_fame_is_served_split_into_what_it_earned_and_what_it_was_paid() {
+    // The original serves the base fame, the total, and one `Bonus` element per bonus with its name
+    // and its wording (`XmlModels.cs:699-734`); the client adds the bonuses onto the base to arrive
+    // at the total (`TotalFame.as:16-30`). Without the elements a death screen has a total and no
+    // way to say where it came from.
+    let app = app_or_skip!("a_charfame");
+
+    let (_, mine) = send(&app, post("/register", credentials("Fesal", PASSWORD))).await;
+    let account = mine["account_id"].as_i64().unwrap();
+
+    let character = app
+        .store
+        .create_character(account, a_class(), 800)
+        .await
+        .unwrap();
+
+    app.store
+        .save_character(
+            character.id,
+            &hendra_store::Saved {
+                hp: 800,
+                mp: 100,
+                max_hp: 800,
+                max_mp: 100,
+                level: 20,
+                experience: 0,
+                fame: 100,
+                stats: [0; 8],
+            },
+            None,
+        )
+        .await
+        .unwrap();
+
+    app.store
+        .record_death(
+            hendra_store::Death {
+                account_id: account,
+                character_id: character.id,
+                killed_by: "Lava".to_string(),
+                final_fame: 178,
+                first_born: true,
+                bonuses: vec![
+                    hendra_store::Awarded {
+                        name: "Ancestor".to_string(),
+                        fame: 30,
+                    },
+                    hendra_store::Awarded {
+                        name: "Thirsty".to_string(),
+                        fame: 32,
+                    },
+                    hendra_store::Awarded {
+                        name: "First Born".to_string(),
+                        fame: 16,
+                    },
+                ],
+            },
+            None,
+        )
+        .await
+        .unwrap();
+
+    let (status, body) = send_text(
+        &app,
+        post_form(
+            "/char/fame",
+            &[
+                ("accountId", account.to_string()),
+                ("charId", character.id.to_string()),
+            ],
+        ),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("<BaseFame>100</BaseFame>"), "{body}");
+    assert!(body.contains("<TotalFame>178</TotalFame>"), "{body}");
+
+    // Each bonus carries the wording that goes with its name, which is what the death screen prints
+    // beside the number.
+    assert!(
+        body.contains(
+            "<Bonus id=\"Ancestor\" desc=\"one of the first two characters you made\">30</Bonus>"
+        ),
+        "{body}"
+    );
+    assert!(
+        body.contains("<Bonus id=\"Thirsty\" desc=\"never drank a potion\">32</Bonus>"),
+        "{body}"
+    );
+    assert!(
+        body.contains("<Bonus id=\"First Born\" desc=\"your best character yet\">16</Bonus>"),
+        "{body}"
+    );
+
+    // Nothing appears between the two numbers: the base plus the bonuses served is the total served.
+    let awarded: i32 = body
+        .split("<Bonus ")
+        .skip(1)
+        .filter_map(|element| element.split_once('>')?.1.split_once('<'))
+        .filter_map(|(fame, _)| fame.parse::<i32>().ok())
+        .sum();
+    assert_eq!(100 + awarded, 178);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1301,7 +1523,6 @@ async fn the_shared_limit_holds_even_for_a_server_that_has_seen_nothing() {
             .unwrap(),
         key(),
         Arc::new(hendra_content::Catalog::default()),
-        hendra_characters::CommonItems::new(Vec::<String>::new()),
     ));
 
     let (status, _) = send(&second, post("/login", credentials("Fesal", PASSWORD))).await;
@@ -1601,4 +1822,782 @@ async fn the_content_summary_needs_no_token_and_says_what_the_server_is_running(
             .iter()
             .any(|id| id == "Wizard")
     );
+}
+
+/// A legacy account, made the way the game's clients make one.
+///
+/// `/account/register` takes an address and a password and answers `<Success />`; everything after
+/// it is asked for with that same pair as `guid` and `password`.
+async fn legacy_account(app: &Arc<App>, address: &str) -> Vec<(&'static str, String)> {
+    let (status, body) = send_text(
+        app,
+        post_form(
+            "/account/register",
+            &[
+                ("guid", String::new()),
+                ("password", String::new()),
+                ("newGUID", address.to_string()),
+                ("newPassword", PASSWORD.replace(' ', "%20")),
+            ],
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, "<Success />");
+
+    vec![
+        ("guid", address.to_string()),
+        ("password", PASSWORD.replace(' ', "%20")),
+    ]
+}
+
+/// Every endpoint the original's router serves is served here, and none answers a 404.
+///
+/// A missing route is the one failure a client cannot work around: it reads the body to decide what
+/// went wrong, and a 404 from axum has no body it recognises. `RequestHandler.cs:96-137` is the list
+/// this checks against.
+#[tokio::test(flavor = "multi_thread")]
+async fn every_route_the_original_serves_is_served() {
+    let app = app_or_skip!("a_routes");
+
+    let routed = [
+        "/char/list",
+        "/char/delete",
+        "/char/fame",
+        "/char/purchaseClassUnlock",
+        "/account/register",
+        "/account/verify",
+        "/account/forgotPassword",
+        "/account/rp",
+        "/account/sendVerifyEmail",
+        "/account/changePassword",
+        "/account/purchaseCharSlot",
+        "/account/setName",
+        "/account/verifyage",
+        "/account/purchaseSkin",
+        "/account/rank",
+        "/account/registerDiscord",
+        "/account/unregisterDiscord",
+        "/credits/getoffers",
+        "/credits/add",
+        "/fame/list",
+        "/picture/get",
+        "/app/getLanguageStrings",
+        "/app/init",
+        "/app/globalNews",
+        "/app/getServerXmls",
+        "/app/getTextures",
+        "/guild/listMembers",
+        "/guild/getBoard",
+        "/guild/setBoard",
+        "/privateMessage/send",
+        "/privateMessage/list",
+        "/privateMessage/delete",
+        "/dailyLogin/fetchCalendar",
+        "/weekQuest/getQuests",
+        "/inGameNews/getNews",
+        "/friends/getList",
+        "/friends/getRequests",
+    ];
+
+    assert_eq!(
+        routed.len(),
+        37,
+        "the original registers thirty-seven posts"
+    );
+
+    for path in routed {
+        let (status, _) = send_text(&app, post_form(path, &[])).await;
+        assert_ne!(status, StatusCode::NOT_FOUND, "{path} is not served");
+        assert_ne!(
+            status,
+            StatusCode::METHOD_NOT_ALLOWED,
+            "{path} is not served by POST"
+        );
+    }
+
+    // The one the original also answers on GET, for the link in a reset mail.
+    let (status, _) = send_text(&app, get("/account/rp?a=1&b=nope", None)).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+/// The endpoints that carry a fixed answer carry the original's, word for word.
+///
+/// These are the ones a client branches on without ever seeing an account: an offer list it parses,
+/// a refusal it shows. A word out of place is a client that does not recognise its own reply.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_fixed_answers_are_the_originals() {
+    let app = app_or_skip!("a_fixed");
+
+    for (path, expected) in [
+        ("/credits/add", "<Error>Nope</Error>"),
+        ("/account/sendVerifyEmail", "<Error>Nope.</Error>"),
+        ("/friends/getList", "<Friends></Friends>"),
+        ("/friends/getRequests", "<Requests></Requests>"),
+    ] {
+        let (status, body) = send_text(&app, post_form(path, &[])).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body, expected, "{path}");
+    }
+
+    let (_, offers) = send_text(&app, post_form("/credits/getoffers", &[])).await;
+    assert_eq!(
+        offers,
+        "<Offers><Tok>WUT</Tok><Exp>STH</Exp><Offer><Id>0</Id><Price>0</Price><RealmGold>1000\
+         </RealmGold><CheckoutJWT>1000</CheckoutJWT><Data>YO</Data><Currency>HKD</Currency>\
+         </Offer></Offers>"
+    );
+
+    // `FameList.FromDb` reads no rows: the document is one element carrying the timespan asked for,
+    // lowercased, and nothing else.
+    let (_, fame) = send_text(
+        &app,
+        post_form("/fame/list", &[("timespan", "WEEK".to_string())]),
+    )
+    .await;
+    assert_eq!(fame, "<FameList timespan=\"week\" />");
+
+    // And with no timespan it throws there, which the router turns into a 500.
+    let (status, body) = send_text(&app, post_form("/fame/list", &[])).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(body, "<Error>Internal server error</Error>");
+}
+
+/// The static documents are documents, whether or not a deployment shipped the files.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_static_documents_are_always_parseable() {
+    let app = app_or_skip!("a_static");
+
+    let (_, init) = send_text(&app, post_form("/app/init", &[])).await;
+    assert!(init.starts_with("<AppSettings>"), "{init}");
+    assert!(init.contains("<MaxCharSlot>2</MaxCharSlot>"), "{init}");
+
+    // `app/init.cs:20-30` treats these two as paths and empties them when they do not resolve, so
+    // neither ever reaches a client as a filename.
+    assert!(!init.contains(".xml</SkinsList>"), "{init}");
+
+    let (_, quests) = send_text(&app, post_form("/weekQuest/getQuests", &[])).await;
+    assert!(quests.contains("QuestsResponse"), "{quests}");
+
+    let (_, calendar) = send_text(&app, post_form("/dailyLogin/fetchCalendar", &[])).await;
+    assert!(calendar.contains("LoginRewards"), "{calendar}");
+
+    let (_, news) = send_text(&app, post_form("/app/globalNews", &[])).await;
+    assert!(news.starts_with('['), "{news}");
+
+    // The texture blob is read as a count and that many named images; an empty pack is a count of
+    // zero rather than an empty body, which is what tells the client it asked correctly.
+    let response = router(app.clone())
+        .oneshot(post_form("/app/getTextures", &[]))
+        .await
+        .unwrap();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    assert!(bytes.len() >= 4);
+    let count = i32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+    assert!(count >= 0, "a count of {count} is not a count");
+}
+
+/// The language table arrives as the triples both clients parse.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_language_table_is_a_list_of_triples() {
+    let app = app_or_skip!("a_language");
+
+    app.store
+        .set_string("en", "greeting", "hello")
+        .await
+        .unwrap();
+
+    let (status, body) = send_text(
+        &app,
+        post_form(
+            "/app/getLanguageStrings",
+            &[("languageType", "en".to_string())],
+        ),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    let parsed: Vec<Vec<String>> = serde_json::from_str(&body).expect("a list of triples");
+    assert!(parsed.contains(&vec![
+        "greeting".to_string(),
+        "hello".to_string(),
+        "en".to_string()
+    ]));
+}
+
+/// Signing in is refused in the specification's words, and the words differ per endpoint.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_credential_refusals_are_the_specifications_words() {
+    let app = app_or_skip!("a_refusals");
+    let account = legacy_account(&app, "namer@example.com").await;
+
+    let mut wrong = account.clone();
+    wrong[1] = ("password", "not it".to_string());
+
+    for path in [
+        "/account/verify",
+        "/char/list",
+        "/guild/getBoard",
+        "/account/changePassword",
+    ] {
+        let (status, body) = send_text(&app, post_form(path, &wrong)).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        assert_eq!(body, "<Error>Bad Login</Error>", "{path}");
+    }
+
+    // An account in no guild is told so in the wording `guild/getBoard.cs:15` uses, which is not
+    // the wording an English sentence would use.
+    let (_, body) = send_text(&app, post_form("/guild/getBoard", &account)).await;
+    assert_eq!(body, "<Error>Not in guild</Error>");
+
+    let (_, body) = send_text(&app, post_form("/guild/listMembers", &account)).await;
+    assert_eq!(body, "<Error>Not in guild</Error>");
+
+    // `setBoard` refuses for want of rank rather than for want of a guild, which is a different
+    // sentence again.
+    let (_, body) = send_text(&app, post_form("/guild/setBoard", &account)).await;
+    assert_eq!(body, "<Error>No permission</Error>");
+
+    // Nothing here manages ranks, and an ordinary account is told so.
+    let (_, body) = send_text(&app, post_form("/account/rank", &account)).await;
+    assert_eq!(body, "<Error>Account not allowed to manage ranks.</Error>");
+
+    let (_, body) = send_text(&app, post_form("/account/registerDiscord", &account)).await;
+    assert_eq!(body, "<Error>No permission</Error>");
+}
+
+/// A password can be changed and the old one stops working.
+#[tokio::test(flavor = "multi_thread")]
+async fn changing_a_password_takes_effect_on_the_next_request() {
+    let app = app_or_skip!("a_changepass");
+    let account = legacy_account(&app, "changer@example.com").await;
+
+    let mut asking = account.clone();
+    asking.push(("newPassword", "a whole new password".replace(' ', "%20")));
+
+    let (status, body) = send_text(&app, post_form("/account/changePassword", &asking)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, "<Success />");
+
+    let (_, body) = send_text(&app, post_form("/account/verify", &account)).await;
+    assert_eq!(body, "<Error>Bad Login</Error>", "the old one still works");
+
+    let fresh = vec![
+        ("guid", "changer@example.com".to_string()),
+        ("password", "a whole new password".replace(' ', "%20")),
+    ];
+    let (_, body) = send_text(&app, post_form("/account/verify", &fresh)).await;
+    assert!(body.starts_with("<Account>"), "{body}");
+}
+
+/// Naming is free once and costs credits after, as `account/setName.cs:38-40` prices it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_second_name_costs_a_thousand_credits() {
+    let app = app_or_skip!("a_rename");
+    let account = legacy_account(&app, "renamer@example.com").await;
+
+    let mut first = account.clone();
+    first.push(("name", "Alphabet".to_string()));
+    let (_, body) = send_text(&app, post_form("/account/setName", &first)).await;
+    assert_eq!(body, "<Success />", "the first name is free");
+
+    let mut second = account.clone();
+    second.push(("name", "Betelgeuse".to_string()));
+    let (_, body) = send_text(&app, post_form("/account/setName", &second)).await;
+    assert_eq!(body, "<Error>Not enough credits</Error>");
+
+    // With the price in hand it goes through, and the price is gone.
+    let id = app.store.account_by_name("Alphabet").await.unwrap().id;
+    sqlx::query("UPDATE account SET credits = 1500 WHERE id = $1")
+        .bind(id)
+        .execute(app.store.pool())
+        .await
+        .unwrap();
+
+    let (_, body) = send_text(&app, post_form("/account/setName", &second)).await;
+    assert_eq!(body, "<Success />");
+    assert_eq!(app.store.account(id).await.unwrap().credits, 500);
+    assert_eq!(app.store.account(id).await.unwrap().name, "Betelgeuse");
+}
+
+/// A character slot is refused for want of fame rather than sold, and nothing is taken either way.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_character_slot_is_never_charged_for_without_being_given() {
+    let app = app_or_skip!("a_charslot");
+    let account = legacy_account(&app, "slots@example.com").await;
+
+    let (_, body) = send_text(&app, post_form("/account/purchaseCharSlot", &account)).await;
+    assert_eq!(body, "<Error>Insufficient funds</Error>");
+
+    let id = app
+        .store
+        .account_by_email("slots@example.com")
+        .await
+        .unwrap();
+    app.store
+        .set_currency(id, hendra_store::Currency::Fame, 5000)
+        .await
+        .unwrap();
+
+    let (_, body) = send_text(&app, post_form("/account/purchaseCharSlot", &account)).await;
+    assert_eq!(body, "<Error>Internal Server Error</Error>");
+    assert_eq!(
+        app.store.account(id).await.unwrap().fame,
+        5000,
+        "a refused purchase costs nothing"
+    );
+}
+
+/// The mail list is JSON, and empty is the literal the original writes rather than an empty object.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_empty_mailbox_is_the_originals_literal() {
+    let app = app_or_skip!("a_pmlist");
+    let account = legacy_account(&app, "mail@example.com").await;
+
+    let (status, body) = send_text(&app, post_form("/privateMessage/list", &account)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, "{\"messages\":[]}");
+
+    // Credentials that do not check out get the same answer rather than a refusal: `list.cs`
+    // catches everything and writes this.
+    let mut wrong = account.clone();
+    wrong[1] = ("password", "not it".to_string());
+    let (_, body) = send_text(&app, post_form("/privateMessage/list", &wrong)).await;
+    assert_eq!(body, "{\"messages\":[]}");
+}
+
+/// A skin that is not a skin is not sold, whatever number is asked for.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_number_that_is_not_a_skin_buys_nothing() {
+    let app = app_or_skip!("a_skins");
+    content_or_skip!(app);
+    let account = legacy_account(&app, "dresser@example.com").await;
+
+    let mut asking = account.clone();
+    asking.push(("skinType", "0x0300".to_string()));
+
+    // 0x0300 is the wizard, not a skin. `GameData.Skins[skinType]` throws there.
+    let (status, _) = send_text(&app, post_form("/account/purchaseSkin", &asking)).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+
+    let id = app
+        .store
+        .account_by_email("dresser@example.com")
+        .await
+        .unwrap();
+    assert!(app.store.owned_skins(id).await.unwrap().is_empty());
+}
+
+/// Deleting a character says it did, and the character is gone.
+#[tokio::test(flavor = "multi_thread")]
+async fn deleting_a_character_removes_it() {
+    let app = app_or_skip!("a_chardelete");
+    let account = legacy_account(&app, "deleter@example.com").await;
+    let id = app
+        .store
+        .account_by_email("deleter@example.com")
+        .await
+        .unwrap();
+
+    let character = app
+        .store
+        .create_character(id, a_class(), 100)
+        .await
+        .unwrap();
+
+    let mut asking = account.clone();
+    asking.push(("charId", character.id.to_string()));
+
+    let (status, body) = send_text(&app, post_form("/char/delete", &asking)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, "<Success />");
+    assert!(app.store.characters(id).await.unwrap().is_empty());
+
+    // Asked again, it still says it did: the caller wanted it gone and it is.
+    let (_, body) = send_text(&app, post_form("/char/delete", &asking)).await;
+    assert_eq!(body, "<Success />");
+
+    // An id that is not a number throws there rather than being read as zero.
+    let mut nonsense = account.clone();
+    nonsense.push(("charId", "seventeen".to_string()));
+    let (status, _) = send_text(&app, post_form("/char/delete", &nonsense)).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+
+    // But a wrong password is refused as one first: the parse sits inside the branch the login
+    // check passes into, so it is never reached by somebody who cannot sign in.
+    let mut stranger = nonsense.clone();
+    stranger[1] = ("password", "not it".to_string());
+    let (status, body) = send_text(&app, post_form("/char/delete", &stranger)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, "<Error>Bad Login</Error>");
+}
+
+/// A picture that is not held is a 404, and an id with too many colons is refused.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_unheld_picture_is_a_not_found() {
+    let app = app_or_skip!("a_picture");
+
+    let (status, _) = send_text(
+        &app,
+        post_form("/picture/get", &[("id", "nothing".to_string())]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    let (status, body) = send_text(
+        &app,
+        post_form("/picture/get", &[("id", "a:b:c".to_string())]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, "<Error>Invalid input</Error>");
+}
+
+/// An address nobody registered and one that is not an address get the same answer.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_forgotten_password_never_says_whether_the_address_is_known() {
+    let app = app_or_skip!("a_forgot");
+    legacy_account(&app, "forgetful@example.com").await;
+
+    for asked in ["nobody@example.com", "notanaddress"] {
+        let (_, body) = send_text(
+            &app,
+            post_form("/account/forgotPassword", &[("guid", asked.to_string())]),
+        )
+        .await;
+        assert_eq!(body, "<Error>Email not recognized</Error>", "{asked}");
+    }
+
+    let (status, body) = send_text(
+        &app,
+        post_form(
+            "/account/forgotPassword",
+            &[("guid", "forgetful@example.com".to_string())],
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, "<Success />");
+}
+
+/// A reset link with a token nobody issued shows the error page rather than a new password.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_reset_link_with_a_bad_token_changes_nothing() {
+    let app = app_or_skip!("a_resetlink");
+    let account = legacy_account(&app, "resetter@example.com").await;
+
+    let (status, body) = send_text(&app, get("/account/rp?a=1&b=nonsense", None)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("Unable to Reset Password"), "{body}");
+
+    // And the password it had still works.
+    let (_, body) = send_text(&app, post_form("/account/verify", &account)).await;
+    assert!(body.starts_with("<Account>"), "{body}");
+}
+
+/// A class unlock is charged for once and granted once.
+///
+/// `purchaseClassUnlock.cs:15-34` is four answers in order: a number that names no class throws
+/// where the dictionary is indexed, a class whose `Unlock.Cost` is absent is "Bad input to
+/// character unlock", one the account cannot afford is "Not enough gold", and anything else is
+/// paid for and granted. A cost of zero is not an absent cost, so the wizard -- the one class the
+/// files price at nothing -- is bought for nothing rather than refused. The reference agrees on
+/// every one of those: it answers `<Success />` to `classType=0x030e` for an account holding no
+/// gold, and 500 to `classType=0x0400`.
+///
+/// One rule here is deliberately not the original's. The original never asks whether the class is
+/// already unlocked, so it charges again every time: on the reference, buying the archer twice with
+/// 5000 gold left 4801 and then 4602. The answer it gives is `<Success />` both times, which is all
+/// the client reads, and that is what is kept -- the second charge is not.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_class_unlock_is_paid_for_once() {
+    let app = app_or_skip!("a_unlock");
+    content_or_skip!(app);
+    let account = legacy_account(&app, "unlocker@example.com").await;
+    let id = app
+        .store
+        .account_by_email("unlocker@example.com")
+        .await
+        .unwrap();
+
+    // The archer, whose unlock the shipped content prices.
+    let mut asking = account.clone();
+    asking.push(("classType", "0x0307".to_string()));
+
+    let (_, body) = send_text(&app, post_form("/char/purchaseClassUnlock", &asking)).await;
+    assert_eq!(
+        body, "<Error>Not enough gold</Error>",
+        "with nothing to spend"
+    );
+    assert!(app.store.purchased_classes(id).await.unwrap().is_empty());
+
+    // The wizard, priced at nothing, bought by the same account that cannot afford the archer.
+    let mut free = account.clone();
+    free.push(("classType", "0x030e".to_string()));
+    let (_, body) = send_text(&app, post_form("/char/purchaseClassUnlock", &free)).await;
+    assert_eq!(body, "<Success />", "a class priced at nothing is free");
+    assert_eq!(app.store.account(id).await.unwrap().credits, 0);
+    assert_eq!(app.store.purchased_classes(id).await.unwrap().len(), 1);
+
+    sqlx::query("UPDATE account SET credits = 5000 WHERE id = $1")
+        .bind(id)
+        .execute(app.store.pool())
+        .await
+        .unwrap();
+
+    let (_, body) = send_text(&app, post_form("/char/purchaseClassUnlock", &asking)).await;
+    assert_eq!(body, "<Success />");
+    let paid = app.store.account(id).await.unwrap().credits;
+    assert_eq!(paid, 5000 - 199, "the archer's price, from the class files");
+    assert_eq!(app.store.purchased_classes(id).await.unwrap().len(), 2);
+
+    // Asked again it still says yes, and costs nothing the second time.
+    let (_, body) = send_text(&app, post_form("/char/purchaseClassUnlock", &asking)).await;
+    assert_eq!(body, "<Success />");
+    assert_eq!(app.store.account(id).await.unwrap().credits, paid);
+    assert_eq!(app.store.purchased_classes(id).await.unwrap().len(), 2);
+
+    // The number is cast to `ushort` before it is looked up, so a wider one names the class its low
+    // half names: `0x1030e` is the wizard. The reference answers `<Success />` to it.
+    let mut wide = account.clone();
+    wide.push(("classType", "0x1030e".to_string()));
+    let (_, body) = send_text(&app, post_form("/char/purchaseClassUnlock", &wide)).await;
+    assert_eq!(body, "<Success />", "the low half of the number is the class");
+    assert_eq!(app.store.purchased_classes(id).await.unwrap().len(), 2);
+    assert_eq!(app.store.account(id).await.unwrap().credits, paid);
+
+    // A number that is no class at all throws there rather than being refused in words.
+    let mut nonsense = account.clone();
+    nonsense.push(("classType", "0x0400".to_string()));
+    let (status, _) = send_text(&app, post_form("/char/purchaseClassUnlock", &nonsense)).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+
+    // Only a lowercase `0x` marks a hexadecimal number. `Int32.Parse("0X030E")` throws, which
+    // `Utils.FromString` swallows as zero, and zero is no class -- the reference throws here too.
+    let mut shouting = account.clone();
+    shouting.push(("classType", "0X030E".to_string()));
+    let (status, _) = send_text(&app, post_form("/char/purchaseClassUnlock", &shouting)).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+/// The character list is the document `char/list.cs` returns, element for element.
+///
+/// Pinned against what a built copy of the original actually answered rather than against a
+/// reading of `XmlModels.cs`, because the two disagree in places: the reference's own reply for a
+/// freshly registered account is
+///
+/// ```text
+/// <Chars nextCharId="0" maxNumChars="2">
+///   <Account>
+///     <AccountId>19</AccountId><Name>Oshyu</Name><Rank>0</Rank>
+///     <LastSeen>1786778040</LastSeen><IsAgeVerified>1</IsAgeVerified>
+///     <isFirstDeath></isFirstDeath><Credits>0</Credits>
+///     <NextCharSlotPrice>550</NextCharSlotPrice><CharSlotCurrency>1</CharSlotCurrency>
+///     <MenuMusic></MenuMusic><DeadMusic></DeadMusic><Vault />
+///     <Stats>...14 ClassStats...<BestCharFame>0</BestCharFame>
+///          <TotalFame>0</TotalFame><Fame>0</Fame></Stats>
+///     <Guild id="0"><Name /><Rank>0</Rank></Guild>
+///   </Account>
+///   <ClassAvailabilityList>...</ClassAvailabilityList><News /><Servers>...</Servers>
+///   <ItemCosts>...191...</ItemCosts><MaxClassLevelList>...14...</MaxClassLevelList>
+/// </Chars>
+/// ```
+///
+/// Note what is *not* there: no `<Fame>` directly under `<Account>`, which is where this server
+/// used to write it, and `<Rank>` before `<LastSeen>` before `<VerifiedEmail>`.
+///
+/// `<Vault>` reports one chest fewer than the account owns, which is the reference's own
+/// arithmetic: `Enumerable.Range(0, acc.VaultCount - 1)` (`XmlModels.cs:252`) passes a count where
+/// it reads as an end, while its world server stands up all `VaultCount` of them
+/// (`wServer/realm/worlds/logic/Vault.cs:96`). Kept, and confirmed live against the pristine app
+/// server: `vaultCount` 1 answers `<Vault />`, `vaultCount` 3 answers two `<Chest>` elements.
+///
+/// One value is deliberately not the reference's: `<ClassStats>` and `<ClassAvailability>` follow
+/// this server's class unlocks rather than the reference's `<ClassesUnlocked>1</ClassesUnlocked>`,
+/// which hands every class to every new account.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_character_list_is_the_specifications_document() {
+    let app = app_or_skip!("a_charlist");
+    let account = legacy_account(&app, "charlist@example.com").await;
+
+    let (status, body) = send_text(&app, post_form("/char/list", &account)).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let id = app.store.account_by_email("charlist@example.com").await.unwrap();
+    let name = app.store.account(id).await.unwrap().name;
+    let seen = app.store.last_seen(id).await.unwrap();
+
+    // A class the account may play and one it may not, so the two words are both exercised.
+    let unrestricted: Vec<&str> = ["Wizard"].into();
+
+    let mut expected = format!(
+        "<Chars nextCharId=\"0\" maxNumChars=\"2\">\
+         <Account><AccountId>{id}</AccountId><Name>{name}</Name>\
+         <Rank>0</Rank><LastSeen>{seen}</LastSeen>\
+         <IsAgeVerified>1</IsAgeVerified><isFirstDeath></isFirstDeath>\
+         <Credits>0</Credits><NextCharSlotPrice>550</NextCharSlotPrice>\
+         <CharSlotCurrency>1</CharSlotCurrency><MenuMusic></MenuMusic><DeadMusic></DeadMusic>"
+    );
+
+    // One fewer than the account owns, and self-closing when that leaves none -- the original's
+    // `Enumerable.Range(0, acc.VaultCount - 1)` (`XmlModels.cs:252`). A new account owns one, so a
+    // new account's vault is written `<Vault />`, which is what the pristine app server answers.
+    let chests = app.store.account(id).await.unwrap().vault_chests - 1;
+    if chests == 0 {
+        expected.push_str("<Vault />");
+    } else {
+        expected.push_str("<Vault>");
+        for _ in 0..chests {
+            expected.push_str("<Chest>-1, -1, -1, -1, -1, -1, -1, -1</Chest>");
+        }
+        expected.push_str("</Vault>");
+    }
+    expected.push_str("<Stats>");
+
+    for class in app.catalog.classes() {
+        let object_id = &app.catalog.object(class.object_type).unwrap().id;
+        if unrestricted.contains(&object_id.as_str()) {
+            expected.push_str(&format!(
+                "<ClassStats objectType=\"0x{:04x}\"><BestLevel>0</BestLevel>\
+                 <BestFame>0</BestFame></ClassStats>",
+                class.object_type.0
+            ));
+        }
+    }
+
+    expected.push_str(
+        "<BestCharFame>0</BestCharFame><TotalFame>0</TotalFame><Fame>0</Fame></Stats>\
+         <Guild id=\"0\"><Name /><Rank>0</Rank></Guild></Account><ClassAvailabilityList>",
+    );
+
+    for class in app.catalog.classes() {
+        let object_id = &app.catalog.object(class.object_type).unwrap().id;
+        let availability = if unrestricted.contains(&object_id.as_str()) {
+            "unrestricted"
+        } else {
+            "available"
+        };
+        expected.push_str(&format!(
+            "<ClassAvailability id=\"{object_id}\">{availability}</ClassAvailability>"
+        ));
+    }
+
+    expected.push_str("</ClassAvailabilityList><News /><Servers></Servers><ItemCosts>");
+
+    for skin in app.catalog.skins() {
+        expected.push_str(&format!(
+            "<ItemCost type=\"{}\" expires=\"0\" purchasable=\"1\">1000</ItemCost>",
+            skin.object_type.0
+        ));
+    }
+
+    expected.push_str("</ItemCosts><MaxClassLevelList>");
+    for class in app.catalog.classes() {
+        expected.push_str(&format!(
+            "<MaxClassLevel maxLevel=\"0\" classType=\"{}\" />",
+            class.object_type.0
+        ));
+    }
+    expected.push_str("</MaxClassLevelList></Chars>");
+
+    assert_eq!(body, expected);
+
+    // The blocks the reference carries are the sizes the reference carries them at: fourteen
+    // classes twice over, and the 191 skins in `EmbeddedData_SkinsCXML`.
+    assert_eq!(body.matches("<ClassAvailability ").count(), 14);
+    assert_eq!(body.matches("<MaxClassLevel ").count(), 14);
+    assert_eq!(body.matches("<ItemCost ").count(), 191);
+
+    // The account block no longer carries a bare `<Fame>`; the original keeps it inside `<Stats>`,
+    // which is where the AS3 client reads it from (`SavedCharactersList.as:115`).
+    let account_block = body.split("</Account>").next().unwrap();
+    assert!(!account_block.contains("<Fame>0</Fame><NextCharSlotPrice>"), "{account_block}");
+}
+
+/// Progress, deaths and a guild all reach the character list, and from the sources that record
+/// them rather than from a second tally kept for the screen.
+///
+/// The reference answers the same shapes for the same facts: seeding its redis with a levelled
+/// class, a guild and a gravestone moved `<BestLevel>`, `<MaxClassLevel maxLevel>`, `<Guild id>`
+/// and one `<Item>` in `<News>`, and left everything else where it was.
+#[tokio::test(flavor = "multi_thread")]
+async fn what_a_character_earned_reaches_the_character_list() {
+    let app = app_or_skip!("a_charlist_full");
+    let account = legacy_account(&app, "veteran@example.com").await;
+    let id = app.store.account_by_email("veteran@example.com").await.unwrap();
+
+    // A warrior taken to twenty, which is what the knight is locked behind.
+    app.store
+        .record_class_progress(id, warrior(&app), 20, 640)
+        .await
+        .unwrap();
+
+    let (_, body) = send_text(&app, post_form("/char/list", &account)).await;
+
+    // The picker and the level list agree, because both read the same progress.
+    assert!(body.contains("<ClassAvailability id=\"Knight\">unrestricted</ClassAvailability>"), "{body}");
+    assert!(body.contains("<MaxClassLevel maxLevel=\"20\" classType=\"797\" />"), "{body}");
+    assert!(
+        body.contains("<ClassStats objectType=\"0x031d\"><BestLevel>20</BestLevel><BestFame>640</BestFame></ClassStats>"),
+        "{body}"
+    );
+    assert!(body.contains("<BestCharFame>640</BestCharFame>"), "{body}");
+
+    // What the class endpoint offers is what the character list calls unrestricted: one answer,
+    // not two.
+    let offers = hendra_characters::offers(&app.store, &app.catalog, id).await.unwrap();
+    for offer in &offers {
+        let expected = if offer.locked.is_none() {
+            "unrestricted"
+        } else {
+            "available"
+        };
+        assert!(
+            body.contains(&format!(
+                "<ClassAvailability id=\"{}\">{expected}</ClassAvailability>",
+                offer.id
+            )),
+            "{} disagrees with /classes",
+            offer.id
+        );
+    }
+
+    // A gravestone becomes news in the original's exact words, and clears `isFirstDeath`.
+    assert!(body.contains("<isFirstDeath></isFirstDeath>"), "nothing has died yet");
+
+    let character = hendra_characters::create(
+        &app.store,
+        &app.catalog,
+        id,
+        hendra_content::ObjectType(0x030e),
+    )
+    .await
+    .unwrap();
+
+    app.store
+        .record_death(
+            hendra_store::Death {
+                account_id: id,
+                character_id: character.id,
+                killed_by: "a Sprite God".to_string(),
+                final_fame: 1200,
+                first_born: true,
+                bonuses: Vec::new(),
+            },
+            None,
+        )
+        .await
+        .unwrap();
+
+    let (_, body) = send_text(&app, post_form("/char/list", &account)).await;
+    assert!(!body.contains("<isFirstDeath>"), "the first death has happened");
+    assert!(
+        body.contains("<Icon>fame</Icon><Title>Your Wizard died at level 1</Title>\
+                       <TagLine>You earned 1200 glorious Fame</TagLine>"),
+        "{body}"
+    );
+    assert!(body.contains(&format!("<Link>fame:{}</Link>", character.id)), "{body}");
+
+    // The counter only goes up: a character that has died still counts against the next id.
+    assert!(body.starts_with("<Chars nextCharId=\"1\""), "{body}");
 }

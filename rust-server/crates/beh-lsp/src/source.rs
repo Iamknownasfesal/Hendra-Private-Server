@@ -93,7 +93,7 @@ impl Source {
     }
 
     /// The byte offset of a compiler span, which counts lines and characters from one.
-    pub fn from_span(&self, at: hendra_behavior::Span) -> usize {
+    pub fn offset_of_span(&self, at: hendra_behavior::Span) -> usize {
         let line = at.line.saturating_sub(1) as usize;
         let Some(start) = self.line_starts.get(line).copied() else {
             return self.text.len();
@@ -136,7 +136,9 @@ impl Source {
 
     /// The index of the previous token that is not a comment.
     pub fn before(&self, index: usize) -> Option<usize> {
-        (0..index).rev().find(|at| self.tokens[*at].kind != Kind::Comment)
+        (0..index)
+            .rev()
+            .find(|at| self.tokens[*at].kind != Kind::Comment)
     }
 
     /// The index of the next token that is not a comment.
@@ -364,7 +366,9 @@ pub fn outline(source: &Source) -> Vec<EnemyBlock> {
         }
         let start = tokens[at].span.start;
 
-        let Some(name_index) = source.after(at).filter(|next| tokens[*next].kind == Kind::Text)
+        let Some(name_index) = source
+            .after(at)
+            .filter(|next| tokens[*next].kind == Kind::Text)
         else {
             at += 1;
             continue;
@@ -465,9 +469,10 @@ fn at_block(source: &Source, mut at: usize) -> Block {
                             if let Some(target) = source.after(cursor)
                                 && tokens[target].kind == Kind::Word
                             {
-                                found
-                                    .targets
-                                    .push((tokens[target].value.clone(), tokens[target].span.clone()));
+                                found.targets.push((
+                                    tokens[target].value.clone(),
+                                    tokens[target].span.clone(),
+                                ));
                                 cursor = target;
                             }
                             break;
@@ -581,7 +586,11 @@ mod tests {
                 Kind::Comment,
             ]
         );
-        let text = source.tokens.iter().find(|token| token.kind == Kind::Text).unwrap();
+        let text = source
+            .tokens
+            .iter()
+            .find(|token| token.kind == Kind::Text)
+            .unwrap();
         assert_eq!(text.value, "Big Guy");
         assert_eq!(&source.text[text.span.clone()], "\"Big Guy\"");
     }
@@ -601,7 +610,14 @@ mod tests {
     #[test]
     fn an_unclosed_string_ends_at_the_line() {
         let source = Source::new("spawn(children: \"half\nwander()".into());
-        assert_eq!(source.tokens.iter().filter(|t| t.kind == Kind::Text).count(), 1);
+        assert_eq!(
+            source
+                .tokens
+                .iter()
+                .filter(|t| t.kind == Kind::Text)
+                .count(),
+            1
+        );
         assert!(source.tokens.iter().any(|t| t.value == "wander"));
     }
 
@@ -616,7 +632,7 @@ mod tests {
                  }
                  loot { item(item: "Potion") }
                }"#
-                .into(),
+            .into(),
         );
         let enemies = outline(&source);
         assert_eq!(enemies.len(), 1);
@@ -634,7 +650,10 @@ mod tests {
             "enemy \"Broken\" {\n  state a {\n}\n\nenemy \"Fine\" {\n  state b { }\n}\n".into(),
         );
         let enemies = outline(&source);
-        assert_eq!(enemies.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(), vec!["Broken"]);
+        assert_eq!(
+            enemies.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(),
+            vec!["Broken"]
+        );
         assert!(enemies[0].all_states().iter().any(|s| s.name == "b"));
     }
 

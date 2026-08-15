@@ -28,6 +28,15 @@ pub enum Value {
 
     /// A bare word: `true`, `false`, or a name from a fixed set such as an item type.
     Word(String),
+
+    /// A bracketed list, `["Pure Evil", "Hot Lava"]`.
+    ///
+    /// A handful of the original's constructors take C# arrays, and two of them take *two* arrays
+    /// side by side: `ChangeGroundOnDeath(GroundToChange, ChangeTo, dist)` names the ground it
+    /// replaces and the ground it replaces it with. Flattening both into loose trailing arguments,
+    /// which is how the variadic behaviours spell their name lists, loses the boundary between them
+    /// as soon as either holds more than one name — and four of the fourteen calls do.
+    List(Vec<Value>),
 }
 
 impl Value {
@@ -59,6 +68,18 @@ impl Value {
             Value::Duration(value) => format!("the duration {value}ms"),
             Value::Text(text) => format!("the text {text:?}"),
             Value::Word(word) => format!("`{word}`"),
+            Value::List(items) => format!("a list of {}", items.len()),
+        }
+    }
+
+    /// The text of every entry, for a value written as a list.
+    ///
+    /// A lone value counts as a list of one, so a constructor that takes an array reads the same
+    /// whether the call bracketed its single name or not.
+    pub fn as_text_list(&self) -> Vec<&str> {
+        match self {
+            Value::List(items) => items.iter().filter_map(Value::as_text).collect(),
+            other => other.as_text().into_iter().collect(),
         }
     }
 }
@@ -70,6 +91,16 @@ impl fmt::Display for Value {
             Value::Duration(value) => write!(f, "{value}ms"),
             Value::Text(text) => write!(f, "{text:?}"),
             Value::Word(word) => write!(f, "{word}"),
+            Value::List(items) => {
+                write!(f, "[")?;
+                for (at, item) in items.iter().enumerate() {
+                    if at > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{item}")?;
+                }
+                write!(f, "]")
+            }
         }
     }
 }

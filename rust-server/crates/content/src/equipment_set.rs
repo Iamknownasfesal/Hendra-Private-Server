@@ -29,6 +29,17 @@ pub struct Piece {
     pub item: Option<crate::ObjectType>,
 }
 
+/// The look a completed set puts on the body wearing it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SetSkin {
+    /// The skin object's own type, which replaces the whole animated sheet the body is drawn from
+    /// -- and with it the bullet the client draws for that skin's own weapon.
+    pub skin: u16,
+
+    /// How big to be, in percent of the sprite's natural size.
+    pub size: u16,
+}
+
 /// A set of equipment, and what wearing all of it gives.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EquipmentSet {
@@ -93,6 +104,28 @@ impl EquipmentSet {
                 .pieces
                 .iter()
                 .all(|piece| worn(piece.slot) == piece.item)
+    }
+
+    /// The look wearing all of it puts on, or `None` for a set that changes nothing about it.
+    ///
+    /// `ApplySetBonus` answers `ChangeSkin` with `_player.Skin = ae.SkinType` and
+    /// `_player.Size = ae.Size` (`BoostStatManager.cs:73-76`), neither of them conditional and
+    /// neither of them checked: none of the class, ownership or `NoSkinSelect` refusals
+    /// `ReskinHandler` makes apply, because a set dresses whoever completes it. A size the file
+    /// leaves out is therefore a size of zero, exactly as `ActivateEffect.Size` defaults
+    /// (`XmlDescriptors.cs:357`, `:440-441`).
+    ///
+    /// Two `ChangeSkin` entries on one set leave the last standing, which is what assigning to the
+    /// same field twice does.
+    pub fn changes_skin(&self) -> Option<SetSkin> {
+        self.gives
+            .iter()
+            .filter(|activate| activate.name == "ChangeSkin")
+            .map(|activate| SetSkin {
+                skin: activate.int("skinType").unwrap_or(0) as u16,
+                size: activate.int("size").unwrap_or(0) as u16,
+            })
+            .next_back()
     }
 }
 
@@ -189,6 +222,38 @@ mod tests {
             _ => None,
         };
         assert!(!two.worn_by(&swapped));
+    }
+
+    /// `ApplySetBonus` answers four effects and no others: `ChangeSkin`, `IncrementStat`,
+    /// `FixedStat` and `ConditionEffectSelf` (`BoostStatManager.cs:71-88`). Anything else on an
+    /// `ActivateOnEquipAll` falls through its switch and does nothing at all.
+    ///
+    /// What the seven shipped sets actually use is narrower still: thirty-two `IncrementStat` and
+    /// seven `ChangeSkin`, and nothing else. That is what makes the difference between the two
+    /// halves of that switch unobservable, and this is the guard on the claim -- a set added later
+    /// with a `FixedStat` or a `StatBoostSelf` would land in code that treats neither the way the
+    /// original does.
+    #[test]
+    fn no_shipped_set_uses_an_effect_beyond_increment_and_skin() {
+        let Ok(text) = std::fs::read_to_string(
+            "../../../godot-client/assets/xml/EmbeddedData_EquipmentSetsCXML.xml",
+        ) else {
+            eprintln!("skipping: the content files are not where the test looks for them");
+            return;
+        };
+
+        let document = Node::parse(&text).expect("the content parses");
+
+        for set in parse_all(&document) {
+            for activate in &set.gives {
+                assert!(
+                    matches!(activate.name.as_str(), "ChangeSkin" | "IncrementStat"),
+                    "{} gives {}, which nothing here handles the way the original does",
+                    set.id,
+                    activate.name
+                );
+            }
+        }
     }
 
     #[test]
@@ -315,6 +380,75 @@ mod applied {
                 .iter()
                 .any(|set| set.id == geb.id),
             "three of four completed it"
+        );
+    }
+
+    /// Every set in the content changes what its wearer looks like, and finishing one is how.
+    ///
+    /// This is the visible half of a set: `ChangeSkin` puts the set's own skin and size on the
+    /// player (`BoostStatManager.cs:73-76`), and since the client reads the bullet a set fires off
+    /// that skin, it changes the missiles too. A run where the shipped sets stopped answering with
+    /// a skin would be a run where completing one did nothing anybody could see.
+    #[test]
+    fn every_shipped_set_changes_what_its_wearer_looks_like() {
+        let Ok((catalog, _)) =
+            crate::Catalog::load_dir(std::path::Path::new("../../../godot-client/assets/xml"))
+        else {
+            eprintln!("skipping: the content files are not where the test looks for them");
+            return;
+        };
+
+        for set in catalog.equipment_sets() {
+            let look = set
+                .changes_skin()
+                .unwrap_or_else(|| panic!("{} changes nothing about its wearer", set.id));
+
+            assert_ne!(look.skin, 0, "{} names no skin", set.id);
+            assert_ne!(look.size, 0, "{} would leave its wearer sizeless", set.id);
+        }
+
+        // The Geb set by name, since it is the one the live check wears: a skin of `0x745A` at
+        // seventy percent, straight off the file the server loads.
+        let geb = catalog
+            .equipment_sets()
+            .iter()
+            .find(|set| set.id.contains("Priest of Geb"))
+            .expect("the Geb set")
+            .clone();
+
+        assert_eq!(
+            geb.changes_skin(),
+            Some(super::SetSkin {
+                skin: 0x745A,
+                size: 70
+            })
+        );
+
+        // And the answer follows the slots: three of four names no look at all, which is what makes
+        // taking one piece off give a player their own face back.
+        let worn = |slot: u16| {
+            geb.pieces
+                .iter()
+                .find(|piece| piece.slot == slot)
+                .and_then(|piece| piece.item)
+        };
+        let nearly = |slot: u16| if slot == 0 { None } else { worn(slot) };
+
+        assert_eq!(
+            catalog
+                .sets_worn(&worn)
+                .first()
+                .and_then(|set| set.changes_skin()),
+            geb.changes_skin(),
+            "wearing all of it put no look on"
+        );
+        assert_eq!(
+            catalog
+                .sets_worn(&nearly)
+                .first()
+                .and_then(|set| set.changes_skin()),
+            None,
+            "three of four still dressed the wearer"
         );
     }
 }

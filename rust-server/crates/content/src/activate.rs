@@ -46,6 +46,15 @@ pub enum Effect {
 
         /// Everyone in range rather than only the user.
         range: Option<f32>,
+
+        /// Only the largest of these counts, rather than each adding a halved share.
+        ///
+        /// The content's `noStack`, which `AEStatBoostSelf` and `AEStatBoostAura` both pass
+        /// straight to `ActivateBoost.Push` (`Player.UseItem.cs:1071`, `:1103`). A stacking boost
+        /// goes on a pile where each one below the top is worth half as much again
+        /// (`ActivateBoost.cs:22-23`); a non-stacking one joins a list of which only the head is
+        /// read (`:25`), so two people holding the same aura get one of it.
+        no_stack: bool,
     },
 
     /// Applies a condition effect to the user.
@@ -68,10 +77,19 @@ pub enum Effect {
     },
 
     /// Fires a spread of the item's own projectile.
-    Shoot { count: u32, spread: f32 },
+    ///
+    /// Carries nothing, because nothing about the volley is written on the activation: `AEShoot`
+    /// (`Player.UseItem.cs:1119-1128`) reads the count and the gap off the item itself, and all
+    /// twenty-three `Shoot` activations in the content are the bare `<Activate>Shoot</Activate>`
+    /// with no attributes at all.
+    Shoot,
 
-    /// Fires a ring outward.
-    BulletNova { count: u32 },
+    /// Fires a ring outward from the aimed point.
+    ///
+    /// Carries nothing for the same reason [`Effect::Shoot`] does. `AEBulletNova` writes twenty
+    /// into a fixed array and steps `i * 2PI / 20` (`Player.UseItem.cs:1146-1153`); no attribute of
+    /// the activation is read, and all twelve in the content are the bare element.
+    BulletNova,
 
     /// Creates an object at the aimed position.
     Create { child: String },
@@ -80,6 +98,12 @@ pub enum Effect {
     Teleport { max_distance: f32 },
 
     /// Damages everything in a circle at the aimed position.
+    ///
+    /// `DazeBlast` alone. The original names it in `ActivateEffects` and then never dispatches it,
+    /// so `Activate` drops it into `default` and logs "not implemented"
+    /// (`Player.UseItem.cs:361-364`). One item in the shipped content carries one, and this side
+    /// gives it the blast its name and its `radius`/`totalDamage` attributes describe rather than
+    /// leaving that item inert.
     Blast {
         radius: f32,
         damage: i32,
@@ -87,8 +111,63 @@ pub enum Effect {
         effect_ms: u32,
     },
 
+    /// Freezes every enemy in a circle at the aimed point, then makes them briefly unfreezable.
+    ///
+    /// `StasisBlast` (`Player.UseItem.cs:800-841`). It deals no damage at all and its circle is
+    /// three tiles whatever the content writes — the handler passes the literal `3` to `AOE` and
+    /// reads no `radius` — so the only number on the activation is how long the hold lasts.
+    StasisBlast { duration_ms: u32 },
+
+    /// A ball lobbed at the aimed point that poisons what it lands among.
+    ///
+    /// `PoisonGrenade` (`Player.UseItem.cs:675-701`). The damage is not dealt where the ball lands;
+    /// it is spread over `duration_ms` and paid out a second at a time by `PoisonEnemy` (`:1292`).
+    PoisonGrenade {
+        radius: f32,
+        total_damage: i32,
+        duration_ms: u32,
+    },
+
+    /// The same ball, healing the players it lands among instead.
+    ///
+    /// `HealingGrenade` (`Player.UseItem.cs:1218-1244`), which differs from the poison above in
+    /// the side it catches and in paying its `totalDamage` out as health.
+    HealingGrenade {
+        radius: f32,
+        total_heal: i32,
+        duration_ms: u32,
+    },
+
+    /// A stance the first press enters and the second press spends.
+    ///
+    /// `AEShurikenAbility` (`Player.UseItem.cs:566-581`), which is not a blast of any kind: the
+    /// first use hangs `NinjaSpeedy` on the player and stops, and the second fires the item's own
+    /// volley for a second helping of magic and drops the stance again.
+    ShurikenAbility,
+
+    /// Sets a base stat outright, rather than adding to it.
+    ///
+    /// `AEFixedStat` (`Player.UseItem.cs:645-649`): a bare assignment with no ceiling and no
+    /// overflow into a boost, unlike [`Effect::IncrementStat`] beside it.
+    FixedStat { stat: u8, amount: i32 },
+
     /// Drains health from those hit and gives it to the user.
     VampireBlast { radius: f32, damage: i32, heal: i32 },
+
+    /// A bolt that picks one enemy in the direction aimed and jumps from it to the next.
+    ///
+    /// Not a blast: it never touches the ground between its targets, and which enemies it reaches
+    /// depends on how they are spaced rather than on how close they are to the cursor
+    /// (`Player.UseItem.cs:703-788`).
+    Lightning {
+        damage: i32,
+
+        /// How many bodies the bolt visits in all, including the first.
+        max_targets: u32,
+
+        effect: Option<ConditionEffect>,
+        effect_ms: u32,
+    },
 
     /// Changes what the user looks like. Cosmetic, so the server only records it.
     Appearance { kind: Appearance, value: u32 },
@@ -126,6 +205,20 @@ pub enum Effect {
 
     /// Opens a way somewhere.
     Portal { name: String, duration_ms: u32 },
+
+    /// Turns a locked door standing nearby into the one it leads to.
+    ///
+    /// `AEUnlockPortal` (`Player.UseItem.cs:433-510`), which is a swap in the room rather than a
+    /// permission on the account: it finds the nearest portal named by `lockedName` within three
+    /// tiles, takes it out of the world, stands the portal that leads to `dungeonName` in its
+    /// place, and announces it to everyone there.
+    UnlockPortal {
+        /// The world the door will lead to, whose own definition names the portal to build.
+        dungeon: String,
+
+        /// The object id of the locked door to look for.
+        locked: String,
+    },
 
     /// A condition effect laid over an area, with everything about it in the attributes.
     ///
@@ -185,8 +278,13 @@ pub enum Unlock {
     /// A class, bypassing its levelling requirement.
     Class,
 
-    /// A destination.
-    Portal,
+    /// A vault chest, which in the original is a message and nothing else.
+    ///
+    /// `UnlockSlot` (`Player.UseItem.cs:541-544`) sends "New vault chest unlocked successfully."
+    /// and unlocks no slot at all: capacity is bought through the vault panel, so the item is a
+    /// receipt for something that already happened. Kept as it is written, because an item that
+    /// silently did nothing and an item that says it worked are different bugs.
+    VaultSlot,
 
     /// A box whose contents the content decides.
     LootBox,
@@ -198,8 +296,19 @@ pub enum Unlock {
 /// The cosmetic changes, which differ only in what they set.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Appearance {
-    /// Recolours the item's cloth.
+    /// Recolours the wearer, as a dye item's `<Activate>Dye</Activate>` asks.
+    ///
+    /// Which layer it paints and what colour is not in the activation at all: `AEDye` reads the
+    /// item's own `Tex1` and `Tex2` and copies whichever is non-zero onto the player
+    /// (`Player.UseItem.cs:583-589`). So this variant names only the act, and whoever holds the
+    /// item turns it into one of the two below.
     Dye,
+
+    /// Paints the cloth layer, the original's `Texture1`.
+    DyeCloth,
+
+    /// Paints the accessory layer, the original's `Texture2`.
+    DyeAccessory,
 
     /// Grants a character skin.
     Skin,
@@ -236,22 +345,21 @@ pub fn use_wis_mod(value: f32, wisdom: i32, offset: i32) -> f32 {
 impl Effect {
     /// The same effect with its amounts and ranges grown by the user's wisdom.
     ///
-    /// Applied only where the content sets `useWisMod`, which it does on 61 activates: every heal
-    /// nova, every stat aura, every self-buff on a timer. Without it wisdom does nothing but
-    /// restore magic slightly faster, which is not what the stat is for.
+    /// Applied only where the content sets `useWisMod`, and then only by the five activations that
+    /// read the flag at all. `AEHeal` (`Player.UseItem.cs:983`), `AEMagic` (`:948`), `AEMagicNova`
+    /// (`:934`), `AEStatBoostSelf` (`:1102`) and `AEClearConditionEffectAura` (`:1020`) all take
+    /// `eff.Amount` and `eff.Range` raw, so a flag on one of those is written down and never read.
+    /// Growing them anyway would make a nova restore more magic than the original ever does.
     pub fn scaled_by_wisdom(self, wisdom: i32) -> Effect {
         let amount = |value: i32| use_wis_mod(value as f32, wisdom, 0) as i32;
         let range = |value: f32| use_wis_mod(value, wisdom, 1);
         let time = |value: u32| use_wis_mod(value as f32 / 1000.0, wisdom, 1).max(0.0) * 1000.0;
 
         match self {
-            Effect::Heal { amount: a } => Effect::Heal { amount: amount(a) },
-            Effect::Magic { amount: a } => Effect::Magic { amount: amount(a) },
-            Effect::HealNova { amount: a, range: r } => Effect::HealNova {
-                amount: amount(a),
-                range: range(r),
-            },
-            Effect::MagicNova { amount: a, range: r } => Effect::MagicNova {
+            Effect::HealNova {
+                amount: a,
+                range: r,
+            } => Effect::HealNova {
                 amount: amount(a),
                 range: range(r),
             },
@@ -268,16 +376,20 @@ impl Effect {
                 targets_players,
                 centred_on_aim,
             },
+            // An aura only. `AEStatBoostSelf` never reads the flag, so a self-boost keeps the
+            // numbers the content wrote whatever the wearer's wisdom is.
             Effect::StatBoost {
                 stat,
                 amount: a,
                 duration_ms,
-                range: r,
+                range: Some(r),
+                no_stack,
             } => Effect::StatBoost {
                 stat,
                 amount: amount(a),
                 duration_ms: time(duration_ms) as u32,
-                range: r.map(range),
+                range: Some(range(r)),
+                no_stack,
             },
             Effect::ConditionSelf {
                 effect,
@@ -294,9 +406,6 @@ impl Effect {
                 effect,
                 duration_ms: time(duration_ms) as u32,
                 range: range(r),
-            },
-            Effect::Cleanse { range: r } => Effect::Cleanse {
-                range: r.map(range),
             },
 
             // Everything else has nothing wisdom is defined to scale.
@@ -352,6 +461,14 @@ impl Effect {
                     amount: amount(),
                     duration_ms: duration(),
                     range: None,
+                    no_stack: desc.flag("noStack"),
+                },
+                None => unsupported(desc),
+            },
+            "FixedStat" => match stat() {
+                Some(stat) => Effect::FixedStat {
+                    stat,
+                    amount: amount(),
                 },
                 None => unsupported(desc),
             },
@@ -361,6 +478,7 @@ impl Effect {
                     amount: amount(),
                     duration_ms: duration(),
                     range: Some(range()),
+                    no_stack: desc.flag("noStack"),
                 },
                 None => unsupported(desc),
             },
@@ -382,13 +500,8 @@ impl Effect {
                 Effect::Cleanse { range: None }
             }
 
-            "Shoot" => Effect::Shoot {
-                count: number(desc, "numShots", 1.0).max(1.0) as u32,
-                spread: number(desc, "arcGap", 0.0) as f32,
-            },
-            "BulletNova" => Effect::BulletNova {
-                count: number(desc, "numShots", 8.0).max(1.0) as u32,
-            },
+            "Shoot" => Effect::Shoot,
+            "BulletNova" => Effect::BulletNova,
 
             "Create" => Effect::Create {
                 child: text(desc, "id").unwrap_or_default().to_string(),
@@ -397,23 +510,54 @@ impl Effect {
                 max_distance: number(desc, "maxDistance", 20.0) as f32,
             },
 
-            // The blasts differ in what they leave behind rather than in what they do.
-            "PoisonGrenade" | "StasisBlast" | "DazeBlast" | "Lightning" | "ShurikenAbility" => {
-                Effect::Blast {
-                    radius: number(desc, "radius", 3.0) as f32,
-                    damage: number(desc, "totalDamage", number(desc, "damage", 0.0)) as i32,
-                    effect: blast_condition(&desc.name),
-                    effect_ms: duration_ms(desc, "duration", 3.0),
-                }
-            }
+            // Four names that read alike and are four unrelated handlers in the original. Reading
+            // them as one blast gave the stasis blast a radius the original ignores, turned a
+            // grenade's damage-over-time into a single hit, and made a ninja's stance an explosion.
+            "StasisBlast" => Effect::StasisBlast {
+                duration_ms: duration_ms(desc, "duration", 0.0),
+            },
+            "PoisonGrenade" => Effect::PoisonGrenade {
+                radius: number(desc, "radius", 0.0) as f32,
+                total_damage: number(desc, "totalDamage", 0.0) as i32,
+                duration_ms: duration_ms(desc, "duration", 0.0),
+            },
+            "HealingGrenade" => Effect::HealingGrenade {
+                radius: number(desc, "radius", 0.0) as f32,
+                total_heal: number(desc, "totalDamage", 0.0) as i32,
+                duration_ms: duration_ms(desc, "duration", 0.0),
+            },
+            "ShurikenAbility" => Effect::ShurikenAbility,
+            "DazeBlast" => Effect::Blast {
+                radius: number(desc, "radius", 0.0) as f32,
+                damage: number(desc, "totalDamage", number(desc, "damage", 0.0)) as i32,
+                effect: Some(ConditionEffect::Dazed),
+                effect_ms: duration_ms(desc, "duration", 3.0),
+            },
+
+            // A scepter's bolt names no radius at all: every scepter in the content declares
+            // `totalDamage` and `maxTargets` and nothing else
+            // (`EmbeddedData_EquipCXML.dat:7300`). What it hits is decided by where the enemies
+            // are standing, not by a circle.
+            "Lightning" => Effect::Lightning {
+                damage: number(desc, "totalDamage", number(desc, "damage", 0.0)) as i32,
+                max_targets: number(desc, "maxTargets", 1.0).max(1.0) as u32,
+                effect: text(desc, "condEffect").and_then(named_condition),
+                effect_ms: (number(desc, "effectDuration", 0.0) * 1000.0) as u32,
+            },
             "VampireBlast" => Effect::VampireBlast {
                 radius: number(desc, "radius", 3.0) as f32,
                 damage: number(desc, "totalDamage", 0.0) as i32,
                 heal: number(desc, "heal", 0.0) as i32,
             },
 
+            // `Pet` and `PermaPet` name the creature with `objectId`; `CreatePet` names nothing at
+            // all. `id` is read as a fallback because the original's `ActivateEffect` keeps both
+            // attributes (`XmlDescriptors.cs:414-415`, `:429-430`) and neither is spelled the same
+            // way twice across the file set.
             "CreatePet" | "Pet" | "PermaPet" => Effect::Pet {
-                name: text(desc, "id").map(str::to_string),
+                name: text(desc, "objectId")
+                    .or_else(|| text(desc, "id"))
+                    .map(str::to_string),
                 permanent: desc.name == "PermaPet",
             },
 
@@ -465,13 +609,20 @@ impl Effect {
                 kind: Unlock::Class,
                 value: text(desc, "id").unwrap_or_default().to_string(),
             },
-            "UnlockPortal" => Effect::Unlock {
-                kind: Unlock::Portal,
-                value: text(desc, "id").unwrap_or_default().to_string(),
+            // Two names, and neither of them is `id`: the one item in the game that carries one
+            // writes `dungeonName="Wine Cellar" lockedName="Locked Wine Cellar Portal"`. Reading
+            // `id` left both empty, which is a key that matched no door.
+            "UnlockPortal" => Effect::UnlockPortal {
+                dungeon: text(desc, "dungeonName").unwrap_or_default().to_string(),
+                locked: text(desc, "lockedName").unwrap_or_default().to_string(),
             },
             "LootBox" => Effect::Unlock {
                 kind: Unlock::LootBox,
                 value: text(desc, "id").unwrap_or_default().to_string(),
+            },
+            "UnlockSlot" => Effect::Unlock {
+                kind: Unlock::VaultSlot,
+                value: String::new(),
             },
             "MysteryDyes" => Effect::Unlock {
                 kind: Unlock::MysteryDye,
@@ -544,16 +695,6 @@ fn condition(desc: &ActivateDesc) -> ConditionEffect {
         .unwrap_or(ConditionEffect::Dead)
 }
 
-/// What each blast leaves on those it catches.
-fn blast_condition(name: &str) -> Option<ConditionEffect> {
-    match name {
-        "PoisonGrenade" => Some(ConditionEffect::Bleeding),
-        "StasisBlast" => Some(ConditionEffect::Stasis),
-        "DazeBlast" => Some(ConditionEffect::Dazed),
-        _ => None,
-    }
-}
-
 /// A condition effect written by name, matched the way the files spell them.
 fn named_condition(written: &str) -> Option<ConditionEffect> {
     let tidy: String = written
@@ -581,13 +722,13 @@ fn unsupported(desc: &ActivateDesc) -> Effect {
     }
 }
 
-/// Which of the eight stats an activate names, or `None` if it names none of them.
+/// Which of the eleven stats an activate names, or `None` if it names none of them.
 ///
 /// A written number is in the content's own numbering and goes through
 /// [`Stat::from_content_number`]; a written name is matched directly, because a few files spell the
-/// stat out. The two are different alphabets for the same eight things: `stat="21"` and
+/// stat out. The two are different alphabets for the same things: `stat="21"` and
 /// `stat="Defense"` both mean defence, and `stat="3"` means max magic rather than the defence its
-/// digit would suggest here.
+/// digit would suggest here. Only the eight a class declares are ever spelled out in words.
 fn stat_index(written: &str) -> Option<u8> {
     let tidy: String = written
         .chars()
@@ -733,6 +874,69 @@ mod tests {
     }
 
     #[test]
+    fn wisdom_reaches_only_the_five_activations_that_read_the_flag() {
+        // The flag is on the activation, but five of the handlers never look at it: `AEHeal`,
+        // `AEMagic`, `AEMagicNova`, `AEStatBoostSelf` and `AEClearConditionEffectAura` all take
+        // the written numbers raw. Scaling them anyway is a heal the original never gives.
+        let heal = Effect::of(&desc("Heal", &[("amount", "100"), ("useWisMod", "true")]));
+        let magic = Effect::of(&desc("Magic", &[("amount", "100"), ("useWisMod", "true")]));
+        let nova = Effect::of(&desc(
+            "MagicNova",
+            &[("amount", "100"), ("range", "4"), ("useWisMod", "true")],
+        ));
+        let boost = Effect::of(&desc(
+            "StatBoostSelf",
+            &[("stat", "22"), ("amount", "20"), ("useWisMod", "true")],
+        ));
+        let cleanse = Effect::of(&desc(
+            "ClearConditionEffectAura",
+            &[("range", "4"), ("useWisMod", "true")],
+        ));
+
+        for effect in [heal, magic, nova, boost, cleanse] {
+            assert_eq!(
+                effect.clone().scaled_by_wisdom(150),
+                effect,
+                "wisdom should leave this one alone"
+            );
+        }
+    }
+
+    #[test]
+    fn a_stat_aura_says_whether_only_the_largest_of_it_counts() {
+        // The six healing auras in the content are `noStack`, and every other aura is not. Reading
+        // it off the range rather than off the attribute makes the wrong half of them halve.
+        let priest = Effect::of(&desc(
+            "StatBoostAura",
+            &[
+                ("stat", "0"),
+                ("amount", "25"),
+                ("range", "4.5"),
+                ("noStack", "true"),
+            ],
+        ));
+        let ordinary = Effect::of(&desc(
+            "StatBoostAura",
+            &[("stat", "22"), ("amount", "30"), ("range", "6")],
+        ));
+
+        assert!(matches!(
+            priest,
+            Effect::StatBoost {
+                no_stack: true,
+                ..
+            }
+        ));
+        assert!(matches!(
+            ordinary,
+            Effect::StatBoost {
+                no_stack: false,
+                ..
+            }
+        ));
+    }
+
+    #[test]
     fn an_aura_carries_a_range_and_a_self_effect_does_not() {
         let aura = Effect::of(&desc(
             "StatBoostAura",
@@ -780,21 +984,77 @@ mod tests {
     }
 
     #[test]
-    fn each_blast_leaves_what_it_is_named_for() {
-        let poison = Effect::of(&desc("PoisonGrenade", &[("radius", "3")]));
-        let stasis = Effect::of(&desc("StasisBlast", &[("radius", "3")]));
-
-        assert!(matches!(
-            poison,
-            Effect::Blast {
-                effect: Some(ConditionEffect::Bleeding),
-                ..
+    fn the_four_names_that_read_alike_are_four_different_things() {
+        // `Activate` sends each of these to a handler of its own, and three of the four are not
+        // blasts at all: a poison grenade is a fuse and a damage-over-time, a stasis blast freezes
+        // for no damage in a circle it never measures, and a shuriken ability is a stance.
+        // Collapsing them lost the telegraph, the immunity and the second press.
+        assert_eq!(
+            Effect::of(&desc(
+                "PoisonGrenade",
+                &[("radius", "3"), ("totalDamage", "250"), ("duration", "5.5")]
+            )),
+            Effect::PoisonGrenade {
+                radius: 3.0,
+                total_damage: 250,
+                duration_ms: 5_500,
             }
+        );
+        assert_eq!(
+            Effect::of(&desc("StasisBlast", &[("duration", "4.5")])),
+            Effect::StasisBlast {
+                duration_ms: 4_500
+            }
+        );
+        assert_eq!(
+            Effect::of(&desc("ShurikenAbility", &[])),
+            Effect::ShurikenAbility
+        );
+    }
+
+    #[test]
+    fn a_stasis_blast_reads_no_radius_because_the_original_reads_none() {
+        // `StasisBlast` hands `AOE` the literal 3 (`Player.UseItem.cs:812`). A radius written on
+        // one of these is a number the original never looks at, and none of the ten in the content
+        // writes one.
+        assert_eq!(
+            Effect::of(&desc("StasisBlast", &[("radius", "9"), ("duration", "3")])),
+            Effect::StasisBlast {
+                duration_ms: 3_000
+            }
+        );
+    }
+
+    #[test]
+    fn a_portal_key_reads_the_two_names_the_one_item_in_the_game_writes() {
+        // The Wine Cellar Incantation, verbatim from `EmbeddedData_EquipCXML.xml:8741`. It carries
+        // no `id` at all, so reading one gave a key that named no dungeon and no door: the account
+        // row was written under an empty string and nothing in the room ever changed.
+        let key = Effect::of(&desc(
+            "UnlockPortal",
+            &[
+                ("dungeonName", "Wine Cellar"),
+                ("lockedName", "Locked Wine Cellar Portal"),
+            ],
         ));
+
+        assert_eq!(
+            key,
+            Effect::UnlockPortal {
+                dungeon: "Wine Cellar".to_string(),
+                locked: "Locked Wine Cellar Portal".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn a_daze_blast_is_the_one_of_the_four_that_really_is_a_blast() {
         assert!(matches!(
-            stasis,
+            Effect::of(&desc("DazeBlast", &[("radius", "2.0"), ("totalDamage", "25")])),
             Effect::Blast {
-                effect: Some(ConditionEffect::Stasis),
+                radius: 2.0,
+                damage: 25,
+                effect: Some(ConditionEffect::Dazed),
                 ..
             }
         ));
@@ -819,6 +1079,53 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn a_pet_is_named_by_the_attribute_the_content_actually_writes() {
+        // Every `Pet` and `PermaPet` activation in the shipped files spells the creature with
+        // `objectId`, and not one of them uses `id`. Reading `id` left all eighty-seven pet and egg
+        // items summoning nothing at all, silently.
+        let drake = Effect::of(&desc("Pet", &[("objectId", "Blue Drake")]));
+        assert_eq!(
+            drake,
+            Effect::Pet {
+                name: Some("Blue Drake".to_string()),
+                permanent: false
+            }
+        );
+
+        let rock = Effect::of(&desc(
+            "Pet",
+            &[
+                ("hideEffect", "true"),
+                ("cooldown", "20"),
+                ("objectId", "Pet Rock"),
+            ],
+        ));
+        assert_eq!(
+            rock,
+            Effect::Pet {
+                name: Some("Pet Rock".to_string()),
+                permanent: false
+            }
+        );
+
+        // `CreatePet` names nothing, and stays nothing.
+        assert_eq!(
+            Effect::of(&desc("CreatePet", &[])),
+            Effect::Pet {
+                name: None,
+                permanent: false
+            }
+        );
+    }
+
+    #[test]
+    fn a_shoot_activation_carries_nothing_because_the_item_carries_it_all() {
+        // All twenty-three in the content are the bare element. The count and the arc live on the
+        // item, which is where `AEShoot` reads them from.
+        assert_eq!(Effect::of(&desc("Shoot", &[])), Effect::Shoot);
     }
 
     #[test]
@@ -944,6 +1251,9 @@ mod tests {
             "MysteryDyes",
             "RemoveNegativeConditionsSelf",
             "UnlockPortal",
+            "FixedStat",
+            "HealingGrenade",
+            "UnlockSlot",
         ];
 
         for kind in kinds {

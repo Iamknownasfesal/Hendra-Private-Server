@@ -1,8 +1,17 @@
-//! The eight stats, and what they are worth.
+//! The eleven stats, and what they are worth.
 //!
-//! Every class declares a starting value, a ceiling and a per-level range for each of the eight.
-//! Together they decide how fast a character moves, how hard it hits and how often it can fire,
-//! which is what separates a warrior from a wizard.
+//! Every class declares a starting value, a ceiling and a per-level range for each of the first
+//! eight. Together they decide how fast a character moves, how hard it hits and how often it can
+//! fire, which is what separates a warrior from a wizard.
+//!
+//! # The other three
+//!
+//! `DamageMin`, `DamageMax` and `Luck` are stats in the same array (`StatsManager.NumStatTypes` is
+//! 11) but no class declares them and no character saves them. `DamageMin` and `DamageMax` are the
+//! equipped weapon's first projectile, written into the base layer on every recalculation by
+//! `BaseStatManager.SetWeaponDamage`, and they are what a player's shot rolls between. `Luck` has
+//! no base at all — the original writes one only through `ImportStats`, which nothing calls for a
+//! player — and is read in exactly one place, the private half of the loot roll.
 //!
 //! # Three layers, kept apart
 //!
@@ -17,21 +26,27 @@
 //! condition effects that change them are applied inside the same expression that reads the stat,
 //! as they are there: Weak does not halve damage, it holds attack at its minimum.
 
-use hendra_content::{PlayerDesc, STATS, Stat};
+use hendra_content::{PlayerDesc, STAT_COUNT, STATS, Stat};
 
 use crate::effects::Rules;
 
 /// One character's stats, in three layers.
+///
+/// `equipment` and `boosts` are together the original's single `Boost` layer: it sums worn items,
+/// completed sets and timed boosts into one array (`BoostStatManager.ReCalculateValues`), and
+/// splitting the durable half from the temporary half is what lets a boost lapse without having to
+/// know what a ring was adding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Stats {
-    /// What levelling has produced. The only layer that persists.
-    base: [i32; 8],
+    /// What levelling has produced, plus the weapon's damage in slots 8 and 9. Only the first
+    /// eight persist.
+    base: [i32; STAT_COUNT],
 
     /// What worn equipment adds. Rebuilt whenever equipment changes.
-    equipment: [i32; 8],
+    equipment: [i32; STAT_COUNT],
 
     /// What temporary effects add.
-    boosts: [i32; 8],
+    boosts: [i32; STAT_COUNT],
 }
 
 impl Stats {
@@ -44,16 +59,70 @@ impl Stats {
 
     /// A character at the start of its class.
     pub fn starting(class: &PlayerDesc) -> Stats {
-        let mut base = [0i32; 8];
+        let mut base = [0i32; STAT_COUNT];
         for stat in STATS {
             base[stat.index()] = class.stat(stat).starting;
         }
 
         Stats {
             base,
-            equipment: [0; 8],
-            boosts: [0; 8],
+            equipment: [0; STAT_COUNT],
+            boosts: [0; STAT_COUNT],
         }
+    }
+
+    /// Restores stats from stored base values, which is how a character keeps what it levelled into.
+    ///
+    /// A slice of the wrong length is read as far as it goes and zero after, so a stored row that
+    /// predates a stat cannot fail to load. That is `Utils.ResizeArray(Character.Stats,
+    /// NumStatTypes)`, which the original calls for the same reason.
+    pub fn from_base(stored: &[i32]) -> Stats {
+        let mut base = [0i32; STAT_COUNT];
+        for (slot, value) in base.iter_mut().zip(stored) {
+            *slot = *value;
+        }
+
+        Stats {
+            base,
+            equipment: [0; STAT_COUNT],
+            boosts: [0; STAT_COUNT],
+        }
+    }
+
+    /// The eight base values, in stat order, for storing.
+    ///
+    /// Eight rather than eleven because the other three have no base worth keeping: the weapon's
+    /// damage is recomputed from what is held every time anything changes, and nothing writes a
+    /// base luck at all.
+    pub fn to_base(&self) -> [i32; 8] {
+        let mut out = [0i32; 8];
+        out.copy_from_slice(&self.base[..8]);
+        out
+    }
+
+    /// The same stats with the equipped weapon's damage written into the base layer.
+    ///
+    /// `BaseStatManager.SetWeaponDamage` reads `Inventory[0].Projectiles[0]` and writes its
+    /// `MinDamage` and `MaxDamage` into base slots 8 and 9 on every recalculation, so the pair is
+    /// always the weapon currently held rather than anything remembered. Taken at the moment a shot
+    /// is made rather than cached on the body for the same reason: a cached copy is one missed
+    /// equip away from being wrong, and the original never lets it get stale either.
+    pub fn armed_with(&self, weapon_min: i32, weapon_max: i32) -> Stats {
+        let mut armed = *self;
+        armed.base[Stat::DamageMin.index()] = weapon_min;
+        armed.base[Stat::DamageMax.index()] = weapon_max;
+        armed
+    }
+
+    /// Writes the equipped weapon's damage into the base layer and keeps it there.
+    ///
+    /// The same two slots [`Self::armed_with`] fills, written when the equipment changes rather
+    /// than when a shot is fired, because that is when `SetWeaponDamage` runs and the two stats are
+    /// on every update a player receives: a client that is not told them has no damage to show on a
+    /// character sheet.
+    pub fn arm(&mut self, weapon_min: i32, weapon_max: i32) {
+        self.base[Stat::DamageMin.index()] = weapon_min;
+        self.base[Stat::DamageMax.index()] = weapon_max;
     }
 
     /// The base value, before equipment or boosts.
@@ -63,12 +132,13 @@ impl Stats {
 
     /// The total, which is what everything else asks for.
     ///
-    /// Only the base is capped. Equipment and boosts reach past a class's maximum, which is what
-    /// late-game equipment is for; capping the total would make a ring worthless to exactly the
-    /// characters who earned it.
+    /// `StatsManager.this[i]` is `Base[i] + Boost[i]` and nothing more (`StatsManager.cs:23`):
+    /// uncapped above, and unfloored below. Equipment and boosts reach past a class's maximum,
+    /// which is what late-game equipment is for, and a stat with enough taken off it lands below
+    /// zero. The only floor the original has is the per-bonus one in [`Self::apply_equipment`].
     pub fn total(&self, stat: Stat) -> i32 {
         let index = stat.index();
-        (self.base[index] + self.equipment[index] + self.boosts[index]).max(0)
+        self.base[index] + self.equipment[index] + self.boosts[index]
     }
 
     /// Raises the base, refusing to go past the class's ceiling.
@@ -78,12 +148,59 @@ impl Stats {
         self.base[index] = (self.base[index] + by).clamp(0, ceiling.max(0));
     }
 
+    /// Writes the base outright, with no ceiling.
+    ///
+    /// `AEFixedStat` (`Player.UseItem.cs:645-649`) assigns `Stats.Base[idx] = eff.Amount` and stops
+    /// there: no clamp against the class's maximum, and no overflow into a boost the way
+    /// [`Self::raise`] has. An item that sets a stat past what the class allows sets it past it.
+    pub fn set_base(&mut self, stat: Stat, amount: i32) {
+        self.base[stat.index()] = amount;
+    }
+
     /// Replaces what equipment contributes.
     ///
     /// Replaced wholesale rather than adjusted. Tracking which item added what and undoing it on
     /// removal is the bookkeeping that drifts.
-    pub fn set_equipment(&mut self, boosts: [i32; 8]) {
+    pub fn set_equipment(&mut self, boosts: [i32; STAT_COUNT]) {
         self.equipment = boosts;
+    }
+
+    /// Replaces what equipment contributes, from the bonuses one at a time.
+    ///
+    /// Each bonus is floored on its own way in rather than the sum being floored afterwards, which
+    /// is what `IncrementBoost` does: a bonus that would take `Base[i] + amount` below one is
+    /// shortened to leave the stat at exactly zero — or at one for maximum health, the only stat
+    /// held above nothing (`BoostStatManager.cs:168-171`).
+    ///
+    /// Two consequences follow, and both are visible. A single item that would take a level-one
+    /// wizard's 100 health to -10 leaves it at 1 rather than at 0, because the shortening is
+    /// applied to the bonus and not to the result. And because each bonus is measured against the
+    /// base alone rather than against what the bonuses before it already took off, two items that
+    /// each empty the same stat take it off twice: an attack of 12 under two -60 rings is -12, not
+    /// 0.
+    ///
+    /// The order the bonuses arrive in does not matter, since none of them can see another.
+    pub fn apply_equipment(&mut self, bonuses: &[(Stat, i32)]) {
+        let mut layer = [0i32; STAT_COUNT];
+
+        for (stat, amount) in bonuses {
+            let index = stat.index();
+            let base = self.base[index];
+
+            let amount = if base + amount < 1 {
+                if index == Stat::MaxHitPoints.index() {
+                    1 - base
+                } else {
+                    -base
+                }
+            } else {
+                *amount
+            };
+
+            layer[index] += amount;
+        }
+
+        self.equipment = layer;
     }
 
     /// Adds a temporary boost.
@@ -91,23 +208,47 @@ impl Stats {
         self.boosts[stat.index()] += amount;
     }
 
+    /// What is added on top of the base, for the wire and for the character sheet.
+    ///
+    /// Equipment and timed boosts together, because that is the original's single `Boost` layer:
+    /// `BoostStatManager.ReCalculateValues` sums worn items, completed sets and running boosts into
+    /// one array, and `Player.ExportStats` sends that array (`Player.cs:342-352`). Splitting them is
+    /// this server's own bookkeeping, so it is put back together on the way out.
+    pub fn boost_totals(&self) -> [i32; STAT_COUNT] {
+        let mut out = [0i32; STAT_COUNT];
+        for index in 0..STAT_COUNT {
+            out[index] = self.equipment[index] + self.boosts[index];
+        }
+        out
+    }
+
     /// Sets what temporary boosts come to, having already been stacked.
     ///
     /// Set rather than added, because the answer is a function of what is held: recomputing it from
     /// the list every time a boost is given or lapses is what makes a lapse take the right amount
     /// away rather than whatever was added last.
-    pub fn set_boosts(&mut self, boosts: [i32; 8]) {
+    pub fn set_boosts(&mut self, boosts: [i32; STAT_COUNT]) {
         self.boosts = boosts;
     }
 
+    /// What temporary boosts currently come to.
+    pub fn boosts(&self) -> [i32; STAT_COUNT] {
+        self.boosts
+    }
+
     pub fn clear_boosts(&mut self) {
-        self.boosts = [0; 8];
+        self.boosts = [0; STAT_COUNT];
     }
 
     /// What each stat is at, for the wire and for a character sheet.
-    pub fn totals(&self) -> [i32; 8] {
-        let mut out = [0i32; 8];
-        for stat in STATS {
+    ///
+    /// All eleven, as `Player.ExportStats` sends all eleven: the eight a class declares plus
+    /// `DamageMin`, `DamageMax` and `Luck` (`Player.cs:331-341`). The last three are constant in
+    /// this content — nothing grants a bonus to any of them and no class declares one — but the
+    /// first two carry the equipped weapon's damage, which changes every time the weapon does.
+    pub fn totals(&self) -> [i32; STAT_COUNT] {
+        let mut out = [0i32; STAT_COUNT];
+        for stat in hendra_content::ALL_STATS {
             out[stat.index()] = self.total(stat);
         }
         out
@@ -128,6 +269,47 @@ impl Stats {
         let mult = MIN_ATTACK_MULT + (attack / STAT_SCALE) * (MAX_ATTACK_MULT - MIN_ATTACK_MULT);
 
         if rules.damaging { mult * 1.5 } else { mult }
+    }
+
+    /// What one shot does, given a roll in `0.0..1.0`.
+    ///
+    /// `GetAttackDamage(Stats[8], Stats[9], isAbility)`: a value drawn between the two damage stats
+    /// and multiplied by the attack multiplier, truncated rather than rounded and with no floor of
+    /// one. A weapon whose minimum is zero can therefore do nothing at all on a bad roll, which is
+    /// what the original does.
+    ///
+    /// An ability is not multiplied: `GetAttackMult` returns 1 before it looks at anything, so
+    /// neither attack nor Weak nor Damaging reaches a nova or a spell bomb.
+    pub fn attack_damage(&self, rules: &Rules, roll: f32, is_ability: bool) -> i32 {
+        let rolled = roll_between(
+            self.total(Stat::DamageMin),
+            self.total(Stat::DamageMax),
+            roll,
+        );
+
+        if is_ability {
+            return rolled;
+        }
+
+        (rolled as f32 * self.damage_multiplier(rules)) as i32
+    }
+
+    /// How much likelier this character is to receive a private drop, as a multiplier.
+    ///
+    /// `1 + Stats.Boost[10] / 100` (`Loots.cs:117`). The boost layer alone, not the total: the
+    /// original names `Boost` there rather than the indexer, and since nothing ever writes a base
+    /// luck the two agree in this content and would part company only for content that did.
+    ///
+    /// It multiplies the private roll and nothing else. Public loot, the required drops that are
+    /// forced out afterwards, and which bag they land in are all untouched by it.
+    pub fn loot_multiplier(&self) -> f64 {
+        1.0 + self.luck_boost() as f64 / 100.0
+    }
+
+    /// What worn items, sets and timed boosts have added to luck.
+    pub fn luck_boost(&self) -> i32 {
+        let index = Stat::Luck.index();
+        self.equipment[index] + self.boosts[index]
     }
 
     /// Shots per millisecond.
@@ -154,12 +336,17 @@ impl Stats {
     ///
     /// The weapon's own rate is a multiplier on the character's frequency, so a fast weapon in a
     /// dextrous hand compounds rather than replacing it.
+    ///
+    /// Divided in the order `ValidatePlayerShoot` divides it — `(int)(1 / frequency * 1 /
+    /// RateOfFire)`, which is the reciprocal of the frequency divided by the rate rather than the
+    /// reciprocal of their product. The two are the same number in arithmetic and not always the
+    /// same float, and a millisecond either way is a shot either way at the edge of a cooldown.
     pub fn shot_cooldown_ms(&self, rules: &Rules, weapon_rate: f32) -> u32 {
-        let frequency = self.attack_frequency(rules) * weapon_rate.max(0.01);
+        let frequency = self.attack_frequency(rules);
         if frequency <= 0.0 {
             return u32::MAX;
         }
-        (1.0 / frequency).clamp(1.0, 60_000.0) as u32
+        (1.0 / frequency / weapon_rate.max(0.01)).clamp(1.0, 60_000.0) as u32
     }
 
     /// Tiles per second.
@@ -174,7 +361,7 @@ impl Stats {
             return BASE_SPEED;
         }
 
-        let speed = (self.base(Stat::Speed) + self.layers(Stat::Speed)) as f32;
+        let speed = self.total(Stat::Speed) as f32;
         let ret = BASE_SPEED + SPEED_RANGE * (speed / STAT_SCALE);
 
         if rules.speedy {
@@ -182,11 +369,6 @@ impl Stats {
         } else {
             ret.max(0.0)
         }
-    }
-
-    /// Equipment plus boosts, which may be negative.
-    fn layers(&self, stat: Stat) -> i32 {
-        self.equipment[stat.index()] + self.boosts[stat.index()]
     }
 
     /// Health regained per second.
@@ -251,18 +433,48 @@ const MP_REGEN_PER_POINT: f32 = 0.06;
 /// Below the point where the formula returns zero, so a wall cannot drift.
 const NO_MOVEMENT: i32 = -((BASE_SPEED / SPEED_RANGE * STAT_SCALE) as i32) - 1;
 
-/// What a set of worn items contributes, summed.
+/// A value drawn between two bounds, given a roll in `0.0..1.0`.
+///
+/// `wRandom.NextIntRange` is `min == max ? min : min + Gen() % (max - min)`, so the maximum is
+/// exclusive: a 55-90 weapon rolls 55 to 89. Equal bounds are returned rather than taken modulo
+/// zero, which is the guard the original needs and keeps for the same reason.
+fn roll_between(min: i32, max: i32, roll: f32) -> i32 {
+    if max <= min {
+        return min;
+    }
+    min + (roll * (max - min) as f32) as i32
+}
+
+/// What a set of worn items contributes, one bonus at a time.
 ///
 /// Taken from what is worn rather than accumulated as items move, so the answer never depends on
 /// having seen every change. A missed equip cannot leave a stat permanently wrong.
-pub fn equipment_boosts<'a>(worn: impl Iterator<Item = &'a hendra_content::ItemDesc>) -> [i32; 8] {
-    let mut out = [0i32; 8];
+///
+/// Kept apart rather than summed because that is the shape the original's floor needs:
+/// `ApplyEquipBonus` walks the four worn slots and hands each `StatsBoost` entry to `IncrementBoost`
+/// separately (`BoostStatManager.cs:46-56`), which floors each one on its own. Summing first and
+/// flooring after is a different answer whenever two items take from the same stat.
+pub fn equipment_bonuses<'a>(
+    worn: impl Iterator<Item = &'a hendra_content::ItemDesc>,
+) -> Vec<(Stat, i32)> {
+    let mut out = Vec::new();
     for item in worn {
         for boost in &item.stat_boosts {
-            if let Some(slot) = out.get_mut(boost.stat as usize) {
-                *slot += boost.amount;
+            // An unrecognised stat is dropped rather than applied to whichever slot its number
+            // lands on, which is `IncrementBoost` returning on a -1 index (`BoostStatManager.cs:165`).
+            if let Some(stat) = hendra_content::ALL_STATS.get(boost.stat as usize) {
+                out.push((*stat, boost.amount));
             }
         }
+    }
+    out
+}
+
+/// What a list of bonuses comes to, summed and unfloored.
+pub fn summed(bonuses: &[(Stat, i32)]) -> [i32; STAT_COUNT] {
+    let mut out = [0i32; STAT_COUNT];
+    for (stat, amount) in bonuses {
+        out[stat.index()] += amount;
     }
     out
 }
@@ -275,7 +487,9 @@ pub fn equipment_boosts<'a>(worn: impl Iterator<Item = &'a hendra_content::ItemD
 /// second one is worth having at all.
 ///
 /// Non-stacking boosts are separate and only the largest of them counts, which is what stops two
-/// copies of a buff that says it does not stack from stacking.
+/// copies of a buff that says it does not stack from stacking. The original seeds that list with a
+/// zero (`ActivateBoost` starts `_base` as `{ 0 }`) and reads its largest element, so a
+/// non-stacking boost that lowers a stat is worth nothing rather than lowering it.
 pub fn stacked(stacking: &[i32], separate: &[i32]) -> i32 {
     let mut sorted: Vec<i32> = stacking.to_vec();
 
@@ -291,7 +505,7 @@ pub fn stacked(stacking: &[i32], separate: &[i32]) -> i32 {
         total += (*amount as f64 * share) as i32;
     }
 
-    total + separate.iter().copied().max().unwrap_or(0)
+    total + separate.iter().copied().chain([0]).max().unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -333,6 +547,13 @@ mod stacking {
     fn the_kind_that_does_not_stack_takes_only_its_largest() {
         assert_eq!(stacked(&[], &[5, 5, 5]), 5);
         assert_eq!(stacked(&[], &[3, 9, 1]), 9);
+    }
+
+    #[test]
+    fn a_non_stacking_boost_that_lowers_a_stat_is_worth_nothing() {
+        // The list it is chosen from starts with a zero in it, so the largest is never below zero.
+        assert_eq!(stacked(&[], &[-7]), 0);
+        assert_eq!(stacked(&[], &[-7, 4]), 4);
     }
 
     #[test]
@@ -414,7 +635,7 @@ mod tests {
             stats.raise(&class, Stat::Attack, 5);
         }
 
-        let mut boosts = [0i32; 8];
+        let mut boosts = [0i32; STAT_COUNT];
         boosts[Stat::Attack.index()] = 6;
         stats.set_equipment(boosts);
 
@@ -434,14 +655,14 @@ mod tests {
         for round in 0..1_000 {
             seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
 
-            let mut boosts = [0i32; 8];
+            let mut boosts = [0i32; STAT_COUNT];
             for slot in boosts.iter_mut() {
                 seed ^= seed << 13;
                 seed ^= seed >> 17;
                 *slot = (seed % 21) as i32 - 10;
             }
             stats.set_equipment(boosts);
-            stats.set_equipment([0; 8]);
+            stats.set_equipment([0; STAT_COUNT]);
 
             assert_eq!(stats.totals(), before, "drifted on round {round}");
         }
@@ -457,7 +678,7 @@ mod tests {
             ..Default::default()
         };
 
-        let boosts = equipment_boosts([&ring, &ring].into_iter());
+        let boosts = summed(&equipment_bonuses([&ring, &ring].into_iter()));
         assert_eq!(boosts[Stat::Dexterity.index()], 12);
     }
 
@@ -473,7 +694,119 @@ mod tests {
             ..Default::default()
         };
 
-        assert_eq!(equipment_boosts([&odd].into_iter()), [0; 8]);
+        assert_eq!(equipment_bonuses([&odd].into_iter()), Vec::new());
+    }
+
+    /// `BoostStatManager.IncrementBoost` and `StatsManager.this[i]`, transliterated.
+    ///
+    /// The whole of what the original does with a set of worn bonuses: zero the layer, hand each
+    /// bonus in on its own with the floor applied to it rather than to the running total, and read
+    /// the answer back as base plus layer with nothing clamped
+    /// (`BoostStatManager.cs:33-56,168-173`, `StatsManager.cs:23`).
+    fn original(base: [i32; STAT_COUNT], bonuses: &[(Stat, i32)]) -> [i32; STAT_COUNT] {
+        let mut boost = [0i32; STAT_COUNT];
+
+        for (stat, amount) in bonuses {
+            let i = stat.index();
+            let mut amount = *amount;
+            if base[i] + amount < 1 {
+                amount = if i == 0 { -base[i] + 1 } else { -base[i] };
+            }
+            boost[i] += amount;
+        }
+
+        let mut out = [0i32; STAT_COUNT];
+        for i in 0..STAT_COUNT {
+            out[i] = base[i] + boost[i];
+        }
+        out
+    }
+
+    #[test]
+    fn every_pair_of_bonuses_lands_where_the_original_lands_it() {
+        // The floor goes under each bonus on its way in rather than under the sum afterwards, and
+        // the two only agree while a stat carries at most one bonus deep enough to reach it. Swept
+        // across every stat, a spread of bases and every ordered pair of amounts, because the
+        // interesting cases are exactly the ones the shipped content does not contain.
+        let bases = [0, 1, 2, 12, 20, 50, 100, 140, 200];
+        let amounts = [
+            -300, -201, -200, -199, -140, -110, -100, -99, -60, -50, -20, -13, -2, -1, 0, 1, 5, 20,
+            50, 120,
+        ];
+
+        let mut combinations = 0usize;
+        let mut mismatches = 0usize;
+
+        for stat in hendra_content::ALL_STATS {
+            for start in bases {
+                let mut base = [0i32; STAT_COUNT];
+                base[stat.index()] = start;
+
+                for first in amounts {
+                    for second in amounts {
+                        for pair in [vec![(stat, first)], vec![(stat, first), (stat, second)]] {
+                            let mut stats = Stats::from_base(&base);
+                            stats.apply_equipment(&pair);
+
+                            let mine = stats.totals();
+                            let theirs = original(base, &pair);
+
+                            combinations += 1;
+                            if mine != theirs {
+                                mismatches += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        assert_eq!(combinations, 11 * 9 * 20 * 20 * 2);
+        assert_eq!(mismatches, 0, "of {combinations} combinations");
+    }
+
+    #[test]
+    fn one_item_that_would_empty_the_health_bar_leaves_a_single_point() {
+        // `IncrementBoost` shortens the bonus rather than clamping the result, and maximum health
+        // is the one stat it leaves above nothing (`BoostStatManager.cs:168-171`). A level-one
+        // wizard in an item worth -110 health has one, not none.
+        let class = wizard();
+        let mut stats = Stats::starting(&class);
+        let base = stats.base(Stat::MaxHitPoints);
+
+        stats.apply_equipment(&[(Stat::MaxHitPoints, -(base + 10))]);
+        assert_eq!(stats.max_hp(), 1);
+
+        // Every other stat is left at exactly nothing by the same arithmetic.
+        let mut stats = Stats::starting(&class);
+        let attack = stats.base(Stat::Attack);
+        stats.apply_equipment(&[(Stat::Attack, -(attack + 10))]);
+        assert_eq!(stats.total(Stat::Attack), 0);
+    }
+
+    #[test]
+    fn two_items_emptying_one_stat_take_it_below_nothing() {
+        // Each bonus is measured against the base alone, never against what the one before it
+        // already took off, so the shortening happens twice and the total goes negative. The
+        // original has no floor under the sum at all: `this[i]` is `Base[i] + Boost[i]`
+        // (`StatsManager.cs:23`).
+        let mut stats = Stats::from_base(&[100, 100, 12, 0, 12, 15, 10, 10]);
+
+        stats.apply_equipment(&[(Stat::Attack, -60), (Stat::Attack, -60)]);
+        assert_eq!(stats.total(Stat::Attack), -12);
+
+        // And the same for health, where each bonus is shortened to leave one rather than none.
+        stats.apply_equipment(&[(Stat::MaxHitPoints, -200), (Stat::MaxHitPoints, -200)]);
+        assert_eq!(stats.max_hp(), 100 + 2 * (1 - 100));
+    }
+
+    #[test]
+    fn a_bonus_that_does_not_reach_the_floor_is_applied_whole() {
+        let mut stats = Stats::from_base(&[100, 100, 12, 0, 12, 15, 10, 10]);
+        stats.apply_equipment(&[(Stat::Defense, 25), (Stat::MaxHitPoints, -99)]);
+
+        assert_eq!(stats.total(Stat::Defense), 25);
+        assert_eq!(stats.max_hp(), 1, "exactly reaching one is not shortened");
     }
 
     #[test]
@@ -613,7 +946,7 @@ mod tests {
         let class = wizard();
         let mut stats = Stats::starting(&class);
 
-        let mut worn = [0i32; 8];
+        let mut worn = [0i32; STAT_COUNT];
         worn[Stat::Speed.index()] = 5;
         stats.set_equipment(worn);
         stats.boost(Stat::Speed, 20);
@@ -625,10 +958,290 @@ mod tests {
     }
 
     #[test]
-    fn a_negative_boost_cannot_take_a_stat_below_zero() {
+    fn a_timed_boost_has_no_floor_under_it_at_all() {
+        // The floor in the original lives in `IncrementBoost`, which only worn items and completed
+        // sets go through. `ApplyActivateBonus` adds the timed boosts straight into the same array
+        // with no test of any kind (`BoostStatManager.cs:122-128`), and the total is read back as
+        // `Base[i] + Boost[i]` (`StatsManager.cs:23`). A large enough negative boost takes the stat
+        // below nothing, which is what a debuff aura in content that had one would do.
         let mut stats = Stats::starting(&wizard());
+        let base = stats.base(Stat::Attack);
         stats.boost(Stat::Attack, -1_000);
 
-        assert_eq!(stats.total(Stat::Attack), 0);
+        assert_eq!(stats.total(Stat::Attack), base - 1_000);
+    }
+
+    #[test]
+    fn the_weapon_damage_stats_are_the_weapon_and_whatever_is_worn_on_top_of_it() {
+        // `SetWeaponDamage` writes the first projectile of what is held into base slots 8 and 9, and
+        // `DamageMinBonus` / `DamageMaxBonus` land in the boost layer over it. Nothing in this
+        // server's content grants either bonus, so in practice the pair is the weapon alone -- but
+        // the stat is what the shot reads, not the descriptor, and content that granted one would
+        // be felt.
+        let mut stats = Stats::default();
+        let armed = stats.armed_with(55, 90);
+        assert_eq!(armed.total(Stat::DamageMin), 55);
+        assert_eq!(armed.total(Stat::DamageMax), 90);
+
+        stats.boost(Stat::DamageMin, 10);
+        stats.boost(Stat::DamageMax, 20);
+        let armed = stats.armed_with(55, 90);
+        assert_eq!(armed.total(Stat::DamageMin), 65);
+        assert_eq!(armed.total(Stat::DamageMax), 110);
+    }
+
+    #[test]
+    fn a_shot_rolls_between_the_bounds_and_never_reaches_the_top_one() {
+        // Half-open, as `min + Gen() % (max - min)` is. A 55-90 weapon rolls 55 to 89.
+        let stats = Stats::default().armed_with(55, 90);
+        let mut seen = [false; 35];
+
+        for step in 0..3_500 {
+            let roll = step as f32 / 3_500.0;
+            let damage = stats.attack_damage(&Rules::NONE, roll, true);
+            assert!((55..90).contains(&damage), "{damage} is outside 55..90");
+            seen[(damage - 55) as usize] = true;
+        }
+
+        assert!(
+            seen.iter().all(|hit| *hit),
+            "every value in the span occurs"
+        );
+    }
+
+    #[test]
+    fn a_weapon_whose_bounds_are_equal_needs_no_roll_at_all() {
+        // The original guards `min == max` before taking a modulus, because the modulus would be
+        // zero. Ours has to answer the same thing rather than divide by nothing.
+        let stats = Stats::default().armed_with(80, 80);
+        for step in 0..100 {
+            assert_eq!(
+                stats.attack_damage(&Rules::NONE, step as f32 / 100.0, true),
+                80
+            );
+        }
+    }
+
+    #[test]
+    fn an_ability_is_not_multiplied_by_attack_at_all() {
+        // `GetAttackMult` returns 1 for an ability before it looks at anything, so a wizard's spell
+        // does the same damage as a fresh character's.
+        let mut strong = Stats::default();
+        strong.boost(Stat::Attack, 75);
+        let strong = strong.armed_with(100, 200);
+        let weak = Stats::default().armed_with(100, 200);
+
+        for step in 0..200 {
+            let roll = step as f32 / 200.0;
+            assert_eq!(
+                strong.attack_damage(&Rules::NONE, roll, true),
+                weak.attack_damage(&Rules::NONE, roll, true)
+            );
+        }
+    }
+
+    // -- swept against a transliteration of the original -----------------------------------------
+
+    /// `StatsManager.GetAttackMult`, transliterated.
+    fn cs_attack_mult(attack: i32, weak: bool, damaging: bool, is_ability: bool) -> f32 {
+        if is_ability {
+            return 1.0;
+        }
+        if weak {
+            return 0.5f32;
+        }
+        let mut mult = 0.5f32 + (attack as f32 / 75f32) * (2f32 - 0.5f32);
+        if damaging {
+            mult *= 1.5f32;
+        }
+        mult
+    }
+
+    /// `wRandom.NextIntRange`, transliterated. The third argument stands in for what `Gen()` returned.
+    fn cs_next_int_range(min: u32, max: u32, generated: u32) -> u32 {
+        if min == max {
+            min
+        } else {
+            min + generated % (max - min)
+        }
+    }
+
+    /// `StatsManager.GetAttackDamage`, transliterated, ending in C#'s truncating `(int)` cast.
+    #[allow(clippy::too_many_arguments)]
+    fn cs_attack_damage(
+        min: i32,
+        max: i32,
+        generated: u32,
+        attack: i32,
+        weak: bool,
+        damaging: bool,
+        is_ability: bool,
+    ) -> i32 {
+        let rolled = cs_next_int_range(min as u32, max as u32, generated);
+        (rolled as f32 * cs_attack_mult(attack, weak, damaging, is_ability)) as i32
+    }
+
+    #[test]
+    fn shot_damage_matches_the_original_across_the_whole_space() {
+        // The technique that settled the attack multiplier, applied to the two damage stats: every
+        // combination of bounds, offset within the span, attack and the two conditions that reach
+        // the multiplier, against a transliteration of the two C# methods that produce the number.
+        //
+        // The offset is swept rather than the raw generator output because the two servers draw
+        // from different streams: `Gen() % span` and `(roll * span) as i32` both produce every
+        // offset in `0..span`, and it is the arithmetic downstream of the draw that is under test.
+        let bounds = [
+            (0, 0),
+            (0, 1),
+            (0, 30),
+            (1, 2),
+            (5, 6),
+            (55, 90),
+            (100, 101),
+            (101, 202),
+            (220, 275),
+            (350, 350),
+            (1, 1_000),
+        ];
+        let attacks = [0, 1, 3, 7, 12, 25, 37, 50, 63, 75, 90, 120, 250];
+        let flags = [
+            (false, false, false),
+            (true, false, false),
+            (false, true, false),
+            (true, true, false),
+            (false, false, true),
+            (true, false, true),
+        ];
+
+        let mut compared = 0usize;
+        let mut mismatched = 0usize;
+
+        for (min, max) in bounds {
+            let span = (max - min).max(1);
+            for offset in 0..span.min(64) {
+                // Sits in the middle of the offset's slice of `0.0..1.0`, so the truncation on our
+                // side lands on exactly the offset the C# side is handed.
+                let roll = (offset as f32 + 0.5) / span as f32;
+
+                for attack in attacks {
+                    for (weak, damaging, is_ability) in flags {
+                        let mut stats = Stats::default();
+                        stats.boost(Stat::Attack, attack);
+                        let stats = stats.armed_with(min, max);
+
+                        let rules = Rules {
+                            weak,
+                            damaging,
+                            ..Rules::NONE
+                        };
+
+                        let ours = stats.attack_damage(&rules, roll, is_ability);
+                        let theirs = cs_attack_damage(
+                            min,
+                            max,
+                            offset as u32,
+                            attack,
+                            weak,
+                            damaging,
+                            is_ability,
+                        );
+
+                        compared += 1;
+                        if ours != theirs {
+                            mismatched += 1;
+                            if mismatched < 10 {
+                                eprintln!(
+                                    "{min}..{max} offset {offset} attack {attack} \
+                                     weak {weak} damaging {damaging} ability {is_ability}: \
+                                     ours {ours}, theirs {theirs}"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        assert!(compared > 5_000, "swept {compared} combinations");
+        assert_eq!(mismatched, 0, "{mismatched} of {compared} disagreed");
+    }
+
+    #[test]
+    fn the_wait_between_shots_matches_the_original_across_the_whole_space() {
+        // `ValidatePlayerShoot` computes `(int)(1 / Stats.GetAttackFrequency() * 1 /
+        // item.RateOfFire)`. Every rate of fire the content declares, against every dexterity a
+        // character can reach and the two conditions that reach the frequency.
+        let rates = [
+            0.25f32, 0.3, 0.33, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 1.0, 1.09, 1.1, 1.15,
+            1.2, 1.25, 1.3, 1.5, 1.6, 2.0,
+        ];
+
+        let mut compared = 0usize;
+        let mut mismatched = 0usize;
+
+        for dexterity in 0..=100i32 {
+            for (dazed, berserk) in [(false, false), (true, false), (false, true), (true, true)] {
+                let mut stats = Stats::default();
+                stats.boost(Stat::Dexterity, dexterity);
+
+                let rules = Rules {
+                    dazed,
+                    berserk,
+                    ..Rules::NONE
+                };
+
+                // `GetAttackFrequency`, transliterated.
+                let frequency = if dazed {
+                    0.0015f32
+                } else {
+                    let rof = 0.0015f32 + (dexterity as f32 / 75f32) * (0.008f32 - 0.0015f32);
+                    if berserk { rof * 1.5f32 } else { rof }
+                };
+
+                for rate in rates {
+                    let theirs = (1f32 / frequency * 1f32 / rate) as i32;
+                    let ours = stats.shot_cooldown_ms(&rules, rate) as i32;
+
+                    compared += 1;
+                    if ours != theirs {
+                        mismatched += 1;
+                        if mismatched < 10 {
+                            eprintln!(
+                                "dex {dexterity} dazed {dazed} berserk {berserk} rate {rate}: \
+                                 ours {ours}, theirs {theirs}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        assert!(compared > 5_000, "swept {compared} combinations");
+        assert_eq!(mismatched, 0, "{mismatched} of {compared} disagreed");
+    }
+
+    #[test]
+    fn luck_multiplies_the_private_loot_roll_by_a_hundredth_of_itself() {
+        // `1 + Stats.Boost[10] / 100.0`, and nothing else in the server reads the stat.
+        let mut stats = Stats::default();
+        assert_eq!(stats.loot_multiplier(), 1.0);
+
+        stats.boost(Stat::Luck, 25);
+        assert_eq!(stats.luck_boost(), 25);
+        assert!((stats.loot_multiplier() - 1.25).abs() < 1e-12);
+    }
+
+    #[test]
+    fn luck_is_read_from_the_boost_layer_and_not_from_the_base() {
+        // The original names `Stats.Boost[10]` rather than `Stats[10]`. Nothing writes a base luck,
+        // so the two agree in this content -- but the reader is the boost layer, and a server that
+        // read the total would pay out differently the moment anything wrote one.
+        let mut stats = Stats::from_base(&[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 40]);
+        assert_eq!(stats.luck_boost(), 0, "a base luck is not a boost");
+
+        let mut worn = [0i32; STAT_COUNT];
+        worn[Stat::Luck.index()] = 40;
+        stats.set_equipment(worn);
+        assert_eq!(stats.luck_boost(), 40, "a worn one is");
     }
 }

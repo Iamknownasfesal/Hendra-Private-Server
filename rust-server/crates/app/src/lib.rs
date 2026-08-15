@@ -41,6 +41,11 @@
 //!   POST   /characters     (Bearer) {class, name} ->  {character}
 //! ```
 //!
+//! Beside those, and on the same port, are the thirty-eight app-engine routes the game's own
+//! clients speak: form-encoded posts under `/account/`, `/char/`, `/app/`, `/guild/` and their
+//! siblings, answered in XML. They are the specification's, path for path and refusal for refusal;
+//! see [`legacy`] for the dialect and [`appfiles`] for the documents the static ones hand back.
+//!
 //! # On running this behind something
 //!
 //! There is no TLS here. Terminating it belongs to whatever sits in front, a reverse proxy that
@@ -59,8 +64,11 @@ use hendra_auth::{Claims, TokenKey, hash_password, mint, now, verify, verify_pas
 use hendra_store::{Admin, Store, StoreError};
 use serde::{Deserialize, Serialize};
 
+pub mod appfiles;
+pub mod legacy;
 pub mod mail;
 pub mod throttle;
+pub use appfiles::AppFiles;
 pub use throttle::Throttle;
 
 pub struct App {
@@ -76,9 +84,6 @@ pub struct App {
     /// The content, for the character-select screen. Read-only and shared with nothing.
     pub catalog: Arc<hendra_content::Catalog>,
 
-    /// What every class carries beyond the gear its own slots decide.
-    pub common_items: hendra_characters::CommonItems,
-
     /// How many passwords have recently failed against each name.
     pub throttle: Throttle,
 
@@ -87,25 +92,24 @@ pub struct App {
 
     /// Where the content is, for the files a client fetches rather than the summaries it reads.
     pub content: std::path::PathBuf,
+
+    /// The documents and artwork the app-engine endpoints hand back unchanged, read at startup as
+    /// the original reads them.
+    pub files: AppFiles,
 }
 
 impl App {
-    pub fn with_content(
-        store: Store,
-        key: TokenKey,
-        catalog: Arc<hendra_content::Catalog>,
-        common_items: hendra_characters::CommonItems,
-    ) -> App {
+    pub fn with_content(store: Store, key: TokenKey, catalog: Arc<hendra_content::Catalog>) -> App {
         App {
             store,
             key,
             servers: Vec::new(),
             mail: Arc::new(mail::Logged),
             catalog,
-            common_items,
             throttle: Throttle::new(),
             hashing: tokio::sync::Semaphore::new(throttle::CONCURRENT_HASHES),
             content: std::path::PathBuf::from("."),
+            files: AppFiles::default(),
         }
     }
 }
@@ -220,8 +224,31 @@ pub async fn register(
     Ok(Json(issue(&app, account.id, Vec::new())))
 }
 
-pub async fn login(State(app): State<Arc<App>>, Json(body): Json<Credentials>) -> Answer<LoggedIn> {
-    let name = body.name.trim();
+/// Finds the account a sign-in name refers to.
+///
+/// An address or an account name, because the two name the same account from different screens: an
+/// account is registered by email address and later chooses a name to be known by, and both are
+/// still what its owner would type. Tried in that order, since the address is what the login form
+/// asks for.
+async fn account_for(app: &App, name: &str) -> Result<hendra_store::Account, StoreError> {
+    match app.store.account_by_email(name).await {
+        Ok(id) => app.store.account(id).await,
+        Err(StoreError::NoSuchAccount(_)) => app.store.account_by_name(name).await,
+        Err(err) => Err(err),
+    }
+}
+
+/// Checks a name and password, and answers with the account they belong to.
+///
+/// Shared by every way in rather than written per endpoint, so that the rate limit means the same
+/// thing whichever door a password is tried against: a limiter one endpoint enforces and another
+/// does not is not a limiter.
+pub async fn sign_in(
+    app: &App,
+    name: &str,
+    password: &str,
+) -> Result<hendra_store::Account, (StatusCode, Json<Refusal>)> {
+    let name = name.trim();
     let now = Instant::now();
 
     if let Some(after) = app.throttle.locked_out(name, now) {
@@ -240,7 +267,7 @@ pub async fn login(State(app): State<Arc<App>>, Json(body): Json<Credentials>) -
         return Err(too_many_attempts(throttle::WINDOW));
     }
 
-    let account = match app.store.account_by_name(name).await {
+    let account = match account_for(app, name).await {
         Ok(account) => account,
         Err(StoreError::NoSuchAccount(_)) => {
             // Counted even though there is nothing to guess here, because not counting it would
@@ -270,7 +297,7 @@ pub async fn login(State(app): State<Arc<App>>, Json(body): Json<Credentials>) -
 
     let checked = {
         let _permit = app.hashing.acquire().await;
-        verify_password(&body.password, stored)
+        verify_password(password, stored)
     };
 
     match checked {
@@ -296,6 +323,12 @@ pub async fn login(State(app): State<Arc<App>>, Json(body): Json<Credentials>) -
     if account.banned {
         return Err(refuse(StatusCode::FORBIDDEN, "this account is banned"));
     }
+
+    Ok(account)
+}
+
+pub async fn login(State(app): State<Arc<App>>, Json(body): Json<Credentials>) -> Answer<LoggedIn> {
+    let account = sign_in(&app, &body.name, &body.password).await?;
 
     let characters = app
         .store
@@ -600,10 +633,13 @@ pub async fn classes(State(app): State<Arc<App>>, headers: HeaderMap) -> Answer<
 #[derive(Deserialize)]
 pub struct NewCharacter {
     pub class: u16,
-    pub name: Option<String>,
 }
 
 /// Makes a character of a class, if the account has unlocked it.
+///
+/// A class is all that is asked for. The character answers to the account's name, as
+/// `realm/entities/player/Player.cs:423` reads it, so there is no name to be given here and none to
+/// disagree with the one on the account.
 pub async fn create_character(
     State(app): State<Arc<App>>,
     headers: HeaderMap,
@@ -611,21 +647,11 @@ pub async fn create_character(
 ) -> Answer<Character> {
     let claims = authenticate(&app, &headers)?;
 
-    let name = body.name.as_deref().map(str::trim).unwrap_or("Adventurer");
-    if name.is_empty() || name.chars().count() > 32 {
-        return Err(refuse(
-            StatusCode::BAD_REQUEST,
-            "a name must be between one and thirty-two characters",
-        ));
-    }
-
     let made = hendra_characters::create(
         &app.store,
         &app.catalog,
-        &app.common_items,
         claims.account_id,
         hendra_content::ObjectType(body.class),
-        name,
     )
     .await;
 
@@ -698,7 +724,21 @@ pub struct NewName {
     pub name: String,
 }
 
-/// Renames an account.
+/// What a second name costs an account that already chose its first.
+///
+/// `ChooseNameHandler.cs:63` and `:73`, where the check and the charge are the same number.
+pub const RENAME_FAME: i32 = 5000;
+
+/// Claims the name an account is known by.
+///
+/// This is `ChooseName` (`networking/handlers/ChooseNameHandler.cs:24-96`), which is a packet there
+/// and a request here because names belong to accounts rather than to whoever happens to be in a
+/// world. Its rules, in its order: the first letter is capitalised, the name must be letters only
+/// and three to ten of them, none of the reserved names, and not one somebody already has.
+///
+/// An account whose name it has not chosen -- one still under a reserved name -- names itself for
+/// nothing. One that has chosen already pays five thousand fame to choose again, and is refused
+/// when it cannot, which is the only thing stopping a name from being free to churn.
 pub async fn set_name(
     State(app): State<Arc<App>>,
     headers: HeaderMap,
@@ -706,17 +746,44 @@ pub async fn set_name(
 ) -> Answer<serde_json::Value> {
     let claims = authenticate(&app, &headers)?;
 
-    let name = body.name.trim();
-    if name.is_empty() || name.chars().count() > 32 {
-        return Err(refuse(
-            StatusCode::BAD_REQUEST,
-            "a name must be between one and thirty-two characters",
-        ));
+    // `char.ToUpper(name[0]) + name.Substring(1)` (`ChooseNameHandler.cs:35-36`), applied before
+    // the rules rather than after, so `bob` and `Bob` are one name and are judged as one.
+    let mut characters = body.name.trim().chars();
+    let name: String = match characters.next() {
+        Some(first) => first.to_uppercase().chain(characters).collect(),
+        None => String::new(),
+    };
+
+    let length = name.chars().count();
+    if length < 3 || length > 10 || !name.chars().all(char::is_alphabetic) {
+        return Err(refuse(StatusCode::BAD_REQUEST, "Invalid name"));
     }
 
-    match app.store.rename_account(claims.account_id, name).await {
+    if legacy::is_guest_name(&name) {
+        return Err(refuse(StatusCode::BAD_REQUEST, "Invalid name"));
+    }
+
+    let Ok(account) = app.store.account(claims.account_id).await else {
+        return Err(refuse(StatusCode::NOT_FOUND, "no such account"));
+    };
+
+    // `Account.NameChosen`, which a reserved name stands for here: those are the names an unnamed
+    // account is given and the ones no account may choose, so wearing one means never having
+    // chosen (`legacy::reserve_name`, `common/Database.cs:82-84`).
+    let price = if legacy::is_guest_name(&account.name) {
+        0
+    } else {
+        RENAME_FAME
+    };
+
+    match app
+        .store
+        .rename_account_for(claims.account_id, &name, price)
+        .await
+    {
         Ok(()) => Ok(Json(serde_json::json!({}))),
-        Err(StoreError::NameTaken) => Err(refuse(StatusCode::CONFLICT, "that name is taken")),
+        Err(StoreError::NameTaken) => Err(refuse(StatusCode::CONFLICT, "Duplicated name")),
+        Err(StoreError::Refused(why)) => Err(refuse(StatusCode::PAYMENT_REQUIRED, why)),
         Err(err) => {
             tracing::error!(%err, "could not rename an account");
             Err(refuse(
@@ -1453,6 +1520,30 @@ pub async fn picture(
     Ok(([(axum::http::header::CONTENT_TYPE, content_type)], bytes).into_response())
 }
 
+/// One music track or sound effect, by name and without its extension.
+///
+/// The original serves `web/music` and `web/sfx` as ordinary static files and the client builds
+/// `<app server>/<folder>/<name>.mp3` for each. Unauthenticated, as static files are: a world names
+/// what it is playing in its welcome, and every client in it fetches the same track.
+pub async fn audio(
+    State(app): State<Arc<App>>,
+    axum::extract::Path((folder, name)): axum::extract::Path<(String, String)>,
+) -> Result<axum::response::Response, (StatusCode, Json<Refusal>)> {
+    use axum::response::IntoResponse;
+
+    // Two folders, named here rather than taken from the path: anything else is not audio, and a
+    // folder a caller chose is a folder a caller can walk out of.
+    if folder != "music" && folder != "sfx" {
+        return Err(refuse(StatusCode::NOT_FOUND, "no such sound"));
+    }
+
+    let Some(bytes) = app.files.audio(&folder, &name) else {
+        return Err(refuse(StatusCode::NOT_FOUND, "no such sound"));
+    };
+
+    Ok(([(axum::http::header::CONTENT_TYPE, "audio/mpeg")], bytes).into_response())
+}
+
 #[derive(Serialize)]
 pub struct NewsItem {
     pub title: String,
@@ -1545,6 +1636,9 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/skins", get(skins).post(buy_skin))
         .route("/picture", post(set_picture))
         .route("/picture/{account_id}", get(picture))
+        // The music and sound effects, which the original serves out of the same folder as ordinary
+        // static files. Without them a world can name what it is playing and nobody hears it.
+        .route("/{folder}/{name}", get(audio))
         .route("/news", get(news))
         .route("/news/game", get(game_news))
         .route("/daily", get(daily).post(claim_daily))
@@ -1565,6 +1659,49 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/classes", get(classes))
         .route("/select", post(select))
         .route("/password", post(change_password))
+        // The app-engine endpoints, which is the dialect the game's clients actually speak. See
+        // `legacy` for why these are served rather than the clients being moved onto the routes
+        // above.
+        .route("/account/verify", post(legacy::verify))
+        .route("/account/register", post(legacy::register))
+        .route("/account/setName", post(legacy::set_name))
+        .route("/account/changePassword", post(legacy::change_password))
+        .route("/account/forgotPassword", post(legacy::forgot_password))
+        .route(
+            "/account/rp",
+            get(legacy::reset_password_link).post(legacy::reset_password_form),
+        )
+        .route("/account/sendVerifyEmail", post(legacy::send_verify_email))
+        .route("/account/purchaseCharSlot", post(legacy::purchase_char_slot))
+        .route("/account/purchaseSkin", post(legacy::purchase_skin))
+        .route("/account/verifyage", post(legacy::verify_age))
+        .route("/account/rank", post(legacy::set_rank))
+        .route("/account/registerDiscord", post(legacy::register_discord))
+        .route("/account/unregisterDiscord", post(legacy::unregister_discord))
+        .route("/char/list", post(legacy::char_list))
+        .route("/char/fame", post(legacy::char_fame))
+        .route("/char/delete", post(legacy::char_delete))
+        .route("/char/purchaseClassUnlock", post(legacy::purchase_class_unlock))
+        .route("/app/init", post(legacy::app_init))
+        .route("/app/getServerXmls", post(legacy::app_server_xmls))
+        .route("/app/getLanguageStrings", post(legacy::app_language_strings))
+        .route("/app/globalNews", post(legacy::app_global_news))
+        .route("/app/getTextures", post(legacy::app_textures))
+        .route("/credits/getoffers", post(legacy::credits_offers))
+        .route("/credits/add", post(legacy::credits_add))
+        .route("/fame/list", post(legacy::fame_list))
+        .route("/picture/get", post(legacy::picture_get))
+        .route("/guild/listMembers", post(legacy::guild_members))
+        .route("/guild/getBoard", post(legacy::guild_board))
+        .route("/guild/setBoard", post(legacy::set_guild_board))
+        .route("/privateMessage/list", post(legacy::message_list))
+        .route("/privateMessage/send", post(legacy::message_send))
+        .route("/privateMessage/delete", post(legacy::message_delete))
+        .route("/dailyLogin/fetchCalendar", post(legacy::daily_calendar))
+        .route("/weekQuest/getQuests", post(legacy::week_quests))
+        .route("/inGameNews/getNews", post(legacy::in_game_news))
+        .route("/friends/getList", post(legacy::friends_list))
+        .route("/friends/getRequests", post(legacy::friend_requests))
         // A body limit, because both credential endpoints hash what they are given and Argon2 is
         // meant to be slow.
         .layer(tower_http::limit::RequestBodyLimitLayer::new(8 * 1024))

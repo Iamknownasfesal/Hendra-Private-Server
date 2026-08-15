@@ -1,6 +1,6 @@
 //! Accounts and characters.
 
-use crate::{Result, Store, StoreError};
+use crate::{AccountLock, Result, Store, StoreError};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Account {
@@ -18,6 +18,13 @@ pub struct Account {
     pub gold: i32,
     pub fame: i32,
     pub tokens: i32,
+
+    /// The fame this account has ever earned, which spending never reduces.
+    ///
+    /// `Database.UpdateFame` (`common/Database.cs:812-833`) raises this only when the amount is
+    /// positive and applies every amount to [`fame`](Self::fame), so the pair reads as "earned" and
+    /// "left". The character list reports them as `<TotalFame>` and `<Fame>`.
+    pub total_fame: i32,
 
     /// When the account may speak again, or `None` if it always may.
     pub muted_until: Option<chrono::DateTime<chrono::Utc>>,
@@ -87,6 +94,35 @@ impl Admin {
     }
 }
 
+/// The names an account is handed before it picks one.
+///
+/// `Database.GuestNames` (`common/Database.cs:62-75`), used verbatim. They are reserved rather than
+/// decorative: `setName` refuses them, which is what lets a name from this list mean "this account
+/// has not picked one yet" instead of being a name somebody happens to have.
+const GUEST_NAMES: [&str; 45] = [
+    "Darq", "Deyst", "Drac", "Drol", "Eango", "Eashy", "Eati", "Eendi", "Ehoni", "Gharr", "Iatho",
+    "Iawa", "Idrae", "Iri", "Issz", "Itani", "Laen", "Lauk", "Lorz", "Oalei", "Odaru", "Oeti",
+    "Orothi", "Oshyu", "Queq", "Radph", "Rayr", "Ril", "Rilr", "Risrr", "Saylt", "Scheev", "Sek",
+    "Serl", "Seus", "Tal", "Tiar", "Uoro", "Urake", "Utanu", "Vorck", "Vorv", "Yangu", "Yimi",
+    "Zhiar",
+];
+
+/// Whether a name is one of the reserved ones, and so not a name anybody chose.
+///
+/// This is what `Account.NameChosen` amounts to here, and it is asked from two places that cannot
+/// see each other: the app charges for a rename only when the current name was never chosen, and
+/// the world server colours a name over a head by the same test (`Player.getNameColor`,
+/// `Player.as:757-764`). It lives beside [`Account`] so that both ask one list.
+///
+/// Trailing digits are ignored, because a reserved name already taken is handed out with a number
+/// after it. A chosen name can never collide: `setName` takes letters only.
+pub fn is_guest_name(name: &str) -> bool {
+    let stem = name.trim_end_matches(|character: char| character.is_ascii_digit());
+    GUEST_NAMES
+        .iter()
+        .any(|reserved| reserved.eq_ignore_ascii_case(stem))
+}
+
 /// The things an account spends.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Currency {
@@ -110,6 +146,19 @@ impl Currency {
             Currency::Prestige => "prestige",
         }
     }
+
+    /// The column holding what has ever been earned of this currency, where one is kept.
+    ///
+    /// `Database.UpdateFame` and `Database.UpdateCredit` (`common/Database.cs:787-833`) each keep a
+    /// running total beside the balance and raise it only on a credit. Tokens have no such total
+    /// here, and gold's is not a column we hold, so those report `None` and are simply added to.
+    fn lifetime_column(self) -> Option<&'static str> {
+        match self {
+            Currency::Fame => Some("total_fame"),
+            Currency::Prestige => Some("total_prestige"),
+            Currency::Gold | Currency::Tokens => None,
+        }
+    }
 }
 
 /// A character, with everything needed to put it into a world.
@@ -118,7 +167,14 @@ pub struct Character {
     pub id: i64,
     pub account_id: i64,
     pub class: uuid::Uuid,
+
+    /// The account's name, read alongside the character rather than stored on it.
+    ///
+    /// `realm/entities/player/Player.cs:423` is `Name = client.Account.Name;` and `DbChar` holds
+    /// no name of its own, so every character an account owns wears the same name and a rename
+    /// reaches all of them at once.
     pub name: String,
+
     pub hp: i32,
     pub max_hp: i32,
     pub mp: i32,
@@ -137,6 +193,26 @@ pub struct Character {
 
     /// Whether this character has been given a backpack, which is eight more carried slots.
     pub has_backpack: bool,
+
+    /// The eight base stats levelling has produced, one slot per stat.
+    ///
+    /// A slot is `None` where the row has no record of that stat, which is the state every
+    /// character that predates the column is left in: the two maxima are recoverable from their own
+    /// columns and the other six are not. Whoever reads this has the class descriptor and fills the
+    /// gaps from it; the column deliberately does not guess. An entirely empty vector means the
+    /// same thing for all eight.
+    pub stats: Vec<Option<i32>>,
+
+    /// The skin this character wears, or zero for the class's own sprite.
+    ///
+    /// Held on the character rather than the account, as `DbChar.Skin` is
+    /// (`common/DbModels.cs:696`): a skin is chosen per character, while owning one is an account's
+    /// business.
+    pub skin: i32,
+
+    /// The two dyes, which the original calls `Tex1` and `Tex2` (`common/DbModels.cs:684-690`).
+    pub dye_cloth: i32,
+    pub dye_accessory: i32,
 }
 
 /// Enough to draw a character-select screen without loading inventories.
@@ -144,7 +220,10 @@ pub struct Character {
 pub struct CharacterSummary {
     pub id: i64,
     pub class: uuid::Uuid,
+
+    /// The account's name, which is the only name a character has.
     pub name: String,
+
     pub level: i16,
     pub fame: i32,
     pub alive: bool,
@@ -167,9 +246,10 @@ impl Store {
                 i16,
                 i32,
                 Option<String>,
+                i32,
             ),>(
             "INSERT INTO account (name) VALUES ($1)
-             RETURNING id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until, admin_rank, credits, discord_id",
+             RETURNING id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until, admin_rank, credits, discord_id, total_fame",
         )
         .bind(name)
         .fetch_one(self.pool())
@@ -189,6 +269,7 @@ impl Store {
                 admin_rank,
                 credits,
                 discord_id,
+                total_fame,
             )) => Ok(Account {
                 id,
                 name,
@@ -202,6 +283,7 @@ impl Store {
                 admin_rank,
                 credits,
                 discord_id,
+                total_fame,
             }),
             // The unique index is what decides this, not a prior lookup. A check-then-insert has a
             // window between the two in which someone else inserts the same name.
@@ -229,9 +311,10 @@ impl Store {
                 i16,
                 i32,
                 Option<String>,
+                i32,
             ),
         >(
-            "SELECT id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until, admin_rank, credits, discord_id
+            "SELECT id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until, admin_rank, credits, discord_id, total_fame
              FROM account WHERE lower(name) = lower($1)",
         )
         .bind(name)
@@ -252,6 +335,7 @@ impl Store {
                 admin_rank,
                 credits,
                 discord_id,
+                total_fame,
             )| {
                 Account {
                     id,
@@ -266,6 +350,7 @@ impl Store {
                     admin_rank,
                     credits,
                     discord_id,
+                    total_fame,
                 }
             },
         )
@@ -301,9 +386,10 @@ impl Store {
                 i16,
                 i32,
                 Option<String>,
+                i32,
             ),
         >(
-            "SELECT id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until, admin_rank, credits, discord_id
+            "SELECT id, name, vault_chests, banned, password_hash, gold, fame, tokens, muted_until, admin_rank, credits, discord_id, total_fame
              FROM account WHERE id = $1",
         )
         .bind(id)
@@ -324,6 +410,7 @@ impl Store {
                 admin_rank,
                 credits,
                 discord_id,
+                total_fame,
             )| {
                 Account {
                     id,
@@ -338,6 +425,7 @@ impl Store {
                     admin_rank,
                     credits,
                     discord_id,
+                    total_fame,
                 }
             },
         )
@@ -345,20 +433,20 @@ impl Store {
     }
 
     /// Creates a character for an account.
+    ///
+    /// Takes no name: the character answers to the account's, which is read back with it.
     pub async fn create_character(
         &self,
         account_id: i64,
         class: uuid::Uuid,
-        name: &str,
         max_hp: i32,
     ) -> Result<Character> {
         let (id,): (i64,) = sqlx::query_as(
-            "INSERT INTO character (account_id, class, name, hp, max_hp)
-             VALUES ($1, $2, $3, $4, $4) RETURNING id",
+            "INSERT INTO character (account_id, class, hp, max_hp)
+             VALUES ($1, $2, $3, $3) RETURNING id",
         )
         .bind(account_id)
         .bind(class)
-        .bind(name)
         .bind(max_hp)
         .fetch_one(self.pool())
         .await?;
@@ -367,49 +455,29 @@ impl Store {
     }
 
     /// Loads a character and its inventory.
-    /// The living character of that name, if there is one.
     ///
-    /// Names are compared without case, as everywhere else a player types one: somebody asked to
-    /// trade by typing a name, and they should not have to match its capitals.
-    pub async fn character_named(&self, name: &str) -> Result<Option<Character>> {
-        let found = sqlx::query_as::<_, (i64,)>(
-            "SELECT id FROM character WHERE lower(name) = lower($1) AND alive LIMIT 1",
-        )
-        .bind(name)
-        .fetch_optional(self.pool())
-        .await?;
-
-        match found {
-            Some((id,)) => Ok(Some(self.character(id).await?)),
-            None => Ok(None),
-        }
-    }
-
+    /// The name comes from the account it belongs to, as `Player.cs:423` reads it: a character has
+    /// no name of its own to have got out of date.
+    ///
+    /// `character.created_at` is deliberately not among the columns read. The original stores the
+    /// same thing — `DbChar.CreateTime` (`common/DbModels.cs:708-712`), written once at creation
+    /// (`common/Database.cs:1016`) — and equally never sends it: `Character.ToXml` ends at
+    /// `HasBackpack`, and the AS3 client's `SavedCharacter.bornOn()` guards with `hasOwnProperty`
+    /// and answers "Unknown" because no server it ever spoke to sent one. The column is kept for
+    /// the same reason the original keeps its field, but reading it here would only tempt somebody
+    /// to put it back on the wire.
     pub async fn character(&self, id: i64) -> Result<Character> {
-        let row = sqlx::query_as::<
-            _,
-            (
-                i64,
-                i64,
-                uuid::Uuid,
-                String,
-                i32,
-                i32,
-                i32,
-                i32,
-                i16,
-                i32,
-                i32,
-                bool,
-                i32,
-                i32,
-                bool,
-            ),
-        >(
-            "SELECT id, account_id, class, name, hp, max_hp, mp, max_mp,
-                    level, experience, fame, alive, health_potions, magic_potions,
-                    has_backpack
-             FROM character WHERE id = $1",
+        use sqlx::Row;
+
+        let row = sqlx::query(
+            "SELECT character.id, character.account_id, character.class, account.name,
+                    character.hp, character.max_hp, character.mp, character.max_mp,
+                    character.level, character.experience, character.fame, character.alive,
+                    character.health_potions, character.magic_potions,
+                    character.has_backpack, character.stats, character.skin,
+                    character.dye_cloth, character.dye_accessory
+             FROM character JOIN account ON account.id = character.account_id
+             WHERE character.id = $1",
         )
         .bind(id)
         .fetch_optional(self.pool())
@@ -425,21 +493,30 @@ impl Store {
         .await?;
 
         Ok(Character {
-            id: row.0,
-            account_id: row.1,
-            class: row.2,
-            name: row.3,
-            hp: row.4,
-            max_hp: row.5,
-            mp: row.6,
-            max_mp: row.7,
-            level: row.8,
-            experience: row.9,
-            fame: row.10,
-            alive: row.11,
-            health_potions: row.12,
-            magic_potions: row.13,
-            has_backpack: row.14,
+            id: row.try_get("id")?,
+            account_id: row.try_get("account_id")?,
+            class: row.try_get("class")?,
+            name: row.try_get("name")?,
+            hp: row.try_get("hp")?,
+            max_hp: row.try_get("max_hp")?,
+            mp: row.try_get("mp")?,
+            max_mp: row.try_get("max_mp")?,
+            level: row.try_get("level")?,
+            experience: row.try_get("experience")?,
+            fame: row.try_get("fame")?,
+            alive: row.try_get("alive")?,
+            health_potions: row.try_get("health_potions")?,
+            magic_potions: row.try_get("magic_potions")?,
+            has_backpack: row.try_get("has_backpack")?,
+
+            // Read as an array of options rather than of numbers: a slot the row has no record of
+            // is null, and decoding it as a number would turn "not recorded" into an error that
+            // refuses the login of every character that predates the column.
+            stats: row.try_get("stats")?,
+
+            skin: row.try_get("skin")?,
+            dye_cloth: row.try_get("dye_cloth")?,
+            dye_accessory: row.try_get("dye_accessory")?,
             inventory,
         })
     }
@@ -447,8 +524,10 @@ impl Store {
     /// Every living character on an account.
     pub async fn characters(&self, account_id: i64) -> Result<Vec<CharacterSummary>> {
         let rows = sqlx::query_as::<_, (i64, uuid::Uuid, String, i16, i32, bool)>(
-            "SELECT id, class, name, level, fame, alive
-             FROM character WHERE account_id = $1 AND alive ORDER BY id",
+            "SELECT character.id, character.class, account.name,
+                    character.level, character.fame, character.alive
+             FROM character JOIN account ON account.id = character.account_id
+             WHERE character.account_id = $1 AND character.alive ORDER BY character.id",
         )
         .bind(account_id)
         .fetch_all(self.pool())
@@ -469,34 +548,61 @@ impl Store {
 
     /// Writes back what a character became.
     ///
-    /// Called at logout, at death and at the periodic checkpoint. Deliberately does not touch the
-    /// inventory: item movement has its own transactional path, and letting a checkpoint rewrite
-    /// slots wholesale would be a way to undo a move that had already committed.
+    /// Called at logout, at death, at every world change and at the periodic checkpoint.
+    /// Deliberately does not touch the inventory: item movement has its own transactional path, and
+    /// letting a checkpoint rewrite slots wholesale would be a way to undo a move that had already
+    /// committed.
+    ///
+    /// The maxima are written alongside the current figures. They are not a separate fact about the
+    /// character — `MaxHitPoints` and `MaxMagicPoints` are two of the eight stats — but the row
+    /// holds them in their own columns, and a column left behind while the stat it mirrors grows is
+    /// a level-twenty wizard whose row says a hundred health.
+    ///
+    /// Appearance is left alone for the same reason the inventory is. `Store::wear_skin` and
+    /// `Store::set_dye` write those columns themselves, checking ownership in the same statement,
+    /// and a checkpoint carrying a snapshot taken at login would undo a skin chosen since.
+    ///
+    /// `under` is the lock the writer is playing the account under, and the write happens only
+    /// while that lock is still theirs. Answers whether it did. This is
+    /// `Database.SaveCharacter`'s `lockAcc` (`common/Database.cs:1058-1069`), which puts
+    /// `Condition.StringEqual($"lock:{acc.AccountId}", acc.LockToken)` on the transaction that
+    /// writes the character: a session whose account was taken over while it was computing a
+    /// snapshot no longer writes, and the figures the session that holds the account wrote stand.
+    /// Without it the last write wins by arrival order rather than by who is playing, and a
+    /// snapshot from before a handover lands after the save that followed it. `None` writes
+    /// unconditionally, which is the original's `lockAcc: false`.
     pub async fn save_character(
         &self,
         id: i64,
-        hp: i32,
-        mp: i32,
-        level: i16,
-        experience: i32,
-        fame: i32,
-    ) -> Result<()> {
-        sqlx::query(
+        saved: &Saved,
+        under: Option<&AccountLock>,
+    ) -> Result<bool> {
+        let wrote = sqlx::query(
             "UPDATE character
-             SET hp = LEAST($2, max_hp), mp = $3, level = $4, experience = $5, fame = $6,
-                 last_seen = now()
-             WHERE id = $1",
+             SET max_hp = GREATEST(1, $4), max_mp = GREATEST(0, $5),
+                 hp = LEAST(GREATEST(1, $2), GREATEST(1, $4)), mp = $3,
+                 level = $6, experience = $7, fame = $8, stats = $9, last_seen = now()
+             WHERE id = $1 AND (
+                 $10::uuid IS NULL OR EXISTS (
+                     SELECT 1 FROM account_lock
+                      WHERE account_lock.account_id = character.account_id
+                        AND account_lock.token = $10
+                        AND account_lock.expires_at > now()))",
         )
         .bind(id)
-        .bind(hp)
-        .bind(mp)
-        .bind(level)
-        .bind(experience)
-        .bind(fame)
+        .bind(saved.hp)
+        .bind(saved.mp)
+        .bind(saved.max_hp)
+        .bind(saved.max_mp)
+        .bind(saved.level)
+        .bind(saved.experience)
+        .bind(saved.fame)
+        .bind(saved.stats.as_slice())
+        .bind(under.map(|held| held.token))
         .execute(self.pool())
         .await?;
 
-        Ok(())
+        Ok(wrote.rows_affected() == 1)
     }
 
     /// Marks a character dead. The row stays, because the graveyard is part of the game.
@@ -513,8 +619,18 @@ impl Store {
     /// Added rather than set, so a session that ends without saving loses what it did and not what
     /// every earlier session did. Written when a character leaves a world, which is the same moment
     /// its health and experience are.
-    pub async fn add_tally(&self, character_id: i64, tally: &TallyRow) -> Result<()> {
-        sqlx::query(
+    ///
+    /// Held to the same lock as `Store::save_character`, and for the same reason: the original
+    /// writes both out of one `DbChar` inside one conditional transaction
+    /// (`common/Database.cs:1062-1066`), so counts from a session that has lost the account do not
+    /// land on a row somebody else is now playing.
+    pub async fn add_tally(
+        &self,
+        character_id: i64,
+        tally: &TallyRow,
+        under: Option<&AccountLock>,
+    ) -> Result<bool> {
+        let added = sqlx::query(
             "UPDATE character SET
                  shots = shots + $2,
                  shots_that_hit = shots_that_hit + $3,
@@ -529,7 +645,12 @@ impl Store {
                  quests_completed = quests_completed + $12,
                  level_up_assists = level_up_assists + $13,
                  dungeons_completed = dungeons_completed | $14
-             WHERE id = $1",
+             WHERE id = $1 AND (
+                 $15::uuid IS NULL OR EXISTS (
+                     SELECT 1 FROM account_lock
+                      WHERE account_lock.account_id = character.account_id
+                        AND account_lock.token = $15
+                        AND account_lock.expires_at > now()))",
         )
         .bind(character_id)
         .bind(tally.shots)
@@ -545,10 +666,11 @@ impl Store {
         .bind(tally.quests_completed)
         .bind(tally.level_up_assists)
         .bind(tally.dungeons_completed)
+        .bind(under.map(|held| held.token))
         .execute(self.pool())
         .await?;
 
-        Ok(())
+        Ok(added.rows_affected() == 1)
     }
 
     /// Everything a character has done.
@@ -612,6 +734,24 @@ impl Store {
         Ok(best.0.unwrap_or(0))
     }
 
+    /// How many characters this account made before this one.
+    ///
+    /// What stands in for the original's per-account character id, which counts from zero and is
+    /// what the ancestor bonus asks about: `character.CharId < 2` (`FameStats.cs:122`) means the
+    /// first two characters an account ever made. Ours are numbered across the whole server, so the
+    /// position has to be counted rather than read. Deleted characters still count, as they do
+    /// there: the original's counter only ever goes up.
+    pub async fn characters_made_before(&self, account_id: i64, character_id: i64) -> Result<i64> {
+        let (made,): (i64,) =
+            sqlx::query_as("SELECT count(*) FROM character WHERE account_id = $1 AND id < $2")
+                .bind(account_id)
+                .bind(character_id)
+                .fetch_one(self.pool())
+                .await?;
+
+        Ok(made)
+    }
+
     /// Records a death, and marks the character dead, in one transaction.
     ///
     /// Both or neither. A character marked dead with no death recorded loses the only account of
@@ -621,7 +761,13 @@ impl Store {
     /// Refuses a second death for the same character. A character dies once, and a repeat is either
     /// a bug or two worlds both deciding they killed the same person; either way, recording it
     /// twice would put one character in the graveyard twice and pay its fame twice.
-    pub async fn record_death(&self, death: Death) -> Result<i64> {
+    ///
+    /// `under` is the lock the writer plays the account under, and a death from a session that no
+    /// longer holds it is refused. The original sets `character.Dead` and writes it through
+    /// `Database.SaveCharacter` with the same condition on it (`common/Database.cs:1081`, `:1091`,
+    /// `:1058-1069`), so a body that dies in a world after its session lost the account cannot bury
+    /// the character somebody else is now playing.
+    pub async fn record_death(&self, death: Death, under: Option<&AccountLock>) -> Result<i64> {
         let Death {
             account_id,
             character_id,
@@ -635,8 +781,11 @@ impl Store {
 
         // The character is locked and read before anything is written, so two deaths racing on one
         // character resolve to one: the second finds it already dead and refuses.
+        // The name is the account's, taken here as a copy on purpose: the graveyard remembers what
+        // the character was called when it died, and a later rename does not reach back into it.
         let held = sqlx::query_as::<_, (String, uuid::Uuid, i16, bool, i64)>(
-            "SELECT name, class, level, alive, account_id
+            "SELECT (SELECT name FROM account WHERE account.id = character.account_id),
+                    class, level, alive, account_id
              FROM character WHERE id = $1 FOR UPDATE",
         )
         .bind(character_id)
@@ -651,14 +800,33 @@ impl Store {
             return Err(StoreError::Refused("that character is already dead"));
         }
 
-        sqlx::query(
-            "UPDATE character SET alive = false, hp = 0, fame = $2, last_seen = now()
-             WHERE id = $1",
-        )
-        .bind(character_id)
-        .bind(final_fame)
-        .execute(&mut *transaction)
-        .await?;
+        // Checked inside the transaction that holds the row, so the account cannot change hands
+        // between the check and the burial.
+        if let Some(playing) = under {
+            let ours = sqlx::query_as::<_, (i32,)>(
+                "SELECT 1 FROM account_lock
+                  WHERE account_id = $1 AND token = $2 AND expires_at > now()",
+            )
+            .bind(account_id)
+            .bind(playing.token)
+            .fetch_optional(&mut *transaction)
+            .await?;
+
+            if ours.is_none() {
+                return Err(StoreError::Refused(
+                    "that account is being played elsewhere",
+                ));
+            }
+        }
+
+        // The fame column keeps what the character earned by living, and is not overwritten with
+        // what its death came to. The original holds the two apart in the same way -- `FinalFame` is
+        // a field of its own and `Fame` is left as it was (`Database.cs:1090`) -- and the death
+        // screen needs both to say how much of a total was bonuses.
+        sqlx::query("UPDATE character SET alive = false, hp = 0, last_seen = now() WHERE id = $1")
+            .bind(character_id)
+            .execute(&mut *transaction)
+            .await?;
 
         let (id,): (i64,) = sqlx::query_as(
             "INSERT INTO death
@@ -675,13 +843,14 @@ impl Store {
         .bind(final_fame)
         .bind(&killed_by)
         .bind(first_born)
-        .bind(bonuses.join("\n"))
+        .bind(write_bonuses(&bonuses))
         .fetch_one(&mut *transaction)
         .await?;
 
         // The fame a character finished with is the account's to keep, which is what makes a death
-        // worth anything at all.
-        sqlx::query("UPDATE account SET fame = fame + $2 WHERE id = $1")
+        // worth anything at all. It lands on both numbers: the balance it may spend and the
+        // lifetime total that spending never touches, as `Database.UpdateFame` writes them.
+        sqlx::query("UPDATE account SET fame = fame + $2, total_fame = total_fame + $2 WHERE id = $1")
             .bind(account_id)
             .bind(final_fame.max(0))
             .execute(&mut *transaction)
@@ -725,7 +894,8 @@ impl Store {
     /// An account's graveyard, most recent first.
     pub async fn graveyard(&self, account_id: i64, limit: i64) -> Result<Vec<Departed>> {
         let rows = sqlx::query_as::<_, DeathRow>(
-            "SELECT id, character_id, name, class, level, final_fame, killed_by, first_born, at
+            "SELECT id, character_id, name, class, level, final_fame, killed_by, first_born, at,
+                    bonuses
              FROM death WHERE account_id = $1 ORDER BY at DESC LIMIT $2",
         )
         .bind(account_id)
@@ -739,7 +909,8 @@ impl Store {
     /// The most famous deaths on the server, which is what a leaderboard shows.
     pub async fn best_deaths(&self, limit: i64) -> Result<Vec<Departed>> {
         let rows = sqlx::query_as::<_, DeathRow>(
-            "SELECT id, character_id, name, class, level, final_fame, killed_by, first_born, at
+            "SELECT id, character_id, name, class, level, final_fame, killed_by, first_born, at,
+                    bonuses
              FROM death ORDER BY final_fame DESC, at DESC LIMIT $1",
         )
         .bind(limit.clamp(1, MOST_DEATHS_READ))
@@ -979,7 +1150,18 @@ impl Store {
         }
 
         let column = currency.column_name();
-        let changed = sqlx::query(&format!("UPDATE account SET {column} = $2 WHERE id = $1"))
+
+        // Fame alone carries its lifetime total with it: `SetFameCommand`
+        // (`wServer/realm/commands/RankedCommands.cs:2436-2438`) assigns `TotalFame` and `Fame` the
+        // same number, while `SetPrestigeCommand` (`:2496`) leaves the prestige total alone.
+        let lifetime = match currency {
+            Currency::Fame => ", total_fame = $2",
+            _ => "",
+        };
+
+        let changed = sqlx::query(&format!(
+            "UPDATE account SET {column} = $2{lifetime} WHERE id = $1"
+        ))
             .bind(account_id)
             .bind(amount)
             .execute(self.pool())
@@ -1031,6 +1213,85 @@ impl Store {
         }
     }
 
+    /// Renames an account, charging fame for it, where both happen or neither does.
+    ///
+    /// `ChooseNameHandler` (`networking/handlers/ChooseNameHandler.cs:63-77`) charges an account
+    /// that has already chosen a name five thousand fame to choose another, refusing when it cannot
+    /// pay. It takes the fame first and renames after, and its rename is a `while (!RenameIGN(..))`
+    /// loop that never gives up, so a name taken in between costs the fame and spins. One
+    /// transaction instead: a refused rename leaves the fame where it was, so the total across the
+    /// accounts is the same before and after whichever way it ends.
+    ///
+    /// A `price` of zero is the first naming, which is free there and here.
+    pub async fn rename_account_for(&self, account_id: i64, name: &str, price: i32) -> Result<()> {
+        self.rename_account_charging(account_id, name, price, "fame")
+            .await
+    }
+
+    /// The same, charging credits.
+    ///
+    /// The original renames from two places and they charge differently: the world server's
+    /// `ChooseNameHandler` takes fame, while the app engine's `account/setName.cs:38-40` takes a
+    /// thousand credits. Two prices in two currencies for the same act, kept as they are because a
+    /// player who paid one of them did not pay the other.
+    pub async fn rename_account_for_credits(
+        &self,
+        account_id: i64,
+        name: &str,
+        price: i32,
+    ) -> Result<()> {
+        self.rename_account_charging(account_id, name, price, "credits")
+            .await
+    }
+
+    /// Renames and charges together, out of whichever column was named.
+    ///
+    /// The column is a literal from the two callers above rather than anything a request supplies,
+    /// which is what keeps it out of reach of the query it is pasted into.
+    async fn rename_account_charging(
+        &self,
+        account_id: i64,
+        name: &str,
+        price: i32,
+        column: &'static str,
+    ) -> Result<()> {
+        let mut transaction = self.pool().begin().await?;
+
+        if price > 0 {
+            let charged = sqlx::query(&format!(
+                "UPDATE account SET {column} = {column} - $2 WHERE id = $1 AND {column} >= $2"
+            ))
+            .bind(account_id)
+            .bind(price)
+            .execute(&mut *transaction)
+            .await?;
+
+            if charged.rows_affected() == 0 {
+                return Err(match column {
+                    "credits" => StoreError::Refused("Not enough credits"),
+                    _ => StoreError::Refused("Not enough fame"),
+                });
+            }
+        }
+
+        let renamed = sqlx::query("UPDATE account SET name = $2 WHERE id = $1")
+            .bind(account_id)
+            .bind(name)
+            .execute(&mut *transaction)
+            .await;
+
+        match renamed {
+            Ok(_) => {}
+            Err(sqlx::Error::Database(err)) if err.is_unique_violation() => {
+                return Err(StoreError::NameTaken);
+            }
+            Err(err) => return Err(err.into()),
+        }
+
+        transaction.commit().await?;
+        Ok(())
+    }
+
     /// Silences an account until a time, or lifts a mute when given `None`.
     pub async fn mute(
         &self,
@@ -1045,15 +1306,24 @@ impl Store {
         Ok(())
     }
 
-    /// Adds to what an account can spend.
+    /// Adds to what an account can spend, and to what it has ever earned.
+    ///
+    /// Both halves of `Database.UpdateFame` (`common/Database.cs:812-833`) in one statement. The
+    /// lifetime total moves only here, never in the debiting half, which is what makes it a
+    /// lifetime total rather than a second copy of the balance.
     pub async fn credit(&self, account_id: i64, currency: Currency, amount: i32) -> Result<()> {
         if amount <= 0 {
             return Ok(());
         }
 
         let column = currency.column();
+        let lifetime = currency
+            .lifetime_column()
+            .map(|total| format!(", {total} = {total} + $2"))
+            .unwrap_or_default();
+
         sqlx::query(&format!(
-            "UPDATE account SET {column} = {column} + $2 WHERE id = $1"
+            "UPDATE account SET {column} = {column} + $2{lifetime} WHERE id = $1"
         ))
         .bind(account_id)
         .bind(amount)
@@ -1138,21 +1408,101 @@ impl Store {
         Ok(())
     }
 
-    /// How many vault chests an account has, each of eight slots.
-    pub async fn buy_vault_chest(&self, account_id: i64, limit: i16) -> Result<i16> {
-        let (chests,): (i16,) = sqlx::query_as(
+    /// Empties a vault slot, refusing when it no longer holds what the caller believed.
+    ///
+    /// The condition is what makes two requests for the same potion resolve to one: the second finds
+    /// the row already gone and is told so, rather than reading an empty slot and carrying on.
+    pub async fn take_vault_slot(
+        &self,
+        account_id: i64,
+        slot: i16,
+        expected: uuid::Uuid,
+    ) -> Result<()> {
+        let taken =
+            sqlx::query("DELETE FROM vault_slot WHERE account_id = $1 AND slot = $2 AND item = $3")
+                .bind(account_id)
+                .bind(slot)
+                .bind(expected)
+                .execute(self.pool())
+                .await?;
+
+        if taken.rows_affected() == 0 {
+            return Err(StoreError::Refused(
+                "that item is no longer where you left it",
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Buys one more vault chest, charging the price in fame.
+    ///
+    /// Both in one transaction, as the original's `ClosedVaultChest.Buy` puts them — one redis
+    /// `MULTI` carrying the `vaultCount` increment and the fame debit together
+    /// (`wServer/realm/entities/vendors/ClosedVaultChest.cs:31-34`, `common/Database.cs:905-911`):
+    /// if either half will not go through, no chest is added and nothing is charged. The ceiling and
+    /// the balance are both conditions on the statements rather than values read first, so two
+    /// clicks arriving together cannot both see the same coin or the same last chest. The original
+    /// reads the balance beforehand instead (`SellableObject.cs:100-101`) and has no ceiling at all;
+    /// what stops it there is that the entity you clicked leaves the world when it is bought
+    /// (`wServer/realm/worlds/logic/Vault.cs:177`).
+    ///
+    /// Returns how many chests the account now owns.
+    pub async fn buy_vault_chest(&self, account_id: i64, limit: i16, price: i32) -> Result<i16> {
+        let mut transaction = self.pool().begin().await?;
+
+        let charged =
+            sqlx::query("UPDATE account SET fame = fame - $2 WHERE id = $1 AND fame >= $2")
+                .bind(account_id)
+                .bind(price.max(0))
+                .execute(&mut *transaction)
+                .await?;
+
+        if charged.rows_affected() == 0 {
+            return Err(StoreError::Refused("you do not have the fame for that"));
+        }
+
+        let chests: Option<(i16,)> = sqlx::query_as(
             "UPDATE account SET vault_chests = vault_chests + 1
              WHERE id = $1 AND vault_chests < $2
              RETURNING vault_chests",
         )
         .bind(account_id)
         .bind(limit)
-        .fetch_optional(self.pool())
-        .await?
-        .ok_or(StoreError::Refused("no more vault chests are available"))?;
+        .fetch_optional(&mut *transaction)
+        .await?;
+
+        let Some((chests,)) = chests else {
+            return Err(StoreError::Refused("no more vault chests are available"));
+        };
+
+        transaction.commit().await?;
 
         Ok(chests)
     }
+}
+
+/// What a character became, as one checkpoint writes it.
+///
+/// Grouped rather than passed as eight positional numbers, because six of them are integers of the
+/// same width and swapping two of them is a mistake nothing would catch.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Saved {
+    pub hp: i32,
+    pub mp: i32,
+
+    /// The maxima the stats currently produce, equipment included, which is what the body is
+    /// actually playing with.
+    pub max_hp: i32,
+    pub max_mp: i32,
+
+    pub level: i16,
+    pub experience: i32,
+    pub fame: i32,
+
+    /// The eight base stats, before equipment. Only the base layer persists; equipment and
+    /// temporary boosts are rebuilt from what is worn.
+    pub stats: [i32; 8],
 }
 
 /// What a character has done, as the database holds it.
@@ -1187,10 +1537,13 @@ type DeathRow = (
     String,
     bool,
     chrono::DateTime<chrono::Utc>,
+    String,
 );
 
 fn departed(row: DeathRow) -> Departed {
-    let (id, character_id, name, class, level, final_fame, killed_by, first_born, at) = row;
+    let (id, character_id, name, class, level, final_fame, killed_by, first_born, at, bonuses) =
+        row;
+    let bonuses = read_bonuses(&bonuses);
 
     Departed {
         id,
@@ -1202,6 +1555,7 @@ fn departed(row: DeathRow) -> Departed {
         killed_by,
         first_born,
         at,
+        bonuses,
     }
 }
 
@@ -1218,9 +1572,42 @@ pub struct Death {
     /// Whether this is the first character on the account ever to die.
     pub first_born: bool,
 
-    /// The bonuses it earned, as one line each, kept so a graveyard can say why a number is what
-    /// it is.
-    pub bonuses: Vec<String>,
+    /// The bonuses it earned, kept so a graveyard can say why a number is what it is.
+    pub bonuses: Vec<Awarded>,
+}
+
+/// One bonus a death earned: what it was called, and what it paid.
+///
+/// The wording that goes with the name is the same for every death that earns it, so it is not kept
+/// here; only what is particular to this death is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Awarded {
+    pub name: String,
+    pub fame: i32,
+}
+
+/// How the bonuses are held in the column: one `name: fame` line each.
+///
+/// Written and read in one place so the two halves cannot drift apart. A name never contains the
+/// separator, so the last one in a line is the one that splits it.
+fn write_bonuses(bonuses: &[Awarded]) -> String {
+    bonuses
+        .iter()
+        .map(|bonus| format!("{}: {}", bonus.name, bonus.fame))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn read_bonuses(text: &str) -> Vec<Awarded> {
+    text.lines()
+        .filter_map(|line| {
+            let (name, fame) = line.rsplit_once(": ")?;
+            Some(Awarded {
+                name: name.to_string(),
+                fame: fame.trim().parse().ok()?,
+            })
+        })
+        .collect()
 }
 
 /// One row of a graveyard.
@@ -1235,6 +1622,9 @@ pub struct Departed {
     pub killed_by: String,
     pub first_born: bool,
     pub at: chrono::DateTime<chrono::Utc>,
+
+    /// The bonuses that made `final_fame` what it is, which is what a death screen itemises.
+    pub bonuses: Vec<Awarded>,
 }
 
 /// How many graveyard rows one read may ask for.
@@ -1253,8 +1643,18 @@ pub const FAME_PER_PRESTIGE: i32 = 1500;
 impl Store {
     /// Trades a character's fame for prestige and starts it over.
     ///
+    /// `starting` is the class's eight starting stats, which the character is put back to along
+    /// with its level: `PrestigeHandler.cs:56-64` writes `pd.Stats[i].StartingValue` into
+    /// `Player.Stats.Base` before saving. The two maxima are the first two of the eight, so the
+    /// columns that mirror them go back with the rest.
+    ///
     /// Returns how much prestige was earned.
-    pub async fn prestige(&self, account_id: i64, character_id: i64) -> Result<i32> {
+    pub async fn prestige(
+        &self,
+        account_id: i64,
+        character_id: i64,
+        starting: &[i32; 8],
+    ) -> Result<i32> {
         let mut transaction = self.pool().begin().await?;
 
         // The character is locked before its fame is read, so two requests cannot both see the same
@@ -1276,12 +1676,23 @@ impl Store {
             return Err(StoreError::Refused("you need fifteen hundred fame or more"));
         }
 
-        // Everything the fame bought goes with it. A character that kept its level would be a
-        // character that could be prestiged again the moment it earned the fame back.
-        sqlx::query("UPDATE character SET fame = 0, experience = 0, level = 1 WHERE id = $1")
-            .bind(character_id)
-            .execute(&mut *transaction)
-            .await?;
+        // Everything the fame bought goes with it, the stats levelling granted included. A
+        // character that kept its level would be a character that could be prestiged again the
+        // moment it earned the fame back, and one that kept its stats would be a level-one
+        // character with a level-twenty body.
+        sqlx::query(
+            "UPDATE character
+                SET fame = 0, experience = 0, level = 1, stats = $2,
+                    max_hp = GREATEST(1, $3), max_mp = GREATEST(0, $4), hp = GREATEST(1, $3),
+                    mp = $4
+              WHERE id = $1",
+        )
+        .bind(character_id)
+        .bind(starting.as_slice())
+        .bind(starting[0])
+        .bind(starting[1])
+        .execute(&mut *transaction)
+        .await?;
 
         sqlx::query(
             "UPDATE account SET prestige = prestige + $2, total_prestige = total_prestige + $2

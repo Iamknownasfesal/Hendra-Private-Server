@@ -154,9 +154,10 @@ fn entity(id: u32, x: f32) -> (EntityId, EntityState) {
             size: 100,
             name: None,
             texture: 0,
-            stats: [0; 8],
+            stats: [0; hendra_net::STAT_COUNT],
             stars: 0,
             oxygen: 100,
+            ..Default::default()
         },
     )
 }
@@ -220,6 +221,13 @@ fn a_handshake_is_accepted_and_answered() {
             player: EntityId(1),
             tick: Tick::ZERO,
             world: "Nexus",
+            width: 64,
+            height: 64,
+            background: 0,
+            difficulty: 0,
+            allow_teleport: true,
+            show_displays: true,
+            music: "Nexus",
         },
         _ => ServerMessage::Rejected {
             reason: RejectReason::BadToken,

@@ -16,3 +16,6 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+# For the slot numbering a client's drag arrives in, so the conservation tests move items the way
+# the game does rather than by naming durable slots directly.
+hendra-net = { path = "../net" }

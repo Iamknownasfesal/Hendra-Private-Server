@@ -25,7 +25,9 @@ use std::sync::{Arc, Mutex};
 use godot::classes::Node;
 use godot::prelude::*;
 
-use hendra_net::message::{ClientMessage, Input, PROTOCOL_VERSION, RejectReason, ServerMessage};
+use hendra_net::message::{
+    ClientMessage, Input, PROTOCOL_VERSION, RejectReason, ServerMessage, SlotLocation,
+};
 use hendra_net::snapshot::{Acknowledgement, BaselineRing};
 use hendra_net::{
     Delivery, EntityId, Reader, Tick, WorldSnapshot, Writer, decode_body, read_header,
@@ -72,9 +74,35 @@ enum Event {
         /// How large the map is, in tiles, so a client can size itself before the first row lands.
         width: u16,
         height: u16,
+
+        /// What the world says about itself: the sky, the marks on the loading screen, whether the
+        /// menu over another player should offer a teleport, and what to play.
+        background: i32,
+        difficulty: i32,
+        allow_teleport: bool,
+        show_displays: bool,
+        music: String,
     },
     Rejected(RejectReason),
+
+    /// The world this player is standing in now sounds different.
+    SwitchMusic(String),
+
+    /// What this player's quest arrow points at.
+    QuestTarget(u32),
+
+    /// Whose body this player's camera is on. Their own id gives the camera back.
+    SetFocus(u32),
+
+    /// Who is on one of this account's lists, by name.
+    AccountList {
+        /// `0` ignored, `1` locked out, as [`hendra_net::AccountList`] numbers them.
+        list: u8,
+        names: Vec<String>,
+    },
     Chat {
+        /// The body that said it, or zero for a line the server spoke in its own voice.
+        speaker: u32,
         from: String,
         text: String,
     },
@@ -86,6 +114,20 @@ enum Event {
         slots: Vec<(u16, u16)>,
     },
 
+    /// The whole vault, as the server has it: the panel is drawn from nothing else.
+    VaultUpdate {
+        version: u32,
+        chest_count: u32,
+        max_chests: u32,
+        next_chest_price: u32,
+
+        /// Item types, eight per chest, flat. `0xffff` where a slot is empty.
+        slots: Vec<u16>,
+
+        /// Gifts waiting to be claimed, dense.
+        gifts: Vec<u16>,
+    },
+
     /// Something the player asked for was refused, with a line to show them.
     Refused(String),
 
@@ -94,6 +136,10 @@ enum Event {
 
     /// Something the world wants shown rather than said.
     Notice(String),
+
+    /// A word the client acts on rather than reads: whether a gift is waiting, a key colour, the
+    /// key panel. `GlobalNotification` in the original.
+    Notification(String),
 
     /// The server is full, and this is where you stand in the line.
     Queued {
@@ -167,6 +213,73 @@ enum Event {
         angle: f32,
         speed: f32,
         lifetime_ms: u32,
+
+        /// What it takes off whatever it hits, before that body's defence.
+        damage: u16,
+    },
+
+    /// A body is somewhere it did not walk to.
+    ///
+    /// The one thing the snapshot cannot say. A client owns the position of its own player and
+    /// glides every other body towards the position the snapshot gives it, so neither can express
+    /// "stop, you are here now".
+    Goto {
+        object_id: u32,
+        x: f32,
+        y: f32,
+    },
+
+    /// Something to draw that is neither a body, a bullet nor a number.
+    ///
+    /// Passed through as the numbers it arrived as. Every one of them is overloaded per effect —
+    /// a radius, a particle size, a flash period — and the renderer is the only thing that knows
+    /// which, so nothing is interpreted on the way past.
+    ShowEffect {
+        effect: u8,
+        target: u32,
+        x1: f32,
+        y1: f32,
+        x2: f32,
+        y2: f32,
+        color: u32,
+    },
+
+    /// A line of text to float off a body: what healed it, what it just became, what it earned.
+    StatusText {
+        object_id: u32,
+        text: String,
+        color: u32,
+    },
+
+    /// A blast at a place, and what standing in it costs.
+    Aoe {
+        x: f32,
+        y: f32,
+        radius: f32,
+        damage: u16,
+        effect: u8,
+        duration: f32,
+        orig_type: u16,
+    },
+
+    /// Somebody has asked this player into their guild.
+    InvitedToGuild {
+        name: String,
+        guild: String,
+    },
+
+    /// Something took a hit, and whether the hit ended it.
+    ///
+    /// The snapshot carries health, so this is not where the number comes from. It is the only
+    /// thing on the wire that tells a body that died from one that walked out of sight, and it is
+    /// what puts a damage number over anything the local player did not shoot themselves.
+    Damage {
+        target: u32,
+        effects: u128,
+        amount: u16,
+        kill: bool,
+        bullet: u8,
+        owner: u32,
     },
 }
 
@@ -194,19 +307,86 @@ struct WorldView {
     sizes: Vec<i32>,
     textures: Vec<i32>,
 
+    /// The skin each player is wearing, as the skin object's own type. Zero for the class's own
+    /// sprite, which is what everything that is not a player wears.
+    skins: Vec<i32>,
+
     /// Names, in entity order, empty where there is none.
     names: Vec<GString>,
 
-    /// The eight stats per entity, laid end to end: entity `n` occupies `n * 8 .. n * 8 + 8`.
+    /// The eleven stats per entity, laid end to end: entity `n` occupies `n * 11 .. n * 11 + 11`.
     /// Meaningful only for the player's own entity, and zeroes everywhere else.
     stats: Vec<i32>,
+
+    /// What equipment and running boosts add to each of those eleven, laid out the same way.
+    ///
+    /// The green figures on the character sheet: a total on its own cannot say how much of an
+    /// attack is the player and how much is the ring.
+    boosts: Vec<i32>,
+
+    /// Each player's guild, in entity order, and their rank in it. Empty and zero for nobody's.
+    guilds: Vec<GString>,
+    guild_ranks: Vec<i32>,
 
     stars: Vec<i32>,
     oxygen: Vec<i32>,
 
+    /// Levelling, meaningful only for the player's own entity: the level reached, the experience
+    /// earned since that level began, what the level needs before the next, and the fame banked.
+    levels: Vec<i32>,
+    experience: Vec<i32>,
+    experience_goals: Vec<i32>,
+    fame: Vec<i32>,
+
+    /// What the account can spend, three per entity laid end to end: entity `n` occupies
+    /// `n * 3 .. n * 3 + 3`, in the order gold, fame, prestige. Meaningful only for the player's
+    /// own entity.
+    purse: Vec<i32>,
+
+    /// The eight container slots per entity, laid end to end: entity `n` occupies `n * 8 .. n * 8 + 8`.
+    /// Meaningful only for a bag, a chest or a vault; `-1` everywhere else, and `-1` for an empty
+    /// slot, because zero is a real object type.
+    contents: Vec<i32>,
+
+    /// The five merchandise stats per entity, laid end to end: entity `n` occupies
+    /// `n * 5 .. n * 5 + 5`, in the order item type, price, currency, count, rank requirement.
+    ///
+    /// The item type is `-1` for everything that is not a vendor, which is what the client reads as
+    /// "sells nothing": it draws a merchant as the item rather than as itself, and the panel that
+    /// buys opens on the type alone.
+    merchandise: Vec<i32>,
+
+    /// The halo colour per entity, as a packed `0xRRGGBB`. Zero is no halo, which is nearly
+    /// everybody: it is what `/glow` sets, and the client paints a ring of it around the sprite.
+    glow: Vec<i32>,
+
+    /// The rarely-changing booleans, packed one integer per entity: bit zero an administrator, bit
+    /// one a character that owns a backpack, bit two an account that chose its own name, bit three
+    /// a portal that refuses to be entered.
+    marks: Vec<i32>,
+
+    /// The two dyes per entity laid end to end, cloth then accessory: entity `n` occupies
+    /// `n * 2 .. n * 2 + 2`. Zero for anybody wearing none, which is nearly everybody.
+    dyes: Vec<i32>,
+
+    /// Which neighbours each piece of scenery joins onto, as `ConnectionInfo.Bits`. Zero for
+    /// everything that is not a connected wall or a fence.
+    connection: Vec<i32>,
+
+    /// What is left of the three boost clocks per entity, in seconds, laid end to end: experience,
+    /// loot drop, loot tier. `n * 3 .. n * 3 + 3`, and zeroes for anybody without a boost.
+    boost_time: Vec<i32>,
+
+    /// The fame the next class quest asks for, per entity. Zero once every star has been earned,
+    /// and for everything that is not a player.
+    fame_goal: Vec<i32>,
+
     /// Bumped whenever the contents change, so the client can skip rebuilding when nothing has.
     revision: u64,
 }
+
+/// How many numbers one entity's merchandise takes in [`WorldView::merchandise`].
+const MERCHANDISE_FIELDS: usize = 5;
 
 impl WorldView {
     /// Empties the view, for a player who has left the world it described.
@@ -227,10 +407,27 @@ impl WorldView {
         self.conditions_high.clear();
         self.sizes.clear();
         self.textures.clear();
+        self.skins.clear();
         self.names.clear();
         self.stats.clear();
+        self.boosts.clear();
+        self.guilds.clear();
+        self.guild_ranks.clear();
         self.stars.clear();
         self.oxygen.clear();
+        self.levels.clear();
+        self.experience.clear();
+        self.experience_goals.clear();
+        self.fame.clear();
+        self.purse.clear();
+        self.contents.clear();
+        self.merchandise.clear();
+        self.glow.clear();
+        self.marks.clear();
+        self.dyes.clear();
+        self.connection.clear();
+        self.boost_time.clear();
+        self.fame_goal.clear();
     }
 
     fn replace_with(&mut self, world: &WorldSnapshot) {
@@ -249,15 +446,75 @@ impl WorldView {
             // Split rather than truncated: the effects above bit 63 are real ones, and an engine
             // that cannot hold a 128-bit integer must still be told about them.
             self.conditions_low.push(state.conditions as u64 as i64);
-            self.conditions_high.push((state.conditions >> 64) as u64 as i64);
+            self.conditions_high
+                .push((state.conditions >> 64) as u64 as i64);
 
             self.sizes.push(state.size as i32);
             self.textures.push(state.texture as i32);
+            self.skins.push(state.skin as i32);
             self.names
                 .push(state.name.as_deref().map(GString::from).unwrap_or_default());
             self.stats.extend_from_slice(&state.stats);
+            self.boosts.extend_from_slice(&state.boosts);
+            self.guilds.push(
+                state
+                    .guild
+                    .as_deref()
+                    .map(GString::from)
+                    .unwrap_or_default(),
+            );
+            self.guild_ranks.push(state.guild_rank as i32);
             self.stars.push(state.stars as i32);
             self.oxygen.push(state.oxygen as i32);
+            self.levels.push(state.level as i32);
+            self.experience.push(state.experience);
+            self.experience_goals.push(state.experience_goal);
+            self.fame.push(state.fame);
+            self.purse
+                .extend_from_slice(&[state.credits, state.current_fame, state.prestige]);
+
+            match &state.contents {
+                Some(slots) => self.contents.extend(slots.iter().map(|item| {
+                    if *item == hendra_net::NO_ITEM {
+                        -1
+                    } else {
+                        *item as i32
+                    }
+                })),
+                None => self.contents.extend(std::iter::repeat_n(-1, 8)),
+            }
+
+            match &state.merchandise {
+                Some(stall) => self.merchandise.extend_from_slice(&[
+                    stall.item as i32,
+                    stall.price,
+                    stall.currency as i32,
+                    stall.count,
+                    stall.rank as i32,
+                ]),
+
+                // An item type of -1 is how the client's `Entity` starts, and what its merchant
+                // panel reads as nothing for sale.
+                None => self
+                    .merchandise
+                    .extend_from_slice(&[-1, 0, 0, -1, 0][..MERCHANDISE_FIELDS]),
+            }
+
+            self.glow.push(state.glow);
+            self.marks.push(
+                i32::from(state.admin)
+                    | i32::from(state.has_backpack) << 1
+                    | i32::from(state.name_chosen) << 2
+                    | i32::from(state.portal_unusable) << 3,
+            );
+            self.dyes.extend_from_slice(&[state.tex1, state.tex2]);
+            self.connection.push(state.connection as i32);
+            self.boost_time.extend_from_slice(&[
+                state.experience_boost_seconds,
+                state.loot_drop_boost_seconds,
+                state.loot_tier_boost_seconds,
+            ]);
+            self.fame_goal.push(state.fame_goal);
         }
         self.revision += 1;
     }
@@ -291,11 +548,30 @@ impl Shared {
 enum Command {
     Input { x: f32, y: f32, time_ms: u32 },
     Shoot { angle: f32 },
-    MoveItem { from: (u8, u16), to: (u8, u16) },
-    PickUp { bag: u32, slot: u8 },
-    Drop { slot: u16 },
+    MoveItem {
+        from: SlotLocation,
+        to: SlotLocation,
+    },
+    Drop {
+        from: SlotLocation,
+    },
     Chat(String),
     UsePortal(u32),
+    UseItem {
+        container: u32,
+        slot: u16,
+        x: f32,
+        y: f32,
+    },
+    VaultMove {
+        version: u32,
+        from: (i16, i16),
+        to: (i16, i16),
+    },
+    VaultBuy { chest_count: u32 },
+
+    /// Buy what a merchant standing in the world is selling.
+    Buy { merchant: u32 },
     Disconnect,
 }
 
@@ -445,6 +721,11 @@ impl HendraConnection {
                     world,
                     width,
                     height,
+                    background,
+                    difficulty,
+                    allow_teleport,
+                    show_displays,
+                    music,
                 } => {
                     entry.set("kind", "welcome");
                     entry.set("width", width as i64);
@@ -452,14 +733,46 @@ impl HendraConnection {
                     entry.set("player", player as i64);
                     entry.set("tick", tick as i64);
                     entry.set("world", world);
+                    entry.set("background", background as i64);
+                    entry.set("difficulty", difficulty as i64);
+                    entry.set("allow_teleport", allow_teleport);
+                    entry.set("show_displays", show_displays);
+                    entry.set("music", music);
+                }
+                Event::SwitchMusic(music) => {
+                    entry.set("kind", "switch_music");
+                    entry.set("music", music);
+                }
+                Event::QuestTarget(target) => {
+                    entry.set("kind", "quest_target");
+                    entry.set("target", target as i64);
+                }
+                Event::SetFocus(target) => {
+                    entry.set("kind", "set_focus");
+                    entry.set("target", target as i64);
+                }
+                Event::AccountList { list, names } => {
+                    entry.set("kind", "account_list");
+                    entry.set("list", list as i64);
+
+                    let mut out = PackedStringArray::new();
+                    for name in &names {
+                        out.push(name);
+                    }
+                    entry.set("names", &out);
                 }
                 Event::Rejected(reason) => {
                     entry.set("kind", "rejected");
                     entry.set("reason", reason as i64);
                     entry.set("reason_name", format!("{reason:?}"));
                 }
-                Event::Chat { from, text } => {
+                Event::Chat {
+                    speaker,
+                    from,
+                    text,
+                } => {
                     entry.set("kind", "chat");
+                    entry.set("speaker", speaker as i64);
                     entry.set("from", from);
                     entry.set("text", text);
                 }
@@ -497,6 +810,10 @@ impl HendraConnection {
                 }
                 Event::Notice(text) => {
                     entry.set("kind", "notice");
+                    entry.set("text", text.as_str());
+                }
+                Event::Notification(text) => {
+                    entry.set("kind", "notification");
                     entry.set("text", text.as_str());
                 }
                 Event::TradeRequested(name) => {
@@ -565,6 +882,28 @@ impl HendraConnection {
                     entry.set("slots", &PackedInt32Array::from(indices.as_slice()));
                     entry.set("items", &PackedInt32Array::from(items.as_slice()));
                 }
+                Event::VaultUpdate {
+                    version,
+                    chest_count,
+                    max_chests,
+                    next_chest_price,
+                    slots,
+                    gifts,
+                } => {
+                    entry.set("kind", "vault");
+                    entry.set("version", version as i64);
+                    entry.set("chest_count", chest_count as i64);
+                    entry.set("max_chests", max_chests as i64);
+                    entry.set("next_chest_price", next_chest_price as i64);
+
+                    // Widened to i32 because that is what the engine's packed integer array holds.
+                    // The empty sentinel widens with them, so `0xffff` stays `0xffff` rather than
+                    // becoming minus one somewhere in the middle.
+                    let held: Vec<i32> = slots.iter().map(|item| *item as i32).collect();
+                    let waiting: Vec<i32> = gifts.iter().map(|item| *item as i32).collect();
+                    entry.set("slots", &PackedInt32Array::from(held.as_slice()));
+                    entry.set("gifts", &PackedInt32Array::from(waiting.as_slice()));
+                }
                 Event::Refused(message) => {
                     entry.set("kind", "refused");
                     entry.set("message", message);
@@ -578,6 +917,7 @@ impl HendraConnection {
                     angle,
                     speed,
                     lifetime_ms,
+                    damage,
                 } => {
                     entry.set("kind", "shot");
                     entry.set("projectile", projectile as i64);
@@ -588,6 +928,91 @@ impl HendraConnection {
                     entry.set("angle", angle);
                     entry.set("speed", speed);
                     entry.set("lifetime_ms", lifetime_ms as i64);
+                    entry.set("damage", damage as i64);
+                }
+                Event::Goto { object_id, x, y } => {
+                    entry.set("kind", "goto");
+                    entry.set("object_id", object_id as i64);
+                    entry.set("x", x);
+                    entry.set("y", y);
+                }
+                Event::ShowEffect {
+                    effect,
+                    target,
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    color,
+                } => {
+                    entry.set("kind", "show_effect");
+                    entry.set("effect", effect as i64);
+                    entry.set("target", target as i64);
+                    entry.set("x1", x1);
+                    entry.set("y1", y1);
+                    entry.set("x2", x2);
+                    entry.set("y2", y2);
+                    entry.set("color", color as i64);
+                }
+                Event::StatusText {
+                    object_id,
+                    text,
+                    color,
+                } => {
+                    entry.set("kind", "status_text");
+                    entry.set("object_id", object_id as i64);
+                    entry.set("text", text.as_str());
+                    entry.set("color", color as i64);
+                }
+                Event::Aoe {
+                    x,
+                    y,
+                    radius,
+                    damage,
+                    effect,
+                    duration,
+                    orig_type,
+                } => {
+                    entry.set("kind", "aoe");
+                    entry.set("x", x);
+                    entry.set("y", y);
+                    entry.set("radius", radius);
+                    entry.set("damage", damage as i64);
+                    entry.set("effect", effect as i64);
+                    entry.set("duration", duration);
+                    entry.set("orig_type", orig_type as i64);
+                }
+                Event::InvitedToGuild { name, guild } => {
+                    entry.set("kind", "invited_to_guild");
+                    entry.set("name", name.as_str());
+                    entry.set("guild", guild.as_str());
+                }
+                Event::Damage {
+                    target,
+                    effects,
+                    amount,
+                    kill,
+                    bullet,
+                    owner,
+                } => {
+                    entry.set("kind", "damage");
+                    entry.set("target", target as i64);
+
+                    // Sent as the indices rather than the bitfield, which is what the packet the
+                    // client already understands carries and what a Godot dictionary can hold: a
+                    // hundred-and-twenty-eight-bit mask has no variant to travel in.
+                    let mut indices = PackedInt32Array::new();
+                    for index in 0..128u32 {
+                        if effects & (1u128 << index) != 0 {
+                            indices.push(index as i32);
+                        }
+                    }
+                    entry.set("effects", &indices);
+
+                    entry.set("amount", amount as i64);
+                    entry.set("kill", kill);
+                    entry.set("bullet", bullet as i64);
+                    entry.set("owner", owner as i64);
                 }
             }
             out.push(&entry);
@@ -677,6 +1102,15 @@ impl HendraConnection {
         self.with_world(|world| PackedInt32Array::from(world.textures.as_slice()))
     }
 
+    /// The skin each player is wearing, as the skin object's own type, and zero for no skin.
+    ///
+    /// A whole different animated sheet rather than a frame within the one the object type names,
+    /// which is what `entity_textures` picks.
+    #[func]
+    fn entity_skins(&self) -> PackedInt32Array {
+        self.with_world(|world| PackedInt32Array::from(world.skins.as_slice()))
+    }
+
     /// Names in entity order, empty where an entity has none.
     #[func]
     fn entity_names(&self) -> PackedStringArray {
@@ -689,12 +1123,41 @@ impl HendraConnection {
         })
     }
 
-    /// The eight stats per entity, laid end to end: entity `n` occupies `n * 8 .. n * 8 + 8`.
+    /// The eleven stats per entity, laid end to end: entity `n` occupies `n * 11 .. n * 11 + 11`.
     ///
-    /// Only the player's own entity carries meaningful values; everything else is zeroes.
+    /// The order is the game's own stat numbering, so the last three are `DamageMin`, `DamageMax`
+    /// and `Luck`. Only the player's own entity carries meaningful values; everything else is
+    /// zeroes.
     #[func]
     fn entity_stats(&self) -> PackedInt32Array {
         self.with_world(|world| PackedInt32Array::from(world.stats.as_slice()))
+    }
+
+    /// What equipment and running boosts add to each of the eleven, laid out like the stats.
+    ///
+    /// The character sheet draws these in green beside the totals, and in red where an item takes a
+    /// stat down. Only the player's own entity carries meaningful values.
+    #[func]
+    fn entity_boosts(&self) -> PackedInt32Array {
+        self.with_world(|world| PackedInt32Array::from(world.boosts.as_slice()))
+    }
+
+    /// Each player's guild, in entity order, and empty for anybody in none.
+    #[func]
+    fn entity_guilds(&self) -> PackedStringArray {
+        self.with_world(|world| {
+            let mut out = PackedStringArray::new();
+            for guild in &world.guilds {
+                out.push(guild);
+            }
+            out
+        })
+    }
+
+    /// Each player's rank within their guild: 0 initiate, 10 member, 20 officer, 40 founder.
+    #[func]
+    fn entity_guild_ranks(&self) -> PackedInt32Array {
+        self.with_world(|world| PackedInt32Array::from(world.guild_ranks.as_slice()))
     }
 
     #[func]
@@ -702,10 +1165,114 @@ impl HendraConnection {
         self.with_world(|world| PackedInt32Array::from(world.stars.as_slice()))
     }
 
+    /// The eight container slots per entity, laid end to end. `-1` for an empty slot and for
+    /// anything that is not a container, since zero is a real object type.
+    #[func]
+    fn entity_contents(&self) -> PackedInt32Array {
+        self.with_world(|world| PackedInt32Array::from(world.contents.as_slice()))
+    }
+
+    /// The five merchandise stats per entity, laid end to end: entity `n` occupies
+    /// `n * 5 .. n * 5 + 5`, in the order item type, price, currency, count, rank requirement.
+    ///
+    /// An item type of `-1` means the entity sells nothing, which is almost all of them. Currency
+    /// is the game's own `CurrencyType`: zero gold, one fame. A count of `-1` is stock that never
+    /// runs out.
+    #[func]
+    fn entity_merchandise(&self) -> PackedInt32Array {
+        self.with_world(|world| PackedInt32Array::from(world.merchandise.as_slice()))
+    }
+
+    /// The halo colour per entity, as a packed `0xRRGGBB`. Zero is no halo.
+    ///
+    /// `StatsType.Glow` (`Player.cs:302`), which the original's client hands to
+    /// `GameObject.setGlow` and paints as a ring around the sprite (`GlowRedrawer.as:19-46`).
+    #[func]
+    fn entity_glow(&self) -> PackedInt32Array {
+        self.with_world(|world| PackedInt32Array::from(world.glow.as_slice()))
+    }
+
+    /// The marks a player carries, one integer per entity: bit zero an administrator, bit one a
+    /// character that owns a backpack.
+    ///
+    /// `StatsType.Admin` and `StatsType.HasBackpack` (`Player.cs:355`, `:359`). Packed rather than
+    /// given an array each because they are two bits that never move while somebody is playing.
+    #[func]
+    fn entity_marks(&self) -> PackedInt32Array {
+        self.with_world(|world| PackedInt32Array::from(world.marks.as_slice()))
+    }
+
+    /// The two dyes per entity, cloth then accessory, laid end to end.
+    ///
+    /// `StatsType.Texture1`/`Texture2` (`Player.cs:301-302`). The top byte is a type and the low
+    /// twenty-four its argument: `1` a solid `0xRRGGBB`, `4`/`5`/`9`/`10` an index into the
+    /// `textile{n}x{n}` sheet (`TextureRedrawer.as:161-186`).
+    #[func]
+    fn entity_dyes(&self) -> PackedInt32Array {
+        self.with_world(|world| PackedInt32Array::from(world.dyes.as_slice()))
+    }
+
+    /// Which neighbours each piece of scenery joins onto, as `ConnectionInfo.Bits`.
+    ///
+    /// `StatsType.ObjectConnection` (`ConnectedObject.cs:114-118`), four bytes of `1` or `2`. Zero
+    /// for everything that is not a connected wall or a fence.
+    #[func]
+    fn entity_connection(&self) -> PackedInt32Array {
+        self.with_world(|world| PackedInt32Array::from(world.connection.as_slice()))
+    }
+
+    /// What is left of the three boost clocks per entity, in seconds: experience, loot drop, loot
+    /// tier, laid end to end.
+    ///
+    /// `XPBoostTime`, `LDBoostTime`, `LTBoostTime` (`Player.cs:356-358`).
+    #[func]
+    fn entity_boost_time(&self) -> PackedInt32Array {
+        self.with_world(|world| PackedInt32Array::from(world.boost_time.as_slice()))
+    }
+
+    /// The fame the next class quest asks for, per entity. Zero once every star has been earned.
+    #[func]
+    fn entity_fame_goal(&self) -> PackedInt32Array {
+        self.with_world(|world| PackedInt32Array::from(world.fame_goal.as_slice()))
+    }
+
+    /// What the account can spend, three per entity laid end to end: gold, fame, prestige.
+    ///
+    /// The fame here is the account's, which is what shops charge against; what the character has
+    /// earned is in `entity_fame`.
+    #[func]
+    fn entity_purse(&self) -> PackedInt32Array {
+        self.with_world(|world| PackedInt32Array::from(world.purse.as_slice()))
+    }
+
     /// Air remaining, from 100 down to 0. Full everywhere but a drowning world.
     #[func]
     fn entity_oxygen(&self) -> PackedInt32Array {
         self.with_world(|world| PackedInt32Array::from(world.oxygen.as_slice()))
+    }
+
+    /// The level reached. Zero for anything that is not a player.
+    #[func]
+    fn entity_levels(&self) -> PackedInt32Array {
+        self.with_world(|world| PackedInt32Array::from(world.levels.as_slice()))
+    }
+
+    /// Experience earned since the current level began, which is what the bar fills with.
+    #[func]
+    fn entity_experience(&self) -> PackedInt32Array {
+        self.with_world(|world| PackedInt32Array::from(world.experience.as_slice()))
+    }
+
+    /// Experience the current level needs before the next, the bar's ceiling.
+    #[func]
+    fn entity_experience_goals(&self) -> PackedInt32Array {
+        self.with_world(|world| PackedInt32Array::from(world.experience_goals.as_slice()))
+    }
+
+    /// Fame banked by this character, its lifetime experience divided by a thousand.
+    #[func]
+    fn entity_fame(&self) -> PackedInt32Array {
+        self.with_world(|world| PackedInt32Array::from(world.fame.as_slice()))
     }
 
     /// Reports where the player believes it is, and acknowledges the newest snapshot held.
@@ -718,33 +1285,115 @@ impl HendraConnection {
         });
     }
 
-    /// Asks to move an item between two slots.
+    /// Asks to move an item between two slots of the player's own pack.
     ///
-    /// Containers are named by tag rather than by entity, so a client cannot address someone
-    /// else's inventory: 0 is what you are carrying, 1 what you are wearing, 2 the vault.
+    /// Both slots are flat numbers, as the game counts them: worn from nought with room for eight,
+    /// carried from eight, the backpack from sixteen. [`hendra_net::slot`] turns each into the
+    /// container and the index within it that the wire names, so a drag lands on the square the
+    /// player dragged to and a worn slot is sent as a worn slot.
+    ///
+    /// The player's own containers are named by tag rather than by entity, so a client cannot
+    /// address someone else's pack. Anything in a bag on the ground goes through
+    /// [`Self::take_from_bag`] or [`Self::put_in_bag`], which name the bag.
     #[func]
-    fn move_item(&self, from_container: i64, from_slot: i64, to_container: i64, to_slot: i64) {
+    fn move_item(&self, from_slot: i64, to_slot: i64) {
+        let (Some(from), Some(to)) = (flat_slot(from_slot), flat_slot(to_slot)) else {
+            return;
+        };
+
+        self.send(Command::MoveItem { from, to });
+    }
+
+    /// Takes an item out of a bag on the ground and into one of the player's own slots.
+    #[func]
+    fn take_from_bag(&self, bag: i64, bag_slot: i64, into_slot: i64) {
+        let Some(to) = flat_slot(into_slot) else {
+            return;
+        };
+
         self.send(Command::MoveItem {
-            from: (from_container as u8, from_slot.max(0) as u16),
-            to: (to_container as u8, to_slot.max(0) as u16),
+            from: SlotLocation::Bag {
+                entity: EntityId(bag.max(0) as u32),
+                slot: bag_slot.clamp(0, u8::MAX as i64) as u8,
+            },
+            to,
         });
     }
 
-    /// Takes an item out of a bag on the ground.
+    /// Puts one of the player's own items into a bag on the ground.
+    ///
+    /// The bag's own slot is named for the sake of saying where it was aimed; the server puts it
+    /// wherever the bag has room, since a bag is shared and what is free in it is not the client's
+    /// to know.
     #[func]
-    fn pick_up(&self, bag: i64, slot: i64) {
-        self.send(Command::PickUp {
-            bag: bag.max(0) as u32,
-            slot: slot.max(0) as u8,
+    fn put_in_bag(&self, from_slot: i64, bag: i64, bag_slot: i64) {
+        let Some(from) = flat_slot(from_slot) else {
+            return;
+        };
+
+        self.send(Command::MoveItem {
+            from,
+            to: SlotLocation::Bag {
+                entity: EntityId(bag.max(0) as u32),
+                slot: bag_slot.clamp(0, u8::MAX as i64) as u8,
+            },
         });
     }
 
-    /// Drops a carried item at the player's feet.
+    /// Moves an item within the vault, or between the vault and the player's own inventory.
+    ///
+    /// Both ends are a chest and a slot, because the operation is a swap and is symmetric. Minus
+    /// one is the player's own pack, minus two the gifts waiting, minus three a potion stack. The
+    /// version is the vault as this client last saw it: the server refuses a move quoting a version
+    /// it has moved past and answers with the truth.
+    #[func]
+    fn vault_move(
+        &self,
+        version: i64,
+        from_chest: i64,
+        from_slot: i64,
+        to_chest: i64,
+        to_slot: i64,
+    ) {
+        self.send(Command::VaultMove {
+            version: version.max(0) as u32,
+            from: (from_chest as i16, from_slot as i16),
+            to: (to_chest as i16, to_slot as i16),
+        });
+    }
+
+    /// Buys one more vault chest.
+    ///
+    /// Carries only the count this client believes it owns, so a second click arriving while the
+    /// first is still being paid for buys nothing. The price and the purse are the server's.
+    #[func]
+    fn vault_buy(&self, chest_count: i64) {
+        self.send(Command::VaultBuy {
+            chest_count: chest_count.max(0) as u32,
+        });
+    }
+
+    /// Buys what the merchant standing in front of the player is selling.
+    ///
+    /// Names the merchant and no more: what it sells and what it costs are the server's to know,
+    /// and a client that named the item is a client that could name a cheaper one.
+    #[func]
+    fn buy(&self, merchant: i64) {
+        self.send(Command::Buy {
+            merchant: merchant.max(0) as u32,
+        });
+    }
+
+    /// Drops what is in one of the player's own slots at their feet.
+    ///
+    /// The slot is a flat number, as a move's is.
     #[func]
     fn drop_item(&self, slot: i64) {
-        self.send(Command::Drop {
-            slot: slot.max(0) as u16,
-        });
+        let Some(from) = flat_slot(slot) else {
+            return;
+        };
+
+        self.send(Command::Drop { from });
     }
 
     /// Fires in the given direction, in radians.
@@ -766,6 +1415,30 @@ impl HendraConnection {
         self.send(Command::UsePortal(entity.max(0) as u32));
     }
 
+    /// Uses what is in a slot of some container, aimed at a point in the world.
+    ///
+    /// The slot rather than the item, because the server knows what is in a slot and a client
+    /// naming an item it does not hold would be a claim rather than a fact. Where it is aimed is
+    /// the one thing taken as given, as it is for a shot.
+    ///
+    /// A flat number, sent as it stands: the server turns it into the slot it holds, through the
+    /// same numbering a move goes through. Two hundred and fifty-four and five are the potion
+    /// stacks, which are not slots in the pack and are passed on as they are.
+    ///
+    /// The container is the entity whose slot is meant, which the original names alongside the slot
+    /// (`UseItemHandler.cs:22`). Zero, and the player's own id, both mean their own slots; anything
+    /// else is a bag or a chest standing in the world, and naming one is how a potion is drunk
+    /// straight out of it.
+    #[func]
+    fn use_item(&self, container: i64, slot: i64, x: f32, y: f32) {
+        self.send(Command::UseItem {
+            container: container.max(0) as u32,
+            slot: slot.max(0) as u16,
+            x,
+            y,
+        });
+    }
+
     fn send(&self, command: Command) {
         if let Some(commands) = &self.commands {
             let _ = commands.send(command);
@@ -779,6 +1452,16 @@ impl HendraConnection {
             .map(|world| read(&world))
             .unwrap_or_default()
     }
+}
+
+/// The slot a flat number names, or nothing if it names no slot at all.
+///
+/// The game counts one run of squares and the wire names a container and an index within it, so
+/// every slot the game hands over passes through here. Nothing is sent for a number that is not a
+/// square — the four the layout leaves room for and this game does not have, or a stack, which is
+/// not a slot and has no move of its own — rather than a request the server would have to refuse.
+fn flat_slot(flat: i64) -> Option<SlotLocation> {
+    u16::try_from(flat).ok().and_then(hendra_net::slot::located)
 }
 
 /// The worker: owns the connection, decodes everything, publishes the result.
@@ -831,11 +1514,35 @@ async fn run(
     let mut history: BaselineRing<WorldSnapshot> = BaselineRing::new();
     let mut newest: Option<Tick> = None;
 
+    // What a pong reports. The AS3 client answers with `getTimer()`, its milliseconds since boot
+    // (`messaging/impl/GameServerConnectionConcrete.as:1727-1731`). This is read here rather than on
+    // the game thread deliberately: a client whose rendering has stalled is exactly the one the
+    // server is asking about, and an answer that had to wait for a frame would make a slow frame
+    // look like a disconnect.
+    let clock = std::time::Instant::now();
+
+    // How far ahead the game's clock reads, which is the time it spent booting before this
+    // connection was made. Learned once from an input, and applied to every pong so that the two
+    // client timestamps on the wire are readings of one clock rather than two. The original has no
+    // choice about this -- `Move.time` and `Pong.time` are both `getTimer()` off the same stopwatch
+    // -- and a server that measured its offset against one and applied it to the other would be out
+    // by however long the client took to start. A pong sent before the first input reports this
+    // connection's own clock instead, which is one noisy sample at the head of an average that runs
+    // for the whole session.
+    let mut booted_ms: u32 = 0;
+
     loop {
         tokio::select! {
             command = commands.recv() => {
                 let Some(command) = command else { break };
-                if !handle(&mut link, command, newest, &mut scratch).await {
+
+                if let Command::Input { time_ms, .. } = &command {
+                    booted_ms = time_ms.wrapping_sub(clock.elapsed().as_millis() as u32);
+                }
+
+                let now_ms = (clock.elapsed().as_millis() as u32).wrapping_add(booted_ms);
+
+                if !handle(&mut link, command, newest, &mut scratch, now_ms).await {
                     break;
                 }
             }
@@ -851,7 +1558,23 @@ async fn run(
                     Ordering::Relaxed,
                 );
 
-                apply(&shared, received, &mut history, &mut newest);
+                // A ping is answered before anything else is done with the message, and answered
+                // straight away. The server drops a connection that has not answered one for twelve
+                // seconds, so this reply is what keeps the session alive.
+                if let Some(serial) = apply(&shared, received, &mut history, &mut newest) {
+                    scratch.clear();
+                    ClientMessage::Pong {
+                        serial,
+                        client_time_ms: (clock.elapsed().as_millis() as u32)
+                            .wrapping_add(booted_ms),
+                    }
+                    .encode(&mut Writer::new(&mut scratch));
+
+                    if link.send(Delivery::Stream, &scratch).await.is_err() {
+                        shared.push(Event::Disconnected("the connection dropped".into()));
+                        break;
+                    }
+                }
             }
         }
     }
@@ -866,6 +1589,7 @@ async fn handle(
     command: Command,
     newest: Option<Tick>,
     scratch: &mut Vec<u8>,
+    now_ms: u32,
 ) -> bool {
     scratch.clear();
     let ack = match newest {
@@ -889,50 +1613,53 @@ async fn handle(
             let mut buf = Vec::new();
             ClientMessage::Shoot {
                 angle,
-                client_time_ms: 0,
+                // The original's `PlayerShoot.Time` is `gs_.lastUpdate_`, the same client clock its
+                // moves and its pongs are stamped with
+                // (`messaging/impl/GameServerConnectionConcrete.as:757`), and the server's shot
+                // validation reads it as one: `ValidatePlayerShoot` measures the cooldown from the
+                // last shot's client time and feeds `TimeCop` the pair
+                // (`realm/entities/player/Player.AntiCheat.cs:86-108`).
+                client_time_ms: now_ms,
             }
             .encode(&mut Writer::new(&mut buf));
             return link.send(Delivery::Stream, &buf).await.is_ok();
         }
 
         Command::MoveItem { from, to } => {
-            let place = |(container, slot): (u8, u16)| match container {
-                1 => hendra_net::message::SlotLocation::Equipment { slot: slot as u8 },
-                2 => hendra_net::message::SlotLocation::Vault { slot },
-                _ => hendra_net::message::SlotLocation::Inventory { slot: slot as u8 },
-            };
+            let mut buf = Vec::new();
+            ClientMessage::MoveItem { from, to }.encode(&mut Writer::new(&mut buf));
+            return link.send(Delivery::Stream, &buf).await.is_ok();
+        }
 
+        Command::Drop { from } => {
             let mut buf = Vec::new();
             ClientMessage::MoveItem {
-                from: place(from),
-                to: place(to),
+                from,
+                to: SlotLocation::Ground,
             }
             .encode(&mut Writer::new(&mut buf));
             return link.send(Delivery::Stream, &buf).await.is_ok();
         }
 
-        Command::PickUp { bag, slot } => {
-            let mut buf = Vec::new();
-            ClientMessage::MoveItem {
-                from: hendra_net::message::SlotLocation::Bag {
-                    entity: EntityId(bag),
-                    slot,
-                },
-                // The server chooses the slot; naming one here would only be a guess.
-                to: hendra_net::message::SlotLocation::Inventory { slot: 0 },
-            }
-            .encode(&mut Writer::new(&mut buf));
-            return link.send(Delivery::Stream, &buf).await.is_ok();
-        }
+        Command::VaultMove { version, from, to } => (
+            Delivery::Stream,
+            ClientMessage::VaultMove {
+                version,
+                from_chest: from.0,
+                from_slot: from.1,
+                to_chest: to.0,
+                to_slot: to.1,
+            },
+        ),
 
-        Command::Drop { slot } => {
-            let mut buf = Vec::new();
-            ClientMessage::MoveItem {
-                from: hendra_net::message::SlotLocation::Inventory { slot: slot as u8 },
-                to: hendra_net::message::SlotLocation::Ground,
-            }
-            .encode(&mut Writer::new(&mut buf));
-            return link.send(Delivery::Stream, &buf).await.is_ok();
+        Command::Buy { merchant } => (
+            Delivery::Stream,
+            ClientMessage::Buy {
+                merchant: EntityId(merchant),
+            },
+        ),
+        Command::VaultBuy { chest_count } => {
+            (Delivery::Stream, ClientMessage::VaultBuy { chest_count })
         }
 
         Command::Chat(text) => {
@@ -946,6 +1673,20 @@ async fn handle(
                 entity: EntityId(entity),
             },
         ),
+        Command::UseItem {
+            container,
+            slot,
+            x,
+            y,
+        } => (
+            Delivery::Stream,
+            ClientMessage::UseItem {
+                container: hendra_net::EntityId(container),
+                slot,
+                x,
+                y,
+            },
+        ),
     };
 
     message.encode(&mut Writer::new(scratch));
@@ -953,12 +1694,16 @@ async fn handle(
 }
 
 /// Decodes one arriving payload and publishes whatever it means.
+/// Applies one message from the server, and returns the serial of a ping that wants answering.
+///
+/// The answer is left to the caller because only it holds the link. Everything else here changes
+/// what the game sees on its next poll and sends nothing.
 fn apply(
     shared: &Arc<Shared>,
     received: Received,
     history: &mut BaselineRing<WorldSnapshot>,
     newest: &mut Option<Tick>,
-) {
+) -> Option<u32> {
     let payload = received.into_payload();
     let mut reader = Reader::new(&payload);
 
@@ -966,7 +1711,7 @@ fn apply(
         Ok(message) => message,
         Err(err) => {
             tracing::warn!(%err, "undecodable message from the server");
-            return;
+            return None;
         }
     };
 
@@ -977,6 +1722,11 @@ fn apply(
             world,
             width,
             height,
+            background,
+            difficulty,
+            allow_teleport,
+            show_displays,
+            music,
         } => {
             // A second welcome means a different world, and a different world means everything
             // held about the last one is void. Its snapshots were measured against a history that
@@ -995,21 +1745,60 @@ fn apply(
                 world: world.to_owned(),
                 width,
                 height,
+                background,
+                difficulty,
+                allow_teleport,
+                show_displays,
+                music: music.to_owned(),
             });
         }
 
         ServerMessage::Rejected { reason } => shared.push(Event::Rejected(reason)),
 
-        ServerMessage::Chat { from, text } => shared.push(Event::Chat {
+        ServerMessage::SwitchMusic { music } => {
+            shared.push(Event::SwitchMusic(music.to_owned()))
+        }
+
+        ServerMessage::QuestTarget { target } => shared.push(Event::QuestTarget(target.0)),
+
+        ServerMessage::SetFocus { target } => shared.push(Event::SetFocus(target.0)),
+
+        ServerMessage::AccountList { list, names } => shared.push(Event::AccountList {
+            list: list.number() as u8,
+            names,
+        }),
+
+        ServerMessage::Chat {
+            speaker,
+            from,
+            text,
+        } => shared.push(Event::Chat {
+            speaker: speaker.0,
             from: from.to_owned(),
             text: text.to_owned(),
         }),
 
-        ServerMessage::Ping { .. } => {}
+        ServerMessage::Ping { serial } => return Some(serial),
 
         ServerMessage::Container { container, slots } => shared.push(Event::Container {
             container: container as u8,
             slots,
+        }),
+
+        ServerMessage::VaultUpdate {
+            version,
+            chest_count,
+            max_chests,
+            next_chest_price,
+            slots,
+            gifts,
+        } => shared.push(Event::VaultUpdate {
+            version,
+            chest_count,
+            max_chests,
+            next_chest_price,
+            slots,
+            gifts,
         }),
 
         ServerMessage::Refused { message } => shared.push(Event::Refused(message.to_owned())),
@@ -1021,6 +1810,7 @@ fn apply(
         ServerMessage::Stacks { health, magic } => shared.push(Event::Stacks { health, magic }),
         ServerMessage::Queued { place, waiting } => shared.push(Event::Queued { place, waiting }),
         ServerMessage::Notice { text } => shared.push(Event::Notice(text)),
+        ServerMessage::Notification { text } => shared.push(Event::Notification(text)),
         ServerMessage::Died {
             character,
             killed_by,
@@ -1067,6 +1857,7 @@ fn apply(
             angle,
             speed,
             lifetime_ms,
+            damage,
         } => shared.push(Event::Shot {
             projectile: projectile.0,
             owner: owner.0,
@@ -1076,17 +1867,90 @@ fn apply(
             angle,
             speed,
             lifetime_ms,
+            damage,
+        }),
+
+        ServerMessage::Goto { object_id, x, y } => shared.push(Event::Goto {
+            object_id: object_id.0,
+            x,
+            y,
+        }),
+
+        ServerMessage::ShowEffect {
+            effect,
+            target,
+            x1,
+            y1,
+            x2,
+            y2,
+            color,
+        } => shared.push(Event::ShowEffect {
+            effect,
+            target: target.0,
+            x1,
+            y1,
+            x2,
+            y2,
+            color,
+        }),
+
+        ServerMessage::StatusText {
+            object_id,
+            text,
+            color,
+        } => shared.push(Event::StatusText {
+            object_id: object_id.0,
+            text,
+            color,
+        }),
+
+        ServerMessage::Aoe {
+            x,
+            y,
+            radius,
+            damage,
+            effect,
+            duration,
+            orig_type,
+        } => shared.push(Event::Aoe {
+            x,
+            y,
+            radius,
+            damage,
+            effect,
+            duration,
+            orig_type,
+        }),
+
+        ServerMessage::InvitedToGuild { name, guild } => {
+            shared.push(Event::InvitedToGuild { name, guild })
+        }
+
+        ServerMessage::Damage {
+            target,
+            effects,
+            amount,
+            kill,
+            bullet,
+            owner,
+        } => shared.push(Event::Damage {
+            target: target.0,
+            effects,
+            amount,
+            kill,
+            bullet,
+            owner: owner.0,
         }),
 
         ServerMessage::Snapshot { body } => {
             let mut body = Reader::new(body);
             let Ok(header) = read_header(&mut body) else {
-                return;
+                return None;
             };
 
             // Stale on arrival: datagrams reorder, and an older snapshot must not rewind the world.
             if newest.is_some_and(|held| !header.tick.is_newer_than(held)) {
-                return;
+                return None;
             }
 
             let world = {
@@ -1095,7 +1959,7 @@ fn apply(
                         Some(world) => Some(world),
                         // Encoded against something that never arrived. The server notices when the
                         // acknowledgement stops advancing and sends a full snapshot.
-                        None => return,
+                        None => return None,
                     },
                     None => None,
                 };
@@ -1104,7 +1968,7 @@ fn apply(
                     Ok(world) => world,
                     Err(err) => {
                         tracing::warn!(%err, "undecodable snapshot");
-                        return;
+                        return None;
                     }
                 }
             };
@@ -1117,6 +1981,8 @@ fn apply(
             *newest = Some(header.tick);
         }
     }
+
+    None
 }
 
 /// Resolves a host and port, preferring IPv4 when both are offered.

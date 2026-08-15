@@ -82,8 +82,7 @@ impl Workspace {
                     && let Ok(text) = std::fs::read_to_string(&path)
                 {
                     let uri = uri_of(&path);
-                    self.files
-                        .insert(uri.clone(), File::new(uri, path, text));
+                    self.files.insert(uri.clone(), File::new(uri, path, text));
                 }
             }
         }
@@ -256,7 +255,10 @@ mod tests {
         assert_eq!(file.uri, "file:///a.beh");
 
         // Alphabetical order would have found the other copy first.
-        assert_eq!(workspace.enemy("Guard").map(|(file, _)| file.uri.as_str()), Some("file:///Server-Side/a.beh"));
+        assert_eq!(
+            workspace.enemy("Guard").map(|(file, _)| file.uri.as_str()),
+            Some("file:///Server-Side/a.beh")
+        );
     }
 
     #[test]

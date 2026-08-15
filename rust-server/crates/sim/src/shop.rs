@@ -37,19 +37,6 @@ pub struct Shop {
     pub stock: &'static [(&'static str, i32)],
 }
 
-/// Where a player's own listings stand in the marketplace, by what they are.
-///
-/// From `Market.GetItemType`, which maps a region to a kind of item so a marketplace has a row for
-/// weapons, a row for abilities and so on rather than one heap.
-pub const MARKET_ROWS: &[(Region, &str)] = &[
-    (Region::Store9, "Weapon"),
-    (Region::Store10, "Ability"),
-    (Region::Store11, "Armor"),
-    (Region::Store12, "Ring"),
-    (Region::Store13, "Potion"),
-    (Region::Store14, "Other"),
-];
-
 /// Every shop, from `MerchantLists.Shops`.
 /// Whether somebody may buy from a shop that asks for a rank.
 ///
@@ -298,6 +285,14 @@ pub struct Stall {
     pub currency: Currency,
     pub rank: i16,
 
+    /// How many are left, or -1 for stock that never runs out.
+    ///
+    /// `ShopItem`'s constructor defaults `count` to -1 and every entry in `MerchantLists` takes the
+    /// default (`realm/entities/vendors/MerchantLists.cs:18`), so a nexus stall never counts down.
+    /// A player's listing does: `Market.Reload` sets `merchant.Count = shop.Count`, which is how
+    /// many of that item are for sale (`realm/Market.cs:236`).
+    pub count: i32,
+
     /// The market listing this is, where it is one.
     ///
     /// A shop's stock is endless and a player's listing is one item that somebody else owns until
@@ -340,6 +335,9 @@ pub fn deal(
             price,
             currency: shop.currency,
             rank: shop.rank,
+
+            // Endless, as every `MerchantLists` entry is.
+            count: -1,
             listing: None,
         });
     }

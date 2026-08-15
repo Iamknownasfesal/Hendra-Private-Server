@@ -18,10 +18,10 @@ fn main() {
     let worlds = args
         .next()
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("../Server-Side/XmlDatas/worlds"));
+        .unwrap_or_else(|| PathBuf::from("content/worlds"));
     let out = args.next().map(PathBuf::from);
 
-    let content = PathBuf::from("../Server-Side/XmlDatas/xmls/client");
+    let content = PathBuf::from("content/xmls");
     let (catalog, report) = match Catalog::load_dir(&content) {
         Ok(loaded) => loaded,
         Err(err) => {

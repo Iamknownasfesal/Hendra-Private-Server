@@ -39,6 +39,11 @@ pub enum Token {
     CloseBrace,
     OpenParen,
     CloseParen,
+
+    /// `[` and `]`, which bracket a list of values.
+    OpenBracket,
+    CloseBracket,
+
     Comma,
     Colon,
 
@@ -58,6 +63,8 @@ impl Token {
             Token::CloseBrace => "`}`".into(),
             Token::OpenParen => "`(`".into(),
             Token::CloseParen => "`)`".into(),
+            Token::OpenBracket => "`[`".into(),
+            Token::CloseBracket => "`]`".into(),
             Token::Comma => "`,`".into(),
             Token::Colon => "`:`".into(),
             Token::End => "the end of the file".into(),
@@ -133,6 +140,8 @@ pub fn tokenize(source: &str) -> Result<Vec<Spanned>, LexError> {
             '}' => Some(Token::CloseBrace),
             '(' => Some(Token::OpenParen),
             ')' => Some(Token::CloseParen),
+            '[' => Some(Token::OpenBracket),
+            ']' => Some(Token::CloseBracket),
             ',' => Some(Token::Comma),
             ':' => Some(Token::Colon),
             _ => None,

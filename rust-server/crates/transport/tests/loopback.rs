@@ -69,9 +69,10 @@ fn world_of(count: u32) -> WorldSnapshot {
                         size: 100,
                         name: None,
                         texture: 0,
-                        stats: [0; 8],
+                        stats: [0; hendra_net::STAT_COUNT],
                         stars: 0,
                         oxygen: 100,
+                        ..Default::default()
                     },
                 )
             })
@@ -128,6 +129,13 @@ async fn a_hello_travels_reliably_and_is_answered() {
             player: EntityId(1),
             tick: Tick::ZERO,
             world: "Nexus",
+            width: 64,
+            height: 64,
+            background: 0,
+            difficulty: 0,
+            allow_teleport: true,
+            show_displays: true,
+            music: "Nexus",
         }
         .encode(w)
     });
@@ -140,6 +148,13 @@ async fn a_hello_travels_reliably_and_is_answered() {
             player: EntityId(1),
             tick: Tick::ZERO,
             world: "Nexus",
+            width: 64,
+            height: 64,
+            background: 0,
+            difficulty: 0,
+            allow_teleport: true,
+            show_displays: true,
+            music: "Nexus",
         }
     );
 }

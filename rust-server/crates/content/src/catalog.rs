@@ -36,6 +36,9 @@ pub struct Catalog {
     /// select screen shows them in.
     classes: Vec<PlayerDesc>,
 
+    /// The wearable skins, each belonging to exactly one class.
+    skins: Vec<crate::desc::SkinDesc>,
+
     /// Sets of equipment that give something extra when all of them are worn. What they give is on
     /// none of the pieces, so an item read alone can never say what wearing it with three others is
     /// worth.
@@ -232,9 +235,11 @@ impl Catalog {
         match node.name.as_str() {
             "Object" => {
                 if let Some(desc) = ObjectDesc::parse(node) {
-                    // Parsed from the same element, because a class needs fields no other object
-                    // has and re-finding the element later would mean keeping it around.
+                    // Parsed from the same element, because a class and a skin each need fields no
+                    // other object has and re-finding the element later would mean keeping it
+                    // around.
                     let class = PlayerDesc::parse(node, desc.object_type);
+                    let skin = crate::desc::SkinDesc::parse(node, desc.object_type);
                     self.insert_object(desc, problems);
                     if let Some(class) = class
                         && !self
@@ -243,6 +248,14 @@ impl Catalog {
                             .any(|c| c.object_type == class.object_type)
                     {
                         self.classes.push(class);
+                    }
+                    if let Some(skin) = skin
+                        && !self
+                            .skins
+                            .iter()
+                            .any(|held| held.object_type == skin.object_type)
+                    {
+                        self.skins.push(skin);
                     }
                 }
                 return;
@@ -317,8 +330,7 @@ impl Catalog {
             return;
         }
 
-        self.by_id
-            .insert(desc.id.to_lowercase(), desc.object_type);
+        self.by_id.insert(desc.id.to_lowercase(), desc.object_type);
         if desc.is_item() {
             self.items.push(desc.object_type);
         }
@@ -396,28 +408,16 @@ impl Catalog {
             .find(|class| class.object_type == object_type)
     }
 
-    /// The lowest-tier item that fits a slot, which is what a class starts holding.
-    ///
-    /// Starting equipment is not written down anywhere: every class in the files lists its
-    /// `Equipment` as empty, so a character built from the files alone would arrive with nothing to
-    /// shoot. Tier zero of the slot the class's weapon goes in is what the game has always given
-    /// out, and deriving it means a new class needs no new configuration.
-    ///
-    /// Untiered items, meaning everything unique or special, are skipped, since "no tier" sorts as
-    /// nothing rather than as the bottom.
-    pub fn lowest_tier_for_slot(&self, slot_type: i32) -> Option<ObjectType> {
-        self.items
+    /// Every wearable skin.
+    pub fn skins(&self) -> &[crate::desc::SkinDesc] {
+        &self.skins
+    }
+
+    /// One skin by its object type, or `None` if that type is not a skin anybody can wear.
+    pub fn skin(&self, object_type: ObjectType) -> Option<&crate::desc::SkinDesc> {
+        self.skins
             .iter()
-            .filter_map(|object_type| {
-                let desc = self.object(*object_type)?;
-                let item = desc.item.as_ref()?;
-                if item.slot_type != slot_type || item.soulbound {
-                    return None;
-                }
-                Some((item.tier?, *object_type))
-            })
-            .min_by_key(|(tier, object_type)| (*tier, object_type.0))
-            .map(|(_, object_type)| object_type)
+            .find(|skin| skin.object_type == object_type)
     }
 
     fn insert_tile(&mut self, mut tile: TileDesc, problems: &mut Vec<LoadProblem>) {
@@ -511,6 +511,28 @@ impl Catalog {
         self.by_id.get(&id.to_lowercase()).copied()
     }
 
+    /// The object an operator meant by a name, matching loosely when nothing matches exactly.
+    ///
+    /// The fallback is a case-insensitive substring search that answers with the toughest match,
+    /// from `SpawnCommand.GetSpawnObjectType`. Toughest rather than first because the names in this
+    /// game nest — "Oryx the Mad God" is inside "Oryx the Mad God 2", and the alphabetically first
+    /// match for "oryx" is a statue. Health is the tiebreak that gets a boss when a boss was meant.
+    pub fn find_by_name(&self, id: &str) -> Option<ObjectType> {
+        if let Some(exact) = self.type_of(id) {
+            return Some(exact);
+        }
+
+        let wanted = id.trim().to_lowercase();
+        if wanted.is_empty() {
+            return None;
+        }
+
+        self.objects()
+            .filter(|desc| desc.id.to_lowercase().contains(&wanted))
+            .max_by_key(|desc| (desc.max_hp, std::cmp::Reverse(desc.id.len())))
+            .map(|desc| desc.object_type)
+    }
+
     /// Case-insensitive, as the original is.
     pub fn tile_type_of(&self, id: &str) -> Option<TileType> {
         self.tiles_by_id.get(&id.to_lowercase()).copied()
@@ -584,6 +606,37 @@ impl Catalog {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_loose_name_finds_the_toughest_thing_it_could_mean() {
+        let fixture = r#"<Objects>
+            <Object type="0x01" id="Oryx the Mad God"><Class>Character</Class><Enemy/>
+              <MaxHitPoints>50000</MaxHitPoints></Object>
+            <Object type="0x02" id="Oryx the Mad God 2"><Class>Character</Class><Enemy/>
+              <MaxHitPoints>200000</MaxHitPoints></Object>
+            <Object type="0x03" id="Oryx Statue"><Class>GameObject</Class>
+              <MaxHitPoints>0</MaxHitPoints></Object>
+          </Objects>"#;
+        let (catalog, _) = super::Catalog::load_str(&[fixture]);
+
+        // An exact name is taken exactly, even though a tougher enemy contains it.
+        assert_eq!(
+            catalog.find_by_name("Oryx the Mad God"),
+            Some(super::ObjectType(0x01))
+        );
+
+        // A partial name finds the toughest thing that contains it, not the statue.
+        assert_eq!(catalog.find_by_name("oryx"), Some(super::ObjectType(0x02)));
+
+        // Case does not matter, and neither does surrounding space.
+        assert_eq!(
+            catalog.find_by_name("  MAD GOD 2 "),
+            Some(super::ObjectType(0x02))
+        );
+
+        assert_eq!(catalog.find_by_name("nothing of the sort"), None);
+        assert_eq!(catalog.find_by_name("   "), None);
+    }
+
     #[test]
     fn the_groups_the_behaviours_name_are_groups_the_content_has() {
         // Seventeen names in the converted behaviours are groups rather than objects, and looking
@@ -1018,5 +1071,289 @@ mod tests {
 
         let enemies: Vec<&str> = catalog.enemies().map(|desc| desc.id.as_str()).collect();
         assert_eq!(enemies, vec!["Slime"]);
+    }
+
+    /// The two directories that hold the same game content.
+    ///
+    /// `godot-client/assets/xml` is what this server and the client both read. The original C#
+    /// server reads its own copy of the same files, kept as `.dat`, and that copy is the reference:
+    /// it is what the running original at port 8888 answers with.
+    const OURS: &str = "../../../godot-client/assets/xml";
+    const ORIGINAL: &str = "../../../Server-Side/XmlDatas/xmls/client";
+
+    /// What to say when the content is not there.
+    ///
+    /// A failure rather than a skip. `godot-client/assets/xml` is generated by
+    /// `godot-client/tools/extract_assets.py` and is not in version control, so on a clean checkout
+    /// every one of these tests compared nothing and reported success -- which is the one situation
+    /// they exist to cover.
+    const MISSING_CONTENT: &str = "the content is not where these tests look for it: \
+        run `python3 godot-client/tools/extract_assets.py` to generate godot-client/assets/xml";
+
+    #[test]
+    fn the_content_agrees_with_the_original_servers_copy_on_every_stat() {
+        // Two copies of the same content drift silently, and a stat that drifts is a mechanic that
+        // drifts: this caught Stheno at twice her hit points, the Forgotten King missing a
+        // projectile, and a Shatters enemy whose projectile list was shifted by an inserted entry,
+        // none of which reads as wrong in either file on its own.
+        //
+        // Only ids the two copies share are compared. Ours legitimately adds content the original
+        // never had (pets, eggs, gifts), and an addition is not a divergence.
+        let (Ok((ours, _)), Ok((original, _))) = (
+            Catalog::load_dir(std::path::Path::new(OURS)),
+            Catalog::load_dir(std::path::Path::new(ORIGINAL)),
+        ) else {
+            panic!("{MISSING_CONTENT}");
+        };
+
+        let mut divergent = Vec::new();
+        for theirs in original.objects() {
+            let Some(mine) = ours.by_name(&theirs.id) else {
+                continue;
+            };
+
+            // Everything the simulation reads off an object. Names are left out: the original's
+            // display ids are untranslated localisation keys, and ours carries the resolved English.
+            let mut differences = Vec::new();
+            let mut note = |field: &str, a: String, b: String| {
+                if a != b {
+                    differences.push(format!("{field} {a} != {b}"));
+                }
+            };
+            note("max_hp", theirs.max_hp.to_string(), mine.max_hp.to_string());
+            note(
+                "defense",
+                theirs.defense.to_string(),
+                mine.defense.to_string(),
+            );
+            note(
+                "size",
+                format!("{:?}", theirs.size),
+                format!("{:?}", mine.size),
+            );
+            note("enemy", theirs.enemy.to_string(), mine.enemy.to_string());
+            note("god", theirs.god.to_string(), mine.god.to_string());
+            note("quest", theirs.quest.to_string(), mine.quest.to_string());
+            note("cube", theirs.cube.to_string(), mine.cube.to_string());
+            note(
+                "terrain",
+                format!("{:?}", theirs.terrain),
+                format!("{:?}", mine.terrain),
+            );
+            note(
+                "exp_multiplier",
+                format!("{:?}", theirs.exp_multiplier),
+                format!("{:?}", mine.exp_multiplier),
+            );
+            note(
+                "spawn_probability",
+                theirs.spawn_probability.to_string(),
+                mine.spawn_probability.to_string(),
+            );
+            note(
+                "level",
+                format!("{:?}", theirs.level),
+                format!("{:?}", mine.level),
+            );
+            note(
+                "immunities",
+                format!("{:?}", theirs.immunities),
+                format!("{:?}", mine.immunities),
+            );
+
+            // Projectiles are compared as an ordered list, because a behaviour picks one by its
+            // position in that list. `object_type` is left out: the two catalogs number content
+            // independently, and `object_id` is the durable half.
+            let strip = |shots: &[crate::ProjectileDesc]| {
+                shots
+                    .iter()
+                    .map(|shot| {
+                        let mut plain = shot.clone();
+                        plain.object_type = ObjectType::NONE;
+                        format!("{plain:?}")
+                    })
+                    .collect::<Vec<_>>()
+            };
+            note(
+                "projectiles",
+                strip(&theirs.projectiles).join(" | "),
+                strip(&mine.projectiles).join(" | "),
+            );
+
+            match (&theirs.item, &mine.item) {
+                (Some(a), Some(b)) => {
+                    note(
+                        "slot_type",
+                        a.slot_type.to_string(),
+                        b.slot_type.to_string(),
+                    );
+                    note("tier", format!("{:?}", a.tier), format!("{:?}", b.tier));
+                    note("bag_type", a.bag_type.to_string(), b.bag_type.to_string());
+                    note("mp_cost", a.mp_cost.to_string(), b.mp_cost.to_string());
+                    note(
+                        "rate_of_fire",
+                        a.rate_of_fire.to_string(),
+                        b.rate_of_fire.to_string(),
+                    );
+                    note(
+                        "num_projectiles",
+                        a.num_projectiles.to_string(),
+                        b.num_projectiles.to_string(),
+                    );
+                    note("arc_gap", a.arc_gap.to_string(), b.arc_gap.to_string());
+                    note(
+                        "soulbound",
+                        a.soulbound.to_string(),
+                        b.soulbound.to_string(),
+                    );
+                    note("cooldown", a.cooldown.to_string(), b.cooldown.to_string());
+                    note(
+                        "activate",
+                        format!("{:?}", a.activate),
+                        format!("{:?}", b.activate),
+                    );
+                    note(
+                        "stat_boosts",
+                        format!("{:?}", a.stat_boosts),
+                        format!("{:?}", b.stat_boosts),
+                    );
+                }
+                (a, b) => note("item", a.is_some().to_string(), b.is_some().to_string()),
+            }
+
+            if !differences.is_empty() {
+                divergent.push(format!("{}: {}", theirs.id, differences.join("; ")));
+            }
+        }
+
+        assert!(
+            divergent.is_empty(),
+            "{} objects differ from the original server's content:\n{}",
+            divergent.len(),
+            divergent.join("\n")
+        );
+    }
+
+    #[test]
+    fn every_skin_in_the_content_belongs_to_a_class_that_exists() {
+        // The class pairing is the whole of a skin's meaning: it is what decides whether a player
+        // may wear one. A skin naming a class the catalog does not have would be a skin nobody can
+        // ever wear, and one the wardrobe silently drops.
+        let Ok((ours, _)) = Catalog::load_dir(std::path::Path::new(OURS)) else {
+            panic!("{MISSING_CONTENT}");
+        };
+
+        assert!(
+            ours.skins().len() > 100,
+            "the content ships 191 skins, found {}",
+            ours.skins().len()
+        );
+
+        let orphans: Vec<&str> = ours
+            .skins()
+            .iter()
+            .filter(|skin| ours.class(skin.class).is_none())
+            .map(|skin| skin.id.as_str())
+            .collect();
+
+        assert!(orphans.is_empty(), "skins with no such class: {orphans:?}");
+    }
+
+    #[test]
+    fn the_content_holds_every_object_the_original_can_spawn() {
+        // An id the original has and ours does not is an entity the original server can put in a
+        // world and this one cannot, whatever the code does.
+        let (Ok((ours, _)), Ok((original, _))) = (
+            Catalog::load_dir(std::path::Path::new(OURS)),
+            Catalog::load_dir(std::path::Path::new(ORIGINAL)),
+        ) else {
+            panic!("{MISSING_CONTENT}");
+        };
+
+        let missing: Vec<&str> = original
+            .objects()
+            .map(|desc| desc.id.as_str())
+            // `Marketplace` is the one deliberate omission: this server put `Pet Upgrader` on the
+            // number it used, and the market it fronted does not exist here.
+            .filter(|id| *id != "Marketplace")
+            .filter(|id| ours.by_name(id).is_none())
+            .collect();
+
+        assert!(
+            missing.is_empty(),
+            "the original has objects this content lacks: {missing:?}"
+        );
+
+        let missing_tiles: Vec<&str> = original
+            .tiles()
+            .map(|tile| tile.id.as_str())
+            .filter(|id| ours.tile_type_of(id).is_none())
+            .collect();
+
+        assert!(
+            missing_tiles.is_empty(),
+            "the original has tiles this content lacks: {missing_tiles:?}"
+        );
+    }
+
+    #[test]
+    fn every_content_file_closes_the_tags_it_opens() {
+        // This parser recovers from an unclosed element, so a truncated file loads as a shorter
+        // one and says nothing. The client's parser and the original server's are both strict, and
+        // a single missing `</Region>` cost the original its whole regions file.
+        let Ok(entries) = std::fs::read_dir(OURS) else {
+            panic!("{MISSING_CONTENT}");
+        };
+
+        let mut unbalanced = Vec::new();
+        for path in entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().and_then(|e| e.to_str()) == Some("xml"))
+        {
+            let bytes = std::fs::read(&path).expect("a file the directory listed");
+            let text: String = bytes.iter().map(|&b| b as char).collect();
+            let mut stack: Vec<&str> = Vec::new();
+            let mut rest = text.as_str();
+
+            while let Some(open) = rest.find('<') {
+                rest = &rest[open + 1..];
+                if rest.starts_with('?') || rest.starts_with('!') {
+                    continue;
+                }
+                let Some(end) = rest.find('>') else { break };
+                let (tag, after) = rest.split_at(end);
+                rest = &after[1..];
+
+                if tag.ends_with('/') {
+                    continue;
+                }
+                if let Some(name) = tag.strip_prefix('/') {
+                    match stack.pop() {
+                        Some(open) if open == name.trim() => {}
+                        other => {
+                            unbalanced.push(format!(
+                                "{}: </{}> closes <{}>",
+                                path.display(),
+                                name.trim(),
+                                other.unwrap_or("nothing")
+                            ));
+                            break;
+                        }
+                    }
+                } else {
+                    stack.push(tag.split_whitespace().next().unwrap_or(tag));
+                }
+            }
+
+            if !stack.is_empty() {
+                unbalanced.push(format!(
+                    "{}: still open at the end: {stack:?}",
+                    path.display()
+                ));
+            }
+        }
+
+        assert!(unbalanced.is_empty(), "{}", unbalanced.join("\n"));
     }
 }

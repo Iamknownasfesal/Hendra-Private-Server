@@ -304,6 +304,46 @@ impl Store {
         Ok(())
     }
 
+    /// Buys a class unlock with credits, in one transaction.
+    ///
+    /// The same shape as [`Store::buy_skin`] and for the same reason: `char/purchaseClassUnlock.cs`
+    /// charges and unlocks in two separate calls, which is one crash away from a player who paid
+    /// for a class they cannot play. Paying for one already unlocked is refused rather than charged
+    /// for, which rolls the payment back.
+    pub async fn buy_class(&self, account_id: i64, class: uuid::Uuid, price: i32) -> Result<()> {
+        let mut transaction = self.pool().begin().await?;
+
+        if price > 0 {
+            let paid = sqlx::query(
+                "UPDATE account SET credits = credits - $2 WHERE id = $1 AND credits >= $2",
+            )
+            .bind(account_id)
+            .bind(price)
+            .execute(&mut *transaction)
+            .await?;
+
+            if paid.rows_affected() == 0 {
+                return Err(StoreError::Refused("you cannot afford that"));
+            }
+        }
+
+        let granted = sqlx::query(
+            "INSERT INTO class_unlock (account_id, class) VALUES ($1, $2)
+             ON CONFLICT (account_id, class) DO NOTHING",
+        )
+        .bind(account_id)
+        .bind(class)
+        .execute(&mut *transaction)
+        .await?;
+
+        if granted.rows_affected() == 0 {
+            return Err(StoreError::Refused("you already have that"));
+        }
+
+        transaction.commit().await?;
+        Ok(())
+    }
+
     /// Records that an account has confirmed its age.
     pub async fn set_age_verified(&self, account_id: i64, verified: bool) -> Result<()> {
         sqlx::query("UPDATE account SET age_verified = $2 WHERE id = $1")
@@ -323,6 +363,32 @@ impl Store {
                 .await?;
 
         Ok(found.map(|(verified,)| verified).unwrap_or(false))
+    }
+
+    /// When this account was last playing, as a unix timestamp.
+    ///
+    /// Derived rather than stored. The original keeps a `lastSeen` field on the account and stamps
+    /// it at registration and at each sign-in (`DbModels.cs`, `RefreshLastSeen`); there is no such
+    /// column here, so the answer is taken from the newest character the account has touched, and
+    /// from when the account itself was made when it has touched none. Both are facts already
+    /// recorded, and together they say the same thing that field says.
+    pub async fn last_seen(&self, account_id: i64) -> Result<i64> {
+        // Cast, because `extract` answers in `numeric` and the row is read as a float.
+        let found: Option<(Option<f64>,)> = sqlx::query_as(
+            "SELECT extract(epoch FROM GREATEST(
+                 account.created_at,
+                 (SELECT max(last_seen) FROM character WHERE account_id = account.id)
+             ))::float8
+             FROM account WHERE account.id = $1",
+        )
+        .bind(account_id)
+        .fetch_optional(self.pool())
+        .await?;
+
+        Ok(found
+            .and_then(|(seconds,)| seconds)
+            .map(|seconds| seconds as i64)
+            .unwrap_or(0))
     }
 }
 

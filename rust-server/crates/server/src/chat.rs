@@ -12,9 +12,6 @@ pub enum Said {
     /// Everyone nearby.
     Say(String),
 
-    /// One named player.
-    Tell { to: String, text: String },
-
     /// Something the server should act on rather than repeat.
     Command { name: String, rest: String },
 
@@ -22,71 +19,67 @@ pub enum Said {
     Nothing,
 }
 
-/// The longest line that will be repeated.
+/// The longest line the server will look at.
 ///
-/// A line nobody can read is not communication, and an unbounded one is a way to spend everyone
-/// else's bandwidth.
-pub const MAX_LENGTH: usize = 256;
+/// `PlayerTextHandler` drops anything longer than this without answering, so a line over the limit
+/// is not shortened, refused or repeated: it never happened.
+pub const MAX_LENGTH: usize = 512;
 
 /// Reads what a player typed.
+///
+/// A line beginning with a slash is a command whatever else it looks like, and it is split on the
+/// first space with the whole remainder handed over as one string, exactly as
+/// `CommandManager.Execute` splits it. Whispering is `/tell` like any other command rather than
+/// something read here, so its refusals are the original's.
 pub fn read(line: &str) -> Said {
-    let line = line.trim();
-    if line.is_empty() {
+    // Counted in UTF-16 code units, which is what `text.Length` counts: a line of astral characters
+    // reaches the limit at half as many of them as a line of Latin ones.
+    if line.is_empty() || line.encode_utf16().count() > MAX_LENGTH {
         return Said::Nothing;
     }
 
-    // Truncated on a character boundary rather than a byte one, or a line ending in an accent
-    // would be cut in half and stop being text at all.
-    let line: String = line.chars().take(MAX_LENGTH).collect();
-
     let Some(rest) = line.strip_prefix('/') else {
-        return Said::Say(line);
+        if line.trim().is_empty() {
+            return Said::Nothing;
+        }
+        return Said::Say(line.to_string());
     };
 
-    let (word, tail) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
-    let tail = tail.trim();
+    // Everything after the first space, untrimmed: a command that reads a name and a reason reads
+    // the reason exactly as it was typed.
+    let (word, tail) = rest.split_once(' ').unwrap_or((rest, ""));
 
-    match word.to_ascii_lowercase().as_str() {
-        "tell" | "t" | "w" | "whisper" => match tail.split_once(char::is_whitespace) {
-            Some((to, text)) if !text.trim().is_empty() => Said::Tell {
-                to: to.to_string(),
-                text: text.trim().to_string(),
-            },
-            _ => Said::Nothing,
-        },
-        "" => Said::Nothing,
-        other => Said::Command {
-            name: other.to_string(),
-            rest: tail.to_string(),
-        },
+    // A lone slash is a command with no name, which the original answers with `Unknown command!`
+    // rather than with silence.
+    Said::Command {
+        name: word.to_string(),
+        rest: tail.to_string(),
     }
 }
 
-/// How fast one player may speak.
+/// How often one player may say the same thing.
 ///
-/// A sliding window rather than a fixed one: a fixed window lets someone send a burst at the end
-/// of one and another at the start of the next, which is twice the limit in an instant.
+/// The only thing standing between a player and the chat, because it is the only thing the original
+/// puts there: `PlayerTextHandler` checks the name, the mute and `CompareAndCheckSpam`, and nothing
+/// counts lines per second. A player answering six people in five seconds is saying six different
+/// things, and refusing that would silence a conversation the original allows.
 #[derive(Debug, Clone)]
 pub struct Limit {
-    recent: Vec<Instant>,
-
     /// The last line said, stripped of everything that makes two sayings of the same thing look
     /// different, and when it was said.
     last: Option<(String, Instant)>,
 
-    /// How far the line before that one was from the one before it.
+    /// The distance measured between the previous pair of lines, kept so that a repeat is only
+    /// called one when two consecutive pairs were both close.
     ///
-    /// Two in a row rather than one, from `CompareAndCheckSpam`: saying the same thing twice is
-    /// somebody making sure they were heard, and saying it three times is spam.
+    /// `LastMessageDeviation`, and it starts at the largest number there is: until two lines have
+    /// been said there is nothing for the next one to be a repeat of.
     last_deviation: usize,
 
     /// Whether the previous line was already a repeat, so the next one is refused rather than the
     /// first offence being.
     repeating: bool,
 }
-
-/// How many lines may be sent inside [`Limit::WINDOW`].
-pub const ALLOWED: usize = 5;
 
 impl Default for Limit {
     fn default() -> Limit {
@@ -95,9 +88,6 @@ impl Default for Limit {
 }
 
 impl Limit {
-    /// How long lines are remembered.
-    pub const WINDOW: Duration = Duration::from_secs(5);
-
     /// How long a line is remembered for the purpose of noticing a repeat.
     ///
     /// Ten seconds, from the original. Long enough that saying the same thing over and over is
@@ -115,7 +105,6 @@ impl Limit {
 
     pub fn new() -> Limit {
         Limit {
-            recent: Vec::with_capacity(ALLOWED),
             last: None,
             last_deviation: usize::MAX,
             repeating: false,
@@ -129,21 +118,29 @@ impl Limit {
     /// and it takes two repeats rather than one, so somebody making sure they were heard is not
     /// refused.
     pub fn repeats(&mut self, line: &str, now: Instant) -> bool {
-        let stripped = strip(line);
-
         let Some((last, at)) = self.last.take() else {
+            // The first line of the connection. `LastMessageTime` starts at zero against a clock
+            // that is the server's uptime, so the first line is always older than the ten seconds
+            // that forget what was said: it takes that branch, against an empty previous line.
+            let stripped = strip(line);
+            self.last_deviation = stripped.len();
             self.last = Some((stripped, now));
             self.repeating = false;
             return false;
         };
 
-        // Faster than anybody types, which is not a person saying something twice.
+        // Faster than anybody types, which is not a person saying something twice. Only the time is
+        // recorded: the original never strips this line and never stores it, so the next line is
+        // still measured against the last one said at a human pace, and the deviation carried over
+        // from that pair is the one the next comparison reads.
         if now.duration_since(at) < Duration::from_millis(500) {
-            self.last = Some((stripped, now));
+            self.last = Some((last, now));
             let was = self.repeating;
             self.repeating = true;
             return was;
         }
+
+        let stripped = strip(line);
 
         if now.duration_since(at) > Limit::REPEAT_WINDOW {
             self.last_deviation = distance(&last, &stripped);
@@ -153,8 +150,14 @@ impl Limit {
         }
 
         let deviation = distance(&last, &stripped);
+
+        // Both thresholds are the original's, and they read different lengths. The first reads the
+        // line just said, because `LastMessage` has already been reassigned by the time the check
+        // runs; stripping leaves only ASCII, so its byte length is the `string.Length` the original
+        // sees. The second reads the raw line in UTF-16 code units, which is what `message.Length`
+        // counts: an astral character counts twice there and once as a `char` here.
         let same = self.last_deviation <= Limit::far_enough(stripped.len())
-            && deviation <= Limit::far_enough(line.chars().count());
+            && deviation <= Limit::far_enough(line.encode_utf16().count());
 
         self.last_deviation = deviation;
         self.last = Some((stripped, now));
@@ -168,30 +171,26 @@ impl Limit {
         self.repeating = true;
         was
     }
-
-    /// Whether another line may be sent, recording it if so.
-    pub fn allow(&mut self, now: Instant) -> bool {
-        self.recent
-            .retain(|at| now.duration_since(*at) < Limit::WINDOW);
-
-        if self.recent.len() >= ALLOWED {
-            return false;
-        }
-
-        self.recent.push(now);
-        true
-    }
 }
 
 /// A line reduced to what it is saying, so two sayings of the same thing look the same.
 ///
-/// Punctuation and case go, and so does every repeat of a character: "hi!!!" and "HIII" both become
+/// Two passes, as `nonAlphaNum` and `repetition` do them. The first keeps only `[a-zA-Z0-9 ]` and
+/// lowercases what is left, so punctuation, case and every character outside plain ASCII go — a
+/// line of Cyrillic reduces to nothing at all, which is what the original's character class does to
+/// it. Spaces survive, so the words stay separated and the length the thresholds read is the length
+/// of a sentence rather than of one long word.
+///
+/// The second drops any character equal to the one before it, so "hi!!!" and "HIII" both become
 /// "hi". Without that, a spammer changes one exclamation mark and starts again.
 fn strip(line: &str) -> String {
     let mut out = String::with_capacity(line.len());
     let mut previous = None;
 
-    for held in line.chars().filter(|held| held.is_alphanumeric()) {
+    for held in line
+        .chars()
+        .filter(|held| held.is_ascii_alphanumeric() || *held == ' ')
+    {
         let held = held.to_ascii_lowercase();
         if previous != Some(held) {
             out.push(held);
@@ -246,35 +245,20 @@ mod tests {
     }
 
     #[test]
-    fn a_tell_names_who_it_is_for() {
+    fn a_whisper_is_a_command_like_any_other() {
+        // `/tell` is a command in the original, so what it refuses and what it says about it come
+        // from the command rather than from here.
         assert_eq!(
             read("/tell Fesal are you there"),
-            Said::Tell {
-                to: "Fesal".to_string(),
-                text: "are you there".to_string()
+            Said::Command {
+                name: "tell".to_string(),
+                rest: "Fesal are you there".to_string()
             }
         );
     }
 
     #[test]
-    fn the_short_spellings_of_tell_all_work() {
-        for spelling in ["/t", "/w", "/whisper", "/TELL"] {
-            assert!(
-                matches!(read(&format!("{spelling} Fesal hi")), Said::Tell { .. }),
-                "{spelling}"
-            );
-        }
-    }
-
-    #[test]
-    fn a_tell_with_nothing_to_say_is_nothing() {
-        // Otherwise naming someone would send them an empty line.
-        assert_eq!(read("/tell Fesal"), Said::Nothing);
-        assert_eq!(read("/tell"), Said::Nothing);
-    }
-
-    #[test]
-    fn anything_else_beginning_with_a_slash_is_a_command() {
+    fn anything_beginning_with_a_slash_is_a_command() {
         assert_eq!(
             read("/who is here"),
             Said::Command {
@@ -285,71 +269,61 @@ mod tests {
     }
 
     #[test]
-    fn a_lone_slash_is_not_a_command() {
-        assert_eq!(read("/"), Said::Nothing);
+    fn the_words_are_split_on_the_first_space_and_nothing_else() {
+        // `text.IndexOf(' ')`, and the remainder handed over whole. A tab is part of the word, and
+        // the spaces inside a reason are part of the reason.
+        assert_eq!(
+            read("/ban Bob  because he asked "),
+            Said::Command {
+                name: "ban".to_string(),
+                rest: "Bob  because he asked ".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn a_lone_slash_is_a_command_with_no_name() {
+        // Which the original answers with `Unknown command!` rather than with silence.
+        assert_eq!(
+            read("/"),
+            Said::Command {
+                name: String::new(),
+                rest: String::new()
+            }
+        );
         assert_eq!(read("   "), Said::Nothing);
     }
 
     #[test]
-    fn a_long_line_is_cut_rather_than_refused() {
-        // Refusing would lose the whole message over a mistake at the end of it.
-        let long = "a".repeat(MAX_LENGTH * 2);
-        match read(&long) {
-            Said::Say(text) => assert_eq!(text.chars().count(), MAX_LENGTH),
-            other => panic!("expected something said, got {other:?}"),
-        }
+    fn a_line_over_the_limit_never_happened() {
+        // `PlayerTextHandler` drops anything longer than 512 characters without answering it.
+        let long = "a".repeat(MAX_LENGTH + 1);
+        assert_eq!(read(&long), Said::Nothing);
+
+        let allowed = "a".repeat(MAX_LENGTH);
+        assert_eq!(read(&allowed), Said::Say(allowed));
+
+        // `text.Length` counts UTF-16 code units, so a character outside the basic plane counts
+        // twice and the limit arrives at half as many of them.
+        let astral = "🙂".repeat(MAX_LENGTH / 2);
+        assert_eq!(read(&astral), Said::Say(astral));
+        assert_eq!(read(&"🙂".repeat(MAX_LENGTH / 2 + 1)), Said::Nothing);
     }
 
     #[test]
-    fn a_line_is_cut_on_a_character_rather_than_a_byte() {
-        // Cutting mid-character would stop it being text at all.
-        let long: String = std::iter::repeat_n('é', MAX_LENGTH * 2).collect();
-        match read(&long) {
-            Said::Say(text) => assert_eq!(text.chars().count(), MAX_LENGTH),
-            other => panic!("expected something said, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn a_burst_is_allowed_and_then_refused() {
-        let mut limit = Limit::new();
-        let now = Instant::now();
-
-        for line in 0..ALLOWED {
-            assert!(limit.allow(now), "line {line} should be allowed");
-        }
-        assert!(!limit.allow(now), "and the next should not");
-    }
-
-    #[test]
-    fn the_window_slides_rather_than_resetting() {
-        // A fixed window lets someone send a burst at the end of one and another at the start of
-        // the next, which is twice the limit in an instant.
+    fn nothing_counts_lines_per_second() {
+        // `PlayerTextHandler` checks the name, the mute and `CompareAndCheckSpam` and stops there,
+        // so a burst of different lines is a conversation and goes through. A limit of so many
+        // lines in so many seconds would silence somebody answering several people at once.
         let mut limit = Limit::new();
         let start = Instant::now();
 
-        for line in 0..ALLOWED {
-            assert!(limit.allow(start + Duration::from_millis(line as u64 * 100)));
-        }
-
-        // The first line ages out, and exactly one more becomes available.
-        let freed = start + Limit::WINDOW;
-        assert!(limit.allow(freed));
-        assert!(!limit.allow(freed));
-    }
-
-    #[test]
-    fn waiting_out_the_window_allows_a_full_burst_again() {
-        let mut limit = Limit::new();
-        let start = Instant::now();
-
-        for _ in 0..ALLOWED {
-            limit.allow(start);
-        }
-
-        let later = start + Limit::WINDOW + Duration::from_millis(1);
-        for line in 0..ALLOWED {
-            assert!(limit.allow(later), "line {line} after the window");
+        for (line, text) in ["on my way", "which one", "the top left", "coming", "wait", "ok here"]
+            .iter()
+            .enumerate()
+        {
+            let now = start + Duration::from_millis(line as u64 * 600);
+            assert!(!limit.repeats(text, now), "line {line} was refused");
         }
     }
 }
@@ -431,6 +405,52 @@ mod repetition {
     #[test]
     fn a_repeated_letter_is_the_same_letter() {
         assert_eq!(strip("hiii!!!"), strip("HI"));
+    }
+
+    #[test]
+    fn the_words_stay_separated() {
+        // `[^a-zA-Z0-9 ]` keeps the space, and a run of spaces collapses like a run of anything
+        // else. Dropping them instead would make a short sentence one short word and put it under
+        // the four characters where the threshold falls to nothing.
+        assert_eq!(strip("Buy  my   gold!!!"), "buy my gold");
+    }
+
+    #[test]
+    fn anything_outside_plain_ascii_is_not_there_at_all() {
+        // The original's character class is `a-zA-Z0-9 ` and nothing else, so a line with no ASCII
+        // letters in it reduces to the empty string and two such lines are the same line.
+        assert_eq!(strip("Привет!"), "");
+        assert_eq!(strip("café"), "caf");
+    }
+
+    #[test]
+    fn a_sentence_is_measured_as_a_sentence() {
+        // Five characters with the space, four without, and the threshold falls to nothing at four.
+        // Two lines one edit apart are the same line at the original's length and different lines
+        // at the shorter one, so this is what keeping the space decides.
+        let refused = said(&["ab cd", "ab ce", "ab cd", "ab ce"]);
+        assert_eq!(refused, [false, false, false, true]);
+    }
+
+    #[test]
+    fn a_line_sent_too_fast_is_not_the_line_that_is_remembered() {
+        // The sub-500ms branch records the time and returns; it never strips the line and never
+        // stores it. So the burst does not become the thing the next line is compared against, and
+        // the repeat that straddles it is still caught.
+        let mut limit = Limit::new();
+        let start = Instant::now();
+        let line = "buy my gold cheap";
+
+        assert!(!limit.repeats(line, start));
+        assert!(!limit.repeats(line, start + Duration::from_secs(1)));
+
+        // Too fast to be a person, and a different line entirely.
+        assert!(!limit.repeats("z", start + Duration::from_millis(1200)));
+
+        assert!(
+            limit.repeats(line, start + Duration::from_secs(2)),
+            "the fast line replaced the one being repeated"
+        );
     }
 
     #[test]

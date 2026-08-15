@@ -16,7 +16,7 @@ const TICKS_PER_SECOND: u32 = 20;
 const TICKS: u32 = 400;
 
 fn main() {
-    let content = std::path::PathBuf::from("../Server-Side/XmlDatas/xmls/client");
+    let content = std::path::PathBuf::from("content/xmls");
     let (catalog, report) = match Catalog::load_dir(&content) {
         Ok(loaded) => loaded,
         Err(err) => {
@@ -33,7 +33,7 @@ fn main() {
     // stand where they are put and the measurement is of an empty room.
     let behaviours = load_behaviours();
 
-    let worlds = std::path::PathBuf::from("../Server-Side/XmlDatas/worlds");
+    let worlds = std::path::PathBuf::from("content/worlds");
     for (file, players, enemies) in [
         ("Nexus.jm", 60, 0),
         ("Nexus.jm", 200, 0),
@@ -152,7 +152,11 @@ fn measure(
 
             let mut boss = Entity::fixture(kind, x, y);
             boss.kind = hendra_sim::Kind::Enemy;
-            boss.max_hp = catalog.object(kind).map(|d| d.max_hp).unwrap_or(1000).max(1);
+            boss.max_hp = catalog
+                .object(kind)
+                .map(|d| d.max_hp)
+                .unwrap_or(1000)
+                .max(1);
             boss.hp = boss.max_hp;
 
             // Invulnerable, so the load being measured is the load that was set up: without it the

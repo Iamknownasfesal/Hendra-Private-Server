@@ -249,6 +249,17 @@ pub enum Kind {
     LuckyEnt,
     Crystal,
     KageKami,
+
+    // The eight Oryx places himself, one at a time, whenever a quest enemy is killed. They are not
+    // in `SCATTER`: a realm never opens with one, and every one that exists was earned.
+    SkullShrine,
+    Pentaract,
+    Sphinx,
+    LordOfTheLostLands,
+    Hermit,
+    GhostShip,
+    LordOfSky,
+    Spooky,
 }
 
 impl Kind {
@@ -273,6 +284,14 @@ impl Kind {
             "LuckyEnt" => Kind::LuckyEnt,
             "Crystal" => Kind::Crystal,
             "KageKami" => Kind::KageKami,
+            "SkullShrine" => Kind::SkullShrine,
+            "Pentaract" => Kind::Pentaract,
+            "Sphinx" => Kind::Sphinx,
+            "LordoftheLostLands" => Kind::LordOfTheLostLands,
+            "Hermit" => Kind::Hermit,
+            "GhostShip" => Kind::GhostShip,
+            "LordOfSky" => Kind::LordOfSky,
+            "Spooky" => Kind::Spooky,
             _ => return None,
         })
     }
@@ -294,6 +313,12 @@ impl Kind {
             Kind::LavaFissure => 40,
             Kind::LuckyDjinn | Kind::LuckyEnt | Kind::Crystal => 5,
             Kind::KageKami => 65,
+            Kind::SkullShrine => 33,
+            Kind::Pentaract => 41,
+            Kind::Sphinx => 81,
+            Kind::Hermit => 32,
+            Kind::GhostShip => 40,
+            Kind::LordOfTheLostLands | Kind::LordOfSky | Kind::Spooky => 5,
         }
     }
 
@@ -316,6 +341,25 @@ impl Kind {
             Kind::Crystal => alone("Mysterious Crystal"),
             Kind::KageKami => Drawing {
                 prefab: Some("SP_KageKami"),
+                ..Drawing::default()
+            },
+
+            Kind::SkullShrine => skull_shrine(dice),
+            Kind::Pentaract => pentaract(),
+            Kind::Sphinx => sphinx(dice),
+            Kind::LordOfTheLostLands => alone("Lord of the Lost Lands"),
+            Kind::Spooky => alone("LH Sentry"),
+
+            Kind::Hermit => Drawing {
+                prefab: Some("SP_Hermit"),
+                ..Drawing::default()
+            },
+            Kind::GhostShip => Drawing {
+                prefab: Some("SP_GhostShip"),
+                ..Drawing::default()
+            },
+            Kind::LordOfSky => Drawing {
+                prefab: Some("SP_LordOfSky"),
                 ..Drawing::default()
             },
         }
@@ -1603,12 +1647,443 @@ fn lava_fissure(dice: &mut Dice) -> Drawing {
     }
 }
 
+// -- the events -----------------------------------------------------------------------------------
+//
+// The eight Oryx raises himself, from `_events` (`Oryx.cs:33`). Three others are in the list and
+// commented out -- Cube God, Dragon Head and shtrs Defense System -- and so are not here either.
+
+const SHRINE_GRASS: &str = "Blue Grass";
+const SHRINE_TILE: &str = "Castle Stone Floor Tile";
+const SHRINE_TILE_DARK: &str = "Castle Stone Floor Tile Dark";
+const SHRINE_STONE: &str = "Cracked Purple Stone";
+const SHRINE_PILLAR: &str = "Blue Pillar";
+const SHRINE_PILLAR_BROKEN: &str = "Broken Blue Pillar";
+
+/// A cross of dark stone with pillars at its corners, eroded by noise.
+///
+/// `SkullShrine.cs`: a rough blue lawn, a cross laid twice by drawing one arm and turning the grid,
+/// four pillars per arm, and then a pass of simplex noise that clears every square it finds below
+/// its threshold. The noise is what makes the shrine a ruin rather than a building.
+fn skull_shrine(dice: &mut Dice) -> Drawing {
+    const SIZE: usize = 33;
+    const HALF: f32 = SIZE as f32 / 2.0;
+
+    let mut cells = Cells::new(SIZE, SIZE);
+
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            let dx = (x as f32 - (SIZE / 2) as f32).abs() / HALF;
+            let dy = (y as f32 - (SIZE / 2) as f32).abs() / HALF;
+            if dx + dice.roll() * 0.3 < 0.95 && dy + dice.roll() * 0.3 < 0.95 {
+                cells.set(x, y, 1);
+            }
+        }
+    }
+
+    // One arm, then a quarter turn, then the same arm again: a cross drawn by drawing half of it.
+    let lay = |cells: Cells, from: usize, to: usize, top: usize, bottom: usize, value: u8| {
+        let mut cells = cells;
+        for _ in 0..2 {
+            for x in from..to {
+                for y in top..bottom {
+                    cells.set(x, y, value);
+                }
+            }
+            cells = cells.rotate();
+        }
+        cells
+    };
+
+    cells = lay(cells, 12, 21, 4, 29, 2);
+    cells = lay(cells, 13, 20, 5, 28, 4);
+
+    // The ends of each arm, laid on all four.
+    for _ in 0..4 {
+        for x in 13..20 {
+            for y in 5..7 {
+                cells.set(x, y, 3);
+            }
+        }
+        cells = cells.rotate();
+    }
+
+    for _ in 0..4 {
+        for (x, y) in [(13, 7), (19, 7), (13, 10), (19, 10)] {
+            cells.set(x, y, if dice.one_in(3) { 6 } else { 5 });
+        }
+        cells = cells.rotate();
+    }
+
+    // Eroded, as the original erodes it: whatever the noise finds below its threshold is not there.
+    let noise = Simplex::new((dice.roll() * u32::MAX as f32) as u32);
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            if noise.at(
+                x as f64 / SIZE as f64 * 8.0,
+                y as f64 / SIZE as f64 * 8.0,
+                0.5,
+            ) < 0.2
+            {
+                cells.set(x, y, 0);
+            }
+        }
+    }
+
+    let mut squares = Vec::new();
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            let (x, y) = (x as i32, y as i32);
+            squares.push(match cells.get(x as usize, y as usize) {
+                1 => Painted::ground(x, y, SHRINE_GRASS),
+                2 => Painted::ground(x, y, SHRINE_TILE_DARK),
+                3 => Painted::ground(x, y, SHRINE_TILE),
+                4 => Painted::ground(x, y, SHRINE_STONE),
+                5 => Painted::standing(x, y, SHRINE_STONE, SHRINE_PILLAR),
+                6 => Painted::standing(x, y, SHRINE_STONE, SHRINE_PILLAR_BROKEN),
+                _ => continue,
+            });
+        }
+    }
+
+    Drawing {
+        squares,
+        placed: vec![Placed::Living {
+            x: SIZE as f32 / 2.0,
+            y: SIZE as f32 / 2.0,
+            name: "Skull Shrine",
+            size: 0,
+        }],
+        ..Drawing::default()
+    }
+}
+
+const PENTARACT_FLOOR: &str = "Scorch Blend";
+
+/// Five eyes on a ring of scorched ground, with the Pentaract itself at the centre.
+///
+/// `Pentaract.cs`: five circles at seventy-two degrees apart on a radius of fifteen, an eye in each,
+/// and the Pentaract in the middle. Nothing about it is random, so it takes no dice.
+fn pentaract() -> Drawing {
+    const SIZE: usize = 41;
+
+    // The blot each eye stands in the middle of.
+    const CIRCLE: [[u8; 7]; 7] = [
+        [0, 0, 1, 1, 1, 0, 0],
+        [0, 1, 1, 1, 1, 1, 0],
+        [1, 1, 1, 1, 1, 1, 1],
+        [1, 1, 1, 1, 1, 1, 1],
+        [1, 1, 1, 1, 1, 1, 1],
+        [0, 1, 1, 1, 1, 1, 0],
+        [0, 0, 1, 1, 1, 0, 0],
+    ];
+
+    let mut cells = Cells::new(SIZE, SIZE);
+
+    for arm in 0..5 {
+        let angle = (72.0 * arm as f64).to_radians();
+        let origin_x = (angle.cos() * 15.0 + 20.0 - 3.0) as usize;
+        let origin_y = (angle.sin() * 15.0 + 20.0 - 3.0) as usize;
+
+        for x in 0..7 {
+            for y in 0..7 {
+                cells.set(origin_x + x, origin_y + y, CIRCLE[x][y]);
+            }
+        }
+        cells.set(origin_x + 3, origin_y + 3, 2);
+    }
+
+    cells.set(20, 20, 3);
+
+    let mut squares = Vec::new();
+    let mut placed = Vec::new();
+
+    // Forty rather than forty-one, as the original's rendering loop is: the last row and column of
+    // the grid are drawn on and then never read.
+    for y in 0..SIZE - 1 {
+        for x in 0..SIZE - 1 {
+            match cells.get(x, y) {
+                1 => squares.push(Painted::ground(x as i32, y as i32, PENTARACT_FLOOR)),
+                2 => {
+                    squares.push(Painted::ground(x as i32, y as i32, PENTARACT_FLOOR));
+                    placed.push(Placed::Living {
+                        x: x as f32 + 0.5,
+                        y: y as f32 + 0.5,
+                        // `0x0d5e`, which the original names by number rather than by name.
+                        name: "Pentaract Tower",
+                        size: 0,
+                    });
+                }
+                3 => placed.push(Placed::Living {
+                    x: x as f32 + 0.5,
+                    y: y as f32 + 0.5,
+                    name: "Pentaract",
+                    size: 0,
+                }),
+                _ => {}
+            }
+        }
+    }
+
+    Drawing {
+        squares,
+        placed,
+        ..Drawing::default()
+    }
+}
+
+const SPHINX_FLOOR: &str = "Gold Sand";
+const SPHINX_CENTRE: &str = "Sand Tile";
+const SPHINX_PILLAR: &str = "Tomb Wall";
+
+/// A rough disc of gold sand with a cross of tile at its heart and pillars around it.
+///
+/// `Sphinx.cs`, and by far the largest of the events at eighty-one squares across.
+fn sphinx(dice: &mut Dice) -> Drawing {
+    const SIZE: usize = 81;
+    const HALF: f64 = SIZE as f64 / 2.0;
+
+    // The shape laid over the middle, which is what makes it a chamber rather than a beach.
+    const CENTRE: [[u8; 17]; 17] = [
+        [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0],
+        [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+        [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+        [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
+        [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+        [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+        [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
+        [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+        [0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+        [0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+    ];
+
+    let mut cells = Cells::new(SIZE, SIZE);
+
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            let dx = x as f64 - HALF;
+            let dy = y as f64 - HALF;
+            let r = (dx * dx + dy * dy).sqrt() + dice.roll() as f64 * 4.0 - 2.0;
+            if r <= 35.0 {
+                cells.set(x, y, 1);
+            }
+        }
+    }
+
+    for x in 0..17 {
+        for y in 0..17 {
+            if CENTRE[x][y] != 0 {
+                cells.set(32 + x, 32 + y, 2);
+            }
+        }
+    }
+
+    for (x, y) in [(36, 36), (44, 36), (36, 44), (44, 44)] {
+        cells.set(x, y, 3);
+    }
+
+    for (x, y) in [
+        (30, 30),
+        (50, 30),
+        (30, 50),
+        (50, 50),
+        (40, 26),
+        (40, 27),
+        (39, 27),
+        (41, 27),
+        (40, 54),
+        (40, 53),
+        (39, 53),
+        (41, 53),
+        (26, 40),
+        (27, 40),
+        (27, 39),
+        (27, 41),
+        (54, 40),
+        (53, 40),
+        (53, 39),
+        (53, 41),
+    ] {
+        cells.set(x, y, 4);
+    }
+
+    let mut squares = Vec::new();
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            let (x, y) = (x as i32, y as i32);
+            squares.push(match cells.get(x as usize, y as usize) {
+                1 => Painted::ground(x, y, SPHINX_FLOOR),
+                2 => Painted::ground(x, y, SPHINX_CENTRE),
+                3 => Painted::standing(x, y, SPHINX_CENTRE, SPHINX_PILLAR),
+                4 => Painted::standing(x, y, SPHINX_FLOOR, SPHINX_PILLAR),
+                _ => continue,
+            });
+        }
+    }
+
+    Drawing {
+        squares,
+        placed: vec![Placed::Living {
+            x: 40.5,
+            y: 40.5,
+            name: "Grand Sphinx",
+            size: 0,
+        }],
+        ..Drawing::default()
+    }
+}
+
+/// Three-dimensional simplex noise, as `setpieces/Noise.cs` computes it.
+///
+/// One setpiece uses it, to erode the skull shrine. Written out rather than reached for from a
+/// crate because the result has to be the same shape of noise the original erodes with: a different
+/// generator would give a shrine with holes in different places, which is fine, but a generator with
+/// a different range or a different smoothness would give one eroded to nothing or not at all.
+struct Simplex {
+    permutation: [usize; 512],
+}
+
+impl Simplex {
+    /// The twelve gradient directions, which are the edges of a cube.
+    const GRADIENTS: [[f64; 3]; 12] = [
+        [1.0, 1.0, 0.0],
+        [-1.0, 1.0, 0.0],
+        [1.0, -1.0, 0.0],
+        [-1.0, -1.0, 0.0],
+        [1.0, 0.0, 1.0],
+        [-1.0, 0.0, 1.0],
+        [1.0, 0.0, -1.0],
+        [-1.0, 0.0, -1.0],
+        [0.0, 1.0, 1.0],
+        [0.0, -1.0, 1.0],
+        [0.0, 1.0, -1.0],
+        [0.0, -1.0, -1.0],
+    ];
+
+    fn new(seed: u32) -> Simplex {
+        // A shuffled table rather than the fixed one the original seeds over, which comes to the
+        // same thing: what matters is that it is a permutation and that a seed decides which.
+        let mut table: [usize; 256] = std::array::from_fn(|index| index);
+        let mut dice = Dice::new(seed);
+
+        for index in (1..256).rev() {
+            let swap = (dice.roll() * (index + 1) as f32) as usize;
+            table.swap(index, swap.min(index));
+        }
+
+        Simplex {
+            permutation: std::array::from_fn(|index| table[index & 255]),
+        }
+    }
+
+    fn gradient(&self, index: usize) -> [f64; 3] {
+        Simplex::GRADIENTS[self.permutation[index & 511] % 12]
+    }
+
+    /// A value in roughly `0.0..1.0`.
+    fn at(&self, px: f64, py: f64, pz: f64) -> f64 {
+        const F3: f64 = 1.0 / 3.0;
+        const G3: f64 = 1.0 / 6.0;
+
+        let skew = (px + py + pz) * F3;
+        let (i, j, k) = (
+            (px + skew).floor(),
+            (py + skew).floor(),
+            (pz + skew).floor(),
+        );
+
+        let unskew = (i + j + k) * G3;
+        let (x0, y0, z0) = (px - (i - unskew), py - (j - unskew), pz - (k - unskew));
+
+        // Which of the six tetrahedra of the cell the point fell in.
+        let (first, second) = if x0 >= y0 {
+            if y0 >= z0 {
+                ([1, 0, 0], [1, 1, 0])
+            } else if x0 >= z0 {
+                ([1, 0, 0], [1, 0, 1])
+            } else {
+                ([0, 0, 1], [1, 0, 1])
+            }
+        } else if y0 < z0 {
+            ([0, 0, 1], [0, 1, 1])
+        } else if x0 < z0 {
+            ([0, 1, 0], [0, 1, 1])
+        } else {
+            ([0, 1, 0], [1, 1, 0])
+        };
+
+        let corners = [
+            ([0.0, 0.0, 0.0], [0usize, 0, 0]),
+            (
+                [
+                    x0 - first[0] as f64 + G3,
+                    y0 - first[1] as f64 + G3,
+                    z0 - first[2] as f64 + G3,
+                ],
+                first,
+            ),
+            (
+                [
+                    x0 - second[0] as f64 + 2.0 * G3,
+                    y0 - second[1] as f64 + 2.0 * G3,
+                    z0 - second[2] as f64 + 2.0 * G3,
+                ],
+                second,
+            ),
+            (
+                [
+                    x0 - 1.0 + 3.0 * G3,
+                    y0 - 1.0 + 3.0 * G3,
+                    z0 - 1.0 + 3.0 * G3,
+                ],
+                [1, 1, 1],
+            ),
+        ];
+
+        let (ii, jj, kk) = (i as i64 & 255, j as i64 & 255, k as i64 & 255);
+        let mut total = 0.0;
+
+        for (index, (offset, step)) in corners.iter().enumerate() {
+            let offset = if index == 0 { [x0, y0, z0] } else { *offset };
+
+            let mut falloff =
+                0.6 - offset[0] * offset[0] - offset[1] * offset[1] - offset[2] * offset[2];
+            if falloff < 0.0 {
+                continue;
+            }
+
+            // `perm[ii + i1 + perm[jj + j1 + perm[kk + k1]]]`, which is what turns a corner of the
+            // cell into one of the twelve directions.
+            let inner = self.permutation[(kk as usize + step[2]) & 511];
+            let middle = self.permutation[(jj as usize + step[1] + inner) & 511];
+            let corner = self.gradient(ii as usize + step[0] + middle);
+
+            falloff *= falloff;
+            total += falloff
+                * falloff
+                * (corner[0] * offset[0] + corner[1] * offset[1] + corner[2] * offset[2]);
+        }
+
+        (32.0 * total + 1.0) * 0.5
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn every_kind() -> Vec<Kind> {
-        SCATTER.iter().map(|(kind, _, _, _)| *kind).collect()
+        SCATTER
+            .iter()
+            .map(|(kind, _, _, _)| *kind)
+            .chain(crate::realm::EVENTS.iter().map(|(_, kind)| *kind))
+            .collect()
     }
 
     #[test]
@@ -1663,11 +2138,21 @@ mod tests {
     #[test]
     fn two_of_the_same_setpiece_are_not_the_same_setpiece() {
         // Every one of these is a drawing program rather than a saved map, and the reason is that
-        // two groves should not be the same grove.
+        // two groves should not be the same grove. Four are one thing standing alone, three are
+        // saved maps, and the Pentaract is the same five-pointed figure every time.
         for kind in every_kind() {
             if matches!(
                 kind,
-                Kind::LuckyDjinn | Kind::LuckyEnt | Kind::Crystal | Kind::KageKami
+                Kind::LuckyDjinn
+                    | Kind::LuckyEnt
+                    | Kind::Crystal
+                    | Kind::KageKami
+                    | Kind::Pentaract
+                    | Kind::LordOfTheLostLands
+                    | Kind::Spooky
+                    | Kind::Hermit
+                    | Kind::GhostShip
+                    | Kind::LordOfSky
             ) {
                 continue;
             }
@@ -1681,14 +2166,15 @@ mod tests {
 
     #[test]
     fn every_setpiece_that_should_have_a_boss_has_one() {
-        let bossless = [Kind::Building, Kind::KageKami];
+        // A saved map carries whatever it carries, and is stamped rather than drawn.
+        let bossless = [Kind::Building];
 
         for kind in every_kind() {
-            if bossless.contains(&kind) {
+            let drawing = kind.draw(&mut Dice::new(3));
+            if bossless.contains(&kind) || drawing.prefab.is_some() {
                 continue;
             }
 
-            let drawing = kind.draw(&mut Dice::new(3));
             assert!(
                 drawing
                     .placed

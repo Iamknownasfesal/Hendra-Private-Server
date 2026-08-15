@@ -15,6 +15,7 @@
 pub mod email;
 pub mod extras;
 pub mod guild;
+mod lock;
 pub mod market;
 mod model;
 mod moves;
@@ -25,8 +26,12 @@ pub mod wardrobe;
 
 pub use extras::{Offer as CreditOffer, Quest};
 pub use guild::{Guild, MAX_GUILD_LEVEL, Member, Rank};
-pub use market::{Listing, MarketPurchase};
-pub use model::{Account, Admin, Character, CharacterSummary, Currency, Death, Departed, TallyRow};
+pub use lock::{AccountLock, LOCK_SECONDS};
+pub use market::{Delivered, Listing, MarketPurchase, Withdrawal};
+pub use model::{
+    Account, Admin, Awarded, Character, CharacterSummary, Currency, Death, Departed, Saved,
+    TallyRow, is_guest_name,
+};
 pub use moves::{Location, MoveOutcome, Placed, Purchase};
 pub use news::{Calendar, News};
 pub use social::{Friend, ListKind, Message};

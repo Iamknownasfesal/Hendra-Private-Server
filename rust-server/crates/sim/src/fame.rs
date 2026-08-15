@@ -112,14 +112,18 @@ pub struct Finished {
     pub level: i16,
     pub fame: i32,
 
-    /// Whether this is the first character on the account ever to die.
-    pub first_death: bool,
+    /// Whether this is one of the first two characters the account ever made.
+    ///
+    /// `character.CharId < 2` (`FameStats.cs:122`), which is not what the bonus's own description
+    /// says it is -- "first death of any of your characters" -- and is what the original pays.
+    pub ancestor: bool,
 
     /// What the four worn items add, as a percentage. `FameBonus` in the content.
     pub equipment_bonus: i32,
 
-    /// Whether this beat every other character the account has had.
-    pub best_yet: bool,
+    /// The most fame any previous character of this account finished with, or `None` where there
+    /// has never been one. Nothing to beat counts as beaten (`FameStats.cs:263`).
+    pub best_before: Option<i32>,
 }
 
 /// The highest level a character reaches, which several bonuses ask for.
@@ -129,123 +133,172 @@ const MAX_LEVEL: i16 = 20;
 ///
 /// The order is part of the arithmetic: each is a share of the fame including the bonuses before it,
 /// so moving one changes what the others pay.
+///
+/// The last two numbers are what a bonus pays: a share of the running total, plus a flat amount on
+/// top. Only the ancestor bonus has the flat part, whose `(int)(f * 0.1 + 20)` (`FameStats.cs:125`)
+/// is the one payout in the table that is not a bare share.
 type Rule = (
     &'static str,
     &'static str,
     fn(&Tally, Finished) -> bool,
     f64,
+    i32,
 );
 
 const BONUSES: &[Rule] = &[
     (
         "Ancestor",
-        "first death of any of your characters",
-        |_, who| who.first_death,
+        "one of the first two characters you made",
+        |_, who| who.ancestor,
         0.1,
+        20,
     ),
     (
         "Pacifist",
         "never shot a bullet which hit an enemy",
         |tally, _| tally.shots_that_hit == 0,
         0.25,
+        0,
     ),
     (
         "Thirsty",
         "never drank a potion",
         |tally, _| tally.potions_drunk == 0,
         0.25,
+        0,
     ),
     (
         "Mundane",
         "never used a special ability",
         |tally, who| who.level == MAX_LEVEL && tally.abilities_used == 0,
         0.25,
+        0,
     ),
     (
         "Boots on the Ground",
         "never teleported",
         |tally, _| tally.teleports == 0,
         0.25,
+        0,
     ),
     (
         "Tunnel Rat",
         "completed every dungeon type",
         |tally, _| tally.every_dungeon(),
         0.1,
+        0,
     ),
     (
         "Enemy of the Gods",
         "more than a tenth of kills are gods",
         |tally, who| who.level == MAX_LEVEL && tally.godliness() > 0.1,
         0.1,
+        0,
     ),
     (
         "Slayer of the Gods",
         "more than half of kills are gods",
         |tally, who| who.level == MAX_LEVEL && tally.godliness() > 0.5,
         0.1,
+        0,
     ),
     (
         "Oryx Slayer",
         "dealt the killing blow to Oryx",
         |tally, _| tally.oryx_kills > 0,
         0.1,
+        0,
     ),
     (
         "Accurate",
         "accuracy better than a quarter",
         |tally, who| who.level == MAX_LEVEL && tally.accuracy() > 0.25,
         0.1,
+        0,
     ),
     (
         "Sharpshooter",
         "accuracy better than half",
         |tally, who| who.level == MAX_LEVEL && tally.accuracy() > 0.5,
         0.1,
+        0,
     ),
     (
         "Sniper",
         "accuracy better than three quarters",
         |tally, who| who.level == MAX_LEVEL && tally.accuracy() > 0.75,
         0.1,
+        0,
     ),
     (
         "Explorer",
         "more than a million tiles uncovered",
         |tally, _| tally.tiles_seen > 1_000_000,
         0.05,
+        0,
     ),
     (
         "Cartographer",
         "more than four million tiles uncovered",
         |tally, _| tally.tiles_seen > 4_000_000,
         0.05,
+        0,
     ),
     (
         "Team Player",
         "more than a hundred party level ups",
         |tally, _| tally.level_up_assists > 100,
         0.1,
+        0,
     ),
     (
         "Leader of Men",
         "more than a thousand party level ups",
         |tally, _| tally.level_up_assists > 1000,
         0.1,
+        0,
     ),
     (
         "Doer of Deeds",
         "more than a thousand quests completed",
         |tally, _| tally.quests_completed > 1000,
         0.1,
+        0,
     ),
     (
         "Friend of the Cubes",
         "never killed a cube",
         |tally, who| who.level == MAX_LEVEL && tally.cube_kills == 0,
         0.1,
+        0,
     ),
 ];
+
+/// The equipment bonus, which is outside the table because what it pays comes from the items worn
+/// rather than from a share fixed in advance.
+const WELL_EQUIPPED: (&str, &str) = ("Well Equipped", "wearing something that pays");
+
+/// Beating every character the account has had, which is outside the table because whether it holds
+/// is a comparison against the running total rather than against the character alone.
+const FIRST_BORN: (&str, &str) = ("First Born", "your best character yet");
+
+/// Why a bonus of this name is paid, for a death being read back rather than earned.
+///
+/// The wording is the same for every death that earns a bonus, so a graveyard row keeps only the
+/// name and the amount and asks here for the rest.
+pub fn describe(name: &str) -> Option<&'static str> {
+    if name == WELL_EQUIPPED.0 {
+        return Some(WELL_EQUIPPED.1);
+    }
+    if name == FIRST_BORN.0 {
+        return Some(FIRST_BORN.1);
+    }
+
+    BONUSES
+        .iter()
+        .find(|(bonus, ..)| *bonus == name)
+        .map(|(_, why, ..)| *why)
+}
 
 /// What a character's death is worth, and which bonuses it earned.
 ///
@@ -256,12 +309,12 @@ pub fn bonuses(tally: &Tally, who: Finished) -> (i32, Vec<Bonus>) {
     let mut earned = 0i32;
     let mut awarded = Vec::new();
 
-    for (name, why, holds, share) in BONUSES {
+    for (name, why, holds, share, flat) in BONUSES {
         if !holds(tally, who) {
             continue;
         }
 
-        let fame = ((who.fame + earned) as f64 * share) as i32;
+        let fame = ((who.fame + earned) as f64 * share + *flat as f64) as i32;
         earned += fame;
         awarded.push(Bonus { name, why, fame });
     }
@@ -272,20 +325,22 @@ pub fn bonuses(tally: &Tally, who: Finished) -> (i32, Vec<Bonus>) {
         let fame = ((who.fame + earned) as f64 * (who.equipment_bonus as f64 / 100.0)) as i32;
         earned += fame;
         awarded.push(Bonus {
-            name: "Well Equipped",
-            why: "wearing something that pays",
+            name: WELL_EQUIPPED.0,
+            why: WELL_EQUIPPED.1,
             fame,
         });
     }
 
     // And first born last of all: beating every character the account has had is worth a tenth of
-    // the whole, bonuses included.
-    if who.best_yet {
+    // the whole, bonuses included. Measured against the fame *with* the bonuses above it, which is
+    // what `character.Fame + f` is at that point (`FameStats.cs:263`), and granted outright when
+    // there has never been a previous character to beat.
+    if who.best_before.is_none_or(|best| who.fame + earned > best) {
         let fame = ((who.fame + earned) as f64 * 0.1) as i32;
         earned += fame;
         awarded.push(Bonus {
-            name: "First Born",
-            why: "your best character yet",
+            name: FIRST_BORN.0,
+            why: FIRST_BORN.1,
             fame,
         });
     }
@@ -301,9 +356,9 @@ mod tests {
         Finished {
             level: 1,
             fame: 100,
-            first_death: false,
+            ancestor: false,
             equipment_bonus: 0,
-            best_yet: false,
+            best_before: Some(i32::MAX),
         }
     }
 
@@ -333,7 +388,7 @@ mod tests {
     fn every_bonus_the_original_has_is_here() {
         // Twenty in `FameStats.cs`: eighteen in the table, plus well-equipped and first-born, which
         // it works out after the loop because both are shares of everything above them.
-        let named: Vec<&str> = BONUSES.iter().map(|(name, _, _, _)| *name).collect();
+        let named: Vec<&str> = BONUSES.iter().map(|(name, _, _, _, _)| *name).collect();
 
         for expected in [
             "Ancestor",
@@ -369,16 +424,19 @@ mod tests {
             ..ordinary()
         };
         let who = Finished {
-            first_death: true,
+            ancestor: true,
             ..nobody()
         };
 
         let (total, awarded) = bonuses(&tally, who);
 
         assert_eq!(awarded.len(), 2, "{awarded:?}");
-        assert_eq!(awarded[0].fame, 10, "a tenth of a hundred");
-        assert_eq!(awarded[1].fame, 11, "a tenth of a hundred and ten");
-        assert_eq!(total, 121);
+        assert_eq!(
+            awarded[0].fame, 30,
+            "a tenth of a hundred, and twenty on top"
+        );
+        assert_eq!(awarded[1].fame, 13, "a tenth of a hundred and thirty");
+        assert_eq!(total, 143);
     }
 
     #[test]
@@ -487,7 +545,7 @@ mod tests {
     #[test]
     fn the_best_character_yet_is_paid_last_and_on_the_whole() {
         let who = Finished {
-            best_yet: true,
+            best_before: Some(100),
             equipment_bonus: 10,
             ..nobody()
         };
@@ -501,14 +559,14 @@ mod tests {
     }
 
     #[test]
-    fn a_character_with_no_fame_earns_no_bonus_however_well_it_played() {
-        // Every bonus is a share, and a share of nothing is nothing. Worth saying because it means
-        // the counters cannot mint fame on their own.
+    fn a_character_with_no_fame_earns_no_share_of_it_however_well_it_played() {
+        // Every bonus but one is a share, and a share of nothing is nothing: the counters cannot
+        // mint fame on their own.
         let who = Finished {
             fame: 0,
             level: 20,
-            first_death: true,
-            best_yet: true,
+            ancestor: false,
+            best_before: None,
             equipment_bonus: 50,
         };
 
@@ -516,5 +574,72 @@ mod tests {
 
         assert_eq!(total, 0);
         assert!(awarded.iter().all(|bonus| bonus.fame == 0));
+    }
+
+    #[test]
+    fn the_ancestor_bonus_is_twenty_fame_plus_a_tenth() {
+        // The one payout in the table that is not a bare share: `(int)(f * 0.1 + 20)`
+        // (`FameStats.cs:125`), so an account's first two characters are worth twenty fame each
+        // even if they died with none, and everything after it compounds on that twenty.
+        let broke = Finished {
+            fame: 0,
+            ancestor: true,
+            best_before: Some(i32::MAX),
+            ..nobody()
+        };
+
+        let (total, awarded) = bonuses(&ordinary(), broke);
+
+        assert_eq!(awarded.len(), 1);
+        assert_eq!(awarded[0].name, "Ancestor");
+        assert_eq!(awarded[0].fame, 20);
+        assert_eq!(total, 20);
+    }
+
+    #[test]
+    fn the_first_character_of_an_account_has_nothing_to_beat_and_so_beats_it() {
+        // `bestFames.Length <= 0` is the first half of the first-born test (`FameStats.cs:263`):
+        // an account with no finished character behind it earns the bonus outright.
+        let who = Finished {
+            best_before: None,
+            ..nobody()
+        };
+
+        let (_, awarded) = bonuses(&ordinary(), who);
+
+        assert_eq!(awarded.len(), 1);
+        assert_eq!(awarded[0].name, "First Born");
+    }
+
+    #[test]
+    fn first_born_is_measured_against_the_fame_the_bonuses_made() {
+        // `character.Fame + f > bestFames.Max()` compares the running total, not the bare fame
+        // (`FameStats.cs:263`), so bonuses earned on the way can carry a character past a record
+        // its own fame would not have reached.
+        let earned_it = Finished {
+            ancestor: true,
+            best_before: Some(120),
+            ..nobody()
+        };
+
+        let (_, awarded) = bonuses(&ordinary(), earned_it);
+
+        assert!(
+            awarded.iter().any(|bonus| bonus.name == "First Born"),
+            "a hundred and thirty beats a hundred and twenty: {awarded:?}"
+        );
+
+        let missed_it = Finished {
+            ancestor: false,
+            best_before: Some(120),
+            ..nobody()
+        };
+
+        let (_, awarded) = bonuses(&ordinary(), missed_it);
+
+        assert!(
+            !awarded.iter().any(|bonus| bonus.name == "First Born"),
+            "a bare hundred does not: {awarded:?}"
+        );
     }
 }

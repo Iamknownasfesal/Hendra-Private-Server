@@ -85,7 +85,7 @@ impl Server {
             Ok(parsed) => {
                 let (_, complaints) = hendra_behavior::compile(&parsed);
                 for complaint in complaints {
-                    let start = source.from_span(complaint.at);
+                    let start = source.offset_of_span(complaint.at);
                     findings.push(Finding {
                         span: word_at(source, start),
                         severity: WARNING,
@@ -127,7 +127,9 @@ impl Server {
             if source.kind(index) != Some(Kind::Word) {
                 continue;
             }
-            let Some(open) = source.after(index).filter(|at| source.kind(*at) == Some(Kind::OpenParen))
+            let Some(open) = source
+                .after(index)
+                .filter(|at| source.kind(*at) == Some(Kind::OpenParen))
             else {
                 continue;
             };
@@ -214,7 +216,14 @@ impl Server {
                 text,
                 quoted,
                 ..
-            } => self.value_help(file, offset, call.as_ref(), argument.as_deref(), text, *quoted),
+            } => self.value_help(
+                file,
+                offset,
+                call.as_ref(),
+                argument.as_deref(),
+                text,
+                *quoted,
+            ),
         };
 
         if text.is_empty() {
@@ -420,7 +429,10 @@ impl Server {
         offset: usize,
         call: &CallSite,
     ) -> Option<(&'a File, &'a EnemyBlock)> {
-        if !matches!(call.name.as_str(), "order" | "order_once" | "order_on_death") {
+        if !matches!(
+            call.name.as_str(),
+            "order" | "order_once" | "order_on_death"
+        ) {
             return None;
         }
         let source = &file.source;
@@ -481,13 +493,12 @@ impl Server {
                 declaration: true, ..
             } => Value::Null,
 
-            What::State { name, .. } => match file
-                .enemy_at(offset)
-                .and_then(|enemy| enemy.state(&name))
-            {
-                Some(state) => location_of(file, state.name_span.clone()),
-                None => Value::Null,
-            },
+            What::State { name, .. } => {
+                match file.enemy_at(offset).and_then(|enemy| enemy.state(&name)) {
+                    Some(state) => location_of(file, state.name_span.clone()),
+                    None => Value::Null,
+                }
+            }
 
             What::Enemy { name, .. } => match self.workspace.enemy_near(file, &name) {
                 Some((found, enemy)) => location_of(found, enemy.name_span.clone()),
@@ -671,14 +682,7 @@ impl Server {
 
         let mut items: Vec<Value> = table
             .iter()
-            .map(|entry| {
-                item(
-                    entry.name,
-                    3,
-                    entry.kind.label(),
-                    Some(snippet(entry)),
-                )
-            })
+            .map(|entry| item(entry.name, 3, entry.kind.label(), Some(snippet(entry))))
             .collect();
 
         if !after_on {
@@ -703,7 +707,11 @@ impl Server {
     ) -> Vec<Value> {
         let Some(entry) = call.entry() else {
             // A name still worth completing inside: whatever the call is, it may take an enemy.
-            return if quoted { self.enemy_completions(false) } else { Vec::new() };
+            return if quoted {
+                self.enemy_completions(false)
+            } else {
+                Vec::new()
+            };
         };
 
         // The argument a value is being written for, when the cursor follows a `name:`.
@@ -988,7 +996,7 @@ fn parse_finding(source: &Source, error: &hendra_behavior::ParseError) -> Findin
         | ParseError::UnknownTarget { at, .. } => *at,
     };
 
-    let start = source.from_span(at);
+    let start = source.offset_of_span(at);
     // The message already says where it is; the editor shows that itself.
     let message = error.to_string();
     let message = message
@@ -1031,13 +1039,15 @@ fn named_arguments(source: &Source, open: usize) -> Vec<(String, Range<usize>)> 
                 }
             }
             Kind::OpenBrace | Kind::CloseBrace => break,
-            Kind::Word if depth == 1 => {
-                if source.after(at) == Some(at + 1) && source.kind(at + 1) == Some(Kind::Colon) {
-                    found.push((
-                        source.tokens[at].value.clone(),
-                        source.tokens[at].span.clone(),
-                    ));
-                }
+            Kind::Word
+                if depth == 1
+                    && source.after(at) == Some(at + 1)
+                    && source.kind(at + 1) == Some(Kind::Colon) =>
+            {
+                found.push((
+                    source.tokens[at].value.clone(),
+                    source.tokens[at].span.clone(),
+                ));
             }
             _ => {}
         }
@@ -1102,7 +1112,10 @@ enemy "Archdemon Malphas" {
     fn hover(needle: &str) -> String {
         let (line, character) = position(needle);
         let hover = server().hover("file:///abyss.beh", line, character);
-        hover["contents"]["value"].as_str().unwrap_or("").to_string()
+        hover["contents"]["value"]
+            .as_str()
+            .unwrap_or("")
+            .to_string()
     }
 
     #[test]
@@ -1182,11 +1195,15 @@ enemy "Archdemon Malphas" {
             .map(|item| item["message"].as_str().unwrap())
             .collect();
         assert!(
-            messages.iter().any(|message| message.contains("does not read `time`")),
+            messages
+                .iter()
+                .any(|message| message.contains("does not read `time`")),
             "{messages:?}"
         );
         assert!(
-            messages.iter().any(|message| message.contains("does not read `dist`")),
+            messages
+                .iter()
+                .any(|message| message.contains("does not read `dist`")),
             "{messages:?}"
         );
     }

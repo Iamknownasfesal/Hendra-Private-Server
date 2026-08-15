@@ -11,7 +11,7 @@ fn main() {
     let dir = std::env::args()
         .nth(1)
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("../Server-Side/XmlDatas/xmls/client"));
+        .unwrap_or_else(|| PathBuf::from("content/xmls"));
 
     let started = Instant::now();
     let (catalog, report) = match Catalog::load_dir(&dir) {

@@ -36,9 +36,10 @@ fn spawn(id: u32) -> (EntityId, EntityState) {
             size: 100,
             name: None,
             texture: 0,
-            stats: [0; 8],
+            stats: [0; hendra_net::STAT_COUNT],
             stars: 0,
             oxygen: 100,
+            ..Default::default()
         },
     )
 }

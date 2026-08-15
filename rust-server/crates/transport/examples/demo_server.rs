@@ -146,7 +146,9 @@ async fn handle(
         | ClientMessage::Market(_)
         | ClientMessage::EditList { .. }
         | ClientMessage::Prestige
-        | ClientMessage::PrestigeBuy { .. } => {}
+        | ClientMessage::PrestigeBuy { .. }
+        | ClientMessage::VaultMove { .. }
+        | ClientMessage::VaultBuy { .. } => {}
         ClientMessage::Hello {
             protocol,
             token,
@@ -181,6 +183,13 @@ async fn handle(
                 player: EntityId(1),
                 tick,
                 world: "Nexus",
+                width: 64,
+                height: 64,
+                background: 0,
+                difficulty: 0,
+                allow_teleport: true,
+                show_displays: true,
+                music: "Nexus",
             }
             .encode(&mut Writer::new(&mut out));
             link.send(Delivery::Stream, &out)
@@ -200,6 +209,7 @@ async fn handle(
             println!("  chat: {text}");
             let mut out = Vec::new();
             ServerMessage::Chat {
+                speaker: EntityId(1),
                 from: "server",
                 text: &format!("you said: {text}"),
             }
@@ -237,9 +247,10 @@ fn world_at(seconds: f32) -> WorldSnapshot {
                     size: 100,
                     name: None,
                     texture: 0,
-                    stats: [0; 8],
+                    stats: [0; hendra_net::STAT_COUNT],
                     stars: 0,
                     oxygen: 100,
+                    ..Default::default()
                 },
             )
         })

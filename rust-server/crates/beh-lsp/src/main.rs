@@ -59,11 +59,7 @@ fn check(root: &str) -> i32 {
     let mut warnings = 0usize;
     let mut notes = 0usize;
 
-    let uris: Vec<String> = server
-        .workspace
-        .uris()
-        .map(|uri| uri.to_string())
-        .collect();
+    let uris: Vec<String> = server.workspace.uris().map(|uri| uri.to_string()).collect();
 
     for uri in &uris {
         let name = server
@@ -123,10 +119,7 @@ fn serve() {
     while let Some(message) = read(&mut input) {
         let method = message["method"].as_str().unwrap_or_default().to_string();
         let id = message.get("id").cloned();
-        let params = message
-            .get("params")
-            .cloned()
-            .unwrap_or_else(|| json!({}));
+        let params = message.get("params").cloned().unwrap_or_else(|| json!({}));
 
         // Notifications, which are answered with work rather than with a reply.
         match method.as_str() {

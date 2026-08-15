@@ -32,28 +32,51 @@ pub struct Rules {
     pub untouchable: bool,
 
     /// Registers hits and takes their effects, but loses no health.
+    ///
+    /// The blow is still worked out in full and still reported in full: `Enemy.HitByProjectile`
+    /// (`Enemy.cs:106-119`) computes `dmg`, skips only the `HP -=` when Invulnerable, and puts the
+    /// whole of `dmg` in the `Damage` packet. Reporting a zero instead is a boss that shrugs off a
+    /// hit and shows nothing for it, which reads to a player as a shot that missed.
     pub no_damage: bool,
 
-    /// Cannot move.
+    /// Held exactly where it stands, whatever it or its client asks for.
+    ///
+    /// `Entity.ResolveNewLocation` (`Entity.cs:324`) returns the current position unchanged under
+    /// either Paralyzed or Petrify, and `StatsManager.GetSpeed` (`:138`) reads zero under
+    /// Paralyzed. Nothing else roots: a paused or frozen entity keeps whatever position its client
+    /// or its behaviour last asked for.
     pub rooted: bool,
 
-    /// Cannot shoot.
+    /// Cannot fire the behaviour tree's `Shoot`.
+    ///
+    /// `Shoot.cs:132`, which is the only place Stunned stops a shot. A player's own weapon is
+    /// never gated on it: neither `PlayerShootHandler` nor `Player.ValidatePlayerShoot`
+    /// (`Player.AntiCheat.cs:88`) mentions any condition effect, so a stunned player who fires
+    /// anyway is fired for.
     pub silenced: bool,
 
-    /// Cannot use abilities, and holds no magic.
-    pub quiet: bool,
-
-    /// Neither moves nor thinks.
+    /// The world has stopped for this one.
+    ///
+    /// Paused alone. `Player.Tick` (`Player.cs:565`) skips regeneration, effects, the ocean
+    /// trench, activate effects, the fame counter, deferred hits and ground damage; `DamageCounter`
+    /// (`:80`) hands out no experience; a world quake sends them to the Nexus.
     pub paused: bool,
+
+    /// The behaviour tree does not run at all.
+    ///
+    /// Stasis alone. `Entity.Tick` (`Entity.cs:225`) skips `TickState` under Stasis and under
+    /// nothing else, so the tree is frozen mid-state rather than merely refused its movement. A
+    /// paused enemy, by contrast, keeps thinking, moving and shooting.
+    pub frozen: bool,
 
     /// Hidden from other players.
     pub invisible: bool,
 
     /// Not something an enemy will chase or shoot at.
     ///
-    /// `Player.IsVisibleToEnemy`. Wider than `invisible`, which is only about other players: an
-    /// administrator watching a fight unseen, and somebody paused, are both there to be looked at
-    /// and neither is there to be attacked.
+    /// `Player.IsVisibleToEnemy` (`Player.Effects.cs:102-113`): Paused, Invisible, Hidden. Wider
+    /// than `invisible`, which is only about other players. Stasis is deliberately not in it —
+    /// an entity in stasis is still hunted, it simply takes nothing from what reaches it.
     pub unseen_by_enemies: bool,
 
     /// Health regeneration is suppressed.
@@ -68,8 +91,16 @@ pub struct Rules {
     /// Defence counts as nothing.
     pub ignore_defence: bool,
 
-    /// Multiplies damage after defence.
-    pub damage_taken: f32,
+    /// Sharpens a hit by a fifth, against anything.
+    pub cursed: bool,
+
+    /// Softens a hit by a tenth, but only against a player.
+    ///
+    /// Kept apart from [`Rules::cursed`] because the original keeps two copies of the defence
+    /// formula and only one of them reads it. `StatsManager.cs:85`, which every enemy and every
+    /// breakable object goes through, has no `Petrify` clause at all; `StatsManager.cs:107`, which
+    /// only a player goes through, has one. A petrified enemy therefore takes full damage.
+    pub petrified: bool,
 
     /// Health per second, positive or negative.
     pub health_per_second: f32,
@@ -109,15 +140,16 @@ impl Rules {
         no_damage: false,
         rooted: false,
         silenced: false,
-        quiet: false,
         paused: false,
+        frozen: false,
         invisible: false,
         unseen_by_enemies: false,
         no_health_regen: false,
         no_magic_regen: false,
         defence_multiplier: 1.0,
         ignore_defence: false,
-        damage_taken: 1.0,
+        cursed: false,
+        petrified: false,
         health_per_second: 0.0,
         weak: false,
         damaging: false,
@@ -134,7 +166,16 @@ impl Rules {
     /// What a ninja's speed costs, in magic a second.
     ///
     /// From `HandleEffects`. It is what stops the effect being free movement: run out and it ends.
-    pub const MAGIC_PER_SECOND: f32 = 10.0;
+    ///
+    /// Twelve rather than the ten the original writes, because the original does not spend it a
+    /// second at a time. `MP = Math.Max(0, (int)(MP - 10 * time.ElaspedMsDelta / 1000f))`
+    /// (`Player.Effects.cs:53`) truncates to a whole point of magic on every tick, and the tick it
+    /// runs on is the 332 ms world tick — `Player.Tick` is reached from `World.Tick`, which
+    /// `TickWorlds1` only runs once two logic ticks have accumulated (`FLLogicTicker.cs:149-156`).
+    /// Ten a second is 3.32 a tick, truncation takes the whole four, and four every 332 ms is
+    /// 12.05 a second. Spending the written ten would give a ninja a fifth more running than the
+    /// original ever gave one.
+    pub const MAGIC_PER_SECOND: f32 = 4.0 / 0.332;
 
     /// The share of a hit that always lands, however much defence is in the way.
     pub const DAMAGE_FLOOR: f32 = 0.25;
@@ -145,18 +186,23 @@ impl Rules {
 
         let mut rules = Rules::NONE;
 
+        // The three states the original keeps apart. Paused stops a player's own upkeep, Stasis
+        // stops a behaviour tree, and neither is the other: `Entity.Tick` freezes the tree under
+        // Stasis alone, while `Player.Tick` skips its upkeep under Paused alone.
+        rules.paused = conditions.contains(Paused);
+        rules.frozen = conditions.contains(Stasis);
+
         // `Enemy.HitByProjectile` returns before anything else when Invincible, and its damage
-        // block is skipped entirely under Paused or Stasis.
-        rules.paused = conditions.contains(Paused) || conditions.contains(Stasis);
-        rules.untouchable = conditions.contains(Invincible) || rules.paused;
+        // block is skipped entirely under Paused or Stasis. `Player.IsInvulnerable` is the same
+        // three plus Invulnerable, and the player's hit path returns on all four.
+        rules.untouchable = conditions.contains(Invincible) || rules.paused || rules.frozen;
 
         // Invulnerable is the softer one: the hit registers and its effects apply, but the health
         // subtraction is skipped and the defence calculation returns zero.
         rules.no_damage = rules.untouchable || conditions.contains(Invulnerable);
 
-        rules.rooted = rules.paused || conditions.contains(Paralyzed);
-        rules.silenced = conditions.contains(Stunned) || rules.paused;
-        rules.quiet = conditions.contains(Quiet) || rules.paused;
+        rules.rooted = conditions.contains(Paralyzed) || conditions.contains(Petrify);
+        rules.silenced = conditions.contains(Stunned);
         rules.invisible = conditions.contains(Invisible) || conditions.contains(Hidden);
         rules.unseen_by_enemies = rules.invisible || rules.paused;
 
@@ -169,12 +215,8 @@ impl Rules {
         }
         rules.ignore_defence = conditions.contains(ArmorBroken);
 
-        if conditions.contains(Petrify) {
-            rules.damage_taken *= 0.9;
-        }
-        if conditions.contains(Curse) {
-            rules.damage_taken *= 1.20;
-        }
+        rules.petrified = conditions.contains(Petrify);
+        rules.cursed = conditions.contains(Curse);
 
         // Healing is refused while Sick, and bleeding never takes the last point.
         if conditions.contains(Healing) && !conditions.contains(Sick) {
@@ -199,21 +241,50 @@ impl Rules {
     }
 
     /// What a raw hit costs after defence and the effects on the entity taking it.
-    pub fn damage_after_defence(&self, raw: i32, defence: i32, armor_piercing: bool) -> i32 {
-        if self.no_damage {
-            return 0;
-        }
-
+    ///
+    /// `StatsManager.GetDefenseDamage`, both copies of it. `is_player` picks which: the static one
+    /// at `StatsManager.cs:85` for anything else, the instance one at `:107` for a player. They
+    /// differ only in the `Petrify` clause, and only one of them has it.
+    ///
+    /// Every step that multiplies truncates to a whole number before the next one reads it, and the
+    /// caller truncates again — `(int)StatsManager.GetDefenseDamage(...)` at `Enemy.cs:70` and
+    /// `:106`, `Player.cs:786` and `:813`. Rounding instead disagrees with the original by a point
+    /// wherever the floor lands on a half, which is every third value of a hit that defence has
+    /// swallowed.
+    ///
+    /// What the target's health actually loses is a separate question, and the caller asks it:
+    /// [`Rules::no_damage`] skips the subtraction and changes nothing about the number, exactly as
+    /// the original's `if (!HasConditionEffect(Invulnerable)) HP -= dmg;` sits beside a `Damage`
+    /// packet carrying the whole of `dmg`.
+    pub fn damage_after_defence(
+        &self,
+        raw: i32,
+        defence: i32,
+        armor_piercing: bool,
+        is_player: bool,
+    ) -> i32 {
+        // Armour doubles defence before armour-piercing or broken armour throws it away, so a
+        // pierced shot is unaffected by whether the target was armoured.
         let defence = if armor_piercing || self.ignore_defence {
             0
         } else {
             (defence as f32 * self.defence_multiplier) as i32
         };
 
+        // The floor is a share of the raw hit, not of what defence left, so enough defence still
+        // lets a quarter through. Not clamped at zero: the original does not clamp either, and a
+        // negative defence is meant to make a hit land harder.
         let floor = raw as f32 * Rules::DAMAGE_FLOOR;
-        let reduced = (raw - defence.max(0)) as f32;
+        let mut taken = ((raw - defence) as f32).max(floor);
 
-        (reduced.max(floor) * self.damage_taken).round().max(0.0) as i32
+        if is_player && self.petrified {
+            taken = (taken * 0.9) as i32 as f32;
+        }
+        if self.cursed {
+            taken = (taken * 1.20) as i32 as f32;
+        }
+
+        taken as i32
     }
 }
 
@@ -236,12 +307,12 @@ pub fn accepts(conditions: ConditionSet, effect: ConditionEffect) -> bool {
         _ => None,
     };
 
-    // An untouchable entity takes no effect from a hit at all. Whether an effect is one an enemy
-    // inflicts is decided by whether it has an immunity, which is exactly that set.
-    if immunity.is_some() && conditions.contains(Invincible) {
-        return false;
-    }
-
+    // Only the immunity. `ApplyCondition` (`Entity.cs:738-772`) is eight paired tests and nothing
+    // else — being untouchable is not among them. What keeps an effect off an invincible entity in
+    // the original is the caller: a bullet never reaches it (`Enemy.cs:102`, `Player.cs:770`), a
+    // blast guards its own `ApplyConditionEffect` (`Grenade.cs:97`), and so does an activated
+    // ability (`Player.UseItem.cs:1197`). Folding it in here instead refuses effects the original
+    // allows — an administrator, who is invincible while hidden, could not be given one at all.
     immunity.is_none_or(|immune| !conditions.contains(immune))
 }
 
@@ -262,7 +333,7 @@ mod tests {
         let rules = Rules::of(ConditionSet::EMPTY);
 
         assert_eq!(rules, Rules::NONE);
-        assert_eq!(rules.damage_after_defence(100, 0, false), 100);
+        assert_eq!(rules.damage_after_defence(100, 0, false, false), 100);
     }
 
     #[test]
@@ -286,9 +357,49 @@ mod tests {
         for effect in [ConditionEffect::Paused, ConditionEffect::Stasis] {
             let rules = Rules::of(with(&[effect]));
             assert!(rules.untouchable, "{effect:?} should refuse the hit");
-            assert!(rules.paused);
-            assert!(rules.rooted);
+            assert!(!rules.rooted, "{effect:?} does not hold anybody still");
         }
+    }
+
+    #[test]
+    fn pausing_and_freezing_are_different_states() {
+        // `Player.Tick` skips its upkeep under Paused and says nothing about Stasis;
+        // `Entity.Tick` freezes the behaviour tree under Stasis and says nothing about Paused. A
+        // single flag standing for both makes a paused enemy stop thinking, which it does not, and
+        // an entity in stasis invisible to the enemies still hunting it.
+        let paused = Rules::of(with(&[ConditionEffect::Paused]));
+        let frozen = Rules::of(with(&[ConditionEffect::Stasis]));
+
+        assert!(paused.paused && !paused.frozen);
+        assert!(frozen.frozen && !frozen.paused);
+
+        assert!(paused.unseen_by_enemies, "IsVisibleToEnemy checks Paused");
+        assert!(
+            !frozen.unseen_by_enemies,
+            "and says nothing about Stasis, so an enemy still hunts them"
+        );
+    }
+
+    #[test]
+    fn petrify_holds_an_entity_where_it_stands() {
+        // `Entity.ResolveNewLocation` returns the current position under Paralyzed *or* Petrify,
+        // and it is the entity method, so an enemy is held by it exactly as a player is.
+        let petrified = Rules::of(with(&[ConditionEffect::Petrify]));
+
+        assert!(petrified.rooted);
+        assert!(!petrified.silenced, "a petrified enemy still shoots");
+    }
+
+    #[test]
+    fn a_stunned_player_is_only_stopped_by_their_own_client() {
+        // Stunned appears nowhere in `Player`: not in `PlayerShootHandler`, not in
+        // `ValidatePlayerShoot`, not in `GetAttackFrequency`. The live `StatsManager` has no
+        // Stunned clause at all -- the one that did is commented out at `StatsManager.cs:167-179`.
+        // It gates the behaviour tree's `Shoot` and the six tossing behaviours, and nothing else.
+        let stunned = Rules::of(with(&[ConditionEffect::Stunned]));
+
+        assert!(stunned.silenced);
+        assert!(!stunned.rooted, "and does not hold anybody still either");
     }
 
     #[test]
@@ -298,21 +409,27 @@ mod tests {
         let armoured = Rules::of(with(&[ConditionEffect::Armored]));
         let broken = Rules::of(with(&[ConditionEffect::ArmorBroken]));
 
-        assert_eq!(plain.damage_after_defence(100, 20, false), 80);
-        assert_eq!(armoured.damage_after_defence(100, 20, false), 60);
-        assert_eq!(broken.damage_after_defence(100, 20, false), 100);
+        assert_eq!(plain.damage_after_defence(100, 20, false, false), 80);
+        assert_eq!(armoured.damage_after_defence(100, 20, false, false), 60);
+        assert_eq!(broken.damage_after_defence(100, 20, false, false), 100);
     }
 
     #[test]
     fn a_quarter_of_every_hit_lands_however_much_defence_is_in_the_way() {
         // `float limit = dmg * 0.25f`. Without a floor, enough defence makes a character immortal.
-        assert_eq!(Rules::NONE.damage_after_defence(100, 1_000, false), 25);
-        assert_eq!(Rules::NONE.damage_after_defence(40, 1_000, false), 10);
+        assert_eq!(
+            Rules::NONE.damage_after_defence(100, 1_000, false, false),
+            25
+        );
+        assert_eq!(
+            Rules::NONE.damage_after_defence(40, 1_000, false, false),
+            10
+        );
     }
 
     #[test]
     fn armour_piercing_ignores_defence() {
-        assert_eq!(Rules::NONE.damage_after_defence(100, 80, true), 100);
+        assert_eq!(Rules::NONE.damage_after_defence(100, 80, true, false), 100);
     }
 
     #[test]
@@ -320,8 +437,53 @@ mod tests {
         let petrified = Rules::of(with(&[ConditionEffect::Petrify]));
         let cursed = Rules::of(with(&[ConditionEffect::Curse]));
 
-        assert_eq!(petrified.damage_after_defence(100, 0, false), 90);
-        assert_eq!(cursed.damage_after_defence(100, 0, false), 120);
+        assert_eq!(petrified.damage_after_defence(100, 0, false, true), 90);
+        assert_eq!(cursed.damage_after_defence(100, 0, false, true), 120);
+    }
+
+    #[test]
+    fn petrify_protects_a_player_and_does_nothing_for_an_enemy() {
+        // The original keeps two copies of the formula and only the player's has a Petrify clause:
+        // `StatsManager.cs:121` against `StatsManager.cs:85`, which has none. Folding the tenth into
+        // one shared multiplier makes a petrified boss take ten per cent less than it should.
+        let petrified = Rules::of(with(&[ConditionEffect::Petrify]));
+
+        assert_eq!(petrified.damage_after_defence(100, 0, false, true), 90);
+        assert_eq!(petrified.damage_after_defence(100, 0, false, false), 100);
+    }
+
+    #[test]
+    fn every_multiplication_is_truncated_the_way_a_cast_to_int_is() {
+        // `(int)(ret * 1.20)` and the caller's own `(int)`, both of which throw the fraction away
+        // rather than rounding it. Rounding disagrees with the original by a whole point of health
+        // wherever the arithmetic lands past a half.
+        //
+        // 43 raw against enough defence to reach the floor: 43 * 0.25 = 10.75, which the original
+        // reports as 10.
+        assert_eq!(
+            Rules::NONE.damage_after_defence(43, 1_000, false, false),
+            10
+        );
+
+        // 7 raw, cursed: 7 * 1.20 = 8.4, reported as 8.
+        let cursed = Rules::of(with(&[ConditionEffect::Curse]));
+        assert_eq!(cursed.damage_after_defence(7, 0, false, false), 8);
+
+        // Truncated once per multiplication rather than once at the end: 100 petrified is 90, and
+        // 90 cursed is 108. A single combined 1.08 would agree here and not everywhere.
+        let both = Rules::of(with(&[ConditionEffect::Petrify, ConditionEffect::Curse]));
+        assert_eq!(both.damage_after_defence(100, 0, false, true), 108);
+    }
+
+    #[test]
+    fn negative_defence_makes_a_hit_land_harder() {
+        // `dmg - def` with no clamp on `def`, so a negative defence adds. Clamping it at zero is a
+        // reasonable-looking guard that silently disagrees with every debuff that lowers defence
+        // below nothing.
+        assert_eq!(
+            Rules::NONE.damage_after_defence(100, -20, false, false),
+            120
+        );
     }
 
     #[test]
@@ -367,7 +529,10 @@ mod tests {
     fn quiet_and_ninja_speed_stop_magic_returning() {
         assert!(Rules::of(with(&[ConditionEffect::Quiet])).no_magic_regen);
         assert!(Rules::of(with(&[ConditionEffect::NinjaSpeedy])).no_magic_regen);
-        assert!(Rules::of(with(&[ConditionEffect::Quiet])).quiet);
+
+        // There is no separate "cannot cast" flag, because the original has no such gate. Quiet
+        // empties the magic bar every tick (`Player.Effects.cs:36`) and `UseItem` refuses only on
+        // `MP < item.MpCost`, so an ability that costs nothing still works while quiet.
     }
 
     #[test]
@@ -404,15 +569,20 @@ mod tests {
     }
 
     #[test]
-    fn an_untouchable_entity_takes_no_effect_from_a_hit() {
+    fn being_untouchable_is_not_an_immunity() {
+        // `ApplyCondition` is eight paired tests and nothing else. What keeps a bullet's effect off
+        // an invincible entity is that the bullet never lands; what keeps a blast's off is the
+        // blast's own guard. Refusing here as well would mean an administrator, invincible for as
+        // long as they are hidden, could not be given a condition effect by any means at all.
         let invincible = with(&[ConditionEffect::Invincible]);
 
-        assert!(!accepts(invincible, ConditionEffect::Slowed));
-        assert!(!accepts(invincible, ConditionEffect::Paralyzed));
-
-        // The beneficial ones have no immunity because nobody resists them.
+        assert!(accepts(invincible, ConditionEffect::Slowed));
+        assert!(accepts(invincible, ConditionEffect::Paralyzed));
         assert!(accepts(invincible, ConditionEffect::Healing));
-        assert!(accepts(invincible, ConditionEffect::Speedy));
+
+        // What does refuse is the matching immunity, whatever else is held.
+        let armoured = with(&[ConditionEffect::Invincible, ConditionEffect::SlowedImmune]);
+        assert!(!accepts(armoured, ConditionEffect::Slowed));
     }
 
     #[test]

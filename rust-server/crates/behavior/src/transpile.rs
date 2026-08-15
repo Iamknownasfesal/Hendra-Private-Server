@@ -519,9 +519,25 @@ fn emit_value(value: &CsValue) -> Option<String> {
             snake(tail)
         }
 
-        // A nested call as an argument, usually a Cooldown, has no representation, so it is
+        // `new[] { "a", "b" }`, which the C# reader hands back as a call named `Array`, and the
+        // bare `{ "a", "b" }` of a collection initialiser. Both become a bracketed list, so a
+        // constructor taking two arrays keeps the boundary between them.
+        CsValue::Call(array) if array.name == "Array" => {
+            let items: Vec<String> = array
+                .arguments
+                .iter()
+                .filter_map(|argument| emit_value(&argument.value))
+                .collect();
+            format!("[{}]", items.join(", "))
+        }
+        CsValue::List(items) => {
+            let items: Vec<String> = items.iter().filter_map(emit_value).collect();
+            format!("[{}]", items.join(", "))
+        }
+
+        // Any other nested call as an argument, usually a Cooldown, has no representation, so it is
         // dropped and the default applies.
-        CsValue::Call(_) | CsValue::List(_) => return None,
+        CsValue::Call(_) => return None,
     })
 }
 
@@ -541,9 +557,13 @@ fn emit_loot(call: &CsCall) -> String {
             .arguments
             .iter()
             .skip(1)
-            .filter_map(|argument| match &argument.value {
-                CsValue::Call(inner) if is_loot(&inner.name) => Some(emit_loot(inner)),
-                _ => None,
+            .flat_map(|argument| match &argument.value {
+                CsValue::Call(inner) if is_loot(&inner.name) => vec![emit_loot(inner)],
+
+                // A named bundle, which stands in for a list of entries rather than being one.
+                CsValue::Call(inner) => loot_template(&inner.name).unwrap_or_default(),
+
+                _ => Vec::new(),
             })
             .collect();
 
@@ -560,6 +580,59 @@ fn emit_loot(call: &CsCall) -> String {
 
 fn is_loot(name: &str) -> bool {
     name.ends_with("Loot") || name == "Threshold"
+}
+
+/// The six stat potions of `LootTemplates.StatPots()`, in the order the original lists them.
+const STAT_POTS: [&str; 6] = [
+    "Potion of Defense",
+    "Potion of Attack",
+    "Potion of Speed",
+    "Potion of Vitality",
+    "Potion of Wisdom",
+    "Potion of Dexterity",
+];
+
+/// The entries a named drop bundle stands for, or `None` if the name is not one of them.
+///
+/// `logic/loot/LootTemplates.cs` returns a `MobDrops[]` that C# splats into the enclosing
+/// `Threshold`'s parameter array, so a bundle is a list of entries rather than a single one and has
+/// to be spliced in the same way here. Reading it as one unrecognised entry dropped it, which is how
+/// three bosses each lost their six potions and were left holding an empty threshold.
+///
+/// `StatPots` is the six stat potions at a sixth of a chance each (`.cs:27-40`). The eight `Sor*`
+/// bundles and `RaidTokens` return an empty array in the original (`.cs:49-66`), so a threshold
+/// holding one of them really does drop nothing, and expanding to nothing is the parity answer
+/// rather than a gap.
+///
+/// # Whose rule this is
+///
+/// `LootTemplates.cs` is not the shipped game's. It was written for this repository when the
+/// dungeon scripts were imported from another fork, to stand in for that fork's `OnlyOne`, which
+/// picks one entry out of a bundle and which no version of this server has. Six independent sixths
+/// give the same expected potion count and a slightly different shape — very occasionally two at
+/// once, where `OnlyOne` never gives two.
+///
+/// Reproduced as written rather than as `OnlyOne` would have it, because the C# server is the
+/// specification this crate is measured against and that is what the C# server does; implementing
+/// `OnlyOne` here would make the two disagree, and there is no `OnlyOne` in the tree to implement
+/// it from. Worth knowing before citing these numbers as the game's.
+fn loot_template(name: &str) -> Option<Vec<String>> {
+    let bundle = name.strip_prefix("LootTemplates.")?;
+
+    Some(match bundle {
+        "StatPots" => {
+            let each = emit_value(&CsValue::Number(1.0 / 6.0))?;
+            STAT_POTS
+                .iter()
+                .map(|item| format!("item({item:?}, {each})"))
+                .collect()
+        }
+
+        "SorRare" | "SorUncommon" | "SorCommon" | "Sor1Perc" | "Sor2Perc" | "Sor3Perc"
+        | "Sor4Perc" | "Sor5Perc" | "RaidTokens" => Vec::new(),
+
+        _ => return None,
+    })
 }
 
 fn is_transition(name: &str) -> bool {
@@ -915,5 +988,162 @@ mod tests {
         assert!(text.is_empty());
         assert_eq!(report.skipped.len(), 1);
         assert_eq!(report.skipped[0].0, "Empty");
+    }
+
+    #[test]
+    fn a_named_drop_bundle_is_spliced_into_the_threshold_that_holds_it() {
+        // `Threshold(0.05, LootTemplates.StatPots())` is six entries in the original, not one and
+        // not none. Dropping the call left `threshold(0.05) { }` on three bosses, each of which
+        // then had a soulbound bag that could contain nothing at all.
+        let mut report = Report::default();
+        let text = transpile(
+            r#".Init("X", new State(new Wander(0.4)), new Threshold(0.05, LootTemplates.StatPots()))"#,
+            &mut report,
+        );
+
+        for potion in STAT_POTS {
+            assert!(text.contains(potion), "{potion} is missing from:\n{text}");
+        }
+    }
+
+    #[test]
+    fn an_empty_drop_bundle_stays_empty() {
+        // The fork-currency bundles return `new MobDrops[0]`, so a threshold holding one really
+        // does drop nothing. Inventing an item for them would be worse than the gap.
+        let mut report = Report::default();
+        let text = transpile(
+            r#".Init("X", new State(new Wander(0.4)), new Threshold(0.05, LootTemplates.Sor3Perc()))"#,
+            &mut report,
+        );
+
+        assert!(text.contains("threshold(0.05) {  }"), "{text}");
+    }
+
+    #[test]
+    fn every_bundle_the_original_offers_has_an_answer_here() {
+        // The table above is a copy of someone else's file, so it goes stale the moment a bundle is
+        // added. This reads the original's own list and demands a verdict for each name, because a
+        // bundle with no entry here is silently dropped rather than reported.
+        const TEMPLATES: &str = "../../../Server-Side/wServer/logic/loot/LootTemplates.cs";
+
+        let Ok(source) = std::fs::read_to_string(TEMPLATES) else {
+            eprintln!("skipping: the original's sources are not where the test looks for them");
+            return;
+        };
+
+        let mut found = 0usize;
+        for line in source.lines() {
+            let Some(after) = line.split_once("public static MobDrops[] ") else {
+                continue;
+            };
+            let Some(name) = after.1.split('(').next() else {
+                continue;
+            };
+            found += 1;
+            assert!(
+                loot_template(&format!("LootTemplates.{name}")).is_some(),
+                "LootTemplates.{name} has no expansion, so every threshold holding it drops it"
+            );
+        }
+
+        assert!(found > 0, "no bundles were read out of {TEMPLATES}");
+    }
+
+    /// Every `.beh` the server loads is the converter's own output over the original's `logic/db`.
+    ///
+    /// The shipped content is a generated artefact with no marking that says so, which invites the
+    /// repair that is applied to the artefact instead of to the converter: the next conversion then
+    /// silently undoes it. Comparing the two here is what makes that repair impossible to leave
+    /// half-done, and it is also what caught a second, stale copy of the same files sitting beside
+    /// the C# they came from, still holding two enemies the original has commented out.
+    #[test]
+    fn the_shipped_behaviours_are_what_the_converter_produces() {
+        const CSHARP: &str = "../../../Server-Side/wServer/logic/db";
+        const SHIPPED: &str = "../../content/behaviours";
+
+        let Ok(entries) = std::fs::read_dir(CSHARP) else {
+            eprintln!("skipping: the original's sources are not where the test looks for them");
+            return;
+        };
+
+        let mut sources: Vec<std::path::PathBuf> = entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().and_then(|e| e.to_str()) == Some("cs"))
+            .collect();
+        sources.sort();
+        assert!(!sources.is_empty(), "no C# was found in {CSHARP}");
+
+        let mut report = Report::default();
+        let mut wrong = Vec::new();
+        let mut checked = 0usize;
+
+        for path in &sources {
+            let Ok(text) = std::fs::read_to_string(path) else {
+                continue;
+            };
+            let converted = transpile(&text, &mut report);
+            if converted.trim().is_empty() {
+                continue;
+            }
+
+            let name = format!(
+                "{}.beh",
+                path.file_stem()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .replace("BehaviorDb.", "")
+                    .to_lowercase()
+            );
+
+            match std::fs::read_to_string(std::path::Path::new(SHIPPED).join(&name)) {
+                Ok(shipped) if shipped == converted => checked += 1,
+                Ok(_) => wrong.push(format!("{name} differs from what the converter produces")),
+                Err(_) => wrong.push(format!("{name} is not in {SHIPPED} at all")),
+            }
+        }
+
+        assert!(
+            wrong.is_empty(),
+            "the shipped behaviours are hand-edited or stale; re-run \
+             `cargo run --release -p hendra-behavior --example convert -- content/behaviours`:\n  {}",
+            wrong.join("\n  ")
+        );
+        assert!(checked > 0, "nothing was compared");
+    }
+
+    /// `Server-Side/wServer/logic/db` also holds a `.beh` beside each `.cs`, and nothing compares
+    /// them to anything on purpose.
+    ///
+    /// Those files are an old snapshot of our own converter's output, committed into the C# tree in
+    /// August 2026. Only the `.cs` there is the original — and even those were imported from a
+    /// different fork rather than shipped in 2020, which `docs/audit/11-the-reference-itself.md`
+    /// records file by file. The server reads `content/behaviours`, which the test above holds to
+    /// the converter's current output; the copy beside the C# is read by nothing and is expected to
+    /// fall behind as the converter improves.
+    ///
+    /// There is deliberately no test tying the two together. One that demanded they agree would
+    /// have to be satisfied by writing into a tree this project treats as read-only, which is the
+    /// trap: the specification must never be edited to match us, and a green test is not worth
+    /// making that the easy way out.
+    #[test]
+    fn the_copy_beside_the_original_is_not_treated_as_anything() {
+        const BESIDE: &str = "../../../Server-Side/wServer/logic/db";
+
+        let Ok(entries) = std::fs::read_dir(BESIDE) else {
+            eprintln!("skipping: the original's sources are not where the test looks for them");
+            return;
+        };
+
+        let originals = entries
+            .filter_map(Result::ok)
+            .filter(|entry| entry.path().extension().and_then(|e| e.to_str()) == Some("cs"))
+            .count();
+
+        assert!(
+            originals > 0,
+            "the C# behaviour database is missing from {BESIDE}; the converter reads those `.cs` \
+             files and cannot run without them"
+        );
     }
 }

@@ -21,8 +21,6 @@ use hendra_store::{Account, Character, Store, StoreError};
 pub struct StartingKit {
     /// The class a new character is made as when nothing names one.
     pub default_class: ObjectType,
-
-    pub common: hendra_characters::CommonItems,
 }
 
 /// Who is playing, and as what.
@@ -36,11 +34,47 @@ pub struct Session {
     /// a boost lasts half an hour and a player walks through a dozen doors in one.
     pub loot_drop: f32,
 
+    /// When this account's experience boost runs out, if one is running.
+    ///
+    /// The original keeps `XPBoostTime` on the character and counts it down as the world ticks
+    /// (`Player.cs:593-602`); ours is durable and account-wide, so the session holds the moment it
+    /// ends and every world the player walks into is handed what is left of it. A deadline rather
+    /// than a duration, or walking through a door would restart a boost that had already lapsed.
+    pub experience_boost_ends: Option<std::time::Instant>,
+
+    /// When the loot-drop and loot-tier boosts run out, if either is running.
+    ///
+    /// `LDBoostTime` and `LTBoostTime` (`Player.cs:357-358`). Deadlines rather than durations for
+    /// the same reason the experience one above is: walking through a door must not restart a boost
+    /// that had already lapsed. [`Self::loot_drop`] is the multiplier the first of them applies and
+    /// says nothing about how long it has left, which is why the clock is kept beside it.
+    pub loot_drop_boost_ends: Option<std::time::Instant>,
+    pub loot_tier_boost_ends: Option<std::time::Instant>,
+
     /// How many stars this account has earned, which is what everybody else sees beside the name.
     ///
     /// A record of the account rather than of the character being played, and nothing that happens
     /// inside a world moves it, so it is read once here.
     pub stars: u8,
+
+    /// The prestige the account holds, which the prestige shop charges against.
+    ///
+    /// Read once here rather than per world, the way the stars are: only `/prestige` moves it, and
+    /// that ends the character being played.
+    pub prestige: i32,
+
+    /// The lock this session plays the account under, once the handshake has taken one.
+    ///
+    /// Every durable write to the character quotes it, so a session whose account has been taken
+    /// over while it was working out what to write stops writing rather than laying an older
+    /// snapshot over whatever the session that holds the account has since saved. The original
+    /// keeps it in the same place, on the account (`DbAccount.LockToken`), and hands it to
+    /// `Database.SaveCharacter` as the condition on the transaction that writes the character
+    /// (`common/Database.cs:1058-1069`).
+    ///
+    /// `None` until the lock is taken, which is the original's null token: a session that has not
+    /// claimed the account has nothing to write under.
+    pub lock: Option<hendra_store::AccountLock>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -100,13 +134,19 @@ pub async fn log_in(
         && character.account_id == account.id
         && character.alive
     {
-        let loot_drop = loot_drop_for(store, account.id).await;
+        let boosts = boosts_for(store, account.id).await;
         let stars = stars_for(store, account.id).await;
+        let prestige = prestige_for(store, account.id).await;
         return Ok(Session {
             account,
             character,
-            loot_drop,
+            loot_drop: boosts.loot_drop,
+            experience_boost_ends: boosts.experience_ends,
+            loot_drop_boost_ends: boosts.loot_drop_ends,
+            loot_tier_boost_ends: boosts.loot_tier_ends,
             stars,
+            prestige,
+            lock: None,
         });
     }
 
@@ -114,39 +154,54 @@ pub async fn log_in(
     if let Some(first) = living.first()
         && let Ok(character) = store.character(first.id).await
     {
-        let loot_drop = loot_drop_for(store, account.id).await;
+        let boosts = boosts_for(store, account.id).await;
         let stars = stars_for(store, account.id).await;
+        let prestige = prestige_for(store, account.id).await;
         return Ok(Session {
             account,
             character,
-            loot_drop,
+            loot_drop: boosts.loot_drop,
+            experience_boost_ends: boosts.experience_ends,
+            loot_drop_boost_ends: boosts.loot_drop_ends,
+            loot_tier_boost_ends: boosts.loot_tier_ends,
             stars,
+            prestige,
+            lock: None,
         });
     }
 
     // Nobody with a living character reaches here, so this is a first arrival: they are given one
     // of the class the content opens with.
-    let character = hendra_characters::create(
-        store,
-        catalog,
-        &kit.common,
-        account.id,
-        kit.default_class,
-        "Adventurer",
-    )
-    .await
-    .map_err(|err| match err {
-        hendra_characters::CreateError::Store(err) => LoginError::Store(err),
-        other => LoginError::NoCharacter(other.to_string()),
-    })?;
-    let loot_drop = loot_drop_for(store, account.id).await;
+    let character = hendra_characters::create(store, catalog, account.id, kit.default_class)
+        .await
+        .map_err(|err| match err {
+            hendra_characters::CreateError::Store(err) => LoginError::Store(err),
+            other => LoginError::NoCharacter(other.to_string()),
+        })?;
+    let boosts = boosts_for(store, account.id).await;
     let stars = stars_for(store, account.id).await;
+    let prestige = prestige_for(store, account.id).await;
     Ok(Session {
         account,
         character,
-        loot_drop,
+        loot_drop: boosts.loot_drop,
+        experience_boost_ends: boosts.experience_ends,
+        loot_drop_boost_ends: boosts.loot_drop_ends,
+        loot_tier_boost_ends: boosts.loot_tier_ends,
         stars,
+        prestige,
+        lock: None,
     })
+}
+
+/// The prestige an account holds. Nothing to show rather than a refused login when it cannot be
+/// read, for the same reason the stars fall back to none.
+async fn prestige_for(store: &Store, account_id: i64) -> i32 {
+    store
+        .prestige_of(account_id)
+        .await
+        .map(|(held, _)| held)
+        .unwrap_or(0)
 }
 
 /// How many stars an account has earned.
@@ -161,18 +216,63 @@ async fn stars_for(store: &Store, account_id: i64) -> u8 {
     }
 }
 
-/// How much likelier an account is to be given loot right now.
+/// The fame the next class quest asks for, given the best fame a class has reached.
 ///
-/// One for everybody without a boost. The original reads whether the boost has time left and
-/// multiplies by one and a half; the multiplier is stored with the boost here, so a content drop
-/// can offer a different one without a code change.
-async fn loot_drop_for(store: &Store, account_id: i64) -> f32 {
-    store
-        .boosts(account_id)
-        .await
-        .unwrap_or_default()
+/// `Player.GetFameGoal` (`Player.Leveling.cs:19-27`), thresholds and all. Zero once two thousand is
+/// past, which the client reads as "no more to earn" rather than as an empty bar.
+pub fn fame_goal(fame: i32) -> i32 {
+    match fame {
+        f if f >= 2000 => 0,
+        f if f >= 800 => 2000,
+        f if f >= 400 => 800,
+        f if f >= 150 => 400,
+        f if f >= 20 => 150,
+        _ => 20,
+    }
+}
+
+/// What an account's running boosts are worth: its loot multiplier, and when its experience boost
+/// ends.
+///
+/// Read together because both come from the same table and a login should ask it once.
+///
+/// The loot figure is one for everybody without a boost. The original reads whether the boost has
+/// time left and multiplies by one and a half; the multiplier is stored with the boost here, so a
+/// content drop can offer a different one without a code change.
+///
+/// The experience figure is a clock rather than a multiplier because `DamageCounter` only asks
+/// whether the clock is running (`DamageCounter.cs:98`) and always doubles.
+async fn boosts_for(store: &Store, account_id: i64) -> Boosts {
+    let boosts = store.boosts(account_id).await.unwrap_or_default();
+
+    let loot_drop = boosts
         .iter()
         .find(|boost| boost.kind == "loot_drop")
         .map(|boost| boost.multiplier)
-        .unwrap_or(1.0)
+        .unwrap_or(1.0);
+
+    // Every clock is read the same way: the row's remaining time turned into a deadline. A boost
+    // the table has no row for has no clock, which is what the client draws as no timer at all.
+    let deadline = |kind: &str| {
+        boosts
+            .iter()
+            .find(|boost| boost.kind == kind)
+            .and_then(|boost| u64::try_from(boost.remaining_ms).ok())
+            .map(|left| std::time::Instant::now() + std::time::Duration::from_millis(left))
+    };
+
+    Boosts {
+        loot_drop,
+        experience_ends: deadline("experience"),
+        loot_drop_ends: deadline("loot_drop"),
+        loot_tier_ends: deadline("loot_tier"),
+    }
+}
+
+/// What one account's running boosts amount to, read together.
+struct Boosts {
+    loot_drop: f32,
+    experience_ends: Option<std::time::Instant>,
+    loot_drop_ends: Option<std::time::Instant>,
+    loot_tier_ends: Option<std::time::Instant>,
 }

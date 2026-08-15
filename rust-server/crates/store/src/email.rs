@@ -135,6 +135,21 @@ impl Store {
         Ok(())
     }
 
+    /// The address an account signs in with, and whether it has been confirmed.
+    ///
+    /// `None` for an account that has never set one. The confirmation flag is reported rather than
+    /// enforced: an unconfirmed address plays exactly as well as a confirmed one, and only the
+    /// account panel is interested.
+    pub async fn email_of(&self, account_id: i64) -> Result<Option<(String, bool)>> {
+        let found: Option<(Option<String>, bool)> =
+            sqlx::query_as("SELECT email, email_verified FROM account WHERE id = $1")
+                .bind(account_id)
+                .fetch_optional(self.pool())
+                .await?;
+
+        Ok(found.and_then(|(email, verified)| email.map(|email| (email, verified))))
+    }
+
     /// Finds an account by address, for a reset request.
     pub async fn account_by_email(&self, email: &str) -> Result<i64> {
         let found: Option<(i64,)> =

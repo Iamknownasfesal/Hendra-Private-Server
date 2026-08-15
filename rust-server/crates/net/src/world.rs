@@ -413,9 +413,10 @@ mod tests {
             size: 100,
             name: None,
             texture: 0,
-            stats: [0; 8],
+            stats: [0; crate::entity::STAT_COUNT],
             stars: 0,
             oxygen: 100,
+            ..Default::default()
         }
     }
 

@@ -72,10 +72,8 @@ const QUESTS: &[(&str, i32, i16, i16)] = &[
     ("Lord of the Lost Lands", 14, 15, 20),
     ("Hermit God", 14, 15, 20),
     ("Ghost Ship", 14, 15, 20),
-    ("Dragon Head", 14, 15, 20),
-    ("Lucky Ent God", 14, 15, 20),
-    ("Lucky Djinn", 14, 15, 20),
-    ("Zombie Horde", 14, 15, 20),
+    // "Dragon Head", "Lucky Ent God", "Lucky Djinn" and "Zombie Horde" sit here in the original,
+    // commented out (`Player.Leveling.cs:91-94`), so the arrow never points at any of them.
     ("Evil Chicken God", 15, 1, 20),
     ("Bonegrind the Butcher", 15, 1, 20),
     ("Dreadstump the Pirate King", 15, 1, 20),
@@ -159,9 +157,12 @@ const QUESTS: &[(&str, i32, i16, i16)] = &[
 ///
 /// Higher is better. Negative is possible and fine: something far enough away scores below
 /// something near, which is the point.
-pub fn score(priority: i32, enemy_level: i16, player_level: i16, distance: f32) -> i32 {
+///
+/// Fractional, as the original's is (`Player.Leveling.cs:197`): the distance term is a `double`
+/// there, so two candidates a few tiles apart are ordered by those few tiles rather than tying.
+pub fn score(priority: i32, enemy_level: i16, player_level: i16, distance: f32) -> f32 {
     let suits = 20 - (enemy_level - player_level).abs() as i32;
-    suits * priority - (distance / 100.0) as i32
+    (suits * priority) as f32 - distance / 100.0
 }
 
 /// What the table says about an enemy, if anything.
@@ -192,9 +193,14 @@ mod tests {
 
     #[test]
     fn the_whole_table_is_here() {
-        // A hundred and twenty in the original. A table half-copied is an arrow that points at the
-        // wrong thing for whichever half was dropped.
-        assert_eq!(known(), 120);
+        // A hundred and sixteen live entries in the original, four more commented out. A table
+        // half-copied is an arrow that points at the wrong thing for whichever half was dropped,
+        // and a table that revives the commented-out four is an arrow the original never had.
+        assert_eq!(known(), 116);
+        assert!(quest_for("Dragon Head").is_none(), "commented out");
+        assert!(quest_for("Zombie Horde").is_none(), "commented out");
+        assert!(quest_for("Lucky Djinn").is_none(), "commented out");
+        assert!(quest_for("Lucky Ent God").is_none(), "commented out");
     }
 
     #[test]
@@ -233,7 +239,17 @@ mod tests {
         let away = score(5, 10, 10, 2000.0);
 
         assert!(close > away, "{close} vs {away}");
-        assert_eq!(close - away, 20, "a realm's width is worth about twenty");
+        assert_eq!(close - away, 20.0, "a realm's width is worth about twenty");
+    }
+
+    #[test]
+    fn a_few_tiles_still_separate_two_otherwise_equal_candidates() {
+        // The distance term is fractional, so the nearer of two identical enemies fifty tiles apart
+        // wins outright rather than tying and leaving the choice to iteration order.
+        let near = score(5, 10, 10, 10.0);
+        let far = score(5, 10, 10, 60.0);
+
+        assert!(near > far, "{near} vs {far}");
     }
 
     #[test]

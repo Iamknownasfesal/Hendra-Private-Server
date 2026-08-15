@@ -10,3 +10,6 @@ hendra-net = { path = "../net" }
 hendra-behavior = { path = "../behavior" }
 thiserror.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+hendra-behavior = { path = "../behavior" }

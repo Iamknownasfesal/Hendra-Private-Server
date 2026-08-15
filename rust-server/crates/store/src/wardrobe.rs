@@ -42,6 +42,11 @@ pub struct Pet {
 pub struct Boost {
     pub kind: String,
     pub multiplier: f32,
+
+    /// How long it has left, in milliseconds, so a world can count it down as the original does.
+    ///
+    /// Always positive, since the query only returns boosts that have not lapsed.
+    pub remaining_ms: i64,
 }
 
 /// The most pets one account may keep.
@@ -68,11 +73,42 @@ impl Store {
         Ok(slot)
     }
 
+    /// Writes one dye layer, named rather than guessed at.
+    ///
+    /// The layer a dye paints is the content's to say: `AEDye` copies whichever of the item's
+    /// `Tex1` and `Tex2` is non-zero (`Player.UseItem.cs:583-589`), so the clothing dye and the
+    /// accessory dye of one colour carry the same number and differ only in which element declared
+    /// it. Deriving the layer from the number instead cannot tell those two apart -- their high
+    /// byte is `1` for both, because it is a type tag saying "a solid colour", not a slot.
+    pub async fn set_dye_layer(&self, character_id: i64, slot: DyeSlot, dye: i32) -> Result<()> {
+        let column = match slot {
+            DyeSlot::Cloth => "dye_cloth",
+            DyeSlot::Accessory => "dye_accessory",
+        };
+
+        sqlx::query(&format!("UPDATE character SET {column} = $2 WHERE id = $1"))
+            .bind(character_id)
+            .bind(dye)
+            .execute(self.pool())
+            .await?;
+
+        Ok(())
+    }
+
     /// Puts a skin on a character, if the account owns it.
     ///
     /// The ownership check is in the statement rather than a lookup before it, so a skin sold or
     /// revoked between the two cannot be worn anyway.
-    pub async fn wear_skin(&self, account_id: i64, character_id: i64, skin: i32) -> Result<()> {
+    /// `identity` is the skin's own uuid from the content, which is what every path that grants a
+    /// skin writes into `owned_skin` -- the purchase over HTTP as much as the reskin command. The
+    /// number is what the character wears; the identity is what says it may.
+    pub async fn wear_skin(
+        &self,
+        account_id: i64,
+        character_id: i64,
+        skin: i32,
+        identity: uuid::Uuid,
+    ) -> Result<()> {
         // Zero is the class's own appearance, which everybody owns.
         if skin == 0 {
             sqlx::query("UPDATE character SET skin = 0 WHERE id = $1 AND account_id = $2")
@@ -95,7 +131,7 @@ impl Store {
         .bind(character_id)
         .bind(account_id)
         .bind(skin)
-        .bind(skin_identity(skin))
+        .bind(identity)
         .execute(self.pool())
         .await?;
 
@@ -256,8 +292,13 @@ impl Store {
     /// Expired rows are left rather than swept: the query already excludes them, and a sweeper is
     /// one more thing that can fail quietly.
     pub async fn boosts(&self, account_id: i64) -> Result<Vec<Boost>> {
-        let rows = sqlx::query_as::<_, (String, f32)>(
-            "SELECT kind, multiplier FROM account_boost
+        let rows = sqlx::query_as::<_, (String, f32, f64)>(
+            // Cast because `extract` answers in `numeric` from PostgreSQL 14 onwards, where it
+            // used to answer in `double precision`: without it the row refuses to decode and
+            // every boost an account holds is unreadable.
+            "SELECT kind, multiplier,
+                    extract(epoch from (expires_at - now()))::double precision
+             FROM account_boost
              WHERE account_id = $1 AND expires_at > now()",
         )
         .bind(account_id)
@@ -266,7 +307,11 @@ impl Store {
 
         Ok(rows
             .into_iter()
-            .map(|(kind, multiplier)| Boost { kind, multiplier })
+            .map(|(kind, multiplier, seconds)| Boost {
+                kind,
+                multiplier,
+                remaining_ms: (seconds * 1000.0) as i64,
+            })
             .collect())
     }
 
@@ -296,19 +341,69 @@ impl Store {
     }
 }
 
-/// The identity a skin number corresponds to.
+/// How many slots one gift chest shows.
 ///
-/// Skins are numbered in the content and owned by identity, so the two have to be brought together
-/// somewhere. Here, because this is the only place both are known.
-fn skin_identity(skin: i32) -> uuid::Uuid {
-    uuid::Uuid::from_u128(skin as u128)
-}
-
-/// How many slots the gift chest holds.
-///
-/// The same eight every container in the game holds. A gift that arrives with the chest full is
-/// refused rather than dropped, so the sender's side can say the purchase did not go through.
+/// The same eight every container in the game holds, and the size of the chest a vault stands
+/// rather than a limit on how many gifts an account may hold. `Vault.InitVault` deals the gift list
+/// out over as many chests as it has squares for, eight at a time -- `Math.Min(8, gifts.Count)`,
+/// padded to eight with `ushort.MaxValue`
+/// (`git show 94615c4:Server-Side/wServer/realm/worlds/logic/Vault.cs`, `:115-130`).
 pub const GIFT_SLOTS: i16 = 8;
+
+/// The most gifts one account may hold.
+///
+/// `AddGifts` appends to an unbounded list (`common/Database.cs:1324-1333`), so nothing in the
+/// original ever refuses a gift. This is a ceiling on the row count rather than a rule anybody
+/// meets: it is well past what any vault can show, and it exists so that a runaway cannot fill the
+/// table.
+pub const MAX_GIFTS: i16 = 2000;
+
+/// Claims the next free gift slot inside a caller's transaction and puts an item in it.
+///
+/// Taken as a transaction rather than run on its own so that whatever put the item into the chest —
+/// a purchase, or a listing being withdrawn — either happens with the gift or does not happen. The
+/// rows are locked before the free slot is chosen, so two gifts arriving at once cannot both choose
+/// the same slot and one silently overwrite the other.
+///
+/// A full chest does not refuse. `AddGifts` appends to a list with no limit, so a withdrawal into a
+/// chest that already holds eight succeeds and the ninth item waits behind the first eight. A
+/// refusal here would refuse a withdrawal the original completes, which is the difference between
+/// an item somebody has to come back for and an item they cannot get at all.
+pub(crate) async fn gift(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    account_id: i64,
+    item: uuid::Uuid,
+) -> Result<i16> {
+    sqlx::query("SELECT slot FROM gift_slot WHERE account_id = $1 FOR UPDATE")
+        .bind(account_id)
+        .fetch_all(&mut **transaction)
+        .await?;
+
+    let taken = sqlx::query_as::<_, (i16,)>("SELECT slot FROM gift_slot WHERE account_id = $1")
+        .bind(account_id)
+        .fetch_all(&mut **transaction)
+        .await?;
+
+    let free = (0..MAX_GIFTS)
+        .find(|slot| !taken.iter().any(|(used,)| used == slot))
+        .ok_or(StoreError::Refused("your gift chest is full"))?;
+
+    let written = sqlx::query(
+        "INSERT INTO gift_slot (account_id, slot, item) VALUES ($1, $2, $3)
+         ON CONFLICT (account_id, slot) DO NOTHING",
+    )
+    .bind(account_id)
+    .bind(free)
+    .bind(item)
+    .execute(&mut **transaction)
+    .await?;
+
+    if written.rows_affected() == 0 {
+        return Err(StoreError::Refused("your gift chest is full"));
+    }
+
+    Ok(free)
+}
 
 /// The gift chest: where something bought outside the world arrives.
 ///
@@ -322,35 +417,7 @@ impl Store {
     /// arriving at once cannot both choose the same slot and one silently overwrite the other.
     pub async fn add_gift(&self, account_id: i64, item: uuid::Uuid) -> Result<i16> {
         let mut transaction = self.pool().begin().await?;
-
-        sqlx::query("SELECT slot FROM gift_slot WHERE account_id = $1 FOR UPDATE")
-            .bind(account_id)
-            .fetch_all(&mut *transaction)
-            .await?;
-
-        let taken = sqlx::query_as::<_, (i16,)>("SELECT slot FROM gift_slot WHERE account_id = $1")
-            .bind(account_id)
-            .fetch_all(&mut *transaction)
-            .await?;
-
-        let free = (0..GIFT_SLOTS)
-            .find(|slot| !taken.iter().any(|(used,)| used == slot))
-            .ok_or(StoreError::Refused("your gift chest is full"))?;
-
-        let written = sqlx::query(
-            "INSERT INTO gift_slot (account_id, slot, item) VALUES ($1, $2, $3)
-             ON CONFLICT (account_id, slot) DO NOTHING",
-        )
-        .bind(account_id)
-        .bind(free)
-        .bind(item)
-        .execute(&mut *transaction)
-        .await?;
-
-        if written.rows_affected() == 0 {
-            return Err(StoreError::Refused("your gift chest is full"));
-        }
-
+        let free = gift(&mut transaction, account_id, item).await?;
         transaction.commit().await?;
         Ok(free)
     }
@@ -402,9 +469,21 @@ mod tests {
         assert_eq!(DyeSlot::of(0x8000_0001), DyeSlot::Accessory);
     }
 
+    /// A skin is owned by its content identity, not by the number it happens to be typed as.
+    ///
+    /// The two are separate arguments to [`Store::wear_skin`] because only the caller knows both:
+    /// the store has no catalog to derive one from the other, and deriving one anyway is what
+    /// stopped every skin bought over HTTP from ever being worn -- the purchase writes the
+    /// content's uuid and the check looked for a number widened into one, which nothing writes.
     #[test]
-    fn a_skin_number_maps_to_one_identity_and_back() {
-        assert_eq!(skin_identity(7), skin_identity(7));
-        assert_ne!(skin_identity(7), skin_identity(8));
+    fn a_skin_is_owned_by_identity_rather_than_by_number() {
+        let numbered = uuid::Uuid::from_u128(7);
+        let content = uuid::Uuid::parse_str("6d2c7a1e-0000-4000-8000-000000000007").unwrap();
+
+        assert_ne!(
+            numbered, content,
+            "a number widened into a uuid is not the identity the content gives a skin, so the \
+             two cannot be used interchangeably"
+        );
     }
 }

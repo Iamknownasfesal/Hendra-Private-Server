@@ -48,9 +48,31 @@ struct Party {
     /// same vault and the same gold, and every durable rule this server has assumes one writer.
     account_id: i64,
 
-    /// Which world they are in, for `/visit` and for anybody looking for them.
+    /// The account's rank, which decides whether it may trade at all.
+    ///
+    /// Held here rather than read when it is needed, because both sides' ranks are wanted at once
+    /// and one of them belongs to a session this one cannot ask.
+    rank: i16,
+
+    /// Which room they are in, for `/visit` and for anybody looking for them.
+    ///
+    /// The registry's instance key rather than the world's name, because there can be ten Undead
+    /// Lairs running and a name names all of them at once. What that costs when it is a name: the
+    /// nexus labels a realm portal with a crowd made of every copy of that world added together,
+    /// and two players in two different Undead Lairs go on trading with each other because leaving
+    /// one for the other looks like standing still. Where a person would want the world's name,
+    /// [`crate::worlds::world_of_key`] reads it back off this.
     world: String,
 }
+
+/// The rank at and above which an account may not trade, from `Player.Trade.cs:37` and `:52`.
+const NO_TRADING_FROM: i16 = 40;
+
+/// The rank at and above which an account counts as an administrator.
+///
+/// `RankedCommands.cs:1369` sets the account's `Admin` flag to `rank >= 80`, and
+/// `AcceptTradeHandler.cs:42` compares that flag across the two sides.
+const ADMINISTRATOR: i16 = 80;
 
 /// One side of a trade in progress.
 #[derive(Debug, Clone, Default)]
@@ -125,6 +147,7 @@ impl Trades {
         name: &str,
         account_id: i64,
         character_id: i64,
+        rank: i16,
         sender: LinkSender,
         refresh: tokio::sync::mpsc::Sender<()>,
     ) {
@@ -137,6 +160,7 @@ impl Trades {
             Party {
                 character_id,
                 account_id,
+                rank,
                 world: String::new(),
             },
         );
@@ -216,22 +240,62 @@ impl Trades {
     }
 
     /// Asks somebody to trade, or accepts their standing request.
+    ///
+    /// The target is named the way a player types it, so it is matched without regard to case and
+    /// answered under the name the server holds. `World.GetUniqueNamedPlayer` (`World.cs:432-447`)
+    /// does the same, and looks only at the players in the asking player's own world -- so somebody
+    /// standing in another world is not found, however exactly their name is spelled.
     pub fn request(&self, from: &str, to: &str) -> Step {
         let Ok(mut state) = self.inner.lock() else {
             return Step::Say("trading is unavailable".to_string());
         };
 
-        if from == to {
-            return Step::Say("You cannot trade with yourself.".to_string());
+        if from.eq_ignore_ascii_case(to) {
+            return Step::Say("You can't trade with yourself!".to_string());
         }
-        if !state.present.contains_key(to) {
-            return Step::Say(format!("{to} is not here."));
+
+        // Rank first, as `Player.Trade.cs:37-41` has it: an account trusted to conjure items is not
+        // allowed to hand them out through a trade, in either direction.
+        if state
+            .present
+            .get(from)
+            .is_some_and(|party| party.rank >= NO_TRADING_FROM)
+        {
+            return Step::Say(
+                "Your rank is too high to give/trade items to this person!".to_string(),
+            );
         }
+
+        let here = state
+            .present
+            .get(from)
+            .map(|party| party.world.clone())
+            .unwrap_or_default();
+
+        // Only the players in this world, under the name the server holds for them.
+        let Some(found) = state
+            .present
+            .iter()
+            .find(|(held, party)| held.eq_ignore_ascii_case(to) && party.world == here)
+            .map(|(held, _)| held.clone())
+        else {
+            return Step::Say(format!("{to} not found!"));
+        };
+        let to = found.as_str();
+
+        if state
+            .present
+            .get(to)
+            .is_some_and(|party| party.rank >= NO_TRADING_FROM)
+        {
+            return Step::Say("Your rank is too low to give/trade items to this person.".to_string());
+        }
+
         if state.active.contains_key(from) {
-            return Step::Say("You are already trading.".to_string());
+            return Step::Say("Already trading!".to_string());
         }
         if state.active.contains_key(to) {
-            return Step::Say(format!("{to} is already trading."));
+            return Step::Say(format!("{to} is already trading!"));
         }
 
         // Their request stands only if it has not expired. Expiry is checked when it is looked at
@@ -254,7 +318,7 @@ impl Trades {
                     name: from.to_string(),
                 },
             );
-            return Step::Say(format!("You have sent a trade request to {to}."));
+            return Step::Say(format!("You have sent a trade request to {to}!"));
         }
 
         // Both have asked, so the trade begins. Every standing request from either of them is
@@ -286,19 +350,72 @@ impl Trades {
         Step::Done
     }
 
-    /// Notes which world somebody has moved to.
-    pub fn moved(&self, name: &str, world: &str) {
+    /// Notes which room somebody has moved to, ending any trade they were in.
+    ///
+    /// A trade is between two people standing in the same room, and walking out of it ends the
+    /// trade rather than carrying it along: `World.LeaveWorld` (`World.cs:373-375`) cancels the
+    /// leaving player's trade before anything else it does. Without this a player could agree an
+    /// exchange, step through a portal, and settle it from another world against a partner who can
+    /// no longer see them.
+    ///
+    /// `room` is the registry's instance key. A name would make two people in two copies of one
+    /// dungeon look like two people who had not moved, which is exactly the case this guards.
+    pub fn moved(&self, name: &str, room: &str) {
         let Ok(mut state) = self.inner.lock() else {
             return;
         };
 
+        let elsewhere = state
+            .present
+            .get(name)
+            .is_some_and(|party| party.world != room);
+
         if let Some(party) = state.present.get_mut(name) {
-            party.world = world.to_string();
+            party.world = room.to_string();
         }
+
+        if !elsewhere {
+            return;
+        }
+
+        let Some(active) = state.active.remove(name) else {
+            return;
+        };
+        state.active.remove(&active.partner);
+
+        let done = ServerMessage::TradeDone {
+            code: 1,
+            message: "Trade canceled!".to_string(),
+        };
+        tell(&state, name, &done);
+        tell(&state, &active.partner, &done);
     }
 
-    /// Which world somebody is in.
+    /// Which character somebody is playing.
+    ///
+    /// A name belongs to an account and every character on that account answers to it, so the name
+    /// alone cannot pick one out of the database. The roster can: one account plays one character
+    /// at a time, and this is the one it is playing.
+    pub fn character_of(&self, name: &str) -> Option<i64> {
+        let state = self.inner.lock().ok()?;
+        state
+            .present
+            .iter()
+            .find(|(held, _)| held.eq_ignore_ascii_case(name))
+            .map(|(_, party)| party.character_id)
+    }
+
+    /// What the world somebody is in is called.
+    ///
+    /// The name rather than the key, because this answers a person: "they are in the Undead Lair"
+    /// is what was asked, not which of the four Undead Lairs.
     pub fn world_of(&self, name: &str) -> Option<String> {
+        self.room_of(name)
+            .map(|key| crate::worlds::world_of_key(&key).to_string())
+    }
+
+    /// Which room somebody is in, as the registry keys it.
+    pub fn room_of(&self, name: &str) -> Option<String> {
         let state = self.inner.lock().ok()?;
         state
             .present
@@ -308,11 +425,31 @@ impl Trades {
             .filter(|world| !world.is_empty())
     }
 
-    /// How many players are in each world.
+    /// How many players are standing in one room.
+    ///
+    /// Asked by whoever is about to open a door into it and needs to know whether it is empty,
+    /// which is the question `GuildHall.GetInstance` asks with `world.Players.Count > 0`
+    /// (`GuildHall.cs:58`).
+    pub fn in_world(&self, key: &str) -> usize {
+        let Ok(state) = self.inner.lock() else {
+            return 0;
+        };
+
+        state
+            .present
+            .values()
+            .filter(|party| party.world == key)
+            .count()
+    }
+
+    /// How many players are in each room.
     ///
     /// From the roster because this is what already knows where everybody is; the alternative is
     /// asking every world in turn, which is a message per world per refresh for a number the
     /// roster is holding anyway.
+    ///
+    /// Keyed by the instance key, so ten parties in ten copies of one dungeon are ten crowds rather
+    /// than one.
     pub fn counts(&self) -> std::collections::HashMap<String, usize> {
         let Ok(state) = self.inner.lock() else {
             return std::collections::HashMap::new();
@@ -443,6 +580,30 @@ impl Trades {
             return Step::Say("They are no longer here.".to_string());
         };
 
+        // An administrator and an ordinary player do not exchange items with each other.
+        // `AcceptTradeHandler.cs:42-47` compares the two accounts' `Admin` flags the moment both
+        // have agreed and cancels the trade outright when they differ, rather than refusing it
+        // earlier -- so it is checked here, on the agreement, and not on the request.
+        let administrator = |who: &str| {
+            state
+                .present
+                .get(who)
+                .is_some_and(|party| party.rank >= ADMINISTRATOR)
+        };
+
+        if administrator(name) != administrator(&partner) {
+            state.active.remove(name);
+            state.active.remove(&partner);
+
+            let done = ServerMessage::TradeDone {
+                code: 1,
+                message: "Trade canceled!".to_string(),
+            };
+            tell(&state, name, &done);
+            tell(&state, &partner, &done);
+            return Step::Done;
+        }
+
         // Cleared before the items move. The exchange is the store's to make or refuse, and leaving
         // an agreed trade standing while it runs is how the same offer gets settled twice.
         state.active.remove(name);
@@ -512,6 +673,19 @@ impl Trades {
         }
     }
 
+    /// The name a connected player is registered under, however it was typed.
+    ///
+    /// A player has one spelling and clients have several: `/invite bob` and `/invite Bob` name the
+    /// same person, and everything keyed by name here is keyed by that one spelling.
+    pub fn named(&self, name: &str) -> Option<String> {
+        let state = self.inner.lock().ok()?;
+        state
+            .present
+            .keys()
+            .find(|held| held.eq_ignore_ascii_case(name))
+            .cloned()
+    }
+
     /// Sends one message to a named player.
     pub fn send(&self, name: &str, message: &ServerMessage<'_>) {
         let Ok(state) = self.inner.lock() else {
@@ -572,6 +746,11 @@ mod tests {
 
     /// Present on a named account, for the tests that care which.
     fn arrive_on(trades: &Trades, name: &str, account_id: i64, character_id: i64) {
+        arrive_ranked(trades, name, account_id, character_id, 0);
+    }
+
+    /// Present at a named rank, for the tests that care what it is.
+    fn arrive_ranked(trades: &Trades, name: &str, account_id: i64, character_id: i64, rank: i16) {
         let Ok(mut state) = trades.inner.lock() else {
             return;
         };
@@ -580,7 +759,8 @@ mod tests {
             Party {
                 character_id,
                 account_id,
-                world: String::new(),
+                rank,
+                world: "Nexus".to_string(),
             },
         );
     }
@@ -695,6 +875,104 @@ mod tests {
         assert_eq!(trades.request("Bo", "Ana"), Step::Done);
         assert_eq!(trades.partner("Ana").as_deref(), Some("Bo"));
         assert_eq!(trades.partner("Bo").as_deref(), Some("Ana"));
+    }
+
+    #[test]
+    fn nobody_is_found_in_another_world() {
+        // A trade is between two people standing in the same room. `GetUniqueNamedPlayer` looks at
+        // the asking player's own world and nowhere else.
+        let trades = trades();
+        arrive(&trades, "Ana", 1);
+        arrive(&trades, "Bo", 2);
+        trades.moved("Bo", "Vault");
+
+        assert!(
+            matches!(trades.request("Ana", "Bo"), Step::Say(said) if said.contains("not found")),
+            "Bo was reachable from another world"
+        );
+    }
+
+    #[test]
+    fn a_name_is_matched_whatever_its_capitals() {
+        let trades = trades();
+        arrive(&trades, "Ana", 1);
+        arrive(&trades, "Bo", 2);
+
+        trades.request("Ana", "bO");
+        assert_eq!(trades.request("Bo", "ANA"), Step::Done);
+        assert_eq!(trades.partner("Ana").as_deref(), Some("Bo"));
+    }
+
+    #[test]
+    fn walking_out_of_the_world_ends_the_trade() {
+        // Otherwise an agreed exchange settles from another world against a partner who can no
+        // longer see the player they agreed with.
+        let trades = trades();
+        arrive(&trades, "Ana", 1);
+        arrive(&trades, "Bo", 2);
+        trades.request("Ana", "Bo");
+        trades.request("Bo", "Ana");
+
+        trades.moved("Ana", "Vault");
+
+        assert_eq!(trades.partner("Ana"), None);
+        assert_eq!(trades.partner("Bo"), None, "Bo is trading with a ghost");
+    }
+
+    #[test]
+    fn staying_where_you_are_does_not_end_the_trade() {
+        let trades = trades();
+        arrive(&trades, "Ana", 1);
+        arrive(&trades, "Bo", 2);
+        trades.request("Ana", "Bo");
+        trades.request("Bo", "Ana");
+
+        trades.moved("Ana", "Nexus");
+
+        assert_eq!(trades.partner("Ana").as_deref(), Some("Bo"));
+    }
+
+    #[test]
+    fn a_ranked_account_neither_gives_nor_receives() {
+        let trades = trades();
+        arrive_ranked(&trades, "Ana", 1, 1, 0);
+        arrive_ranked(&trades, "Staff", 2, 2, NO_TRADING_FROM);
+
+        assert!(
+            matches!(trades.request("Staff", "Ana"), Step::Say(said) if said.contains("too high")),
+            "a ranked account started a trade"
+        );
+        assert!(
+            matches!(trades.request("Ana", "Staff"), Step::Say(said) if said.contains("too low")),
+            "a ranked account was asked to trade"
+        );
+        assert_eq!(trades.partner("Ana"), None);
+    }
+
+    #[test]
+    fn an_administrator_and_a_player_do_not_settle() {
+        // The rank check on the request is what usually stops this, so the pair here are both under
+        // it on one side of the comparison and either side of the other -- which is the state the
+        // original guards against at the moment both have agreed.
+        let trades = trades();
+        arrive_ranked(&trades, "Ana", 1, 1, 0);
+        arrive_ranked(&trades, "Mod", 2, 2, 0);
+        trades.request("Ana", "Mod");
+        trades.request("Mod", "Ana");
+
+        if let Ok(mut state) = trades.inner.lock()
+            && let Some(party) = state.present.get_mut("Mod")
+        {
+            party.rank = ADMINISTRATOR;
+        }
+
+        trades.change("Ana", &offering(&[5]));
+        trades.accept("Ana", &offering(&[5]), &offering(&[]));
+        let step = trades.accept("Mod", &offering(&[]), &offering(&[5]));
+
+        assert_eq!(step, Step::Done, "the items moved across the rank line");
+        assert_eq!(trades.partner("Ana"), None, "and the trade was cancelled");
+        assert_eq!(trades.partner("Mod"), None);
     }
 
     #[test]
@@ -911,5 +1189,59 @@ mod tests {
         assert!(matches!(trades.request("Ana", "Ana"), Step::Say(_)));
         assert!(matches!(trades.request("Ana", "Nobody"), Step::Say(_)));
         assert_eq!(trades.partner("Ana"), None);
+    }
+
+    #[test]
+    fn two_copies_of_one_dungeon_are_two_crowds() {
+        // Keyed by name, ten parties in ten Undead Lairs are reported as one crowd of ten -- which
+        // is also the number a realm portal's label would carry.
+        let trades = trades();
+        arrive(&trades, "Ana", 1);
+        arrive(&trades, "Bo", 2);
+        arrive(&trades, "Cy", 3);
+
+        trades.moved("Ana", "UndeadLair#Realm:11");
+        trades.moved("Bo", "UndeadLair#Realm:11");
+        trades.moved("Cy", "UndeadLair#Realm:12");
+
+        let counts = trades.counts();
+        assert_eq!(counts.get("UndeadLair#Realm:11").copied(), Some(2));
+        assert_eq!(counts.get("UndeadLair#Realm:12").copied(), Some(1));
+        assert_eq!(counts.get("UndeadLair"), None);
+
+        assert_eq!(trades.in_world("UndeadLair#Realm:11"), 2);
+        assert_eq!(trades.in_world("UndeadLair#Realm:12"), 1);
+        assert_eq!(trades.in_world("GuildHall#guild4"), 0);
+    }
+
+    #[test]
+    fn a_room_is_named_by_its_world_when_a_person_asks() {
+        let trades = trades();
+        arrive(&trades, "Ana", 1);
+        trades.moved("Ana", "UndeadLair#Realm:11");
+
+        assert_eq!(trades.world_of("Ana").as_deref(), Some("UndeadLair"));
+        assert_eq!(
+            trades.room_of("Ana").as_deref(),
+            Some("UndeadLair#Realm:11")
+        );
+    }
+
+    #[test]
+    fn walking_into_the_other_copy_of_a_dungeon_ends_the_trade() {
+        // Two Undead Lairs share a name, so a trade agreed in one used to survive a walk into the
+        // other and settle against a partner who could no longer see it.
+        let trades = trades();
+        arrive(&trades, "Ana", 1);
+        arrive(&trades, "Bo", 2);
+        trades.moved("Ana", "UndeadLair#Realm:11");
+        trades.moved("Bo", "UndeadLair#Realm:11");
+        trades.request("Ana", "Bo");
+        trades.request("Bo", "Ana");
+
+        trades.moved("Ana", "UndeadLair#Realm:12");
+
+        assert_eq!(trades.partner("Ana"), None);
+        assert_eq!(trades.partner("Bo"), None, "Bo is trading with a ghost");
     }
 }

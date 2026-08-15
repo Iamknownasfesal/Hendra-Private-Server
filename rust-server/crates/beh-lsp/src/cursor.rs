@@ -136,7 +136,10 @@ pub fn at(source: &Source, offset: usize) -> Option<What> {
             let call = enclosing_call(source, index);
             if let Some(call) = call {
                 // `name:` is an argument; anything else inside the brackets is a value.
-                if source.after(index).is_some_and(|at| source.kind(at) == Some(Kind::Colon)) {
+                if source
+                    .after(index)
+                    .is_some_and(|at| source.kind(at) == Some(Kind::Colon))
+                {
                     return Some(What::Argument {
                         call,
                         name: word.to_string(),
@@ -165,7 +168,10 @@ pub fn at(source: &Source, offset: usize) -> Option<What> {
 
 /// Whether a name written here is a transition, a loot entry, or a behaviour.
 fn call_kind(source: &Source, index: usize) -> docs::Kind {
-    if source.before(index).is_some_and(|at| source.is_word(at, "on")) {
+    if source
+        .before(index)
+        .is_some_and(|at| source.is_word(at, "on"))
+    {
         return docs::Kind::Condition;
     }
     if in_loot(source, index) {
@@ -315,7 +321,13 @@ mod tests {
 
     #[test]
     fn a_state_is_told_from_where_a_transition_points() {
-        assert!(matches!(what("fight {"), What::State { declaration: true, .. }));
+        assert!(matches!(
+            what("fight {"),
+            What::State {
+                declaration: true,
+                ..
+            }
+        ));
         assert!(
             matches!(what("rest\n"), What::State { declaration: false, name, .. } if name == "rest")
         );
@@ -327,7 +339,9 @@ mod tests {
         assert!(matches!(what("timed("), What::Call(site) if site.kind == docs::Kind::Condition));
         assert!(matches!(what("prioritize("), What::Call(site) if site.kind == docs::Kind::Group));
         assert!(matches!(what("item(item"), What::Call(site) if site.kind == docs::Kind::Loot));
-        assert!(matches!(what("threshold(0.01)"), What::Call(site) if site.kind == docs::Kind::Loot));
+        assert!(
+            matches!(what("threshold(0.01)"), What::Call(site) if site.kind == docs::Kind::Loot)
+        );
     }
 
     #[test]
@@ -365,7 +379,10 @@ mod tests {
         match what("invulnerable") {
             What::Value { call, text, .. } => {
                 assert_eq!(text, "invulnerable");
-                assert_eq!(call.map(|call| call.name).as_deref(), Some("conditional_effect"));
+                assert_eq!(
+                    call.map(|call| call.name).as_deref(),
+                    Some("conditional_effect")
+                );
             }
             other => panic!("expected a value, got {other:?}"),
         }

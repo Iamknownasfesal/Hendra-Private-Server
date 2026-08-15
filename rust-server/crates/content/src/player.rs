@@ -8,10 +8,18 @@
 use crate::desc::ObjectType;
 use crate::xml::Node;
 
-/// The eight stats, in the order the game has always numbered them.
+/// The eleven stats, in the order the game has always numbered them.
 ///
 /// The order is not an implementation detail: it is the order the stats appear in on the wire and
-/// in every saved character, so it is fixed by the format rather than chosen here.
+/// in every saved character, so it is fixed by the format rather than chosen here. Eleven is the
+/// original's own count — `StatsManager.NumStatTypes` is 11 and `StatIndexToName` names every one
+/// of them (`StatsManager.cs:11,177-193`).
+///
+/// The last three differ in kind from the first eight. A class declares a starting value, a ceiling
+/// and a per-level range for the first eight and for nothing else, and only those eight are saved
+/// with a character. `DamageMin` and `DamageMax` are recomputed from the equipped weapon on every
+/// recalculation (`BaseStatManager.SetWeaponDamage`), and nothing in the original ever writes a
+/// base `Luck` — so their base layer is derived rather than earned.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u8)]
 pub enum Stat {
@@ -23,8 +31,12 @@ pub enum Stat {
     Dexterity = 5,
     HpRegen = 6,
     MpRegen = 7,
+    DamageMin = 8,
+    DamageMax = 9,
+    Luck = 10,
 }
 
+/// The eight a class declares and a character saves.
 pub const STATS: [Stat; 8] = [
     Stat::MaxHitPoints,
     Stat::MaxMagicPoints,
@@ -36,11 +48,30 @@ pub const STATS: [Stat; 8] = [
     Stat::MpRegen,
 ];
 
+/// All eleven the stat manager tracks, including the three no class declares.
+pub const ALL_STATS: [Stat; 11] = [
+    Stat::MaxHitPoints,
+    Stat::MaxMagicPoints,
+    Stat::Attack,
+    Stat::Defense,
+    Stat::Speed,
+    Stat::Dexterity,
+    Stat::HpRegen,
+    Stat::MpRegen,
+    Stat::DamageMin,
+    Stat::DamageMax,
+    Stat::Luck,
+];
+
+/// How many slots a full set of stats occupies. `StatsManager.NumStatTypes`.
+pub const STAT_COUNT: usize = ALL_STATS.len();
+
 impl Stat {
     /// The element name this stat is written under.
     ///
     /// `HpRegen` and `MpRegen` are what the files call vitality and wisdom; the names here follow
-    /// the files rather than the interface, because the files are what has to be read.
+    /// the files rather than the interface, because the files are what has to be read. The last
+    /// three appear in no class file at all and carry the names `StatIndexToName` gives them.
     pub fn element(self) -> &'static str {
         match self {
             Stat::MaxHitPoints => "MaxHitPoints",
@@ -51,6 +82,9 @@ impl Stat {
             Stat::Dexterity => "Dexterity",
             Stat::HpRegen => "HpRegen",
             Stat::MpRegen => "MpRegen",
+            Stat::DamageMin => "DamageMin",
+            Stat::DamageMax => "DamageMax",
+            Stat::Luck => "LuckBoost",
         }
     }
 
@@ -79,6 +113,12 @@ impl Stat {
             26 => Stat::HpRegen,
             27 => Stat::MpRegen,
             28 => Stat::Dexterity,
+            // These three are outside the collision the table above untangles, so `ToStatsType`
+            // hands them straight through and `GetStatIndex` reads them as themselves: 83 is
+            // `DamageMin`, 84 `DamageMax` and 90 `Luck` (`Stats.cs:91-98`).
+            83 => Stat::DamageMin,
+            84 => Stat::DamageMax,
+            90 => Stat::Luck,
             _ => return None,
         })
     }
@@ -147,8 +187,16 @@ pub struct Unlock {
 
 impl Unlock {
     /// Whether this class is available from the start.
+    ///
+    /// Only a levelling requirement holds a class back. The cost is what it takes to *skip* that
+    /// requirement, not a price of admission, so a class that names no prerequisite is open however
+    /// its cost reads: `Database.CreateCharacter` (`common/Database.cs:969-987`) refuses a class
+    /// only when `Unlock.Type` names a class the account has not levelled far enough, or when the
+    /// object is `Restricted`, and never looks at `Unlock.Cost` at all. Every shipped class carries
+    /// an `<UnlockCost>` element -- the wizard's reads zero -- so counting the cost would make the
+    /// starter class as locked as the rest and leave a new account with nothing to play.
     pub fn free(&self) -> bool {
-        self.after.is_none() && self.cost.is_none()
+        self.after.is_none()
     }
 }
 
@@ -213,8 +261,14 @@ impl PlayerDesc {
         })
     }
 
+    /// How a stat grows for this class.
+    ///
+    /// Nothing at all for the three a class file never mentions. The original indexes an
+    /// eight-long `statInfo` with the same number and throws for those three
+    /// (`Player.UseItem.cs:627-632`); answering "no growth" says the same thing without taking a
+    /// world down with it.
     pub fn stat(&self, stat: Stat) -> StatGrowth {
-        self.stats[stat.index()]
+        self.stats.get(stat.index()).copied().unwrap_or_default()
     }
 
     /// The health a freshly made character of this class has.
@@ -446,6 +500,24 @@ mod tests {
         let free = PlayerDesc::parse(node, ObjectType(1)).unwrap();
 
         assert_eq!(free.locked_for(&|_| 0, &[]), None);
+    }
+
+    #[test]
+    fn a_cost_alone_does_not_lock_a_class() {
+        // The wizard's shape: a price and no prerequisite, which is what the starter class looks
+        // like in the shipped content. Reading the price as a lock leaves a new account with no
+        // class it may play.
+        let document = XmlNode::parse(
+            r#"<Objects><Object type="0x030e" id="Wizard"><Player/><UnlockCost>0</UnlockCost></Object></Objects>"#,
+        )
+        .unwrap();
+        let node = document.children_named("Object").next().unwrap();
+        let wizard = PlayerDesc::parse(node, ObjectType(0x030e)).unwrap();
+
+        assert_eq!(wizard.unlock.cost, Some(0));
+        assert_eq!(wizard.unlock.after, None);
+        assert!(wizard.unlock.free(), "a class nothing gates is playable now");
+        assert_eq!(wizard.locked_for(&|_| 0, &[]), None);
     }
 
     #[test]

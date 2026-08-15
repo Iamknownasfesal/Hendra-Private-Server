@@ -288,8 +288,29 @@ impl Parser {
             Token::Duration(value) => Ok(Value::Duration(value)),
             Token::Text(text) => Ok(Value::Text(text)),
             Token::Word(word) => Ok(Value::Word(word)),
+
+            // A bracketed list. Nesting is allowed by construction rather than by intent: nothing
+            // in the content needs it, and refusing it would be one more rule to explain.
+            Token::OpenBracket => {
+                let mut items = Vec::new();
+                while self.peek() != &Token::CloseBracket && self.peek() != &Token::End {
+                    items.push(self.value()?);
+                    if self.peek() == &Token::Comma {
+                        self.advance();
+                    } else if self.peek() != &Token::CloseBracket {
+                        return Err(ParseError::Expected {
+                            expected: "`,` or `]`".into(),
+                            found: self.peek().describe(),
+                            at: self.span(),
+                        });
+                    }
+                }
+                self.expect(&Token::CloseBracket, "`]` to close the list")?;
+                Ok(Value::List(items))
+            }
+
             other => Err(ParseError::Expected {
-                expected: "a number, duration, text or word".into(),
+                expected: "a number, duration, text, word or list".into(),
                 found: other.describe(),
                 at,
             }),

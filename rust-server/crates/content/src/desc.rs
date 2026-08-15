@@ -237,6 +237,18 @@ pub struct ItemDesc {
 
     pub successor_id: Option<String>,
 
+    /// The dye this item puts on, and which of the two layers it dyes.
+    ///
+    /// `Item.Texture1`/`Texture2` (`common/resources/XmlDescriptors.cs:530-531`, `:666-674`), read
+    /// as hexadecimal. `AEDye` copies whichever is non-zero onto the player
+    /// (`Player.UseItem.cs:583-589`), so a clothing dye declares the first and an accessory dye the
+    /// second, and the layer a dye touches is decided by which element the content wrote.
+    ///
+    /// The top byte is a type and the low twenty-four its argument: `1` a solid `0xRRGGBB`, and
+    /// `4`, `5`, `9` or `10` an index into the `textile{n}x{n}` sheet (`TextureRedrawer.as:161-186`).
+    pub tex1: i32,
+    pub tex2: i32,
+
     pub stat_boosts: Vec<StatBoost>,
     pub activate: Vec<ActivateDesc>,
     pub activate_on_equip: Vec<ActivateDesc>,
@@ -287,6 +299,13 @@ impl ItemDesc {
             resurrects: node.has("Resurrects"),
             undead: node.has("Undead"),
             successor_id: node.field("SuccessorId").map(str::to_owned),
+
+            // Written with an `0x` prefix throughout the shipped content, which `int` already
+            // reads as hexadecimal -- and the original reads them as hexadecimal whether or not
+            // the prefix is there (`Convert.ToInt32(n.Value, 16)`).
+            tex1: node.int("Tex1").unwrap_or(0) as i32,
+            tex2: node.int("Tex2").unwrap_or(0) as i32,
+
             stat_boosts,
             activate: node
                 .children_named("Activate")
@@ -363,14 +382,28 @@ pub struct ObjectDesc {
     pub protect_from_ground_damage: bool,
     pub protect_from_sink: bool,
 
+    /// Whether everything this drops goes in a troll's white bag.
+    ///
+    /// `<TrollWhiteBag/>` (`common/resources/XmlDescriptors.cs:1042`), which `Loots.ShowBags` reads
+    /// as a floor on the bag colour rather than as the colour itself (`Loots.cs:311`). Nothing in
+    /// the shipped content sets it; it is carried because the loot pipeline reads it and a
+    /// descriptor flag that silently does not exist is worse than one nobody uses.
+    pub troll_white_bag: bool,
+
     pub max_hp: i32,
     pub defense: i32,
     pub level: Option<i32>,
     pub exp_multiplier: Option<f32>,
     pub size: SizeRange,
 
-    /// Effects this object cannot be given. Precomputed into a mask so the damage path is a single
-    /// `intersects` rather than eight boolean checks.
+    /// The immunity markers this object is born holding, as `<StunImmune/>` and its seven siblings.
+    ///
+    /// The markers themselves, not the effects they block: `StunImmune` rather than `Stunned`.
+    /// That is the encoding the original uses — `Character.SetConditions` (`Character.cs:48-67`)
+    /// turns each flag into a permanent condition effect of the same name, and `Entity.ApplyCondition`
+    /// (`Entity.cs:738-772`) then refuses `Stunned` to anything holding `StunImmune`. Storing the
+    /// blocked effect instead would make a boss permanently stunned the moment this set were copied
+    /// onto an entity.
     pub immunities: ConditionSet,
 
     pub terrain: Option<String>,
@@ -462,6 +495,7 @@ impl ObjectDesc {
             connects: node.has("Connects"),
             protect_from_ground_damage: node.has("ProtectFromGroundDamage"),
             protect_from_sink: node.has("ProtectFromSink"),
+            troll_white_bag: node.has("TrollWhiteBag"),
             max_hp: node.int("MaxHitPoints").unwrap_or(0) as i32,
             defense: node.int("Defense").unwrap_or(0) as i32,
             level: node.int("Level").map(|v| v as i32),
@@ -489,8 +523,17 @@ impl ObjectDesc {
     }
 
     /// The name shown to players, which is the display id when one is given.
+    ///
+    /// A display id written as `{dungeon.some_key}` is a localisation key, not a name. The client
+    /// that resolved those keys is gone and the tables never shipped with the content, so a key is
+    /// treated as absent and the object id is shown instead. Roughly one display id in three across
+    /// the files is a key, and rendering them raw puts `{shatters.shtrs_Fire_Mage}` over an enemy's
+    /// head.
     pub fn name(&self) -> &str {
-        self.display_id.as_deref().unwrap_or(&self.id)
+        match self.display_id.as_deref() {
+            Some(display) if !display.starts_with('{') => display,
+            _ => &self.id,
+        }
     }
 
     pub fn is_item(&self) -> bool {
@@ -498,20 +541,90 @@ impl ObjectDesc {
     }
 }
 
-/// The `<XxxImmune/>` flags, and the effect each one blocks.
+/// The `<XxxImmune/>` flags, and the marker condition each one puts on the entity that declares it.
 const IMMUNITY_FLAGS: [(&str, crate::effect::ConditionEffect); 8] = {
     use crate::effect::ConditionEffect::*;
     [
-        ("ArmorBreakImmune", ArmorBroken),
-        ("CurseImmune", Curse),
-        ("DazedImmune", Dazed),
-        ("ParalyzeImmune", Paralyzed),
-        ("PetrifyImmune", Petrify),
-        ("SlowedImmune", Slowed),
-        ("StasisImmune", Stasis),
-        ("StunImmune", Stunned),
+        ("ArmorBreakImmune", ArmorBreakImmune),
+        ("CurseImmune", CurseImmune),
+        ("DazedImmune", DazedImmune),
+        ("ParalyzeImmune", ParalyzeImmune),
+        ("PetrifyImmune", PetrifyImmune),
+        ("SlowedImmune", SlowedImmune),
+        ("StasisImmune", StasisImmune),
+        ("StunImmune", StunImmune),
     ]
 };
+
+/// A character skin: what a player may look like instead of their class's own artwork.
+///
+/// `SkinDesc` in the original (`XmlDescriptors.cs:755-798`). A skin belongs to one class and to no
+/// other, and that pairing is the only thing standing between a wardrobe and a wizard wearing a
+/// priest. There are 191 of them in the content.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SkinDesc {
+    pub object_type: ObjectType,
+    pub id: String,
+
+    /// The class this skin dresses. A skin is refused to anything else.
+    pub class: ObjectType,
+
+    /// What the player is scaled to while wearing it. 100 is the ordinary size.
+    pub size: i32,
+
+    /// The one character name allowed to wear it, where the content names one.
+    ///
+    /// Somebody else asking for it is not refused: they are put back into no skin at all, which is
+    /// what `ReSkinCommand` does (`RankedCommands.cs:1222-1226`).
+    pub player_exclusive: Option<String>,
+
+    /// The level the class must reach before it can be worn.
+    pub unlock_level: i32,
+
+    /// What it costs to buy outright, in credits. A skin with no price written costs a thousand.
+    pub cost: i32,
+
+    /// Whether the skin is rented rather than kept, which the character-list document reports so a
+    /// wardrobe can mark it as limited.
+    pub expires: bool,
+
+    /// Whether the skin is withheld from sale. A restricted skin is still described, so a player
+    /// wearing one is drawn, but nobody may buy it.
+    pub restricted: bool,
+}
+
+/// What a skin costs when the content names no price.
+///
+/// `XmlDescriptors.cs:788-789`. Every skin in the shipped files takes this default, so it is the
+/// price the character-list document quotes for all 191 of them.
+pub const SKIN_COST: i64 = 1000;
+
+impl SkinDesc {
+    /// Reads a skin, or `None` if the element is not one.
+    ///
+    /// The original's test is the presence of `<PlayerClassType>` rather than the class name, and
+    /// it is the stricter of the two: a handful of `<Class>Skin</Class>` objects in the files carry
+    /// no class at all and are not skins anybody can wear.
+    pub fn parse(node: &Node, object_type: ObjectType) -> Option<SkinDesc> {
+        let class = node.int("PlayerClassType")?;
+
+        Some(SkinDesc {
+            object_type,
+            id: node.attr("id").unwrap_or_default().to_owned(),
+            class: ObjectType(class as u16),
+            // Written as an attribute of the object rather than as a child element, and defaulting
+            // to the ordinary size when absent.
+            size: node.attr_int("size").unwrap_or(100) as i32,
+            player_exclusive: node.field("PlayerExclusive").map(str::to_owned),
+            unlock_level: node.int("UnlockLevel").unwrap_or(0) as i32,
+            // A thousand when the content names no price, which is where every skin in the shipped
+            // files lands: `XmlDescriptors.cs:788-789`.
+            cost: node.int("Cost").unwrap_or(SKIN_COST) as i32,
+            expires: node.has("Expires"),
+            restricted: node.has("Restricted"),
+        })
+    }
+}
 
 /// A ground tile type.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -583,6 +696,53 @@ mod tests {
     use super::*;
     use crate::effect::ConditionEffect;
 
+    #[test]
+    fn a_dye_carries_its_colour_as_hexadecimal_and_says_which_layer_it_paints() {
+        // `Item.Texture1`/`Texture2` (`XmlDescriptors.cs:666-674`), read with
+        // `Convert.ToInt32(value, 16)`. Read as decimal instead, `0x01F0F8FF` would be a nonsense
+        // number and every dye in the game would paint the same wrong colour -- so this asserts
+        // the number, not merely that something parsed.
+        let clothing = parse_one(
+            r#"<Object type="0x1000" id="Alice Blue Clothing Dye">
+                 <Class>Dye</Class><Item/><SlotType>10</SlotType>
+                 <Tex1>0x01F0F8FF</Tex1>
+                 <Activate>Dye</Activate><Consumable/>
+               </Object>"#,
+        );
+        let item = clothing.item.as_ref().expect("a dye is an item");
+        assert_eq!(item.tex1, 0x01F0_F8FF);
+        assert_eq!(item.tex2, 0, "a clothing dye leaves the accessory alone");
+
+        // The accessory dye of the same colour writes the other element, which is the only thing
+        // that tells the two apart.
+        let accessory = parse_one(
+            r#"<Object type="0x1100" id="Alice Blue Accessory Dye">
+                 <Class>Dye</Class><Item/><SlotType>10</SlotType>
+                 <Tex2>0x01F0F8FF</Tex2>
+                 <Activate>Dye</Activate><Consumable/>
+               </Object>"#,
+        );
+        let item = accessory.item.as_ref().expect("a dye is an item");
+        assert_eq!(item.tex1, 0);
+        assert_eq!(item.tex2, 0x01F0_F8FF);
+
+        // A textile is the same field with a different type byte, and the index below it has to
+        // survive intact or a patterned dye picks the wrong cell of the sheet.
+        let textile = parse_one(
+            r#"<Object type="0x1200" id="Cloth Textile"><Item/><SlotType>10</SlotType>
+                 <Tex1>0x09000007</Tex1><Activate>Dye</Activate>
+               </Object>"#,
+        );
+        assert_eq!(textile.item.as_ref().unwrap().tex1, 0x0900_0007);
+
+        // And anything that is not a dye carries none, which is nearly every item.
+        let wand = parse_one(
+            r#"<Object type="0x0a22" id="Wand"><Item/><SlotType>8</SlotType></Object>"#,
+        );
+        let item = wand.item.as_ref().unwrap();
+        assert_eq!((item.tex1, item.tex2), (0, 0));
+    }
+
     fn parse_one(text: &str) -> ObjectDesc {
         ObjectDesc::parse(&Node::parse(text).unwrap()).expect("descriptor should parse")
     }
@@ -626,6 +786,32 @@ mod tests {
         // Half-open, as the original's rolls are: the top of the range is never reached.
         assert_eq!(shot.roll_damage(0.0), 220);
         assert_eq!(shot.roll_damage(0.999), 274);
+    }
+
+    #[test]
+    fn a_localisation_key_is_not_used_as_a_name() {
+        // `Item.GetDisplayName` and `XmlData.AddObjects` in the original both check the first
+        // character for `{` and fall back to the object id. Around a third of the display ids in
+        // the shipped files are keys, so honouring one as a name is not an edge case.
+        let key = parse_one(
+            r#"<Object type="0x9ba" id="shtrs Fire Mage">
+                 <Class>Character</Class>
+                 <DisplayId>{shatters.shtrs_Fire_Mage}</DisplayId>
+               </Object>"#,
+        );
+        assert_eq!(key.name(), "shtrs Fire Mage");
+
+        let named = parse_one(
+            r#"<Object type="0x9bb" id="shtrs Bridge Sentinel">
+                 <Class>Character</Class>
+                 <DisplayId>The Forgotten Sentinel</DisplayId>
+               </Object>"#,
+        );
+        assert_eq!(named.name(), "The Forgotten Sentinel");
+
+        let bare =
+            parse_one(r#"<Object type="0x9bc" id="Sprite God"><Class>Character</Class></Object>"#);
+        assert_eq!(bare.name(), "Sprite God");
     }
 
     #[test]
@@ -704,9 +890,46 @@ mod tests {
         assert!(desc.character);
         assert_eq!(desc.max_hp, 50000);
         assert_eq!(desc.defense, 40);
-        assert!(desc.immunities.contains(ConditionEffect::Stunned));
-        assert!(desc.immunities.contains(ConditionEffect::Paralyzed));
-        assert!(!desc.immunities.contains(ConditionEffect::Slowed));
+        // The markers, not the effects they block. An entity given this set holds `StunImmune`;
+        // giving it `Stunned` would be the opposite of what the flag says.
+        assert!(desc.immunities.contains(ConditionEffect::StunImmune));
+        assert!(desc.immunities.contains(ConditionEffect::ParalyzeImmune));
+        assert!(!desc.immunities.contains(ConditionEffect::Stunned));
+        assert!(!desc.immunities.contains(ConditionEffect::Paralyzed));
+        assert!(!desc.immunities.contains(ConditionEffect::SlowedImmune));
+    }
+
+    #[test]
+    fn a_skin_names_the_one_class_it_belongs_to() {
+        let node = Node::parse(
+            r#"<Object type="0x0344" id="Merlin" size="120">
+                 <Skin/>
+                 <Class>Skin</Class>
+                 <PlayerClassType>0x030e</PlayerClassType>
+                 <UnlockLevel>10</UnlockLevel>
+               </Object>"#,
+        )
+        .unwrap();
+
+        let skin = SkinDesc::parse(&node, ObjectType(0x0344)).expect("a skin");
+        assert_eq!(skin.class, ObjectType(0x030e));
+        assert_eq!(skin.unlock_level, 10);
+        assert_eq!(skin.size, 120);
+        assert_eq!(skin.player_exclusive, None);
+    }
+
+    #[test]
+    fn a_skin_without_a_class_is_not_a_skin_anybody_can_wear() {
+        // The original's test is the presence of `PlayerClassType`, not the class name, and it
+        // returns null without one.
+        let node = Node::parse(
+            r#"<Object type="0x0400" id="Placeholder">
+                 <Class>Skin</Class>
+               </Object>"#,
+        )
+        .unwrap();
+
+        assert!(SkinDesc::parse(&node, ObjectType(0x0400)).is_none());
     }
 
     #[test]
