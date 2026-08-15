@@ -1192,7 +1192,9 @@ public partial class HudView : Control
     /// </remarks>
     private static string Vital(int current, int maximum, int regen, int boost)
     {
-        string line = $"{current}/{maximum}|{regen}";
+        // Clamped, because the server reports the overkill on a killing blow and the bar was
+        // reading "-292/100" for the moment between the hit landing and the death screen.
+        string line = $"{Mathf.Clamp(current, 0, maximum)}/{maximum}|{regen}";
         return boost == 0 ? line : $"{line} {Bonus(boost)}";
     }
 
