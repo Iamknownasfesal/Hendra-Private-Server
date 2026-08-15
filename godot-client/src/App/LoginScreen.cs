@@ -180,6 +180,8 @@ public partial class LoginScreen : Control
         _characters.AddThemeConstantOverride("separation", 6);
         characterColumn.AddChild(_characters);
 
+        BuildCharacterScreens();
+
         // Deleting takes over the screen rather than opening a box over it. It is the one thing here
         // that cannot be undone, and a panel you have to read your way out of is the point.
         _deletePanel = NewPanel();
@@ -221,166 +223,53 @@ public partial class LoginScreen : Control
     }
 
     /// <summary>
-    /// The standing sprite for a class, at the size the boxes want it.
+    /// Builds the two screens the character list is really made of.
     /// </summary>
     /// <remarks>
-    /// The original's character boxes are built from SWF graphics with the sprite composited into
-    /// them. Those are compiled artwork rather than loose files and cannot be pulled out, so the
-    /// box is drawn here instead and the sprite that goes in it is the real one — the same
-    /// eight-pixel frame the game draws when the character is standing still.
+    /// Both are laid out in the interface's own 1920 by 1080 reference pixels, which the rest of
+    /// this page is not — it is centred against the project's base resolution and stretched. They go
+    /// on a <see cref="UI.HudLayer"/> of their own for that reason, which is the same canvas the HUD
+    /// uses in the world, so the panel is the same size and shape here as it is once you are in.
     /// </remarks>
-    private static Control Portrait(ushort objectType, int size)
+    private void BuildCharacterScreens()
     {
-        var holder = new Control
+        _screens = new UI.HudLayer { Layer = 4 };
+        AddChild(_screens);
+
+        _picker = new UI.CharactersPanel();
+        _picker.PlayRequested += RequestPlay;
+        _picker.DeleteRequested += id => ConfirmDelete(id);
+        _picker.BuySlotRequested += OnBuySlotPressed;
+        _picker.NewCharacterRequested += ShowCreatePage;
+        _picker.Loaded += roster => _create?.Show(roster);
+        _screens.AddChild(_picker);
+
+        _create = new UI.CreateCharacterScreen();
+        _create.PlayRequested += RequestCreate;
+        _create.Closed += () =>
         {
-            CustomMinimumSize = new Vector2(size, size),
-            MouseFilter = MouseFilterEnum.Ignore,
+            if (_charList != null)
+                _picker.Open();
         };
-
-        var desc = ServiceLocator.Data?.GetObject(objectType);
-        if (desc?.Texture == null || ServiceLocator.Assets == null)
-            return holder;
-
-        var resolved = new Assets.TextureResolver(ServiceLocator.Assets).Resolve(desc.Texture);
-        var sprite = resolved.Animated != null
-            ? resolved.Animated.Frame(0f, 0f, Assets.CharAction.Stand, 0f).Sprite
-            : resolved.Still;
-
-        if (!sprite.IsValid)
-            return holder;
-
-        var view = new TextureRect
-        {
-            Texture = new AtlasTexture { Atlas = sprite.Sheet, Region = sprite.Region },
-            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
-
-            // Nearest, or an eight-pixel sprite blown up to forty is a smear.
-            TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
-            MouseFilter = MouseFilterEnum.Ignore,
-        };
-
-        view.SetAnchorsPreset(LayoutPreset.FullRect);
-        holder.AddChild(view);
-        return holder;
+        _screens.AddChild(_create);
     }
 
-    /// <summary>
-    /// One character on the list: class and level over its vital and stat lines.
-    /// </summary>
-    /// <remarks>
-    /// A box rather than a line of text on a button, which is what the original shows — the whole
-    /// point of the screen is comparing characters at a glance, and a sentence per character makes
-    /// that a reading exercise.
-    /// </remarks>
-    /// <param name="remove">
-    /// Asks to delete this character. Wired to a cross in the heading rather than to the box, and
-    /// it opens a confirmation rather than doing it -- a character is weeks of play and the server
-    /// has no undo.
-    /// </param>
-    private static Control NewCharacterBox(
-        string className, Account.CharacterInfo character, Action play, Action remove)
+    private void ShowCreatePage()
     {
-        // A click target, not a keyboard widget -- the original's are graphics you click, and
-        // CardButton keeps itself out of the focus chain for the same reason. Godot gives the first
-        // focusable control focus on its own, and a focused Button is activated by ui_accept, which
-        // is Enter, Space *and joypad button 0* by default.
-        var box = new UI.CardButton(UI.Style.FameFill)
-        {
-            CustomMinimumSize = new Vector2(CharacterBoxWidth, 86),
-            TooltipText = "Play this character",
-        };
-
-        box.Pressed += play;
-
-        var margin = new MarginContainer { MouseFilter = MouseFilterEnum.Ignore };
-        margin.SetAnchorsPreset(LayoutPreset.FullRect);
-        foreach (string side in new[] { "margin_left", "margin_top", "margin_right", "margin_bottom" })
-            margin.AddThemeConstantOverride(side, 8);
-        box.AddChild(margin);
-
-        var across = new HBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
-        across.AddThemeConstantOverride("separation", 10);
-        margin.AddChild(across);
-        across.AddChild(Portrait(character.ObjectType, 46));
-
-        var rows = new VBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
-        rows.AddThemeConstantOverride("separation", 2);
-        rows.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        across.AddChild(rows);
-
-        // The class and the level are the two things you compare between characters, so the level
-        // gets a badge of its own rather than trailing the name as more words.
-        var headingRow = new HBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
-        headingRow.AddThemeConstantOverride("separation", 7);
-        rows.AddChild(headingRow);
-
-        var heading = new Label
-        {
-            Text = className,
-            MouseFilter = MouseFilterEnum.Ignore,
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-        };
-        heading.Typeset(UI.Style.FontName, UI.Style.Text);
-        headingRow.AddChild(heading);
-
-        // Stars, on the original's thresholds: one for each of 20, 150, 400, 800 and 2000 fame.
-        // They are what the original rates an account by, and a character's own count is the part
-        // of that rating it contributes.
-        int stars = UI.Fame.Stars(character.CurrentFame);
-        if (stars > 0)
-        {
-            var starRow = new HBoxContainer
-            {
-                MouseFilter = Control.MouseFilterEnum.Ignore,
-                SizeFlagsVertical = SizeFlags.ShrinkCenter,
-            };
-            starRow.AddThemeConstantOverride("separation", 1);
-
-            var colour = UI.Fame.Colour(stars, 1);
-            for (int i = 0; i < stars; i++)
-                starRow.AddChild(new UI.StarIcon(colour, 13));
-
-            headingRow.AddChild(starRow);
-        }
-
-        headingRow.AddChild(new UI.LevelBadge(character.Level)
-        {
-            MouseFilter = Control.MouseFilterEnum.Ignore,
-            SizeFlagsVertical = SizeFlags.ShrinkCenter,
-        });
-
-        // A Control with Stop inside a row of Ignores: the row does not swallow the click and the
-        // cross is picked before the card behind it, so deleting and playing stay separate presses.
-        var scrap = new UI.HudIconButton(UI.HudIcons.Cross, "Delete this character", inset: 6f)
-        {
-            Tint = UI.Style.TextDim,
-            CustomMinimumSize = new Vector2(20, 20),
-            SizeFlagsVertical = SizeFlags.ShrinkCenter,
-        };
-        scrap.Pressed += remove;
-        headingRow.AddChild(scrap);
-
-        var vitals = new Label
-        {
-            Text = $"{character.HitPoints}/{character.MaxHitPoints} HP    " +
-                   $"{character.MagicPoints}/{character.MaxMagicPoints} MP    " +
-                   $"{character.CurrentFame:N0} fame",
-            MouseFilter = MouseFilterEnum.Ignore,
-        };
-        vitals.Typeset(UI.Style.FontBody, UI.Style.Text);
-        rows.AddChild(vitals);
-
-        var stats = new Label
-        {
-            Text = $"ATT {character.Attack}  DEF {character.Defense}  SPD {character.Speed}  " +
-                   $"DEX {character.Dexterity}  VIT {character.Vitality}  WIS {character.Wisdom}",
-            MouseFilter = MouseFilterEnum.Ignore,
-        };
-        stats.Typeset(UI.Style.FontSmall, UI.Style.TextDim);
-        rows.AddChild(stats);
-
-        return box;
+        _picker.Close();
+        _create.Show(_picker.Roster);
+        _create.Open();
     }
+
+    private UI.HudLayer _screens;
+    private UI.CharactersPanel _picker;
+    private UI.CreateCharacterScreen _create;
+
+    /// <summary>Goes straight to the create page once signed in. Set from the command line.</summary>
+    public bool OpenCreatePage { get; set; }
+
+    /// <summary>Which of the panel's tabs to open on. Set from the command line.</summary>
+    public string CharactersTab { get; set; }
 
     /// <summary>Width of a character entry, wide enough for a class name and its stats.</summary>
     private const int CharacterBoxWidth = 420;
@@ -645,36 +534,58 @@ public partial class LoginScreen : Control
             _servers.Selected = Math.Max(index, 0);
         }
 
-        var account = _charList.Account;
+        // The server row is the only thing left in the middle of the page once the panel is up, and
+        // with one server to choose between it is a dropdown with nothing to say. A successful sign
+        // in is reported by the panel appearing; only a failure gets words.
+        _charactersPanel.Visible = _charList.Servers.Count > 1;
         _status.Text = _charList.Servers.Count == 0
             ? "Signed in, but the server list is empty — is the world server running and registered?"
-            : $"Signed in as {(string.IsNullOrEmpty(account.Name) ? "guest" : account.Name)}.";
+            : string.Empty;
 
-        var living = _charList.Characters.FindAll(c => !c.Dead);
+        // The list itself is the same panel the world opens over itself, so the player meets it
+        // once and it does not change shape when they sign in.
+        _heading.Visible = false;
+        _picker.Connect(ServerConfig.AppServer, _guid.Text, _password.Text);
+        _picker.CurrentCharacterId = -1;
 
-        foreach (var character in living)
+        if (OpenCreatePage)
         {
-            var desc = ServiceLocator.Data?.GetObject(character.ObjectType);
-            string name = desc?.DisplayId ?? desc?.Id ?? $"Type {character.ObjectType}";
-
-            int characterId = character.CharacterId;
-            var doomed = character;
-
-            _characters.AddChild(NewCharacterBox(name, character,
-                () => RequestPlay(characterId),
-                () => ConfirmDelete(name, doomed)));
+            _picker.Refresh();
+            ShowCreatePage();
+            return;
         }
 
-        if (living.Count < Math.Max(_charList.MaxCharacters, 1))
-            AddClassPicker(living.Count == 0);
+        _picker.ShowTab(CharactersTab);
+
+        if (!_create.IsOpen)
+            _picker.Open();
         else
-            AddSlotOffer();
+            _picker.Refresh();
+    }
+
+    /// <summary>Puts the confirmation panel up for one character, found by its id.</summary>
+    private void ConfirmDelete(int characterId)
+    {
+        var character = _charList?.Characters.Find(c => c.CharacterId == characterId);
+        if (character == null)
+            return;
+
+        ConfirmDelete(ClassName(character), character);
+    }
+
+    private static string ClassName(Account.CharacterInfo character)
+    {
+        var desc = ServiceLocator.Data?.GetObject(character.ObjectType);
+        return desc?.DisplayId ?? desc?.Id ?? $"Type {character.ObjectType}";
     }
 
     /// <summary>Puts the confirmation panel up for one character.</summary>
     private void ConfirmDelete(string className, Account.CharacterInfo character)
     {
         _deleting = character.CharacterId;
+        _picker.Close();
+        _create.Close();
+        _heading.Visible = true;
 
         // Named by what it cost to get, because that is what the answer turns on. A level 1 Wizard
         // rolled by accident and a level 20 with two thousand fame both reach this panel, and the
@@ -688,50 +599,6 @@ public partial class LoginScreen : Control
         _deletePanel.Visible = true;
         _heading.Text = "Delete a character";
         _status.Text = string.Empty;
-    }
-
-    /// <summary>
-    /// The way out of a full character list.
-    /// </summary>
-    /// <remarks>
-    /// Only when every slot is taken, because that is the only time it is the answer. The price and
-    /// the currency both come down with the character list, so a server that prices slots in gold
-    /// rather than fame, or does not sell them at all, says so itself.
-    /// </remarks>
-    private void AddSlotOffer()
-    {
-        var account = _charList.Account;
-
-        string used = $"All {_charList.MaxCharacters} of your character slots are in use.";
-
-        // The balance goes in the sentence, not in a tooltip. A greyed-out button that only explains
-        // itself on hover looks like a fault; one under a line saying what you have and what it
-        // costs looks like a price.
-        string note = account.NextSlotPrice <= 0
-            ? $"{used} Delete one to make room."
-            : $"{used} You have {account.SlotBalance:N0} {account.SlotCurrencyName}, and another " +
-              $"slot costs {account.NextSlotPrice:N0}.";
-
-        _characters.AddChild(new Control { CustomMinimumSize = new Vector2(0, 6) });
-        _characters.AddChild(new Label
-        {
-            Text = note,
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            CustomMinimumSize = new Vector2(CharacterBoxWidth, 0),
-        }.Typeset(UI.Style.FontBody, UI.Style.TextDim));
-
-        // A server can decline to sell them at all, which it says by pricing them at nothing.
-        if (account.NextSlotPrice <= 0)
-            return;
-
-        var buy = new UI.GameButton(
-            $"Buy another slot — {account.NextSlotPrice:N0} {account.SlotCurrencyName}", compact: true)
-        {
-            Disabled = account.SlotBalance < account.NextSlotPrice,
-        };
-
-        buy.Pressed += () => OnBuySlotPressed(buy);
-        _characters.AddChild(buy);
     }
 
     private async void OnDeleteConfirmed()
@@ -770,9 +637,8 @@ public partial class LoginScreen : Control
         }
     }
 
-    private async void OnBuySlotPressed(Button buy)
+    private async void OnBuySlotPressed()
     {
-        buy.Disabled = true;
         _status.Text = "Buying a character slot...";
 
         try
@@ -784,74 +650,13 @@ public partial class LoginScreen : Control
                 ["password"] = _password.Text,
             });
 
-            // The list is rebuilt from here, so the button this ran from is on its way out and is
-            // deliberately not re-enabled.
+            // Refetched rather than adjusted in place: the slot count and the balance both moved,
+            // and the server is the only thing that knows what to.
             OnSignInPressed();
         }
         catch (Exception ex)
         {
             _status.Text = $"The slot was not bought: {ex.Message}";
-
-            if (IsInstanceValid(buy))
-                buy.Disabled = false;
-        }
-    }
-
-    /// <summary>
-    /// Offers the classes this account may create.
-    /// </summary>
-    /// <remarks>
-    /// Every known class is offered rather than trying to predict which are unlocked: the server
-    /// decides, and answers a refusal with a message saying why.
-    /// </remarks>
-    private void AddClassPicker(bool onlyOption)
-    {
-        var classes = ServiceLocator.Data?.PlayerClasses;
-        if (classes == null || classes.Count == 0)
-            return;
-
-        _characters.AddChild(new Control { CustomMinimumSize = new Vector2(0, 6) });
-        _characters.AddChild(new Label
-        {
-            Text = onlyOption ? "No characters yet. Create one:" : "Or create a new character:",
-        });
-
-        var grid = new GridContainer { Columns = 5 };
-        grid.AddThemeConstantOverride("h_separation", 6);
-        grid.AddThemeConstantOverride("v_separation", 6);
-        _characters.AddChild(grid);
-
-        foreach (var playerClass in classes)
-        {
-            ushort classType = playerClass.Type;
-
-            // Click only, for the reason the character boxes are: creating a character by accident
-            // costs a slot, and CardButton stays out of the focus chain.
-            // No accent: a class you have not made yet is not one of your characters, and the amber
-            // stripe is what marks the ones that are.
-            var button = new UI.CardButton(UI.Style.SlotBorderHi)
-            {
-                CustomMinimumSize = new Vector2(126, 78),
-                TooltipText = playerClass.DisplayId ?? playerClass.Id,
-            };
-            button.Pressed += () => RequestCreate(classType);
-            grid.AddChild(button);
-
-            var stack = new VBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
-            stack.AddThemeConstantOverride("separation", 2);
-            stack.SetAnchorsPreset(LayoutPreset.FullRect);
-            button.AddChild(stack);
-
-            var art = Portrait(classType, 34);
-            art.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-            stack.AddChild(art);
-
-            stack.AddChild(new Label
-            {
-                Text = playerClass.DisplayId ?? playerClass.Id ?? "?",
-                HorizontalAlignment = HorizontalAlignment.Center,
-                MouseFilter = MouseFilterEnum.Ignore,
-            });
         }
     }
 

@@ -79,6 +79,15 @@ public sealed class LaunchOptions
     /// <summary>Opens the vault panel once in the world, for unattended screenshots of it.</summary>
     public bool OpenVault { get; private set; }
 
+    /// <summary>Opens the characters panel, in the world or on the sign-in page if there is no world.</summary>
+    public bool OpenCharacters { get; private set; }
+
+    /// <summary>Which of its two tabs to open on, or null for the living.</summary>
+    public string CharactersTab { get; private set; }
+
+    /// <summary>Opens the create-a-character page, by the same two routes.</summary>
+    public bool OpenNewCharacter { get; private set; }
+
     /// <summary>Opens the options page once in the world. Same purpose as the three above.</summary>
     public bool OpenOptions { get; private set; }
 
@@ -141,6 +150,17 @@ public sealed class LaunchOptions
                 case "--account": options.OpenAccountPanel = true; break;
                 case "--vault": options.OpenVault = true; break;
                 case "--title": options.StopOnTitle = true; break;
+                case "--character-select":
+                {
+                    options.OpenCharacters = true;
+
+                    // An optional tab name after it, but only if what follows is not another flag.
+                    if (i + 1 < args.Length && !args[i + 1].StartsWith("--"))
+                        options.CharactersTab = args[++i];
+
+                    break;
+                }
+                case "--new-character": options.OpenNewCharacter = true; break;
                 case "--menu": options.OpenMenu = true; break;
                 case "--options":
                 {
