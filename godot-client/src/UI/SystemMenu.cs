@@ -201,10 +201,17 @@ public partial class SystemMenu : Control
         _quit.Position = new Vector2(left, Mathf.Round(quit));
         _quit.Size = new Vector2(width, PlateHeight);
 
+        // The stack climbs to the mana bar and no further. At the reference height that ceiling is
+        // never reached -- the pitch lands the top plate a pixel under it -- but a shorter screen
+        // moves the whole stack up with the foot it hangs from, and without this the top of it
+        // would end up over the bars it is supposed to leave readable.
+        float room = quit - layout.ManaBar.Position.Y;
+        float pitch = Mathf.Clamp(room / _stack.Length, PlateHeight + Style.ButtonShadowHeight, ButtonPitch);
+
         for (int i = 0; i < _stack.Length; i++)
         {
             _stack[i].Position = new Vector2(
-                left, Mathf.Round(quit - (_stack.Length - i) * ButtonPitch));
+                left, Mathf.Round(quit - (_stack.Length - i) * pitch));
 
             _stack[i].Size = new Vector2(width, PlateHeight);
         }
