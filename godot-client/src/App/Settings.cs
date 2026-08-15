@@ -243,6 +243,18 @@ public sealed class Settings
     /// <summary>Which of the two carried pages the hotbar is showing.</summary>
     public int HotbarPage { get; set; }
 
+    /// <summary>
+    /// Which of the original's pointers the mouse wears, as an index into <c>cursorsEmbed</c>.
+    /// </summary>
+    /// <remarks>
+    /// A preference about aiming rather than about decoration: a crosshair whose centre you can
+    /// find in a screen full of projectiles is worth more than a prettier one you cannot.
+    /// </remarks>
+    public int CursorStyle { get; set; }
+
+    /// <summary>How large the pointer is drawn, on the original's one-to-ten scale.</summary>
+    public int CursorSize { get; set; } = 6;
+
     public static Settings Load()
     {
         var settings = new Settings();
@@ -257,6 +269,8 @@ public sealed class Settings
         settings.CenterOnPlayer = (bool)file.GetValue(Section, "center_on_player", settings.CenterOnPlayer);
         settings.MinimapZoom = (int)file.GetValue(Section, "minimap_zoom", settings.MinimapZoom);
         settings.HotbarPage = (int)file.GetValue(Section, "hotbar_page", settings.HotbarPage);
+        settings.CursorStyle = (int)file.GetValue(Section, "cursor_style", settings.CursorStyle);
+        settings.CursorSize = (int)file.GetValue(Section, "cursor_size", settings.CursorSize);
         settings.MasterVolume = (float)file.GetValue(Section, "master_volume", settings.MasterVolume);
         settings.WeaponSounds = (bool)file.GetValue(Section, "weapon_sounds", settings.WeaponSounds);
         settings.AllowCameraRotation = (bool)file.GetValue(Section, "camera_rotation", settings.AllowCameraRotation);
@@ -316,6 +330,8 @@ public sealed class Settings
         file.SetValue(Section, "center_on_player", CenterOnPlayer);
         file.SetValue(Section, "minimap_zoom", MinimapZoom);
         file.SetValue(Section, "hotbar_page", HotbarPage);
+        file.SetValue(Section, "cursor_style", CursorStyle);
+        file.SetValue(Section, "cursor_size", CursorSize);
         file.SetValue(Section, "master_volume", MasterVolume);
         file.SetValue(Section, "weapon_sounds", WeaponSounds);
         file.SetValue(Section, "camera_rotation", AllowCameraRotation);
