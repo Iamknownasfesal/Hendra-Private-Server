@@ -107,6 +107,30 @@ public sealed class WhileMovingDesc
 }
 
 /// <summary>
+/// One <c>Activate</c> verb an item declares, and the amount written on it.
+/// </summary>
+/// <remarks>
+/// The amount means whatever the verb means -- hit points for <c>Heal</c>, magic points for
+/// <c>Magic</c>, a stat's increment for <c>IncrementStat</c> -- and is zero for the verbs that
+/// carry no number at all, such as <c>Backpack</c>.
+/// </remarks>
+public readonly struct ActivateDesc
+{
+    public ActivateDesc(string effect, int amount)
+    {
+        Effect = effect ?? string.Empty;
+        Amount = amount;
+    }
+
+    public readonly string Effect;
+    public readonly int Amount;
+
+    /// <summary>Whether this is the named verb. The XML's casing is not guaranteed.</summary>
+    public bool Is(string effect) =>
+        string.Equals(Effect, effect, System.StringComparison.OrdinalIgnoreCase);
+}
+
+/// <summary>
 /// Everything the client needs to know about an object type: how it renders, how it blocks
 /// movement, and what it shoots.
 /// </summary>
@@ -265,17 +289,35 @@ public sealed class ObjectDesc
     public bool MultiPhase;
 
     /// <summary>
-    /// What this item does when used, by name, e.g. <c>Shoot</c> or <c>Heal</c>.
+    /// What this item does when used: every <c>Activate</c> verb it declares, with its amount.
     /// </summary>
     /// <remarks>
-    /// Almost all of them are the server's business alone. The client only cares about
-    /// <c>Shoot</c>, which is the one activation whose projectiles the server does not send back to
-    /// the player who fired them.
+    /// Resolving an activation is the server's business, but the verb and its amount are the only
+    /// statement the data makes about what an item is for -- a potion is not marked as a health
+    /// potion anywhere, it is an item whose activation is <c>Heal</c>. Anything that wants to sort
+    /// consumables by what they do reads this rather than matching names.
     /// </remarks>
-    public string[] Activates = System.Array.Empty<string>();
+    public ActivateDesc[] Activates = System.Array.Empty<ActivateDesc>();
 
     /// <summary>Whether using this fires projectiles the client has to author itself.</summary>
     public bool ActivatesShoot;
+
+    /// <summary>
+    /// The amount named by an activation verb, or zero if this item does not declare it.
+    /// </summary>
+    /// <remarks>
+    /// Verbs repeat -- Coral Juice both heals and restores magic -- so the largest amount wins,
+    /// which is the same one the server applies when it walks the list.
+    /// </remarks>
+    public int ActivateAmount(string effect)
+    {
+        int amount = 0;
+        foreach (var activate in Activates)
+            if (activate.Is(effect) && activate.Amount > amount)
+                amount = activate.Amount;
+
+        return amount;
+    }
 
     public WhileMovingDesc WhileMoving;
     public TextureSpec Texture;

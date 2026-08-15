@@ -170,10 +170,15 @@ public sealed class GameData
             MultiPhase = Has(e, "MultiPhase"),
         };
 
-        var activates = e.Elements("Activate");
-        desc.Activates = activates.Select(a => a.Value?.Trim() ?? string.Empty).ToArray();
-        desc.ActivatesShoot = desc.Activates.Any(
-            a => string.Equals(a, "Shoot", StringComparison.OrdinalIgnoreCase));
+        // The verb is the element's text and the size of what it does is an attribute on it, so
+        // both halves are kept: "Heal" alone says a potion heals, "Heal amount=230" says by how
+        // much, and only the pair distinguishes Fire Water from a Minor Health Potion.
+        desc.Activates = e.Elements("Activate")
+            .Select(a => new ActivateDesc(
+                a.Value?.Trim(),
+                TryParseInt(a.Attribute("amount")?.Value, out int amount) ? amount : 0))
+            .ToArray();
+        desc.ActivatesShoot = desc.Activates.Any(a => a.Is("Shoot"));
 
         // The XML gives this in degrees. The default of 11.25 is what produces the familiar even
         // fan on a three-shot weapon.

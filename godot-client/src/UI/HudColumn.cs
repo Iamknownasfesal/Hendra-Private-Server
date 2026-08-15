@@ -202,33 +202,30 @@ public sealed partial class ColumnTab : Control
 }
 
 /// <summary>
-/// One of the three stacked potions along the bottom of the inventory.
+/// One of the stacked potions along the bottom of the inventory.
 /// </summary>
 /// <remarks>
 /// A slot rather than a chip: the same plate and border as the carried slots, holding the potion,
 /// how many are held and how many can be. It is a button as well as a counter -- the potions live
 /// outside the inventory array, addressed on the wire by slot id rather than by index, so this is
-/// the only place they can be clicked.
+/// the only place they can be clicked. It knows nothing about which potion it holds beyond the
+/// artwork and the caption it is handed, so a cell for any drinkable is the same cell.
 /// </remarks>
 public sealed partial class PotionCell : Control
 {
     /// <summary>The border, which is the same four pixels a carried slot carries.</summary>
     private const float Border = 4f;
 
-    private readonly bool _health;
-
     private Assets.Sprite _bottle;
     private int _count;
     private int _of;
     private bool _hovered;
 
-    public PotionCell(bool health, int of)
+    public PotionCell(int of)
     {
-        _health = health;
         _of = of;
         MouseFilter = MouseFilterEnum.Stop;
         FocusMode = FocusModeEnum.None;
-        TooltipText = health ? "Drink a health potion" : "Drink a magic potion";
     }
 
     public event Action Pressed;
@@ -254,8 +251,16 @@ public sealed partial class PotionCell : Control
             Filled?.Invoke(from);
     }
 
-    public void UseSprite(Assets.Sprite sprite)
+    /// <summary>
+    /// Puts an item in the cell: its own artwork, and the line the tooltip says about drinking it.
+    /// </summary>
+    public void Hold(Assets.Sprite sprite, string tooltip)
     {
+        TooltipText = tooltip ?? string.Empty;
+
+        if (_bottle.Sheet == sprite.Sheet && _bottle.Region == sprite.Region)
+            return;
+
         _bottle = sprite;
         QueueRedraw();
     }
@@ -307,16 +312,19 @@ public sealed partial class PotionCell : Control
         DrawRect(full.Grow(-Border / 2f), _hovered ? Style.SlotBorderHi : Style.SlotBorder,
             filled: false, width: Border);
 
-        // A cell for a stack this server does not carry is a plate and nothing else. A permanent
-        // nought out of nought would be a number that is not true of anything.
+        // A cell with no ceiling is a plate and nothing else: a nought out of nought would be a
+        // number that is not true of anything.
         if (_of <= 0)
             return;
 
         // The game's own potion, not a drawing of one.
         if (_bottle.IsValid)
         {
-            float side = Mathf.Min(Size.Y - 4f, 34f);
-            this.DrawSprite(_bottle, new Rect2(6f, Mathf.Round((Size.Y - side) / 2f), side, side));
+            // Sized and inset to land the artwork where the reference has it: the bottle is 36
+            // across, a clear step in from the border rather than against it, and centred in what
+            // is left of the cell's height.
+            float side = Mathf.Min(Size.Y - 4f, 36f);
+            this.DrawSprite(_bottle, new Rect2(12f, Mathf.Round((Size.Y - side) / 2f), side, side));
         }
 
         string held = _count.ToString(CultureInfo.InvariantCulture);
@@ -331,12 +339,12 @@ public sealed partial class PotionCell : Control
             new Vector2(left, Style.BaselineIn(Size.Y, CountSize)), held, CountSize, Supply(_count, _of));
 
         this.DrawOverWorld(
-            new Vector2(left + Style.Measure(held, CountSize) + 3f, Size.Y - 7f),
+            new Vector2(left + Style.Measure(held, CountSize) + 3f, Size.Y - 9f),
             of, Style.FontSmall, Style.TextDim);
     }
 
     /// <summary>How many are held, which is the largest number in the column after the bars.</summary>
-    private const int CountSize = 36;
+    private const int CountSize = 40;
 }
 
 /// <summary>
