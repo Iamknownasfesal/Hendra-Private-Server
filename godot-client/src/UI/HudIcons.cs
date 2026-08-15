@@ -511,4 +511,113 @@ public static class HudIcons
             cx - arm, cy,
             cx - waist, cy - waist), colour);
     }
+
+    // ─── the icon row under the minimap ───────────────────────────────────────────────────────
+    //
+    // Six marks in a 33-pixel square, each one shape or two. At this size a drawing loses; what
+    // reads is a silhouette with one hole in it, which is what the reference's own icons are.
+
+    /// <summary>The pet panel: a cat's head, ears and all.</summary>
+    public static void Cat(CanvasItem into, Rect2 box, Color colour)
+    {
+        var dark = colour.Lerp(Style.PanelEdge, 0.85f);
+
+        // Two ears standing off the skull, then the skull itself squared at the jaw. Triangles
+        // that meet the head reads as a crown; a gap of one pixel is what makes them ears.
+        into.DrawColoredPolygon(Map(box, 0.08f, 0.44f, 0.10f, 0.06f, 0.40f, 0.24f), colour);
+        into.DrawColoredPolygon(Map(box, 0.92f, 0.44f, 0.90f, 0.06f, 0.60f, 0.24f), colour);
+
+        into.DrawColoredPolygon(
+            Map(box, 0.10f, 0.30f, 0.90f, 0.30f, 0.90f, 0.72f, 0.72f, 0.94f, 0.28f, 0.94f, 0.10f, 0.72f),
+            colour);
+
+        // Two eyes and a muzzle punched out of it.
+        into.DrawRect(new Rect2(At(box, 0.26f, 0.46f), new Vector2(box.Size.X * 0.14f, box.Size.Y * 0.14f)), dark);
+        into.DrawRect(new Rect2(At(box, 0.60f, 0.46f), new Vector2(box.Size.X * 0.14f, box.Size.Y * 0.14f)), dark);
+        into.DrawRect(new Rect2(At(box, 0.40f, 0.72f), new Vector2(box.Size.X * 0.20f, box.Size.Y * 0.10f)), dark);
+    }
+
+    /// <summary>
+    /// Alignment: a bar between two flanking columns of dots.
+    /// </summary>
+    /// <remarks>
+    /// The reference's mark for the panel that weighs two sides against each other -- a scale read
+    /// end on. Drawn as it is drawn there: a solid centre post with three loose pips either side.
+    /// </remarks>
+    public static void Alignment(CanvasItem into, Rect2 box, Color colour)
+    {
+        float pip = Mathf.Max(2f, Mathf.Round(Span(box) * 0.14f));
+
+        into.DrawRect(new Rect2(At(box, 0.44f, 0.04f), new Vector2(box.Size.X * 0.12f, box.Size.Y * 0.92f)), colour);
+
+        foreach (float y in new[] { 0.14f, 0.44f, 0.74f })
+        {
+            into.DrawRect(new Rect2(At(box, 0.06f, y), new Vector2(pip, pip)), colour);
+            into.DrawRect(new Rect2(At(box, 0.80f, y), new Vector2(pip, pip)), colour);
+        }
+    }
+
+    /// <summary>The quest panel: a pennant on a staff.</summary>
+    public static void Flag(CanvasItem into, Rect2 box, Color colour)
+    {
+        into.DrawRect(new Rect2(At(box, 0.12f, 0.04f), new Vector2(Mathf.Max(2f, box.Size.X * 0.12f),
+            box.Size.Y * 0.92f)), colour);
+
+        into.DrawColoredPolygon(Map(box, 0.24f, 0.08f, 0.92f, 0.08f, 0.92f, 0.48f, 0.24f, 0.48f), colour);
+    }
+
+    /// <summary>
+    /// The party panel: a sword lying across the square.
+    /// </summary>
+    /// <remarks>
+    /// Corner to corner rather than upright. Upright at thirty-three pixels the blade is four
+    /// pixels wide and the cross-guard is the only part of it anyone can see, which is a plus sign.
+    /// </remarks>
+    public static void Sword(CanvasItem into, Rect2 box, Color colour)
+    {
+        // The blade, from the low left to the high right, tapering to a point.
+        into.DrawColoredPolygon(
+            Map(box, 0.26f, 0.64f, 0.66f, 0.24f, 0.94f, 0.06f, 0.76f, 0.34f, 0.36f, 0.74f), colour);
+
+        // The guard across it, and the grip running back off the bottom corner.
+        into.DrawColoredPolygon(Map(box, 0.10f, 0.52f, 0.24f, 0.38f, 0.48f, 0.62f, 0.34f, 0.76f), colour);
+        into.DrawColoredPolygon(Map(box, 0.06f, 0.72f, 0.20f, 0.58f, 0.32f, 0.70f, 0.18f, 0.84f), colour);
+    }
+
+    /// <summary>The vault: a strongbox with a band and a lock across it.</summary>
+    public static void Vault(CanvasItem into, Rect2 box, Color colour)
+    {
+        var dark = colour.Lerp(Style.PanelEdge, 0.85f);
+
+        into.DrawColoredPolygon(Map(box, 0.06f, 0.34f, 0.50f, 0.10f, 0.94f, 0.34f, 0.94f, 0.88f, 0.06f, 0.88f), colour);
+        into.DrawRect(new Rect2(At(box, 0.06f, 0.46f), new Vector2(box.Size.X * 0.88f, box.Size.Y * 0.08f)), dark);
+        into.DrawRect(new Rect2(At(box, 0.42f, 0.42f), new Vector2(box.Size.X * 0.16f, box.Size.Y * 0.24f)), dark);
+    }
+
+    /// <summary>
+    /// The carried page's tab: a drawstring pouch.
+    /// </summary>
+    /// <remarks>
+    /// Round-bottomed with a pinched neck, which is what the reference's tab carries. The grid of
+    /// four squares that used to be here says "a grid" rather than "the things you carry", and it
+    /// looked identical to the second tab at nineteen pixels.
+    /// </remarks>
+    public static void Pouch(CanvasItem into, Rect2 box, Color colour)
+    {
+        into.DrawRect(new Rect2(At(box, 0.34f, 0.04f), new Vector2(box.Size.X * 0.32f, box.Size.Y * 0.18f)), colour);
+
+        into.DrawColoredPolygon(
+            Map(box, 0.26f, 0.22f, 0.74f, 0.22f, 0.96f, 0.62f, 0.86f, 0.94f, 0.14f, 0.94f, 0.04f, 0.62f),
+            colour);
+    }
+
+    /// <summary>The second carried page's tab: a lidded chest.</summary>
+    public static void Chest(CanvasItem into, Rect2 box, Color colour)
+    {
+        var dark = colour.Lerp(Style.PanelEdge, 0.85f);
+
+        into.DrawColoredPolygon(Map(box, 0.04f, 0.44f, 0.16f, 0.14f, 0.84f, 0.14f, 0.96f, 0.44f), colour);
+        into.DrawRect(new Rect2(At(box, 0.04f, 0.48f), new Vector2(box.Size.X * 0.92f, box.Size.Y * 0.44f)), colour);
+        into.DrawRect(new Rect2(At(box, 0.42f, 0.40f), new Vector2(box.Size.X * 0.16f, box.Size.Y * 0.22f)), dark);
+    }
 }

@@ -9,17 +9,22 @@ namespace Hendra.UI;
 /// <remarks>
 /// <para>
 /// The whole layout is one struct of arithmetic with no engine in it, which is deliberate: the
-/// thing that goes wrong with a corner-anchored HUD is two clusters growing into each other at
-/// some window shape nobody opened during development, and that is a property of the numbers
-/// rather than of the drawing. Kept here, it can be checked at every resolution the brief names
-/// without booting Godot -- see <c>HudLayoutTests</c>.
+/// thing that goes wrong with a HUD is two clusters growing into each other at some window shape
+/// nobody opened during development, and that is a property of the numbers rather than of the
+/// drawing. Kept here, it can be checked at every resolution the brief names without booting Godot
+/// -- see <c>HudLayoutTests</c>.
 /// </para>
 /// <para>
-/// Every measurement below is in reference pixels: the units the design was drawn in, 1920 by 1080.
-/// <see cref="ScaleFor"/> turns a real window into the factor between the two, and
-/// <see cref="SpaceFor"/> into the rectangle the layout is solved in -- which is not always 1920 by
-/// 1080, because the scale is clamped and an ultrawide window keeps its extra width as extra
-/// reference pixels rather than as a stretched middle.
+/// The shape is one contiguous column down the right edge, 360 reference pixels wide, holding the
+/// map, the icon row, the three bars, the worn equipment, the inventory, the potions, the world's
+/// name and the players in it -- in that order, each band butted against the one above it. Every
+/// y below is measured off <c>references/Menu/Player UI.png</c>, which is that column at 1:1, and
+/// every x is measured in the same image and offset by the column's left edge.
+/// </para>
+/// <para>
+/// The column is pinned to the top and grows downward, so a shorter screen loses rows off the
+/// bottom of the player list rather than compressing the bands above it -- which is what the
+/// original does and the only arrangement in which a band's height is a constant.
 /// </para>
 /// </remarks>
 public readonly struct HudLayout
@@ -44,109 +49,152 @@ public readonly struct HudLayout
     /// The smallest rectangle the layout fits in without two clusters touching.
     /// </summary>
     /// <remarks>
-    /// The width is set by the widest row: the chat panel ends at 550 and the vitals are centred on
-    /// the viewport, so the screen has to be wide enough for half the vitals to clear the chat with
-    /// a gap left over that is worth calling a gap. The height is set by the party list clearing the
-    /// inventory tabs. Both are consequences of the measurements in revision one rather than
-    /// choices, which is why the tests assert the clearances rather than these two numbers.
+    /// The width is the column plus the chat panel plus a gap worth calling a gap. The height is
+    /// everything in the column down to the potion row with one row of the player list under it;
+    /// below that the list simply runs out of rows, which is a state the column is built for.
     /// </remarks>
-    public static readonly Vector2 MinimumSpace = new(1660f, 680f);
+    public static readonly Vector2 MinimumSpace = new(1560f, 960f);
 
-    // --- Player card -------------------------------------------------------------------------
+    // --- The right-hand column ---------------------------------------------------------------
+
+    /// <summary>The column's width. Measured in the reference; the whole band structure assumes it.</summary>
+    public const float ColumnWidth = 360f;
+
+    /// <summary>The band the map fills, frame included.</summary>
+    public const float MinimapHeight = 367f;
+
+    /// <summary>The light frame around the map, which doubles as the rule under it.</summary>
+    public const float MinimapFrame = 4f;
+
+    /// <summary>The zoom buttons stacked against the map's right edge.</summary>
+    public const float ZoomButtonWidth = 36f;
+
+    public const float ZoomButtonHeight = 35f;
+
+    /// <summary>The row of small buttons between the map and the bars.</summary>
+    public const float IconRowTop = MinimapHeight;
+
+    public const float IconRowHeight = 48f;
+
+    /// <summary>A button in that row is square and sits on the row's own centre line.</summary>
+    public const float IconSize = 33f;
+
+    /// <summary>Where each button in the icon row starts, from the column's left edge.</summary>
+    /// <remarks>
+    /// Transcribed rather than derived. The first four are evenly spaced, the fifth stands off on
+    /// its own, and the last is pushed against the right edge -- there is no pitch that produces
+    /// all three, and inventing one moves five icons to fix an arithmetic itch.
+    /// </remarks>
+    public static readonly float[] IconStops = { 10f, 51f, 93f, 134f, 201f, 317f };
+
+    /// <summary>How far in from the column's edges a bar sits.</summary>
+    public const float BarInset = 9f;
+
+    public const float BarWidth = ColumnWidth - 2f * BarInset;
+    public const float BarHeight = 34f;
+
+    /// <summary>The lighter band along a bar's top edge, and the dark line along its bottom.</summary>
+    public const float BarTopBand = 5f;
+
+    public const float BarBottomLine = 3f;
+
+    public const float FameBarTop = 415f;
+    public const float HealthBarTop = 456f;
+    public const float ManaBarTop = 498f;
+
+    // --- Worn equipment ------------------------------------------------------------------------
+
+    /// <summary>The strip the four worn slots sit on, which carries its own light frame.</summary>
+    public const float EquipmentTop = 540f;
+
+    public const float EquipmentHeight = 90f;
+    public const float EquipmentLeft = 11f;
+    public const float EquipmentStripWidth = 338f;
+
+    /// <summary>A worn slot, counted to the outside of its dark bevel.</summary>
+    public const float EquipmentSlotWidth = 78f;
+
+    public const float EquipmentSlotHeight = 83f;
+
+    public const int EquipmentSlots = 4;
+
+    /// <summary>The bevel between a worn slot's plate and the light frame around it.</summary>
+    public const float EquipmentBevel = 4f;
+
+    // --- Inventory -----------------------------------------------------------------------------
+
+    /// <summary>The dark page the tabs, the slots and the potions all sit on.</summary>
+    public const float InventoryLeft = 7f;
+
+    public const float InventoryWidth = 346f;
+    public const float InventoryTop = 639f;
+    public const float InventoryBottom = 900f;
+
+    public const float TabHeight = 45f;
+    public const float TabGap = 4f;
+
+    public const float HotbarLeft = 16f;
+    public const float HotbarTop = 684f;
+
+    /// <summary>A carried slot, counted to the outside of its four-pixel border.</summary>
+    public const float HotbarSlotWidth = 79f;
+
+    public const float HotbarSlotHeight = 79f;
+
+    /// <summary>The gutter between two slots, which is the page showing through.</summary>
+    public const float SlotGap = 4f;
+
+    public const int HotbarColumns = 4;
+    public const int HotbarRows = 2;
+
+    public const float HotbarWidth =
+        HotbarColumns * HotbarSlotWidth + (HotbarColumns - 1) * SlotGap;
+
+    public const float HotbarHeight = HotbarRows * HotbarSlotHeight + (HotbarRows - 1) * SlotGap;
+
+    /// <summary>The three stacked potions, along the bottom of the page.</summary>
+    public const float PotionTop = 850f;
+
+    public const float PotionHeight = 41f;
+    public const int PotionSlots = 3;
+
+    // --- The world and the players in it -------------------------------------------------------
+
+    public const float WorldNameTop = 900f;
+
+    public const float WorldNameHeight = 40f;
+
+    public const float PartyTop = 940f;
+    public const int PartyColumns = 2;
+    public const float PartyColumnWidth = 177f;
+    public const float PartyRowHeight = 46.5f;
+    public const float PartyLeft = 12f;
+
+    /// <summary>The class portrait beside a name in the list.</summary>
+    public const float PartyPortrait = 32f;
+
+    /// <summary>The most rows the list is ever built with. Any that do not fit are hidden.</summary>
+    public const int PartyRows = 4;
+
+    // --- Player card ---------------------------------------------------------------------------
     public const float CardWidth = 300f;
 
-    /// <summary>
-    /// The card, which is now as tall as its portrait and its icon row and nothing else.
-    /// </summary>
-    /// <remarks>
-    /// The experience bar left it for the fame row in the vitals: a character cannot earn fame
-    /// before level twenty, so one bar can be the level below that and fame above it, and the card
-    /// gets its height back. The name and the guild sit in the column beside the portrait, so the
-    /// card no longer changes height when a player has no guild -- there is no row under them for a
-    /// gap to open in.
-    /// </remarks>
     public const float CardHeight = 88f;
 
     public const float AvatarSize = 48f;
 
-    // --- Minimap -----------------------------------------------------------------------------
-    public const float MinimapWidth = 305f;
-    public const float MinimapHeight = 300f;
-
-    // --- Party -------------------------------------------------------------------------------
-    public const int PartyColumns = 2;
-    public const int PartyRows = 3;
-    public const float PartyColumnWidth = 135f;
-    public const float PartyRowHeight = 28f;
-
-    /// <summary>The gap between the bottom of the minimap and the first party row.</summary>
-    public const float PartyTopGap = 22f;
-
-    // --- Chat --------------------------------------------------------------------------------
+    // --- Chat ----------------------------------------------------------------------------------
     public const float ChatWidth = 530f;
+
     public const float ChatHeight = 195f;
     public const float ChatBottomMargin = 22f;
 
-    // --- Vitals ------------------------------------------------------------------------------
-    /// <summary>
-    /// How wide a vitals bar is.
-    /// </summary>
-    /// <remarks>
-    /// Thirty-four wider than it was, which is exactly the heart and the gap after it. The icons
-    /// beside these three bars are gone -- each said the same thing as the word already written on
-    /// the bar, in less space and with less certainty -- and the bars took the room back rather
-    /// than the cluster shrinking, so everything measured against <see cref="VitalsWidth"/> is
-    /// where it was.
-    /// </remarks>
-    public const float VitalBarWidth = 354f;
-    public const float VitalBarHeight = 27f;
+    // --- Kept for the panels that measure against the old bottom-centre cluster ----------------
 
-    /// <summary>The gap between the health row and the magic row.</summary>
-    public const float VitalRowGap = 4f;
-
-    public const float PotionBoxWidth = 56f;
-    public const float AbilityWidth = 70f;
-    public const float AbilityHeight = 67f;
+    /// <summary>How much room the bottom edge of the screen still owes a panel opening over it.</summary>
     public const float VitalsBottomMargin = 26f;
 
-    /// <summary>
-    /// Fame, health and magic, in that order down the stack.
-    /// </summary>
-    /// <remarks>
-    /// Three rows rather than revision one's two. Fame moved down here from nowhere -- the card
-    /// keeps the experience bar, because levelling and fame are separate things in this game and
-    /// the brief's fallback of deleting one only applies where they are not.
-    /// </remarks>
-    public const int VitalRows = 3;
-
-    public const float VitalsHeight = VitalRows * VitalBarHeight + (VitalRows - 1) * VitalRowGap;
-
-    /// <summary>Bar, potion counter and the ability button, with the gaps between them.</summary>
-    public const float VitalsWidth =
-        VitalBarWidth + 6f + PotionBoxWidth + 8f + AbilityWidth;
-
-    // --- Hotbar and equipment ----------------------------------------------------------------
-    public const float HotbarSlotWidth = 55f;
-    public const float HotbarSlotHeight = 48f;
-    public const int HotbarColumns = 4;
-    public const int HotbarRows = 2;
-    public const float SlotGap = 4f;
-
-    public const float EquipmentSlotWidth = 85f;
-    public const float EquipmentSlotHeight = 78f;
-    public const int EquipmentSlots = 4;
-
-    /// <summary>The gap between the hotbar and the equipment row under it.</summary>
-    public const float HotbarGap = 16f;
-
-    public const float SwapWidth = 30f;
-    public const float SwapHeight = 28f;
-
-    public const float HotbarWidth = HotbarColumns * HotbarSlotWidth + (HotbarColumns - 1) * SlotGap;
-    public const float HotbarHeight = HotbarRows * HotbarSlotHeight + (HotbarRows - 1) * SlotGap;
-
-    public const float EquipmentWidth =
-        EquipmentSlots * EquipmentSlotWidth + (EquipmentSlots - 1) * SlotGap;
+    public const float VitalsHeight = 3f * BarHeight;
 
     private readonly Vector2 _size;
     private readonly bool _guild;
@@ -172,15 +220,9 @@ public readonly struct HudLayout
     /// glyph and every sprite edge lands on a whole device pixel.
     /// </para>
     /// <para>
-    /// Rounded rather than floored. The brief's formula floors, but its own acceptance criteria ask
-    /// for 1.5 at 2560 by 1440, and flooring gives 1.0 there -- rounding is what produces all three
-    /// of the numbers it lists.
-    /// </para>
-    /// <para>
     /// The last step is the one place this does not snap. A window too small to hold the layout at
     /// a whole step would have its clusters overlapping, which is worse than a resampled glyph, so
-    /// under <see cref="MinimumSpace"/> the scale drops to whatever does fit. That only happens
-    /// below about 1600 by 660; see <c>DeliberatelyFractionalBelowTheMinimum</c> in the tests.
+    /// under <see cref="MinimumSpace"/> the scale drops to whatever does fit.
     /// </para>
     /// </remarks>
     public static float ScaleFor(Vector2 window)
@@ -200,10 +242,6 @@ public readonly struct HudLayout
     /// <summary>
     /// The largest scale a window can hold the layout at without two clusters touching.
     /// </summary>
-    /// <remarks>
-    /// The ceiling on a hand-picked interface scale. Past it the chat panel and the vitals grow
-    /// into each other, which is a worse answer to "the text is small" than a smaller number.
-    /// </remarks>
     public static float LargestFor(Vector2 window) =>
         window.X <= 0f || window.Y <= 0f ? MinScale
             : Mathf.Max(MinScale, Mathf.Min(window.X / MinimumSpace.X, window.Y / MinimumSpace.Y));
@@ -213,106 +251,131 @@ public readonly struct HudLayout
         window.X <= 0f || window.Y <= 0f ? new Vector2(ReferenceWidth, ReferenceHeight)
             : window / ScaleFor(window);
 
+    /// <summary>The column's left edge, which almost everything on the right is measured from.</summary>
+    public float ColumnLeft => _size.X - ColumnWidth;
+
+    /// <summary>The whole right-hand column, floor to ceiling.</summary>
+    public Rect2 Column => new(ColumnLeft, 0f, ColumnWidth, _size.Y);
+
+    /// <summary>A rectangle given in the reference crop's own coordinates.</summary>
+    private Rect2 InColumn(float x, float y, float width, float height) =>
+        new(ColumnLeft + x, y, width, height);
+
+    /// <summary>Top right, flush to both edges: the map and its frame.</summary>
+    public Rect2 Minimap => InColumn(0f, 0f, ColumnWidth, MinimapHeight);
+
+    /// <summary>The map's painted area, inside the frame.</summary>
+    public Rect2 MinimapFace => Minimap.Grow(-MinimapFrame);
+
+    /// <summary>Under the map: stats, pet, alignment, quests, party and settings.</summary>
+    public Rect2 IconRow => InColumn(0f, IconRowTop, ColumnWidth, IconRowHeight);
+
+    /// <summary>Where one icon in that row sits, by its index in <see cref="IconStops"/>.</summary>
+    public Rect2 IconAt(int index) => InColumn(
+        IconStops[Mathf.Clamp(index, 0, IconStops.Length - 1)],
+        IconRowTop + Mathf.Round((IconRowHeight - IconSize) / 2f),
+        IconSize,
+        IconSize);
+
+    public Rect2 FameBar => InColumn(BarInset, FameBarTop, BarWidth, BarHeight);
+
+    public Rect2 HealthBar => InColumn(BarInset, HealthBarTop, BarWidth, BarHeight);
+
+    public Rect2 ManaBar => InColumn(BarInset, ManaBarTop, BarWidth, BarHeight);
+
+    /// <summary>The lighter strip the four worn slots are set into.</summary>
+    public Rect2 EquipmentRow =>
+        InColumn(EquipmentLeft, EquipmentTop, EquipmentStripWidth, EquipmentHeight);
+
+    /// <summary>
+    /// One worn slot, counted to the outside of its bevel.
+    /// </summary>
+    /// <remarks>
+    /// The pitch is fractional in the reference -- the four cells are 70, 71, 71 and 70 wide -- so
+    /// the position is rounded per slot rather than the width being fudged to make it whole.
+    /// </remarks>
+    public Rect2 EquipmentSlot(int index) => InColumn(
+        Mathf.Round(17f + index * 82.5f),
+        EquipmentTop + 6f,
+        EquipmentSlotWidth,
+        EquipmentSlotHeight);
+
+    /// <summary>The dark page: tabs at the top, then the carried slots, then the potions.</summary>
+    public Rect2 InventoryPanel => InColumn(
+        InventoryLeft, InventoryTop, InventoryWidth, InventoryBottom - InventoryTop);
+
+    /// <summary>The two tabs over the page, which choose which eight slots it is showing.</summary>
+    public Rect2 HotbarTabs => InColumn(InventoryLeft, InventoryTop, InventoryWidth, TabHeight);
+
+    public Rect2 Hotbar => InColumn(HotbarLeft, HotbarTop, HotbarWidth, HotbarHeight);
+
+    public Rect2 HotbarSlot(int index) => InColumn(
+        HotbarLeft + index % HotbarColumns * (HotbarSlotWidth + SlotGap),
+        HotbarTop + index / HotbarColumns * (HotbarSlotHeight + SlotGap),
+        HotbarSlotWidth,
+        HotbarSlotHeight);
+
+    /// <summary>The three stacked potions, which are addressed by slot id rather than by index.</summary>
+    public Rect2 PotionRow => InColumn(HotbarLeft, PotionTop, HotbarWidth, PotionHeight);
+
+    /// <summary>
+    /// One potion cell. Three across the same span the four carried slots use.
+    /// </summary>
+    public Rect2 PotionSlot(int index)
+    {
+        float pitch = (HotbarWidth + SlotGap) / PotionSlots;
+        float left = Mathf.Round(HotbarLeft + index * pitch);
+        float right = Mathf.Round(HotbarLeft + (index + 1) * pitch) - SlotGap;
+
+        return InColumn(left, PotionTop, right - left, PotionHeight);
+    }
+
+    /// <summary>Under the page: which world this is, and how many are in it.</summary>
+    public Rect2 PartyHeader => InColumn(0f, WorldNameTop, ColumnWidth, WorldNameHeight);
+
+    /// <summary>Under that: everyone else nearby, two to a row.</summary>
+    public Rect2 Party => InColumn(
+        PartyLeft,
+        PartyTop,
+        PartyColumns * PartyColumnWidth,
+        Mathf.Max(0f, _size.Y - PartyTop));
+
+    /// <summary>Where one row of the list sits, relative to <see cref="Party"/>.</summary>
+    public Rect2 PartyEntry(int index) => new(
+        index % PartyColumns * PartyColumnWidth,
+        Mathf.Round(index / PartyColumns * PartyRowHeight),
+        PartyColumnWidth,
+        PartyPortrait);
+
+    /// <summary>How many rows of the list the screen actually has room for.</summary>
+    public int PartyRowsThatFit =>
+        Mathf.Clamp(Mathf.FloorToInt((_size.Y - PartyTop) / PartyRowHeight), 0, PartyRows);
+
     /// <summary>Top left: who you are.</summary>
     public Rect2 PlayerCard => new(Margin, Margin, CardWidth, CardHeight);
 
-    /// <summary>Top right, flush to both edges: the map.</summary>
-    public Rect2 Minimap => new(_size.X - MinimapWidth, 0f, MinimapWidth, MinimapHeight);
-
     /// <summary>
-    /// Left of the minimap: gems and coins.
+    /// Left of the column, along the top: gems and coins.
     /// </summary>
     /// <remarks>
     /// A box the numbers are right-aligned inside rather than a box they fill, so a number that
     /// grows by a digit grows away from the screen edge instead of into the map.
     /// </remarks>
-    public Rect2 Currency => new(_size.X - MinimapWidth - 14f - 300f, 22f, 300f, 30f);
+    public Rect2 Currency => new(ColumnLeft - 14f - 300f, 22f, 300f, 30f);
 
-    /// <summary>Under the minimap: which world this is, and how many are in it.</summary>
-    public Rect2 PartyHeader => new(
-        _size.X - MinimapWidth, MinimapHeight + 2f, PartyColumns * PartyColumnWidth, 18f);
-
-    /// <summary>Under that: everyone else nearby.</summary>
-    public Rect2 Party => new(
-        _size.X - MinimapWidth,
-        MinimapHeight + PartyTopGap,
-        PartyColumns * PartyColumnWidth,
-        PartyRows * PartyRowHeight);
-
-    /// <summary>
-    /// Under the party list: what the realm wants killed next.
-    /// </summary>
-    /// <remarks>
-    /// In the right-hand column with the map and the party, because it is the same kind of thing --
-    /// something to glance at between fights rather than during one.
-    /// </remarks>
-    public Rect2 Quest => new(
-        _size.X - MinimapWidth, Party.End.Y + 14f, PartyColumns * PartyColumnWidth, 44f);
+    /// <summary>Under the card: what the realm wants killed next.</summary>
+    public Rect2 Quest => new(Margin, PlayerCard.End.Y + 58f, 390f, 92f);
 
     /// <summary>Bottom left: the log.</summary>
     public Rect2 Chat => new(
         Margin, _size.Y - ChatBottomMargin - ChatHeight, ChatWidth, ChatHeight);
 
-    /// <summary>Bottom centre, and the only cluster measured from the middle of the screen.</summary>
-    public Rect2 Vitals => new(
-        (_size.X - VitalsWidth) / 2f,
-        _size.Y - VitalsBottomMargin - VitalsHeight,
-        VitalsWidth,
-        VitalsHeight);
-
-    /// <summary>
-    /// The strip over the hotbar that chooses which eight slots it is showing.
-    /// </summary>
-    /// <remarks>
-    /// Added in revision two, and the one thing here that grows the bottom-right cluster upward.
-    /// It sits over the grid rather than pushing it, so every measurement in revision one is where
-    /// it was.
-    /// </remarks>
-    public Rect2 HotbarTabs
-    {
-        get
-        {
-            var grid = Hotbar;
-            return new Rect2(grid.Position.X, grid.Position.Y - 2f - TabHeight, grid.Size.X, TabHeight);
-        }
-    }
-
-    public const float TabHeight = 22f;
-
-    /// <summary>Bottom right: the eight carried slots.</summary>
-    public Rect2 Hotbar => new(
-        _size.X - Margin - HotbarWidth,
-        EquipmentRow.Position.Y - HotbarGap - HotbarHeight,
-        HotbarWidth,
-        HotbarHeight);
-
-    /// <summary>Under the hotbar: what is worn.</summary>
-    public Rect2 EquipmentRow => new(
-        _size.X - Margin - EquipmentWidth,
-        _size.Y - Margin - EquipmentSlotHeight,
-        EquipmentWidth,
-        EquipmentSlotHeight);
-
-    /// <summary>Left of the equipment row: the loadout cycle.</summary>
-    public Rect2 Swap
-    {
-        get
-        {
-            var row = EquipmentRow;
-            return new Rect2(
-                row.Position.X - 12f - SwapWidth,
-                row.Position.Y + (row.Size.Y - SwapHeight) / 2f,
-                SwapWidth,
-                SwapHeight);
-        }
-    }
-
     // --- Secondary interface -----------------------------------------------------------------
 
     /// <summary>The character panel and every panel that follows it.</summary>
-    public const float ModalWidth = 480f;
+    public const float ModalWidth = 428f;
 
-    /// <summary>The gap between the panel and the clusters above and below it.</summary>
+    /// <summary>The gap between the panel and the column beside it.</summary>
     public const float ModalGutter = 12f;
 
     /// <summary>
@@ -325,52 +388,33 @@ public readonly struct HudLayout
     /// Where a panel that opens over the world sits.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// Directly under the player card, which is where the button that opens it is: the sheet comes
-    /// out of the icon row you pressed rather than appearing somewhere else on the screen. The
-    /// button stack that normally occupies this space stands aside while it is open.
-    /// </para>
-    /// <para>
-    /// Down the left, and never in the middle. It is a panel you flick open to read one number and
-    /// close again, so it covers world margin and nothing else -- the centre of the screen, where
-    /// the fighting is, and the whole right-hand column stay clear.
-    /// </para>
+    /// Butted against the left edge of the column and running the full height of the screen, which
+    /// is where the reference puts it: the panel reads as a second column that slid out from under
+    /// the first rather than as a dialog that appeared somewhere. It covers world and nothing else
+    /// in the permanent interface -- the column stays fully visible beside it, which is the point,
+    /// since half of what the panel says is only meaningful next to the bars.
     /// </remarks>
-    public Rect2 Modal
-    {
-        get
-        {
-            float top = PlayerCard.End.Y + ModalGutter;
-            float height = Mathf.Max(ModalMinHeight, Chat.Position.Y - ModalGutter - top);
-
-            return new Rect2(Margin, top, ModalWidth, height);
-        }
-    }
+    public Rect2 Modal => new(
+        ColumnLeft - ModalGutter - ModalWidth,
+        0f,
+        ModalWidth,
+        Mathf.Max(ModalMinHeight, _size.Y));
 
     /// <summary>
     /// Every cluster, named, and whether it takes the pointer.
     /// </summary>
     /// <remarks>
     /// The list the overlap check walks. The currency is in it because it must not collide with the
-    /// minimap, but it is marked as passing the pointer through: it is two numbers drawn over the
-    /// world, and clicking one should walk the character rather than do nothing. The world-space
-    /// overlays are not in the list at all -- they are drawn under the interface and never take a
-    /// click.
+    /// column, but it is marked as passing the pointer through: it is two numbers drawn over the
+    /// world, and clicking one should walk the character rather than do nothing.
     /// </remarks>
     public IEnumerable<(string Name, Rect2 Rect, bool Interactive)> Clusters()
     {
         yield return ("player-card", PlayerCard, true);
-        yield return ("currency", Currency, false);
-        yield return ("minimap", Minimap, true);
-        yield return ("party-header", PartyHeader, false);
-        yield return ("party", Party, true);
         yield return ("quest", Quest, false);
+        yield return ("currency", Currency, false);
+        yield return ("column", Column, true);
         yield return ("chat", Chat, true);
-        yield return ("vitals", Vitals, true);
-        yield return ("hotbar-tabs", HotbarTabs, true);
-        yield return ("hotbar", Hotbar, true);
-        yield return ("equipment", EquipmentRow, true);
-        yield return ("swap", Swap, true);
     }
 
     /// <summary>
