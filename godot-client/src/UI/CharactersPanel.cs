@@ -434,11 +434,18 @@ public partial class CharactersPanel : Control
             Ornaments(full);
         }
 
-        /// <summary>The four bracket ticks, which are the only decoration the panel carries.</summary>
+        /// <summary>
+        /// The four bracket ticks, which are the only decoration the panel carries.
+        /// </summary>
+        /// <remarks>
+        /// Inside the hairline rather than on it: drawn in the same grey, a tick that touches the
+        /// border is a tick nobody can see.
+        /// </remarks>
         private void Ornaments(in Rect2 full)
         {
-            const float inset = 5f;
-            const float arm = 16f;
+            const float inset = 9f;
+            const float arm = 14f;
+            const float pip = 4f;
 
             for (int corner = 0; corner < 4; corner++)
             {
@@ -450,8 +457,13 @@ public partial class CharactersPanel : Control
                 float dx = right ? -arm : arm;
                 float dy = bottom ? -arm : arm;
 
-                DrawLine(new Vector2(x, y), new Vector2(x + dx, y), Style.ModalFrame, 3f);
-                DrawLine(new Vector2(x, y), new Vector2(x, y + dy), Style.ModalFrame, 3f);
+                DrawRect(new Rect2(Mathf.Min(x, x + dx), y - 1.5f, arm, 3f), Style.ModalFrame);
+                DrawRect(new Rect2(x - 1.5f, Mathf.Min(y, y + dy), 3f, arm), Style.ModalFrame);
+
+                // The loose pip further along each arm, which is what makes the mark read as a
+                // corner bracket rather than as a stray right angle.
+                DrawRect(new Rect2(x + dx * 1.6f - pip / 2f, y - pip / 2f, pip, pip), Style.ModalFrame);
+                DrawRect(new Rect2(x - pip / 2f, y + dy * 1.6f - pip / 2f, pip, pip), Style.ModalFrame);
             }
         }
     }
@@ -675,7 +687,7 @@ public partial class CharactersPanel : Control
             if (!sprite.IsValid)
                 return;
 
-            float size = 46f;
+            float size = 60f;
             this.DrawSprite(sprite, new Rect2(
                 (PlateWidth - size) / 2f, (Size.Y - size) / 2f, size, size), outline: 0f);
         }

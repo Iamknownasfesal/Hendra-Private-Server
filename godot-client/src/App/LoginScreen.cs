@@ -534,10 +534,13 @@ public partial class LoginScreen : Control
             _servers.Selected = Math.Max(index, 0);
         }
 
-        var account = _charList.Account;
+        // The server row is the only thing left in the middle of the page once the panel is up, and
+        // with one server to choose between it is a dropdown with nothing to say. A successful sign
+        // in is reported by the panel appearing; only a failure gets words.
+        _charactersPanel.Visible = _charList.Servers.Count > 1;
         _status.Text = _charList.Servers.Count == 0
             ? "Signed in, but the server list is empty — is the world server running and registered?"
-            : $"Signed in as {(string.IsNullOrEmpty(account.Name) ? "guest" : account.Name)}.";
+            : string.Empty;
 
         // The list itself is the same panel the world opens over itself, so the player meets it
         // once and it does not change shape when they sign in.
